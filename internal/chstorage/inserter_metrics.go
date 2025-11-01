@@ -88,7 +88,7 @@ const (
 	labelScopeAttribute
 )
 
-func (b *metricsBatch) Insert(ctx context.Context, tables Tables, client ClickhouseClient) error {
+func (b *metricsBatch) Insert(ctx context.Context, tables Tables, client ClickHouseClient) error {
 	lg := zctx.From(ctx)
 
 	labelColumns := newLabelsColumns()

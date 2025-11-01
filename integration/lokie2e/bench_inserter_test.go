@@ -16,7 +16,7 @@ import (
 
 type noopClickhouse struct{}
 
-var _ chstorage.ClickhouseClient = (*noopClickhouse)(nil)
+var _ chstorage.ClickHouseClient = (*noopClickhouse)(nil)
 
 func (*noopClickhouse) Do(context.Context, ch.Query) error { return nil }
 func (*noopClickhouse) Ping(context.Context) error         { return nil }

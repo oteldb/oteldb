@@ -6,7 +6,7 @@ import (
 	"github.com/ClickHouse/ch-go"
 )
 
-type ClickhouseClient interface {
+type ClickHouseClient interface {
 	Do(ctx context.Context, q ch.Query) error
 	Ping(ctx context.Context) error
 }
@@ -26,9 +26,9 @@ func (c *dialingClickhouseClient) Ping(ctx context.Context) error {
 	return db.Ping(ctx)
 }
 
-var _ ClickhouseClient = (*dialingClickhouseClient)(nil)
+var _ ClickHouseClient = (*dialingClickhouseClient)(nil)
 
-func NewDialingClickhouseClient(options ch.Options) ClickhouseClient {
+func NewDialingClickhouseClient(options ch.Options) ClickHouseClient {
 	return &dialingClickhouseClient{
 		options: options,
 	}

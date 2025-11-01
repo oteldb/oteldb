@@ -37,7 +37,7 @@ func (q *Querier) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier,
 type exemplarQuerier struct {
 	ctx context.Context
 
-	ch              ClickhouseClient
+	ch              ClickHouseClient
 	tables          Tables
 	getLabelMapping func(context.Context, []string) (metricsLabelMapping, error)
 	do              func(ctx context.Context, s selectQuery) error

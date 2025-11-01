@@ -40,8 +40,8 @@ func (opts *DialOptions) setDefaults() {
 	}
 }
 
-// Dial creates new [ClickhouseClient] using given DSN.
-func Dial(ctx context.Context, dsn string, opts DialOptions) (ClickhouseClient, error) {
+// Dial creates new [ClickHouseClient] using given DSN.
+func Dial(ctx context.Context, dsn string, opts DialOptions) (ClickHouseClient, error) {
 	opts.setDefaults()
 	lg := opts.Logger
 
@@ -81,7 +81,7 @@ func Dial(ctx context.Context, dsn string, opts DialOptions) (ClickhouseClient, 
 	connectBackoff.InitialInterval = 2 * time.Second
 	connectBackoff.MaxElapsedTime = time.Minute
 	return backoff.RetryNotifyWithData(
-		func() (ClickhouseClient, error) {
+		func() (ClickHouseClient, error) {
 			client, err := chpool.Dial(ctx, chpool.Options{
 				ClientOptions:     chOpts,
 				HealthCheckPeriod: time.Second,

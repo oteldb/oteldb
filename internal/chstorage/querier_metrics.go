@@ -58,7 +58,7 @@ type promQuerier struct {
 	mint time.Time
 	maxt time.Time
 
-	ch              ClickhouseClient
+	ch              ClickHouseClient
 	tables          Tables
 	labelLimit      int
 	getLabelMapping func(context.Context, []string) (metricsLabelMapping, error)

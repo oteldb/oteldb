@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/go-faster/oteldb/internal/chstorage"
+	"github.com/go-faster/oteldb/internal/globalmetric"
 	"github.com/go-faster/oteldb/internal/logql/logqlengine"
 	"github.com/go-faster/oteldb/internal/logstorage"
 	"github.com/go-faster/oteldb/internal/traceql/traceqlengine"
@@ -61,10 +62,16 @@ func setupCH(
 		return store, errors.Wrap(err, "create tables")
 	}
 
+	tracker, err := globalmetric.NewTracker(m.MeterProvider(), m.TracerProvider())
+	if err != nil {
+		return store, errors.Wrap(err, "create global metric tracker")
+	}
+
 	querier, err := chstorage.NewQuerier(c, chstorage.QuerierOptions{
 		Tables:         tables,
 		MeterProvider:  m.MeterProvider(),
 		TracerProvider: m.TracerProvider(),
+		Tracker:        tracker,
 	})
 	if err != nil {
 		return store, errors.Wrap(err, "create querier")
