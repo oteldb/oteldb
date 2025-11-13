@@ -32,8 +32,11 @@ func ConnectOpt(t *testing.T, connOpt ch.Options) *ch.Client {
 
 	req := testcontainers.ContainerRequest{
 		Name:         "oteldb-chotel-clickhouse",
-		Image:        "clickhouse/clickhouse-server:23.12",
+		Image:        "clickhouse/clickhouse-server:25.9",
 		ExposedPorts: []string{"8123/tcp", "9000/tcp"},
+		Env: map[string]string{
+			"CLICKHOUSE_PASSWORD": "default",
+		},
 	}
 	chContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -71,6 +74,8 @@ func TestIntegrationTrace(t *testing.T) {
 		Logger:                       zap.NewNop(),
 		OpenTelemetryInstrumentation: true,
 		TracerProvider:               provider,
+		User:                         "default",
+		Password:                     "default",
 		Settings: []ch.Setting{
 			{
 				Key:       "send_logs_level",
