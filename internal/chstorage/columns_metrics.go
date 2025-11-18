@@ -26,8 +26,8 @@ func newTimeseriesColumns() *timeseriesColumns {
 		name: new(proto.ColStr).LowCardinality(),
 
 		hash:      &colSimpleAggregateFunction[[16]byte]{Function: "any", Data: new(proto.ColFixedStr16)},
-		firstSeen: &colSimpleAggregateFunction[time.Time]{Function: "min", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)},
-		lastSeen:  &colSimpleAggregateFunction[time.Time]{Function: "max", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)},
+		firstSeen: &colSimpleAggregateFunction[time.Time]{Function: "min", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano)},
+		lastSeen:  &colSimpleAggregateFunction[time.Time]{Function: "max", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano)},
 
 		attributes: NewAttributes(colAttrs),
 		scope:      NewAttributes(colScope),
