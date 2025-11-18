@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS `metrics_exp_histograms`
 (
 	`hash`                                 FixedString(16),
-	`timestamp`                            DateTime64(9)     CODEC(Delta, ZSTD(1)),
+	`timestamp`                            DateTime64(3)     CODEC(Delta, ZSTD(1)),
 	`exp_histogram_count`                  UInt64,
 	`exp_histogram_sum`                    Nullable(Float64),
 	`exp_histogram_min`                    Nullable(Float64),
