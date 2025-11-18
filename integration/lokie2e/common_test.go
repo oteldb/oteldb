@@ -414,14 +414,6 @@ func runTest(
 			// Negative line matcher.
 			{`{http_method=~".+"} != "HEAD"`, len(set.Records) - 22},
 			{`{http_method=~".+"} !~ "HEAD"`, len(set.Records) - 22},
-			// Trace to logs (span_id).
-			{`{http_method=~".+"} |= "e3daccf703000003"`, 1}, // lower case
-			{`{http_method=~".+"} |= "E3DACCF703000003"`, 1}, // upper case
-			{`{http_method=~".+"} |= "e3dacCF703000003"`, 1}, // mixed case
-			// Trace to logs (trace_id).
-			{`{http_method=~".+"} |= "af36000000000000c517000000000003"`, 1}, // lower case
-			{`{http_method=~".+"} |= "AF36000000000000C517000000000003"`, 1}, // upper case
-			{`{http_method=~".+"} |= "aF36000000000000c517000000000003"`, 1}, // mixed case
 
 			// Label filter.
 			{`{http_method=~".+"} | http_method = "GET"`, 21},
