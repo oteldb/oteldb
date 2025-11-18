@@ -26,8 +26,8 @@ func newTimeseriesColumns() *timeseriesColumns {
 		name: new(proto.ColStr).LowCardinality(),
 
 		hash:      &colSimpleAggregateFunction[[16]byte]{Function: "any", Data: new(proto.ColFixedStr16)},
-		firstSeen: &colSimpleAggregateFunction[time.Time]{Function: "min", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano)},
-		lastSeen:  &colSimpleAggregateFunction[time.Time]{Function: "max", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano)},
+		firstSeen: &colSimpleAggregateFunction[time.Time]{Function: "min", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)},
+		lastSeen:  &colSimpleAggregateFunction[time.Time]{Function: "max", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)},
 
 		attributes: NewAttributes(colAttrs),
 		scope:      NewAttributes(colScope),
@@ -98,7 +98,7 @@ type pointColumns struct {
 
 func newPointColumns() *pointColumns {
 	return &pointColumns{
-		timestamp: new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano),
+		timestamp: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli),
 	}
 }
 
@@ -177,7 +177,7 @@ type expHistogramColumns struct {
 
 func newExpHistogramColumns() *expHistogramColumns {
 	return &expHistogramColumns{
-		timestamp: new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano),
+		timestamp: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli),
 
 		sum:                  new(proto.ColFloat64).Nullable(),
 		min:                  new(proto.ColFloat64).Nullable(),
@@ -336,8 +336,8 @@ type exemplarColumns struct {
 
 func newExemplarColumns() *exemplarColumns {
 	return &exemplarColumns{
-		timestamp:         new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano),
-		exemplarTimestamp: new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano),
+		timestamp:         new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli),
+		exemplarTimestamp: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli),
 	}
 }
 
