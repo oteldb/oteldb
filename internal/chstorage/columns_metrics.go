@@ -135,7 +135,7 @@ func (c *pointColumns) DDL() ddl.Table {
 			{
 				Name:  "timestamp",
 				Type:  c.timestamp.Type(),
-				Codec: "Delta, ZSTD(1)",
+				Codec: "DoubleDelta, ZSTD(1)",
 			},
 			{
 				Name:  "value",
