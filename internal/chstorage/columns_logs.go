@@ -123,12 +123,6 @@ func (c *logColumns) DDL() ddl.Table {
 				Type:        "minmax",
 				Granularity: 8192,
 			},
-			{
-				Name:   "attribute_keys",
-				Target: "arrayConcat(JSONExtractKeys(attribute), JSONExtractKeys(scope), JSONExtractKeys(resource))",
-				Type:   "set",
-				Params: []string{"100"},
-			},
 		},
 		Columns: []ddl.Column{
 			{
