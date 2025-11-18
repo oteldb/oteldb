@@ -87,7 +87,7 @@ func (c *timeseriesColumns) DDL() ddl.Table {
 }
 
 type pointColumns struct {
-	hash      proto.ColFixedStr16
+	hash      proto.ColumnOf[[16]byte]
 	timestamp *proto.ColDateTime64
 
 	value proto.ColFloat64
@@ -99,13 +99,14 @@ type pointColumns struct {
 func newPointColumns() *pointColumns {
 	return &pointColumns{
 		timestamp: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli),
+		hash:      proto.NewLowCardinality(&proto.ColFixedStr16{}),
 	}
 }
 
 func (c *pointColumns) Columns() Columns {
 	return MergeColumns(
 		Columns{
-			{Name: "hash", Data: &c.hash},
+			{Name: "hash", Data: c.hash},
 			{Name: "timestamp", Data: c.timestamp},
 
 			{Name: "value", Data: &c.value},
@@ -134,7 +135,7 @@ func (c *pointColumns) DDL() ddl.Table {
 			{
 				Name:  "timestamp",
 				Type:  c.timestamp.Type(),
-				Codec: "Delta, ZSTD(1)",
+				Codec: "DoubleDelta, ZSTD(1)",
 			},
 			{
 				Name:  "value",
