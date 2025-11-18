@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS `metrics_points`
 (
 	`hash`      LowCardinality(FixedString(16)),
-	`timestamp` DateTime64(3)                   CODEC(DoubleDelta, ZSTD(1)),
+	`timestamp` DateTime64(3)                   CODEC(Delta, ZSTD(1)),
 	`value`     Float64                         CODEC(FPC, ZSTD(1)),
 	`mapping`   Enum8(
 		'NO_MAPPING' = 0,
