@@ -28,8 +28,11 @@ func TestCH(t *testing.T) {
 
 	req := testcontainers.ContainerRequest{
 		Name:         "oteldb-prome2e-clickhouse",
-		Image:        "clickhouse/clickhouse-server:23.12",
+		Image:        "clickhouse/clickhouse-server:25.9",
 		ExposedPorts: []string{"8123/tcp", "9000/tcp"},
+		Env: map[string]string{
+			"CLICKHOUSE_PASSWORD": "default",
+		},
 	}
 	chContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -45,6 +48,8 @@ func TestCH(t *testing.T) {
 	opts := ch.Options{
 		Address:  endpoint,
 		Database: "default",
+		User:     "default",
+		Password: "default",
 
 		OpenTelemetryInstrumentation: true,
 		TracerProvider:               provider,

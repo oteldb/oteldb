@@ -10,11 +10,11 @@ datasources:
     jsonData:
       httpMethod: GET
 
-  - name: "PromQL"
+  - name: "oteldb (PromQL)"
     type: prometheus
     access: proxy
     orgId: 1
-    url: http://otelproxy:9090
+    url: http://oteldb:9090
     uid: promoteldb
     isDefault: true
 
