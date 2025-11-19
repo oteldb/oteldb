@@ -2,7 +2,6 @@ package chstorage
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -23,7 +22,6 @@ import (
 	"github.com/go-faster/oteldb/internal/logql/logqlengine/logqlabels"
 	"github.com/go-faster/oteldb/internal/logql/logqlengine/logqlmetric"
 	"github.com/go-faster/oteldb/internal/logstorage"
-	"github.com/go-faster/oteldb/internal/otelstorage"
 	"github.com/go-faster/oteldb/internal/xattribute"
 )
 
@@ -371,41 +369,10 @@ func (q *Querier) lineFilter(m logql.LineFilter, c *tokenCollector) (e chsql.Exp
 	matcher := func(op logql.BinOp, by logql.LineFilterValue) chsql.Expr {
 		switch op {
 		case logql.OpEq, logql.OpNotEq:
-			expr := chsql.Contains("body", by.Value)
-
-			{
-				// HACK: check for special case of hex-encoded trace_id and span_id.
-				// Like `{http_method=~".+"} |= "af36000000000000c517000000000003"`.
-				// TODO(ernado): also handle regex?
-				v, _ := hex.DecodeString(by.Value)
-				switch len(v) {
-				case len(otelstorage.TraceID{}):
-					expr = chsql.Or(expr, chsql.Eq(
-						chsql.Ident("trace_id"),
-						chsql.Unhex(chsql.String(by.Value)),
-					))
-				case len(otelstorage.SpanID{}):
-					expr = chsql.Or(expr, chsql.Eq(
-						chsql.Ident("span_id"),
-						chsql.Unhex(chsql.String(by.Value)),
-					))
-				default:
-					// In case if value is not a trace_id/span_id.
-					//
-					// Clickhouse does not use tokenbf_v1 index to skip blocks
-					// with position* functions for some reason.
-					//
-					// Force to skip using hasToken function.
-					//
-					// Note that such optimization is applied only if operation is not negated to
-					// avoid false-negative skipping.
-					if val := by.Value; len(m.Or) == 0 && op != logql.OpNotEq {
-						c.Add(val)
-					}
-				}
+			if val := by.Value; len(m.Or) == 0 && op != logql.OpNotEq {
+				c.Add(val)
 			}
-
-			return expr
+			return chsql.Contains("body", by.Value)
 		case logql.OpRe, logql.OpNotRe:
 			return chsql.Match(chsql.Ident("body"), chsql.String(by.Value))
 		default:
