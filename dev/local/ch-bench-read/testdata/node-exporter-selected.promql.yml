@@ -10,3 +10,7 @@ range:
     title: CPU wait time
   - query: topk(3, avg_over_time(node_memory_MemFree_bytes{job="node_exporter"}[30m]))
     title: Top 3 free memory
+series:
+  - matchers:
+      - node_cpu_seconds_total{instance="host-0",job="node_exporter"}
+    title: CPU metrics
