@@ -13,7 +13,7 @@ env:
   OTEL_EXPORTER_OTLP_INSECURE: "true"
   CGO_ENABLED: 0
   LOCAL: true
-  TEST_BROKEN: true # https://github.com/oteldb/oteldb/issues/848
+  TEST_BROKEN: false # https://github.com/oteldb/oteldb/issues/848
 
 jobs:
   PromQL:
@@ -67,7 +67,7 @@ jobs:
 
       - name: Start compose
         working-directory: ${{ env.WORKDIR }}
-        run: docker compose up -d
+        run: docker compose up --detach --build --force-recreate
 
       - name: Load data
         run: |
@@ -82,6 +82,16 @@ jobs:
         if: ${{ env.TEST_BROKEN != 'true' }}
         working-directory: ${{ env.WORKDIR }}
         run: go run github.com/go-faster/oteldb/cmd/otelbench promql bench -o report.yml -i testdata/node-exporter-selected.promql.yml --trace --allow-empty=false --warmup 5
+
+      - name: Dump Clickhouse logs
+        if: ${{ always() }}
+        working-directory: ${{ env.WORKDIR }}
+        run: docker compose logs clickhouse
+
+      - name: Dump oteldb logs
+        if: ${{ always() }}
+        working-directory: ${{ env.WORKDIR }}
+        run: docker compose logs oteldb
 
       - name: Upload report
         if: ${{ env.TEST_BROKEN != 'true' }}

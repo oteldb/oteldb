@@ -192,6 +192,11 @@ func (p *Printer) Distinct() {
 	p.Ident("DISTINCT")
 }
 
+// Final writes `FINAL` ident.
+func (p *Printer) Final() {
+	p.Ident("FINAL")
+}
+
 // From writes `FROM` ident.
 func (p *Printer) From() {
 	p.Ident("FROM")

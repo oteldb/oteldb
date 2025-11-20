@@ -354,6 +354,39 @@ func (p *PromQL) runConcurrentBenchmark(ctx context.Context) error {
 	return nil
 }
 
+func (p *PromQL) waitForSeries(ctx context.Context, query promproxy.SeriesQuery) error {
+	var (
+		attempts   = 5
+		sleepDelay = 5 * time.Second
+	)
+	for {
+		res, err := p.client.GetSeries(ctx, promapi.GetSeriesParams{
+			Start: toOptPrometheusTimestamp(query.Start),
+			End:   toOptPrometheusTimestamp(query.End),
+			Match: query.Matchers,
+		})
+		if err != nil {
+			return errors.Wrap(err, "get series")
+		}
+
+		if len(res.Data) > 0 {
+			return nil
+		}
+
+		if attempts == 0 {
+			return errors.New("no series found after retries")
+		}
+		attempts--
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(sleepDelay):
+			continue
+		}
+	}
+}
+
 func (p *PromQL) Run(ctx context.Context) error {
 	fmt.Println("sending promql queries from", p.Input, "to", p.Addr)
 	if !p.start.IsZero() {
@@ -366,13 +399,32 @@ func (p *PromQL) Run(ctx context.Context) error {
 		return p.runConcurrentBenchmark(ctx)
 	}
 
-	var total int
+	var (
+		total       int
+		seriesQuery *promproxy.SeriesQuery
+	)
 	if err := p.each(ctx, func(ctx context.Context, _ int, q promproxy.Query) error {
 		total += p.Count
 		total += p.Warmup
+
+		if q.Type == promproxy.SeriesQueryQuery && seriesQuery == nil {
+			sq := q.SeriesQuery
+			seriesQuery = &sq
+		}
 		return nil
 	}); err != nil {
 		return errors.Wrap(err, "count total")
+	}
+
+	if seriesQuery != nil {
+		start := time.Now()
+		fmt.Println("waiting for series to appear")
+		if err := p.waitForSeries(ctx, *seriesQuery); err != nil {
+			return errors.Wrap(err, "waiting for series to appear")
+		}
+		fmt.Println("done in", time.Since(start).Round(time.Millisecond))
+	} else {
+		fmt.Println("no series query found")
 	}
 
 	pb := progressbar.Default(int64(total))
