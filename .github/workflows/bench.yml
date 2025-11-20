@@ -13,7 +13,7 @@ env:
   OTEL_EXPORTER_OTLP_INSECURE: "true"
   CGO_ENABLED: 0
   LOCAL: true
-  TEST_BROKEN: true # https://github.com/oteldb/oteldb/issues/848
+  TEST_BROKEN: false # https://github.com/oteldb/oteldb/issues/848
 
 jobs:
   PromQL:
