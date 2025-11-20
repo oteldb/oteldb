@@ -67,7 +67,7 @@ jobs:
 
       - name: Start compose
         working-directory: ${{ env.WORKDIR }}
-        run: docker compose up -d
+        run: docker compose up --detach --build --force-recreate
 
       - name: Load data
         run: |
