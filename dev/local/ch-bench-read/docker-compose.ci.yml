@@ -34,7 +34,7 @@ services:
     environment:
       - PPROF_ADDR=0.0.0.0:9010
       - OTELDB_STORAGE=ch
-      - OTEL_LOG_LEVEL=info
+      - OTEL_LOG_LEVEL=debug
       - OTEL_EXPORTER_PROMETHEUS_HOST=0.0.0.0
       - OTEL_EXPORTER_PROMETHEUS_PORT=9464
       - OTEL_METRICS_EXPORTER=prometheus
