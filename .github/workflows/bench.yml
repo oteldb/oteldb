@@ -83,6 +83,16 @@ jobs:
         working-directory: ${{ env.WORKDIR }}
         run: go run github.com/go-faster/oteldb/cmd/otelbench promql bench -o report.yml -i testdata/node-exporter-selected.promql.yml --trace --allow-empty=false --warmup 5
 
+      - name: Dump Clickhouse logs
+        if: ${{ always() }}
+        working-directory: ${{ env.WORKDIR }}
+        run: docker compose logs clickhouse
+
+      - name: Dump oteldb logs
+        if: ${{ always() }}
+        working-directory: ${{ env.WORKDIR }}
+        run: docker compose logs oteldb
+
       - name: Upload report
         if: ${{ env.TEST_BROKEN != 'true' }}
         uses: actions/upload-artifact@v5
