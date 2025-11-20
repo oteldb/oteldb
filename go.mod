@@ -79,7 +79,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.38.0
 	go.uber.org/atomic v1.11.0
 	go.uber.org/multierr v1.11.0
-	go.uber.org/zap v1.27.0
+	go.uber.org/zap v1.27.1
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/exp v0.0.0-20250808145144-a408d31f581a
 	golang.org/x/perf v0.0.0-20241204221936-711ff2ab7231
