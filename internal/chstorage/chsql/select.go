@@ -16,6 +16,7 @@ type SelectQuery struct {
 	table    string
 	sub      *SelectQuery
 	distinct bool
+	final    bool
 	columns  []ResultColumn
 
 	// prewhere is a set of expression joined by AND
@@ -55,6 +56,12 @@ func SelectFrom(sub *SelectQuery, columns ...ResultColumn) *SelectQuery {
 // Distinct sets if query is `DISTINCT`.
 func (q *SelectQuery) Distinct(b bool) *SelectQuery {
 	q.distinct = b
+	return q
+}
+
+// Final sets if query is `FINAL`.
+func (q *SelectQuery) Final(b bool) *SelectQuery {
+	q.final = b
 	return q
 }
 
@@ -158,6 +165,9 @@ func (q *SelectQuery) WriteSQL(p *Printer) error {
 	switch {
 	case q.table != "":
 		p.Ident(q.table)
+		if q.final {
+			p.Final()
+		}
 	case q.sub != nil:
 		p.OpenParen()
 		if err := q.sub.WriteSQL(p); err != nil {
