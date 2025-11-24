@@ -118,7 +118,7 @@ func Generate(t Table) (string, error) {
 	}
 	if t.Cluster != "" {
 		b.WriteString(" ON CLUSTER ")
-		b.WriteString(Backtick(t.Cluster))
+		b.WriteString(t.Cluster)
 	}
 	b.WriteString("\n(")
 	var (
