@@ -97,7 +97,7 @@ func newLogColumns() *logColumns {
 // DDL of the log table.
 func (c *logColumns) DDL() ddl.Table {
 	table := ddl.Table{
-		Engine:      "MergeTree",
+		Engine:      ddl.Engine{Type: "MergeTree"},
 		PartitionBy: "toYYYYMMDD(timestamp)",
 		PrimaryKey:  []string{"severity_number", "service_namespace", "service_name", "resource"},
 		OrderBy:     []string{"severity_number", "service_namespace", "service_name", "resource", "timestamp"},
@@ -344,7 +344,7 @@ func (c *logAttrMapColumns) AddRow(name []byte, key string) {
 func (c *logAttrMapColumns) DDL() ddl.Table {
 	return ddl.Table{
 		OrderBy: []string{"name"},
-		Engine:  "ReplacingMergeTree",
+		Engine:  ddl.Engine{Type: "ReplacingMergeTree"},
 		Columns: []ddl.Column{
 			{
 				Name:    "name",

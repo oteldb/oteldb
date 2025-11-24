@@ -55,7 +55,7 @@ func (c *timeseriesColumns) ChsqlResult() []chsql.ResultColumn { return c.Column
 
 func (c *timeseriesColumns) DDL() ddl.Table {
 	table := ddl.Table{
-		Engine:     "AggregatingMergeTree",
+		Engine:     ddl.Engine{Type: "AggregatingMergeTree"},
 		PrimaryKey: []string{"name", "resource", "scope", "attribute"},
 		OrderBy:    []string{"name", "resource", "scope", "attribute"},
 		Columns: []ddl.Column{
@@ -123,7 +123,7 @@ func (c *pointColumns) ChsqlResult() []chsql.ResultColumn { return c.Columns().C
 
 func (c *pointColumns) DDL() ddl.Table {
 	table := ddl.Table{
-		Engine:      "MergeTree",
+		Engine:      ddl.Engine{Type: "MergeTree"},
 		PartitionBy: "toYYYYMMDD(timestamp)",
 		OrderBy:     []string{"toStartOfHour(timestamp)", "hash", "timestamp"},
 		TTL:         ddl.TTL{Field: "timestamp"},
@@ -216,7 +216,7 @@ func (c *expHistogramColumns) ChsqlResult() []chsql.ResultColumn { return c.Colu
 
 func (c *expHistogramColumns) DDL() ddl.Table {
 	table := ddl.Table{
-		Engine:      "MergeTree",
+		Engine:      ddl.Engine{Type: "MergeTree"},
 		PartitionBy: "toYYYYMMDD(timestamp)",
 		OrderBy:     []string{"toStartOfHour(timestamp)", "hash", "timestamp"},
 		Columns: []ddl.Column{
@@ -305,7 +305,7 @@ func (c *labelsColumns) ChsqlResult() []chsql.ResultColumn { return c.Columns().
 
 func (c *labelsColumns) DDL() ddl.Table {
 	return ddl.Table{
-		Engine:  "ReplacingMergeTree",
+		Engine:  ddl.Engine{Type: "ReplacingMergeTree"},
 		OrderBy: []string{"name", "value", "scope"},
 		Columns: []ddl.Column{
 			{
@@ -363,7 +363,7 @@ func (c *exemplarColumns) ChsqlResult() []chsql.ResultColumn { return c.Columns(
 
 func (c *exemplarColumns) DDL() ddl.Table {
 	table := ddl.Table{
-		Engine:      "MergeTree",
+		Engine:      ddl.Engine{Type: "MergeTree"},
 		PartitionBy: "toYYYYMMDD(timestamp)",
 		OrderBy:     []string{"toStartOfHour(timestamp)", "hash", "timestamp"},
 		Columns: []ddl.Column{

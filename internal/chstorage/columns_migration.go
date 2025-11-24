@@ -42,8 +42,11 @@ func (c *migrationColumns) Save(m map[string]string) {
 
 func (c *migrationColumns) DDL() ddl.Table {
 	return ddl.Table{
-		Name:    "migration",
-		Engine:  "ReplacingMergeTree(ts)",
+		Name: "migration",
+		Engine: ddl.Engine{
+			Type: "ReplacingMergeTree",
+			Args: []string{"ts"},
+		},
 		OrderBy: []string{"table"},
 		Columns: []ddl.Column{
 			{Name: "table", Type: "String"},
