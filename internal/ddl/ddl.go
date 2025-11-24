@@ -29,8 +29,30 @@ type Table struct {
 	OrderBy     []string
 	PrimaryKey  []string
 	PartitionBy string
-	Engine      string
+	Engine      Engine
 	TTL         TTL
+}
+
+// Engine describes engine type and its parameters.
+type Engine struct {
+	Type string
+	Args []string
+}
+
+// Replicated returns replicated version of the engine.
+//
+// If replication is not supported by the engine, returns false.
+func (e Engine) Replicated(tableName string) (Engine, bool) {
+	if !strings.Contains(e.Type, "MergeTree") {
+		return e, false
+	}
+	return Engine{
+		Type: "Replicated" + e.Type,
+		Args: append([]string{
+			fmt.Sprintf("'/clickhouse/tables/{shard}/%s'", tableName),
+			"'{replica}'",
+		}, e.Args...),
+	}, true
 }
 
 type TTL struct {
@@ -176,10 +198,22 @@ func Generate(t Table) (string, error) {
 	}
 	b.WriteString("\n)\n")
 	b.WriteString("ENGINE = ")
-	if t.Engine == "" {
-		t.Engine = "Null"
+
+	if typ := t.Engine.Type; typ == "" {
+		typ = "Null"
+		b.WriteString(typ)
 	} else {
-		b.WriteString(t.Engine)
+		b.WriteString(typ)
+		if args := t.Engine.Args; len(args) > 0 {
+			b.WriteByte('(')
+			for i, arg := range args {
+				if i != 0 {
+					b.WriteByte(',')
+				}
+				b.WriteString(arg)
+			}
+			b.WriteByte(')')
+		}
 	}
 	b.WriteString("\n")
 	if t.PartitionBy != "" {
