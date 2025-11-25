@@ -1,0 +1,154 @@
+version: "3"
+
+services:
+  clickhouse-01:
+    image: "clickhouse/clickhouse-server:25.9"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:8123/ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    volumes:
+      - ./ch-cluster/clickhouse-01/config.d/config.xml:/etc/clickhouse-server/config.d/config.xml
+      - ./ch-cluster/clickhouse-01/users.d/users.xml:/etc/clickhouse-server/users.d/users.xml
+    ports:
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9000:9000"
+    depends_on:
+      - clickhouse-keeper
+  clickhouse-02:
+    image: "clickhouse/clickhouse-server:25.9"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:8123/ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    volumes:
+      - ./ch-cluster/clickhouse-02/config.d/config.xml:/etc/clickhouse-server/config.d/config.xml
+      - ./ch-cluster/clickhouse-02/users.d/users.xml:/etc/clickhouse-server/users.d/users.xml
+    ports:
+      - "127.0.0.1:8124:8123"
+      - "127.0.0.1:9001:9000"
+    depends_on:
+      - clickhouse-keeper
+  clickhouse-03:
+    image: "clickhouse/clickhouse-server:25.9"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:8123/ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    volumes:
+      - ./ch-cluster/clickhouse-03/config.d/config.xml:/etc/clickhouse-server/config.d/config.xml
+      - ./ch-cluster/clickhouse-03/users.d/users.xml:/etc/clickhouse-server/users.d/users.xml
+    ports:
+      - "127.0.0.1:8125:8123"
+      - "127.0.0.1:9002:9000"
+    depends_on:
+      - clickhouse-keeper
+  clickhouse-keeper:
+    image: "clickhouse/clickhouse-keeper:25.9-alpine"
+    volumes:
+      - ./ch-cluster/clickhouse-keeper/keeper_config.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
+    ports:
+      - "127.0.0.1:9181:9181"
+
+  # Exports traces from clickhouse internal table to otel.
+  chotel:
+    image: ghcr.io/oteldb/oteldb/chotel
+    build:
+      context: ../../../
+      dockerfile: chotel.Dockerfile
+    restart: always
+    environment:
+      - CH_DSN=clickhouse://clickhouse-01:9000
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+      - OTEL_METRICS_EXPORTER=none
+      - OTEL_TRACES_EXPORTER=none
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=chotel
+    depends_on:
+      - clickhouse-01
+      - clickhouse-02
+      - clickhouse-03
+
+  oteldb:
+    image: ghcr.io/oteldb/oteldb
+    build:
+      context: ../../../
+      dockerfile: Dockerfile
+    environment:
+      - OTELDB_STORAGE=ch
+      - CH_DSN=clickhouse://clickhouse-01:9000
+      - CH_REPLICATED=true
+      - OTEL_LOG_LEVEL=info
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=oteldb
+      - OTEL_METRIC_EXPORT_INTERVAL=5000
+    ports:
+      - "9090:9090" # prometheus API
+    depends_on:
+      - clickhouse-01
+      - clickhouse-02
+      - clickhouse-03
+
+  # https://opentelemetry.io/docs/collector/installation/#docker-compose
+  otelcol:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.89.0
+    volumes:
+      - ./otelcol.yml:/etc/otelcol-contrib/config.yaml
+    depends_on:
+      - oteldb
+    environment:
+      # probably excessive
+      - OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otelcol:4317
+    command:
+      - "--config"
+      - "/etc/otelcol-contrib/config.yaml"
+      #  https://github.com/open-telemetry/opentelemetry-collector/blob/main/docs/observability.md#how-we-expose-telemetry
+      - "--feature-gates=telemetry.useOtelForInternalMetrics"
+      - "--feature-gates=telemetry.useOtelWithSDKConfigurationForInternalTelemetry"
+
+  node-exporter:
+    image: prom/node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.rootfs=/rootfs"
+      - "--path.sysfs=/host/sys"
+      - "--collector.processes"
+      - "--web.max-requests=40"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+
+  grafana:
+    image: "grafana/grafana-oss:12.1.1"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor,traceToMetrics,publicDashboards,tempoApmTable
+      - GF_ALERTING_ENABLED=false
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_LOG_LEVEL=debug
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../ch-demo/grafana/grafana.ini:/etc/grafana/grafana.ini
+      - ../ch-demo/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+      - ../ch-demo/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/default.yml
+      - ../ch-demo/grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      - oteldb
+      - otelcol
