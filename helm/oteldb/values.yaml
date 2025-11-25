@@ -72,8 +72,14 @@ env:
     value: "DEBUG"
 
 config:
+  # String. Clickhouse connection URL
   dsn:
+  # String in a format of go duration. TTL to use.
   ttl:
+  # Boolean. Whether if oteldb should use replicated schema.
+  replicated:
+  # String. Cluster name to use, could be a macro (e.g. "{cluster}")
+  cluster:
   tempo:
     bind: 0.0.0.0:3200
   prometheus:
