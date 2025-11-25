@@ -524,7 +524,7 @@ func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end 
 		c     = newPointColumns()
 		query = chsql.Select(table, c.ChsqlResult()...).
 			Where(
-				chsql.InTimeRange("timestamp", start, end),
+				chsql.InTimeRange("timestamp", start, end, c.timestamp.Precision),
 				chsql.In(
 					chsql.Ident("hash"),
 					chsql.Ident("timeseries_hashes"),
@@ -615,7 +615,7 @@ func (p *promQuerier) queryExpHistograms(ctx context.Context, table string, star
 		c     = newExpHistogramColumns()
 		query = chsql.Select(table, c.ChsqlResult()...).
 			Where(
-				chsql.InTimeRange("timestamp", start, end),
+				chsql.InTimeRange("timestamp", start, end, c.timestamp.Precision),
 				chsql.In(
 					chsql.Ident("hash"),
 					chsql.Ident("timeseries_hashes"),

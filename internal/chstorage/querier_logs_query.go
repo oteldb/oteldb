@@ -68,7 +68,7 @@ func (v *LogsQuery[E]) Execute(ctx context.Context, q *Querier) (_ iterators.Ite
 		out   = newLogColumns()
 		query = chsql.Select(table, out.ChsqlResult()...).
 			Where(
-				chsql.InTimeRange("timestamp", v.Start, v.End),
+				chsql.InTimeRange("timestamp", v.Start, v.End, out.timestamp.Precision),
 			)
 	)
 	v.Sel.addPredicates(ctx, query, mapping, q)
@@ -211,7 +211,7 @@ func (v *SampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlengine.Sa
 				Data: columns.Labels,
 			},
 		).Where(
-			chsql.InTimeRange("timestamp", v.Start, v.End),
+			chsql.InTimeRange("timestamp", v.Start, v.End, columns.Timestamp.Precision),
 		)
 	)
 	v.Sel.addPredicates(ctx, query, mapping, q)

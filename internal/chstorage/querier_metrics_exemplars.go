@@ -83,7 +83,7 @@ func (q *exemplarQuerier) Select(startMs, endMs int64, matcherSets ...[]*labels.
 		c     = newExemplarColumns()
 		query = chsql.Select(table, c.ChsqlResult()...).
 			Where(
-				chsql.InTimeRange("timestamp", start, end),
+				chsql.InTimeRange("timestamp", start, end, c.exemplarTimestamp.Precision),
 				chsql.In(
 					chsql.Ident("hash"),
 					chsql.Ident("timeseries_hashes"),
