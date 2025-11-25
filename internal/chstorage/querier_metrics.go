@@ -368,17 +368,17 @@ func (q *Querier) queryMetricsTimeseries(
 	return set, nil
 }
 
-func timeseriesInRange(query *chsql.SelectQuery, start, end time.Time) {
+func timeseriesInRange(query *chsql.SelectQuery, start, end time.Time, prec proto.Precision) {
 	if !start.IsZero() {
 		query.Having(chsql.Gte(
-			chsql.ToUnixTimestamp64Nano(chsql.Function("max", chsql.Ident("last_seen"))),
-			chsql.UnixNano(start),
+			chsql.Function("max", chsql.Ident("last_seen")),
+			chsql.DateTime64(start, prec),
 		))
 	}
 	if !end.IsZero() {
 		query.Having(chsql.Lte(
-			chsql.ToUnixTimestamp64Nano(chsql.Function("min", chsql.Ident("first_seen"))),
-			chsql.UnixNano(end),
+			chsql.Function("min", chsql.Ident("first_seen")),
+			chsql.DateTime64(end, prec),
 		))
 	}
 }
