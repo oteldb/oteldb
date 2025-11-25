@@ -256,6 +256,11 @@ func (t Tables) Create(ctx context.Context, c ClickHouseClient) error {
 		}
 
 		if supportsReplication {
+			// Distributed tables support neither of these things.
+			s.DDL.Indexes = nil
+			s.DDL.OrderBy = nil
+			s.DDL.PrimaryKey = nil
+			s.DDL.PartitionBy = ""
 			s.DDL.Engine = ddl.Engine{
 				Type: "Distributed",
 				Args: []string{fmt.Sprintf("'%s'", t.Cluster), database, baseName},
