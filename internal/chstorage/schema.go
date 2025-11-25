@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"net"
+	"strconv"
 	"time"
 
 	"github.com/ClickHouse/ch-go"
@@ -170,7 +172,7 @@ func (t Tables) Create(ctx context.Context, c ClickHouseClient) error {
 	}
 
 	{
-		q, err := t.generateQuery(generateOptions{
+		query, err := t.generateQuery(generateOptions{
 			Name: t.Migration,
 			DDL: ddl.Table{
 				Engine: ddl.Engine{
@@ -188,10 +190,7 @@ func (t Tables) Create(ctx context.Context, c ClickHouseClient) error {
 		if err != nil {
 			return errors.Wrap(err, "generate migration table ddl")
 		}
-		if err := c.Do(ctx, ch.Query{
-			Logger: zctx.From(ctx).Named("ch"),
-			Body:   q,
-		}); err != nil {
+		if err := t.createTable(ctx, c, query); err != nil {
 			return errors.Wrapf(err, "create %q", t.Migration)
 		}
 	}
@@ -252,10 +251,7 @@ func (t Tables) Create(ctx context.Context, c ClickHouseClient) error {
 			}
 		}
 		hashes[baseName] = target
-		if err := c.Do(ctx, ch.Query{
-			Logger: lg.Named("ch"),
-			Body:   query,
-		}); err != nil {
+		if err := t.createTable(ctx, c, query); err != nil {
 			return errors.Wrapf(err, "create %q", baseName)
 		}
 
@@ -268,10 +264,7 @@ func (t Tables) Create(ctx context.Context, c ClickHouseClient) error {
 			if err != nil {
 				return errors.Wrapf(err, "generate %q", distributedName)
 			}
-			if err := c.Do(ctx, ch.Query{
-				Logger: lg.Named("ch"),
-				Body:   query,
-			}); err != nil {
+			if err := t.createTable(ctx, c, query); err != nil {
 				return errors.Wrapf(err, "create %q", distributedName)
 			}
 		}
@@ -283,13 +276,86 @@ func (t Tables) Create(ctx context.Context, c ClickHouseClient) error {
 	return nil
 }
 
+func (t Tables) createTable(ctx context.Context, c ClickHouseClient, query string) error {
+	lg := zctx.From(ctx)
+	q := ch.Query{
+		Logger: lg.Named("ch"),
+		Body:   query,
+	}
+	if t.Replicated {
+		progress := new(clusterDDLResult)
+		q.Result = progress.Result()
+		q.OnResult = progress.Reporter(lg)
+	}
+	return c.Do(ctx, q)
+}
+
 func (t Tables) dropTable(ctx context.Context, c ClickHouseClient, name string) error {
 	query := fmt.Sprintf("DROP TABLE IF EXISTS %s", name)
 	if t.Cluster != "" {
 		query += fmt.Sprintf(" ON CLUSTER '%s'", t.Cluster)
 	}
-	return c.Do(ctx, ch.Query{
-		Logger: zctx.From(ctx).Named("ch"),
+	lg := zctx.From(ctx)
+	q := ch.Query{
+		Logger: lg.Named("ch"),
 		Body:   query,
-	})
+	}
+	if t.Replicated {
+		progress := new(clusterDDLResult)
+		q.Result = progress.Result()
+		q.OnResult = progress.Reporter(lg)
+	}
+	return c.Do(ctx, q)
+}
+
+type clusterDDLResult struct {
+	Host           proto.ColStr
+	Port           proto.ColUInt16
+	Status         proto.ColInt64
+	Error          proto.ColStr
+	HostsRemaining proto.ColUInt64
+	HostsActive    proto.ColUInt64
+}
+
+func (r *clusterDDLResult) Reporter(lg *zap.Logger) func(ctx context.Context, block proto.Block) error {
+	return func(ctx context.Context, block proto.Block) error {
+		for i := range r.Status.Rows() {
+			var (
+				host           = r.Host.Row(i)
+				port           = r.Port.Row(i)
+				status         = r.Status.Row(i)
+				err            = r.Error.Row(i)
+				hostsRemaining = r.HostsRemaining.Row(i)
+				hostsActive    = r.HostsActive.Row(i)
+
+				node = net.JoinHostPort(
+					host,
+					strconv.FormatUint(uint64(port), 10),
+				)
+			)
+			errField := zap.Skip()
+			if err != "" {
+				errField = zap.String("error", err)
+			}
+			lg.Debug("Cluster DDL progress",
+				zap.String("node", node),
+				zap.Int64("status", status),
+				errField,
+				zap.Uint64("remaining", hostsRemaining),
+				zap.Uint64("active", hostsActive),
+			)
+		}
+		return nil
+	}
+}
+
+func (r *clusterDDLResult) Result() proto.Results {
+	return proto.Results{
+		{Name: "host", Data: &r.Host},
+		{Name: "port", Data: &r.Port},
+		{Name: "status", Data: &r.Status},
+		{Name: "error", Data: &r.Error},
+		{Name: "num_hosts_remaining", Data: &r.HostsRemaining},
+		{Name: "num_hosts_active", Data: &r.HostsActive},
+	}
 }
