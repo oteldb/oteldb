@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `logs` ON CLUSTER foo
+CREATE TABLE IF NOT EXISTS `logs` ON CLUSTER 'foo'
 (
 	`a`   Int32,
 	`bar` LowCardinality(String) CODEC(ZSTD(1)),
