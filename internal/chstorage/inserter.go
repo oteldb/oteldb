@@ -71,9 +71,6 @@ func (opts *InserterOptions) setDefaults() {
 
 // NewInserter creates new Inserter.
 func NewInserter(c ClickHouseClient, opts InserterOptions) (*Inserter, error) {
-	// HACK(ernado): for some reason, we are getting no-op here.
-	opts.TracerProvider = otel.GetTracerProvider()
-	opts.MeterProvider = otel.GetMeterProvider()
 	opts.Tracker = globalmetric.GetTracker()
 	opts.setDefaults()
 
