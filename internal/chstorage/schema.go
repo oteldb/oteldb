@@ -258,7 +258,7 @@ func (t Tables) Create(ctx context.Context, c ClickHouseClient) error {
 		if supportsReplication {
 			s.DDL.Engine = ddl.Engine{
 				Type: "Distributed",
-				Args: []string{t.Cluster, database, baseName},
+				Args: []string{fmt.Sprintf("'%s'", t.Cluster), database, baseName},
 			}
 			query, err := t.generateQuery(s)
 			if err != nil {

@@ -60,7 +60,7 @@ func setupCH(
 	tables.Cluster = cfg.Cluster
 	tables.Replicated = cfg.Replicated
 	if tables.Replicated && tables.Cluster == "" {
-		tables.Cluster = "'{cluster}'"
+		tables.Cluster = "{cluster}"
 		zctx.From(ctx).Warn("Using default macro for cluster name", zap.String("cluster", tables.Cluster))
 	}
 
