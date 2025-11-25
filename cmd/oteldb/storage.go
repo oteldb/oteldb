@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
+	"github.com/go-faster/sdk/zctx"
 	"github.com/prometheus/prometheus/storage"
 	"go.uber.org/zap"
 
@@ -41,7 +41,7 @@ type metricQuerier interface {
 func setupCH(
 	ctx context.Context,
 	dsn string,
-	ttl time.Duration,
+	cfg Config,
 	lg *zap.Logger,
 	m *app.Telemetry,
 ) (store otelStorage, _ error) {
@@ -56,7 +56,13 @@ func setupCH(
 
 	// FIXME(tdakkota): this is not a good place for migration
 	tables := chstorage.DefaultTables()
-	tables.TTL = ttl
+	tables.TTL = cfg.TTL
+	tables.Cluster = cfg.Cluster
+	tables.Replicated = cfg.Replicated
+	if tables.Replicated && tables.Cluster == "" {
+		tables.Cluster = "{cluster}"
+		zctx.From(ctx).Warn("Using default macro for cluster name", zap.String("cluster", tables.Cluster))
+	}
 
 	if err := tables.Create(ctx, c); err != nil {
 		return store, errors.Wrap(err, "create tables")

@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `logs` ON CLUSTER `foo`
+CREATE TABLE IF NOT EXISTS `logs` ON CLUSTER 'foo'
 (
 	`a`   Int32,
 	`bar` LowCardinality(String) CODEC(ZSTD(1)),
@@ -9,6 +9,6 @@ CREATE TABLE IF NOT EXISTS `logs` ON CLUSTER `foo`
 	INDEX `idx_ts`         timestamp TYPE minmax GRANULARITY 8192,
 	INDEX `attribute_keys` arrayConcat(JSONExtractKeys(attribute), JSONExtractKeys(scope), JSONExtractKeys(resource)) TYPE set(100)
 )
-ENGINE = MergeTree()
+ENGINE = MergeTree
 ORDER BY (`a`, toStartOfHour(b))
 TTL toDateTime(`timestamp`) + toIntervalSecond(36000)

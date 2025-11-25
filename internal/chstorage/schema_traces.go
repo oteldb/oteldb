@@ -14,6 +14,7 @@ const (
 
 func newTracesTagsDDL() ddl.Table {
 	return ddl.Table{
+		Engine: ddl.Engine{Type: "ReplacingMergeTree"},
 		Columns: []ddl.Column{
 			{
 				Name: "name",
@@ -32,7 +33,6 @@ func newTracesTagsDDL() ddl.Table {
 				Type: proto.ColumnTypeEnum8.Sub(scopeTypeDDL),
 			},
 		},
-		Engine:  "ReplacingMergeTree",
 		OrderBy: []string{"value_type", "name", "value"},
 	}
 }

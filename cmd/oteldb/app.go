@@ -75,7 +75,18 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 			}
 			app.lg.Info("Embedded ClickHouse started")
 		}
-		store, err := setupCH(ctx, dsn, cfg.TTL, app.lg, m)
+
+		switch replicated := os.Getenv("CH_REPLICATED"); strings.ToLower(replicated) {
+		case "y", "yes", "t", "true", "on", "1":
+			cfg.Replicated = true
+		case "n", "no", "f", "false", "off", "0":
+			cfg.Replicated = false
+		}
+		if cluster := os.Getenv("CH_CLUSTER"); cluster != "" {
+			cfg.Cluster = cluster
+		}
+
+		store, err := setupCH(ctx, dsn, cfg, app.lg, m)
 		if err != nil {
 			return nil, errors.Wrapf(err, "create storage")
 		}

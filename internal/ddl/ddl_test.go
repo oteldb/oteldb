@@ -12,8 +12,10 @@ import (
 func TestGenerate(t *testing.T) {
 	for _, table := range []Table{
 		{
-			Name:    "logs",
-			Engine:  "MergeTree()",
+			Name: "logs",
+			Engine: Engine{
+				Type: "MergeTree",
+			},
 			Cluster: "foo",
 			TTL: TTL{
 				Delta: time.Hour * 10,
@@ -74,7 +76,12 @@ func TestGenerate(t *testing.T) {
 		})
 	}
 	s, err := Generate(Table{
-		Engine:  "MergeTree()",
+		Engine: Engine{
+			Type: "ReplacingMergeTree",
+			Args: []string{
+				"a",
+			},
+		},
 		OrderBy: []string{"a", "b"},
 		Columns: []Column{
 			{

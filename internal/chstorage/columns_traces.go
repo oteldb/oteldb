@@ -210,7 +210,7 @@ func (c *spanColumns) ReadRowsTo(spans []tracestorage.Span) ([]tracestorage.Span
 
 func (c *spanColumns) DDL() ddl.Table {
 	table := ddl.Table{
-		Engine:     "MergeTree",
+		Engine:     ddl.Engine{Type: "MergeTree"},
 		PrimaryKey: []string{"service_namespace", "service_name", "resource"},
 		OrderBy:    []string{"service_namespace", "service_name", "resource", "start"},
 		TTL:        ddl.TTL{Field: "start"},
