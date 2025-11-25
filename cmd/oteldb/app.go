@@ -14,6 +14,7 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"github.com/ogen-go/ogen/ogenerrors"
 	"github.com/prometheus/prometheus/promql"
+	promqlengine "github.com/thanos-io/promql-engine/engine"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/provider/envprovider"
@@ -254,15 +255,17 @@ func (app *App) trySetupProm() error {
 	cfg := app.cfg.Prometheus
 	cfg.setDefaults()
 
-	engine := promql.NewEngine(promql.EngineOpts{
-		// NOTE: zero-value MaxSamples and Timeout makes
-		// all queries to fail with error.
-		MaxSamples:           cfg.MaxSamples,
-		Timeout:              cfg.Timeout,
-		LookbackDelta:        cfg.LookbackDelta,
-		EnableAtModifier:     cfg.EnableAtModifier,
-		EnableNegativeOffset: *cfg.EnableNegativeOffset,
-		EnablePerStepStats:   cfg.EnablePerStepStats,
+	engine := promqlengine.New(promqlengine.Opts{
+		EngineOpts: promql.EngineOpts{
+			// NOTE: zero-value MaxSamples and Timeout makes
+			// all queries to fail with error.
+			MaxSamples:           cfg.MaxSamples,
+			Timeout:              cfg.Timeout,
+			LookbackDelta:        cfg.LookbackDelta,
+			EnableAtModifier:     cfg.EnableAtModifier,
+			EnableNegativeOffset: *cfg.EnableNegativeOffset,
+			EnablePerStepStats:   cfg.EnablePerStepStats,
+		},
 	})
 	prom := promhandler.NewPromAPI(engine, q, q, promhandler.PromAPIOptions{})
 
