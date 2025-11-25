@@ -43,7 +43,6 @@ func (q *Querier) Querier(mint, maxt int64) (storage.Querier, error) {
 		ch:              q.ch,
 		tables:          q.tables,
 		labelLimit:      q.labelLimit,
-		getLabelMapping: q.getMetricsLabelMapping,
 		queryTimeseries: q.queryMetricsTimeseries,
 		do:              q.do,
 
@@ -58,8 +57,7 @@ type promQuerier struct {
 	ch              ClickHouseClient
 	tables          Tables
 	labelLimit      int
-	getLabelMapping func(context.Context, []string) (metricsLabelMapping, error)
-	queryTimeseries func(ctx context.Context, start, end time.Time, matcherSets [][]*labels.Matcher, mapping metricsLabelMapping) (map[[16]byte]labels.Labels, error)
+	queryTimeseries func(ctx context.Context, start, end time.Time, matcherSets [][]*labels.Matcher) (map[[16]byte]labels.Labels, error)
 	do              func(ctx context.Context, s selectQuery) error
 
 	tracer trace.Tracer
@@ -156,105 +154,10 @@ func promQLLabelMatcher(valueSel []chsql.Expr, typ labels.MatchType, value strin
 	return chsql.JoinOr(exprs...), nil
 }
 
-type metricsLabelMapping struct {
-	scope map[string]labelScope
-}
-
-func (m metricsLabelMapping) Selectors(key string) []chsql.Expr {
-	name := key
-
-	scopes := m.scope[key]
-	if scopes == 0 {
-		return []chsql.Expr{
-			attrSelector(colAttrs, name),
-			attrSelector(colScope, name),
-			attrSelector(colResource, name),
-		}
-	}
-
-	exprs := make([]chsql.Expr, 0, 3)
-	for _, s := range []struct {
-		flag   labelScope
-		column string
-	}{
-		{labelScopeAttribute, colAttrs},
-		{labelScopeInstrumentation, colScope},
-		{labelScopeResource, colResource},
-	} {
-		if scopes&s.flag != 0 {
-			exprs = append(exprs, attrSelector(s.column, name))
-		}
-	}
-	return exprs
-}
-
-func (q *Querier) getMetricsLabelMapping(ctx context.Context, input []string) (r metricsLabelMapping, rerr error) {
-	table := q.tables.Labels
-
-	ctx, span := q.tracer.Start(ctx, "chstorage.metrics.getMetricsLabelMapping",
-		trace.WithAttributes(
-			attribute.StringSlice("chstorage.labels", input),
-			attribute.String("chstorage.table", table),
-		),
-	)
-	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
-	}()
-
-	var (
-		name  = new(proto.ColStr).LowCardinality()
-		scope = new(proto.ColEnum8)
-
-		query = chsql.Select(table,
-			chsql.Column("name", name),
-			chsql.Column("scope", scope),
-		).
-			Where(chsql.In(
-				chsql.Ident("name"),
-				chsql.Ident("labels"),
-			))
-	)
-
-	r.scope = make(map[string]labelScope, len(input))
-
-	var inputData proto.ColStr
-	for _, label := range input {
-		inputData.Append(label)
-	}
-	if err := q.do(ctx, selectQuery{
-		Query: query,
-		OnResult: func(ctx context.Context, block proto.Block) error {
-			for i := 0; i < scope.Rows(); i++ {
-				r.scope[name.Row(i)] |= labelScope(scope.Row(i))
-			}
-			return nil
-		},
-		ExternalTable: "labels",
-		ExternalData: []proto.InputColumn{
-			{Name: "name", Data: &inputData},
-		},
-
-		Type:   "getMetricsLabelMapping",
-		Signal: "metrics",
-		Table:  table,
-	}); err != nil {
-		return r, err
-	}
-	span.AddEvent("mapping_fetched", trace.WithAttributes(
-		attribute.Int("chstorage.total_labels", len(r.scope)),
-	))
-
-	return r, nil
-}
-
 func (q *Querier) queryMetricsTimeseries(
 	ctx context.Context,
 	start, end time.Time,
 	matcherSets [][]*labels.Matcher,
-	mapping metricsLabelMapping,
 ) (_ map[[16]byte]labels.Labels, rerr error) {
 	table := q.tables.Timeseries
 
@@ -300,7 +203,11 @@ func (q *Querier) queryMetricsTimeseries(
 				chsql.Ident("name"),
 			}
 			if name := m.Name; name != labels.MetricName {
-				selectors = mapping.Selectors(name)
+				selectors = []chsql.Expr{
+					attrSelector(colAttrs, name),
+					attrSelector(colScope, name),
+					attrSelector(colResource, name),
+				}
 			}
 
 			matcher, err := promQLLabelMatcher(selectors, m.Type, m.Value)
@@ -432,12 +339,7 @@ func (p *promQuerier) selectSeries(ctx context.Context, sortSeries bool, hints *
 		span.End()
 	}()
 
-	mapping, err := p.getLabelMapping(ctx, queryLabels)
-	if err != nil {
-		return nil, errors.Wrap(err, "get label mapping")
-	}
-
-	timeseries, err := p.queryTimeseries(ctx, start, end, [][]*labels.Matcher{matchers}, mapping)
+	timeseries, err := p.queryTimeseries(ctx, start, end, [][]*labels.Matcher{matchers})
 	if err != nil {
 		return nil, errors.Wrap(err, "query timeseries hashes")
 	}
