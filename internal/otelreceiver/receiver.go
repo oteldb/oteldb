@@ -3,6 +3,7 @@ package otelreceiver
 
 import (
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/app"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor"
@@ -13,6 +14,7 @@ import (
 	"go.opentelemetry.io/collector/processor/batchprocessor"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
+	"go.uber.org/zap"
 
 	"github.com/go-faster/oteldb/internal/otelreceiver/oteldbexporter"
 	"github.com/go-faster/oteldb/internal/otelreceiver/prometheusremotewritereceiver"
@@ -41,25 +43,28 @@ func exporterFactoryMap() (map[component.Type]exporter.Factory, error) {
 }
 
 // Factories returns oteldb factories list.
-func Factories() (f otelcol.Factories, _ error) {
-	receivers, err := receiverFactoryMap()
-	if err != nil {
-		return f, errors.Wrap(err, "get receiver factory map")
-	}
+func Factories(lg *zap.Logger, tel *app.Telemetry) func() (f otelcol.Factories, _ error) {
+	return func() (f otelcol.Factories, _ error) {
+		receivers, err := receiverFactoryMap()
+		if err != nil {
+			return f, errors.Wrap(err, "get receiver factory map")
+		}
 
-	processors, err := processorFactoryMap()
-	if err != nil {
-		return f, errors.Wrap(err, "get processor factory map")
-	}
+		processors, err := processorFactoryMap()
+		if err != nil {
+			return f, errors.Wrap(err, "get processor factory map")
+		}
 
-	exporters, err := exporterFactoryMap()
-	if err != nil {
-		return f, errors.Wrap(err, "get exporter factory map")
-	}
+		exporters, err := exporterFactoryMap()
+		if err != nil {
+			return f, errors.Wrap(err, "get exporter factory map")
+		}
 
-	return otelcol.Factories{
-		Receivers:  receivers,
-		Processors: processors,
-		Exporters:  exporters,
-	}, nil
+		return otelcol.Factories{
+			Receivers:  receivers,
+			Processors: processors,
+			Exporters:  exporters,
+			Telemetry:  telemetryFactory(lg, tel),
+		}, nil
+	}
 }

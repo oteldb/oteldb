@@ -312,7 +312,7 @@ func (app *App) handleStartupProbe(w http.ResponseWriter, _ *http.Request) {
 
 func (app *App) setupCollector() error {
 	col, err := otelcol.NewCollector(otelcol.CollectorSettings{
-		Factories: otelreceiver.Factories,
+		Factories: otelreceiver.Factories(app.lg, app.metrics),
 		BuildInfo: component.NewDefaultBuildInfo(),
 		LoggingOptions: []zap.Option{
 			zap.WrapCore(func(zapcore.Core) zapcore.Core {
