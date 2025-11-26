@@ -340,7 +340,7 @@ func (q *Querier) Series(ctx context.Context, opts logstorage.SeriesOptions) (re
 			Data: series,
 		}).
 			Distinct(true).
-			Where(chsql.InTimeRange("timestamp", opts.Start, opts.End))
+			Where(chsql.InTimeRange("timestamp", opts.Start, opts.End, proto.PrecisionNano))
 	)
 	if sels := opts.Selectors; len(sels) > 0 {
 		// Gather all labels for mapping fetch.
@@ -400,7 +400,7 @@ func (q *Querier) deduplicatedResource(table string, start, end time.Time) *chsq
 	// See https://github.com/ClickHouse/ClickHouse/issues/4670
 	return chsql.Select(table, chsql.Column(colResource, nil)).
 		GroupBy(chsql.Ident(colResource)).
-		Where(chsql.InTimeRange("timestamp", start, end))
+		Where(chsql.InTimeRange("timestamp", start, end, proto.PrecisionNano))
 }
 
 func forEachColMap[K comparable, V any](c *proto.ColMap[K, V], row int, cb func(K, V)) {

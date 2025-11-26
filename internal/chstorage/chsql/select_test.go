@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ClickHouse/ch-go/proto"
 	"github.com/go-faster/sdk/gold"
 	"github.com/stretchr/testify/require"
 )
@@ -39,6 +40,7 @@ func TestSelect(t *testing.T) {
 						InTimeRange(
 							"timestamp",
 							start, end,
+							proto.PrecisionNano,
 						),
 						Or(
 							Eq(

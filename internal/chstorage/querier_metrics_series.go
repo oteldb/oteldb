@@ -184,7 +184,7 @@ func (p *promQuerier) buildSeriesQuery(
 		chsql.Ident("scope"),
 		chsql.Ident("resource"),
 	)
-	timeseriesInRange(query, start, end)
+	timeseriesInRange(query, start, end, newTimeseriesColumns().timestampPrecision())
 
 	return query, nil
 }

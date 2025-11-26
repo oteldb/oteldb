@@ -368,17 +368,17 @@ func (q *Querier) queryMetricsTimeseries(
 	return set, nil
 }
 
-func timeseriesInRange(query *chsql.SelectQuery, start, end time.Time) {
+func timeseriesInRange(query *chsql.SelectQuery, start, end time.Time, prec proto.Precision) {
 	if !start.IsZero() {
 		query.Having(chsql.Gte(
-			chsql.ToUnixTimestamp64Nano(chsql.Function("max", chsql.Ident("last_seen"))),
-			chsql.UnixNano(start),
+			chsql.Function("max", chsql.Ident("last_seen")),
+			chsql.DateTime64(start, prec),
 		))
 	}
 	if !end.IsZero() {
 		query.Having(chsql.Lte(
-			chsql.ToUnixTimestamp64Nano(chsql.Function("min", chsql.Ident("first_seen"))),
-			chsql.UnixNano(end),
+			chsql.Function("min", chsql.Ident("first_seen")),
+			chsql.DateTime64(end, prec),
 		))
 	}
 }
@@ -524,7 +524,7 @@ func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end 
 		c     = newPointColumns()
 		query = chsql.Select(table, c.ChsqlResult()...).
 			Where(
-				chsql.InTimeRange("timestamp", start, end),
+				chsql.InTimeRange("timestamp", start, end, c.timestamp.Precision),
 				chsql.In(
 					chsql.Ident("hash"),
 					chsql.Ident("timeseries_hashes"),
@@ -615,7 +615,7 @@ func (p *promQuerier) queryExpHistograms(ctx context.Context, table string, star
 		c     = newExpHistogramColumns()
 		query = chsql.Select(table, c.ChsqlResult()...).
 			Where(
-				chsql.InTimeRange("timestamp", start, end),
+				chsql.InTimeRange("timestamp", start, end, c.timestamp.Precision),
 				chsql.In(
 					chsql.Ident("hash"),
 					chsql.Ident("timeseries_hashes"),

@@ -2,6 +2,8 @@ package chsql
 
 import (
 	"time"
+
+	"github.com/ClickHouse/ch-go/proto"
 )
 
 // UnixNano returns time.Time as unix nano timestamp.
@@ -9,17 +11,23 @@ func UnixNano(t time.Time) Expr {
 	return Integer(t.UnixNano())
 }
 
+// DateTime64 returns an expression returing DateTime64 using given time t.
+func DateTime64(t time.Time, prec proto.Precision) Expr {
+	s := t.UTC().Format("2006-01-02 15:04:05.999999999")
+	return ToDateTime64(String(s), prec)
+}
+
 // InTimeRange returns boolean expression to filter by [start:end].
-func InTimeRange(column string, start, end time.Time) Expr {
+func InTimeRange(column string, start, end time.Time, prec proto.Precision) Expr {
 	var (
-		columnExpr = ToUnixTimestamp64Nano(Ident(column))
+		columnExpr = Ident(column)
 		expr       Expr
 	)
 	if !start.IsZero() {
-		expr = Gte(columnExpr, UnixNano(start))
+		expr = Gte(columnExpr, DateTime64(start, prec))
 	}
 	if !end.IsZero() {
-		endExpr := Lte(columnExpr, UnixNano(end))
+		endExpr := Lte(columnExpr, DateTime64(end, prec))
 		if expr.IsZero() {
 			expr = endExpr
 		} else {

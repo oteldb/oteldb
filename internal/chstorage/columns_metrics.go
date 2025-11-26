@@ -35,6 +35,10 @@ func newTimeseriesColumns() *timeseriesColumns {
 	}
 }
 
+func (c *timeseriesColumns) timestampPrecision() proto.Precision {
+	return c.firstSeen.Data.(*proto.ColDateTime64).Precision
+}
+
 func (c *timeseriesColumns) Columns() Columns {
 	return MergeColumns(
 		Columns{
