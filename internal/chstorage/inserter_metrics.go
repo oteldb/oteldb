@@ -62,12 +62,13 @@ func (i *Inserter) ConsumeMetrics(ctx context.Context, metrics pmetric.Metrics) 
 }
 
 type metricsBatch struct {
-	timeseries    *timeseriesColumns
-	points        *pointColumns
-	expHistograms *expHistogramColumns
-	exemplars     *exemplarColumns
-	labels        map[[2]string]labelScope
-	tracker       globalmetric.Tracker
+	timeseries     *timeseriesColumns
+	seenTimeseries map[[16]byte]struct{}
+	points         *pointColumns
+	expHistograms  *expHistogramColumns
+	exemplars      *exemplarColumns
+	labels         map[[2]string]labelScope
+	tracker        globalmetric.Tracker
 }
 
 func (b *metricsBatch) Reset() {
@@ -80,12 +81,13 @@ func (b *metricsBatch) Reset() {
 
 func newMetricBatch(tracker globalmetric.Tracker) *metricsBatch {
 	return &metricsBatch{
-		timeseries:    newTimeseriesColumns(),
-		points:        newPointColumns(),
-		expHistograms: newExpHistogramColumns(),
-		exemplars:     newExemplarColumns(),
-		labels:        map[[2]string]labelScope{},
-		tracker:       tracker,
+		timeseries:     newTimeseriesColumns(),
+		seenTimeseries: map[[16]byte]struct{}{},
+		points:         newPointColumns(),
+		expHistograms:  newExpHistogramColumns(),
+		exemplars:      newExemplarColumns(),
+		labels:         map[[2]string]labelScope{},
+		tracker:        tracker,
 	}
 }
 
@@ -554,6 +556,10 @@ func (b *metricsBatch) addHash(ts time.Time, name, desc, unit string, res, scope
 		scope.Attributes(),
 		attrs.Attributes(bucketKey...),
 	)
+	if _, ok := b.seenTimeseries[hash]; ok {
+		return hash
+	}
+	b.seenTimeseries[hash] = struct{}{}
 
 	b.timeseries.name.Append(name)
 	b.timeseries.description.Append(desc)
