@@ -37,8 +37,9 @@ func Benchmark_metricsBatch(b *testing.B) {
 	require.NoError(b, err)
 
 	batch := newMetricBatch(globalmetric.NewNoopTracker())
+	b.SetBytes(int64(len(raw)))
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		batch.Reset()
 		require.NoError(b, batch.mapMetrics(timeSeries))
 	}

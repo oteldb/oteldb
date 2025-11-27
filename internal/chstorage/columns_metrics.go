@@ -10,8 +10,10 @@ import (
 )
 
 type timeseriesColumns struct {
-	name *proto.ColLowCardinality[string]
-	hash *colSimpleAggregateFunction[[16]byte]
+	name        *proto.ColLowCardinality[string]
+	unit        *colSimpleAggregateFunction[string]
+	description *colSimpleAggregateFunction[string]
+	hash        *colSimpleAggregateFunction[[16]byte]
 
 	firstSeen *colSimpleAggregateFunction[time.Time]
 	lastSeen  *colSimpleAggregateFunction[time.Time]
@@ -23,7 +25,9 @@ type timeseriesColumns struct {
 
 func newTimeseriesColumns() *timeseriesColumns {
 	return &timeseriesColumns{
-		name: new(proto.ColStr).LowCardinality(),
+		name:        new(proto.ColStr).LowCardinality(),
+		unit:        &colSimpleAggregateFunction[string]{Function: "anyLast", Data: new(proto.ColStr).LowCardinality()},
+		description: &colSimpleAggregateFunction[string]{Function: "anyLast", Data: new(proto.ColStr)},
 
 		hash:      &colSimpleAggregateFunction[[16]byte]{Function: "any", Data: new(proto.ColFixedStr16)},
 		firstSeen: &colSimpleAggregateFunction[time.Time]{Function: "min", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano)},
@@ -43,6 +47,7 @@ func (c *timeseriesColumns) Columns() Columns {
 	return MergeColumns(
 		Columns{
 			{Name: "name", Data: c.name},
+			{Name: "description", Data: c.description},
 			{Name: "hash", Data: c.hash},
 			{Name: "first_seen", Data: c.firstSeen},
 			{Name: "last_seen", Data: c.lastSeen},
@@ -67,6 +72,16 @@ func (c *timeseriesColumns) DDL() ddl.Table {
 				Name:  "name",
 				Type:  c.name.Type(),
 				Codec: "ZSTD(1)",
+			},
+			{
+				Name:  "unit",
+				Type:  c.unit.Type(),
+				Codec: "ZSTD(1)",
+			},
+			{
+				Name:  "description",
+				Type:  c.description.Type(),
+				Codec: "ZSTD(3)",
 			},
 			{
 				Name: "first_seen",
