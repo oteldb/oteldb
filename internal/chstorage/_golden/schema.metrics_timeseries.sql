@@ -1,8 +1,8 @@
 CREATE TABLE IF NOT EXISTS `metrics_timeseries`
 (
-	`name`        LowCardinality(String)                        CODEC(ZSTD(1)),
-	`unit`        LowCardinality(String)                        CODEC(ZSTD(1)),
-	`description` String                                        CODEC(ZSTD(3)),
+	`name`        LowCardinality(String)                                   CODEC(ZSTD(1)),
+	`unit`        SimpleAggregateFunction(anyLast, LowCardinality(String)) CODEC(ZSTD(1)),
+	`description` SimpleAggregateFunction(anyLast, String)                 CODEC(ZSTD(3)),
 	`first_seen`  SimpleAggregateFunction(min, DateTime64(9)),
 	`last_seen`   SimpleAggregateFunction(max, DateTime64(9)),
 	`hash`        SimpleAggregateFunction(any, FixedString(16)),
