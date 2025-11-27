@@ -28,6 +28,8 @@ type Querier struct {
 	tables     Tables
 	labelLimit int
 
+	timeseries *timeseriesQuerier
+
 	clickhouseRequestHistogram metric.Float64Histogram
 	tracer                     trace.Tracer
 	tracker                    globalmetric.Tracker
@@ -77,7 +79,7 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "create clickhouse.request histogram metric")
 	}
-	return &Querier{
+	q := &Querier{
 		ch:         c,
 		tables:     opts.Tables,
 		labelLimit: opts.LabelLimit,
@@ -85,7 +87,10 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 		tracer:                     opts.TracerProvider.Tracer("chstorage.Querier"),
 		tracker:                    opts.Tracker,
 		clickhouseRequestHistogram: clickhouseRequestHistogram,
-	}, nil
+	}
+	q.timeseries = newTimeseriesQuerier(q)
+
+	return q, nil
 }
 
 type selectQuery struct {

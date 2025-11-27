@@ -40,10 +40,9 @@ func (q *Querier) Querier(mint, maxt int64) (storage.Querier, error) {
 		mint: minTime,
 		maxt: maxTime,
 
-		ch:              q.ch,
 		tables:          q.tables,
 		labelLimit:      q.labelLimit,
-		queryTimeseries: q.queryMetricsTimeseries,
+		queryTimeseries: q.timeseries.Query,
 		do:              q.do,
 
 		tracer: q.tracer,
@@ -54,10 +53,10 @@ type promQuerier struct {
 	mint time.Time
 	maxt time.Time
 
-	ch              ClickHouseClient
-	tables          Tables
-	labelLimit      int
-	queryTimeseries func(ctx context.Context, start, end time.Time, matcherSets [][]*labels.Matcher) (map[[16]byte]labels.Labels, error)
+	tables     Tables
+	labelLimit int
+
+	queryTimeseries queryMetricsTimeseriesFunc
 	do              func(ctx context.Context, s selectQuery) error
 
 	tracer trace.Tracer
@@ -154,127 +153,6 @@ func promQLLabelMatcher(valueSel []chsql.Expr, typ labels.MatchType, value strin
 	return chsql.JoinOr(exprs...), nil
 }
 
-func (q *Querier) queryMetricsTimeseries(
-	ctx context.Context,
-	start, end time.Time,
-	matcherSets [][]*labels.Matcher,
-) (_ map[[16]byte]labels.Labels, rerr error) {
-	table := q.tables.Timeseries
-
-	ctx, span := q.tracer.Start(ctx, "chstorage.metrics.queryMetricsTimeseries",
-		trace.WithAttributes(
-			xattribute.UnixNano("chstorage.range.start", start),
-			xattribute.UnixNano("chstorage.range.end", end),
-			attribute.String("chstorage.table", table),
-		),
-	)
-	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
-	}()
-
-	var (
-		c           = newTimeseriesColumns()
-		selectExprs = MergeColumns(
-			Columns{
-				{Name: "name", Data: c.name},
-			},
-			c.attributes.Columns(),
-			c.scope.Columns(),
-			c.resource.Columns(),
-		).ChsqlResult()
-	)
-	selectExprs = append(selectExprs, chsql.ResultColumn{
-		Name: "hash",
-		Expr: chsql.Function("any", chsql.Ident("hash")),
-		Data: c.hash,
-	})
-
-	var (
-		query = chsql.Select(table, selectExprs...)
-		sets  = make([]chsql.Expr, 0, len(matcherSets))
-	)
-	for _, set := range matcherSets {
-		matchers := make([]chsql.Expr, 0, len(set))
-		for _, m := range set {
-			selectors := []chsql.Expr{
-				chsql.Ident("name"),
-			}
-			if name := m.Name; name != labels.MetricName {
-				selectors = []chsql.Expr{
-					attrSelector(colAttrs, name),
-					attrSelector(colScope, name),
-					attrSelector(colResource, name),
-				}
-			}
-
-			matcher, err := promQLLabelMatcher(selectors, m.Type, m.Value)
-			if err != nil {
-				return nil, err
-			}
-			matchers = append(matchers, matcher)
-		}
-		sets = append(sets, chsql.JoinAnd(matchers...))
-	}
-	query.Where(chsql.JoinOr(sets...))
-	query.GroupBy(
-		chsql.Ident("name"),
-		chsql.Ident("attribute"),
-		chsql.Ident("scope"),
-		chsql.Ident("resource"),
-	)
-
-	var (
-		set = map[[16]byte]labels.Labels{}
-		lb  labels.ScratchBuilder
-	)
-	if err := q.do(ctx, selectQuery{
-		Query: query,
-		OnResult: func(ctx context.Context, block proto.Block) error {
-			for i := 0; i < c.name.Rows(); i++ {
-				var (
-					name       = c.name.Row(i)
-					hash       = c.hash.Row(i)
-					attributes = c.attributes.Row(i)
-					scope      = c.scope.Row(i)
-					resource   = c.resource.Row(i)
-				)
-
-				_, ok := set[hash]
-				if !ok {
-					lb.Reset()
-					for k, v := range attributes.AsMap().All() {
-						lb.Add(k, v.AsString())
-					}
-					for k, v := range scope.AsMap().All() {
-						lb.Add(k, v.AsString())
-					}
-					for k, v := range resource.AsMap().All() {
-						lb.Add(k, v.AsString())
-					}
-					lb.Add("__name__", name)
-					lb.Sort()
-					set[hash] = lb.Labels()
-				}
-			}
-			return nil
-		},
-
-		Type:   "QueryTimeseries",
-		Signal: "metrics",
-		Table:  table,
-	}); err != nil {
-		return nil, err
-	}
-	span.AddEvent("timeseries_fetched", trace.WithAttributes(
-		attribute.Int("chstorage.total_series", len(set)),
-	))
-
-	return set, nil
-}
-
 func timeseriesInRange(query *chsql.SelectQuery, start, end time.Time, prec proto.Precision) {
 	if !start.IsZero() {
 		query.Having(chsql.Gte(
@@ -339,7 +217,7 @@ func (p *promQuerier) selectSeries(ctx context.Context, sortSeries bool, hints *
 		span.End()
 	}()
 
-	timeseries, err := p.queryTimeseries(ctx, start, end, [][]*labels.Matcher{matchers})
+	timeseries, err := p.queryTimeseries(ctx, [][]*labels.Matcher{matchers})
 	if err != nil {
 		return nil, errors.Wrap(err, "query timeseries hashes")
 	}

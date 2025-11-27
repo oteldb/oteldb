@@ -26,9 +26,8 @@ func (q *Querier) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier,
 	return &exemplarQuerier{
 		ctx: ctx,
 
-		ch:              q.ch,
 		tables:          q.tables,
-		queryTimeseries: q.queryMetricsTimeseries,
+		queryTimeseries: q.timeseries.Query,
 		do:              q.do,
 
 		tracer: q.tracer,
@@ -38,9 +37,8 @@ func (q *Querier) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier,
 type exemplarQuerier struct {
 	ctx context.Context
 
-	ch              ClickHouseClient
 	tables          Tables
-	queryTimeseries func(ctx context.Context, start, end time.Time, matcherSets [][]*labels.Matcher) (map[[16]byte]labels.Labels, error)
+	queryTimeseries queryMetricsTimeseriesFunc
 	do              func(ctx context.Context, s selectQuery) error
 
 	tracer trace.Tracer
@@ -67,7 +65,7 @@ func (q *exemplarQuerier) Select(startMs, endMs int64, matcherSets ...[]*labels.
 		span.End()
 	}()
 
-	timeseries, err := q.queryTimeseries(ctx, start, end, matcherSets)
+	timeseries, err := q.queryTimeseries(ctx, matcherSets)
 	if err != nil {
 		return nil, errors.Wrap(err, "query timeseries hashes")
 	}
