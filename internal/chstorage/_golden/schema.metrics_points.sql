@@ -18,5 +18,5 @@ CREATE TABLE IF NOT EXISTS `metrics_points`
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(timestamp)
-ORDER BY (toStartOfHour(timestamp), `hash`, `timestamp`)
+ORDER BY (`hash`, `timestamp`)
 TTL toDateTime(`timestamp`) + toIntervalSecond(259200)

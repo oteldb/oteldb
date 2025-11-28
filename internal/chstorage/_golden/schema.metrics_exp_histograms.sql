@@ -16,4 +16,4 @@ CREATE TABLE IF NOT EXISTS `metrics_exp_histograms`
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(timestamp)
-ORDER BY (toStartOfHour(timestamp), `hash`, `timestamp`)
+ORDER BY (`hash`, `timestamp`)
