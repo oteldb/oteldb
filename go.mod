@@ -31,7 +31,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/moby/moby/api v1.52.0
 	github.com/moby/moby/client v0.2.1
-	github.com/ogen-go/ogen v1.16.0
+	github.com/ogen-go/ogen v1.17.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.140.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.140.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v0.140.1
