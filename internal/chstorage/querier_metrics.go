@@ -310,7 +310,6 @@ func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end 
 					chsql.Ident("timeseries_hashes"),
 				),
 			).
-			Order(chsql.ToStartOfHour(chsql.Ident("timestamp")), chsql.Asc).
 			Order(chsql.Ident("hash"), chsql.Asc).
 			Order(chsql.Ident("timestamp"), chsql.Asc)
 
@@ -401,7 +400,6 @@ func (p *promQuerier) queryExpHistograms(ctx context.Context, table string, star
 					chsql.Ident("timeseries_hashes"),
 				),
 			).
-			Order(chsql.ToStartOfHour(chsql.Ident("timestamp")), chsql.Asc).
 			Order(chsql.Ident("hash"), chsql.Asc).
 			Order(chsql.Ident("timestamp"), chsql.Asc)
 

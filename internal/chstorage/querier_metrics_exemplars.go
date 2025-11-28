@@ -80,7 +80,6 @@ func (q *exemplarQuerier) Select(startMs, endMs int64, matcherSets ...[]*labels.
 					chsql.Ident("timeseries_hashes"),
 				),
 			).
-			Order(chsql.ToStartOfHour(chsql.Ident("timestamp")), chsql.Asc).
 			Order(chsql.Ident("hash"), chsql.Asc).
 			Order(chsql.Ident("timestamp"), chsql.Asc)
 
