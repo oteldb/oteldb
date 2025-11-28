@@ -36,6 +36,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.140.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v0.140.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.140.1
+	github.com/oteldb/promql-engine v0.1.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.4
 	github.com/prometheus/prometheus v0.307.3
@@ -126,6 +127,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/ebitengine/purego v0.9.0 // indirect
 	github.com/edsrzf/mmap-go v1.2.0 // indirect
+	github.com/efficientgo/core v1.0.0-rc.2 // indirect
 	github.com/elastic/go-grok v0.3.1 // indirect
 	github.com/elastic/lunes v0.1.0 // indirect
 	github.com/expr-lang/expr v1.17.6 // indirect

@@ -10,4 +10,4 @@ CREATE TABLE IF NOT EXISTS `metrics_exemplars`
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(timestamp)
-ORDER BY (toStartOfHour(timestamp), `hash`, `timestamp`)
+ORDER BY (`hash`, `timestamp`)

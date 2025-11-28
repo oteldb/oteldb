@@ -81,7 +81,7 @@ jobs:
       - name: Test
         if: ${{ env.TEST_BROKEN != 'true' }}
         working-directory: ${{ env.WORKDIR }}
-        run: go run github.com/go-faster/oteldb/cmd/otelbench promql bench -o report.yml -i testdata/node-exporter-selected.promql.yml --trace --allow-empty=false --warmup 5
+        run: go run github.com/go-faster/oteldb/cmd/otelbench promql bench -o report.yml -i testdata/node-exporter-selected.promql.yml --allow-empty=false --warmup 5
 
       - name: Dump Clickhouse logs
         if: ${{ always() }}

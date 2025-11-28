@@ -9,11 +9,13 @@ import (
 
 	"github.com/ClickHouse/ch-go/proto"
 	"github.com/go-faster/errors"
+	singleflight "github.com/go-faster/sdk/singleflightx"
 	"github.com/go-faster/sdk/zctx"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
+	"github.com/zeebo/xxh3"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
@@ -42,6 +44,7 @@ func (q *Querier) Querier(mint, maxt int64) (storage.Querier, error) {
 
 		tables:          q.tables,
 		labelLimit:      q.labelLimit,
+		metricsSg:       q.metricsSg,
 		queryTimeseries: q.timeseries.Query,
 		do:              q.do,
 
@@ -57,6 +60,7 @@ type promQuerier struct {
 	labelLimit int
 
 	queryTimeseries queryMetricsTimeseriesFunc
+	metricsSg       *singleflight.Group[xxh3.Uint128, *seriesSet[storage.Series]]
 	do              func(ctx context.Context, s selectQuery) error
 
 	tracer trace.Tracer
@@ -171,30 +175,15 @@ func timeseriesInRange(query *chsql.SelectQuery, start, end time.Time, prec prot
 // Select returns a set of series that matches the given label matchers.
 // Caller can specify if it requires returned series to be sorted. Prefer not requiring sorting for better performance.
 // It allows passing hints that can help in optimizing select, but it's up to implementation how this is used if used at all.
-func (p *promQuerier) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	if hints != nil && hints.Func == "series" {
-		ss, err := p.selectOnlySeries(ctx, sortSeries, hints.Start, hints.End, matchers)
-		if err != nil {
-			return storage.ErrSeriesSet(err)
-		}
-		return ss
-	}
+func (p *promQuerier) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) (resultSet storage.SeriesSet) {
+	hints, start, end := p.extractHints(hints)
 
-	ss, err := p.selectSeries(ctx, sortSeries, hints, matchers...)
-	if err != nil {
-		return storage.ErrSeriesSet(err)
-	}
-	return ss
-}
-
-func (p *promQuerier) selectSeries(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) (_ storage.SeriesSet, rerr error) {
-	hints, start, end, queryLabels := p.extractHints(hints, matchers)
-
-	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.selectSeries",
+	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.Select",
 		trace.WithAttributes(
 			attribute.Bool("promql.sort_series", sortSeries),
 			attribute.Int64("promql.hints.start", hints.Start),
 			attribute.Int64("promql.hints.end", hints.End),
+			attribute.Int("promql.hints.limit", hints.Limit),
 			attribute.Int64("promql.hints.step", hints.Step),
 			attribute.String("promql.hints.func", hints.Func),
 			attribute.StringSlice("promql.hints.grouping", hints.Grouping),
@@ -204,19 +193,100 @@ func (p *promQuerier) selectSeries(ctx context.Context, sortSeries bool, hints *
 			attribute.String("promql.hints.shard_index", strconv.FormatUint(hints.ShardIndex, 10)),
 			attribute.Bool("promql.hints.disable_trimming", hints.DisableTrimming),
 			xattribute.StringerSlice("promql.matchers", matchers),
-
-			xattribute.UnixNano("chstorage.range.start", start),
-			xattribute.UnixNano("chstorage.range.end", end),
-			attribute.StringSlice("chstorage.matchers.labels", queryLabels),
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
+		if resultSet != nil && resultSet.Err() != nil {
+			span.RecordError(resultSet.Err())
 		}
 		span.End()
 	}()
 
+	if hints.Func == "series" {
+		ss, err := p.selectOnlySeries(ctx, sortSeries, hints.Start, hints.End, matchers)
+		if err != nil {
+			return storage.ErrSeriesSet(err)
+		}
+		return ss
+	}
+
+	hash := hashSelectParams(sortSeries, start, end, hints, matchers)
+	resultCh := p.metricsSg.DoChanContext(ctx, hash, func(ctx context.Context) (*seriesSet[storage.Series], error) {
+		return p.selectSeries(ctx, sortSeries, start, end, matchers...)
+	})
+
+	select {
+	case <-ctx.Done():
+		return storage.ErrSeriesSet(ctx.Err())
+	case r := <-resultCh:
+		result, shared, err := r.Val, r.Shared, r.Err
+
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			// Query did not complete, probably stuck.
+			span.AddEvent("retry_query")
+			// Try again without singleflight.
+			result, err = p.selectSeries(ctx, sortSeries, start, end, matchers...)
+			shared = false
+		}
+		if err != nil {
+			return storage.ErrSeriesSet(err)
+		}
+
+		span.AddEvent("got_series_set", trace.WithAttributes(
+			attribute.Bool("chstorage.shared_result", shared),
+			attribute.Int("chstorage.total_series", len(result.set)),
+		))
+		if shared {
+			result = result.Clone()
+		}
+		return result
+	}
+}
+
+func hashSelectParams(sortSeries bool, start, end time.Time, hints *storage.SelectHints, matchers []*labels.Matcher) xxh3.Uint128 {
+	const sep = ","
+	writeBool := func(h *xxh3.Hasher, val bool) {
+		if val {
+			_, _ = h.Write([]byte{1})
+		} else {
+			_, _ = h.Write([]byte{0})
+		}
+		_, _ = h.WriteString(sep)
+	}
+	writeInt64 := func(h *xxh3.Hasher, val int64) {
+		_, _ = h.WriteString(strconv.FormatInt(val, 10))
+		_, _ = h.WriteString(sep)
+	}
+	writeStrings := func(h *xxh3.Hasher, ss []string) {
+		for i, v := range ss {
+			if i != 0 {
+				_, _ = h.WriteString(";")
+			}
+			_, _ = h.WriteString(v)
+		}
+		_, _ = h.WriteString(sep)
+	}
+
+	h := xxh3.New()
+	writeBool(h, sortSeries)
+	if hints != nil {
+		writeInt64(h, start.UnixMilli())
+		writeInt64(h, end.UnixMilli())
+		writeInt64(h, hints.Step)
+		_, _ = h.WriteString(hints.Func)
+		_, _ = h.WriteString(sep)
+		writeStrings(h, hints.Grouping)
+		writeBool(h, hints.By)
+		writeStrings(h, hints.ProjectionLabels)
+		writeBool(h, hints.ProjectionInclude)
+	}
+	_, _ = h.WriteString(sep)
+	hashPrometheusMatchers(h, [][]*labels.Matcher{matchers})
+
+	return h.Sum128()
+}
+
+func (p *promQuerier) selectSeries(ctx context.Context, sortSeries bool, start, end time.Time, matchers ...*labels.Matcher) (_ *seriesSet[storage.Series], rerr error) {
 	timeseries, err := p.queryTimeseries(ctx, [][]*labels.Matcher{matchers})
 	if err != nil {
 		return nil, errors.Wrap(err, "query timeseries hashes")
@@ -262,10 +332,7 @@ func (p *promQuerier) selectSeries(ctx context.Context, sortSeries bool, hints *
 	return newSeriesSet(points), nil
 }
 
-func (p *promQuerier) extractHints(
-	hints *storage.SelectHints,
-	matchers []*labels.Matcher,
-) (_ *storage.SelectHints, start, end time.Time, mlabels []string) {
+func (p *promQuerier) extractHints(hints *storage.SelectHints) (_ *storage.SelectHints, start, end time.Time) {
 	if hints != nil {
 		if ms := hints.Start; ms != promapi.MinTime.UnixMilli() {
 			start = p.getStart(time.UnixMilli(ms))
@@ -276,13 +343,7 @@ func (p *promQuerier) extractHints(
 	} else {
 		hints = new(storage.SelectHints)
 	}
-
-	mlabels = make([]string, 0, len(matchers))
-	for _, m := range matchers {
-		mlabels = append(mlabels, m.Name)
-	}
-
-	return hints, start, end, mlabels
+	return hints, start, end
 }
 
 func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (_ []storage.Series, rerr error) {
@@ -310,7 +371,6 @@ func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end 
 					chsql.Ident("timeseries_hashes"),
 				),
 			).
-			Order(chsql.ToStartOfHour(chsql.Ident("timestamp")), chsql.Asc).
 			Order(chsql.Ident("hash"), chsql.Asc).
 			Order(chsql.Ident("timestamp"), chsql.Asc)
 
@@ -401,7 +461,6 @@ func (p *promQuerier) queryExpHistograms(ctx context.Context, table string, star
 					chsql.Ident("timeseries_hashes"),
 				),
 			).
-			Order(chsql.ToStartOfHour(chsql.Ident("timestamp")), chsql.Asc).
 			Order(chsql.Ident("hash"), chsql.Asc).
 			Order(chsql.Ident("timestamp"), chsql.Asc)
 
@@ -507,6 +566,10 @@ func newSeriesSet[S storage.Series](set []S) *seriesSet[S] {
 }
 
 var _ storage.SeriesSet = (*seriesSet[storage.Series])(nil)
+
+func (s *seriesSet[S]) Clone() *seriesSet[S] {
+	return newSeriesSet(s.set)
+}
 
 func (s *seriesSet[S]) Next() bool {
 	if s.n+1 >= len(s.set) {
