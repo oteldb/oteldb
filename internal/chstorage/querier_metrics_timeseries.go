@@ -40,6 +40,12 @@ type (
 )
 
 func (q *timeseriesQuerier) hashMatchers(sets [][]*labels.Matcher) xxh3.Uint128 {
+	h := xxh3.New()
+	hashPrometheusMatchers(h, sets)
+	return h.Sum128()
+}
+
+func hashPrometheusMatchers(h *xxh3.Hasher, sets [][]*labels.Matcher) {
 	size := 0
 	for _, set := range sets {
 		size += len(set)
@@ -76,13 +82,12 @@ func (q *timeseriesQuerier) hashMatchers(sets [][]*labels.Matcher) xxh3.Uint128 
 		)
 	})
 
-	h := xxh3.New()
 	for _, p := range pairs {
 		_, _ = h.Write([]byte{byte(p.Type)})
 		_, _ = h.WriteString(p.Name)
 		_, _ = h.WriteString(p.Value)
+		_, _ = h.WriteString(";")
 	}
-	return h.Sum128()
 }
 
 func (q *timeseriesQuerier) Query(ctx context.Context, matcherSets [][]*labels.Matcher) (_ map[[16]byte]labels.Labels, rerr error) {
