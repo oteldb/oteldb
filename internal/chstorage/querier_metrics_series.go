@@ -62,17 +62,6 @@ func (p *promQuerier) selectOnlySeries(
 		span.End()
 	}()
 
-	var queryLabels []string
-	for _, set := range matcherSets {
-		for _, m := range set {
-			queryLabels = append(queryLabels, m.Name)
-		}
-	}
-	mapping, err := p.getLabelMapping(ctx, queryLabels)
-	if err != nil {
-		return nil, errors.Wrap(err, "get label mapping")
-	}
-
 	var (
 		table  = p.tables.Timeseries
 		series = proto.ColMap[string, string]{
@@ -85,7 +74,6 @@ func (p *promQuerier) selectOnlySeries(
 		&series,
 		start, end,
 		matcherSets,
-		mapping,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "build series query")
@@ -142,7 +130,6 @@ func (p *promQuerier) buildSeriesQuery(
 	column proto.ColResult,
 	start, end time.Time,
 	matcherSets [][]*labels.Matcher,
-	mapping metricsLabelMapping,
 ) (*chsql.SelectQuery, error) {
 	query := chsql.Select(table,
 		chsql.ResultColumn{
@@ -165,7 +152,11 @@ func (p *promQuerier) buildSeriesQuery(
 				chsql.Ident("name"),
 			}
 			if name := m.Name; name != labels.MetricName {
-				selectors = mapping.Selectors(name)
+				selectors = []chsql.Expr{
+					attrSelector(colAttrs, name),
+					attrSelector(colScope, name),
+					attrSelector(colResource, name),
+				}
 			}
 
 			matcher, err := promQLLabelMatcher(selectors, m.Type, m.Value)

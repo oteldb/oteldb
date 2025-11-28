@@ -141,16 +141,6 @@ func (p *promQuerier) getMatchingLabelValues(ctx context.Context, labelName stri
 		span.End()
 	}()
 
-	mlabels := make([]string, 0, len(matchers))
-	for _, m := range matchers {
-		mlabels = append(mlabels, m.Name)
-	}
-	mlabels = append(mlabels, labelName)
-	mapping, err := p.getLabelMapping(ctx, mlabels)
-	if err != nil {
-		return nil, errors.Wrap(err, "get label mapping")
-	}
-
 	var (
 		value      proto.ColumnOf[string]
 		columnExpr chsql.Expr
@@ -175,7 +165,11 @@ func (p *promQuerier) getMatchingLabelValues(ctx context.Context, labelName stri
 			chsql.Ident("name"),
 		}
 		if name := m.Name; name != labels.MetricName {
-			selectors = mapping.Selectors(name)
+			selectors = []chsql.Expr{
+				attrSelector(colAttrs, name),
+				attrSelector(colScope, name),
+				attrSelector(colResource, name),
+			}
 		}
 
 		expr, err := promQLLabelMatcher(selectors, m.Type, m.Value)
@@ -320,15 +314,6 @@ func (p *promQuerier) getMatchingLabelNames(ctx context.Context, matchers []*lab
 		span.End()
 	}()
 
-	mlabels := make([]string, 0, len(matchers))
-	for _, m := range matchers {
-		mlabels = append(mlabels, m.Name)
-	}
-	mapping, err := p.getLabelMapping(ctx, mlabels)
-	if err != nil {
-		return nil, errors.Wrap(err, "get label mapping")
-	}
-
 	var (
 		value proto.ColStr
 
@@ -350,7 +335,11 @@ func (p *promQuerier) getMatchingLabelNames(ctx context.Context, matchers []*lab
 			chsql.Ident("name"),
 		}
 		if name := m.Name; name != labels.MetricName {
-			selectors = mapping.Selectors(name)
+			selectors = []chsql.Expr{
+				attrSelector(colAttrs, name),
+				attrSelector(colScope, name),
+				attrSelector(colResource, name),
+			}
 		}
 
 		expr, err := promQLLabelMatcher(selectors, m.Type, m.Value)

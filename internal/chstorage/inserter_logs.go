@@ -85,13 +85,13 @@ func (i *Inserter) submitLogs(ctx context.Context, logs *logColumns, attrs *logA
 	grp.Go(func() error {
 		ctx := grpCtx
 
+		table := i.tables.Logs
 		ctx, track := i.tracker.Start(ctx, globalmetric.WithAttributes(
 			semconv.Signal(semconv.SignalLogs),
-			attribute.String("chstorage.table", i.tables.Logs),
+			attribute.String("chstorage.table", table),
 		))
 		defer track.End()
 
-		table := i.tables.Logs
 		if err := i.ch.Do(ctx, ch.Query{
 			Logger:          zctx.From(ctx).Named("ch"),
 			Body:            logs.Body(table),
@@ -105,13 +105,13 @@ func (i *Inserter) submitLogs(ctx context.Context, logs *logColumns, attrs *logA
 	grp.Go(func() error {
 		ctx := grpCtx
 
+		table := i.tables.LogAttrs
 		ctx, track := i.tracker.Start(ctx, globalmetric.WithAttributes(
 			semconv.Signal(semconv.SignalLogs),
-			attribute.String("chstorage.table", i.tables.Labels),
+			attribute.String("chstorage.table", table),
 		))
 		defer track.End()
 
-		table := i.tables.LogAttrs
 		if err := i.ch.Do(ctx, ch.Query{
 			Logger:          zctx.From(ctx).Named("ch"),
 			Body:            attrs.Body(table),

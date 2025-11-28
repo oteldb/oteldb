@@ -26,10 +26,8 @@ func (q *Querier) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier,
 	return &exemplarQuerier{
 		ctx: ctx,
 
-		ch:              q.ch,
 		tables:          q.tables,
-		getLabelMapping: q.getMetricsLabelMapping,
-		queryTimeseries: q.queryMetricsTimeseries,
+		queryTimeseries: q.timeseries.Query,
 		do:              q.do,
 
 		tracer: q.tracer,
@@ -39,10 +37,8 @@ func (q *Querier) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier,
 type exemplarQuerier struct {
 	ctx context.Context
 
-	ch              ClickHouseClient
 	tables          Tables
-	getLabelMapping func(context.Context, []string) (metricsLabelMapping, error)
-	queryTimeseries func(ctx context.Context, start, end time.Time, matcherSets [][]*labels.Matcher, mapping metricsLabelMapping) (map[[16]byte]labels.Labels, error)
+	queryTimeseries queryMetricsTimeseriesFunc
 	do              func(ctx context.Context, s selectQuery) error
 
 	tracer trace.Tracer
@@ -52,7 +48,7 @@ var _ storage.ExemplarQuerier = (*exemplarQuerier)(nil)
 
 func (q *exemplarQuerier) Select(startMs, endMs int64, matcherSets ...[]*labels.Matcher) (_ []exemplar.QueryResult, rerr error) {
 	table := q.tables.Exemplars
-	start, end, queryLabels := q.extractParams(startMs, endMs, matcherSets)
+	start, end := q.extractParams(startMs, endMs)
 
 	ctx, span := q.tracer.Start(q.ctx, "chstorage.exemplars.Select",
 		trace.WithAttributes(
@@ -69,12 +65,7 @@ func (q *exemplarQuerier) Select(startMs, endMs int64, matcherSets ...[]*labels.
 		span.End()
 	}()
 
-	mapping, err := q.getLabelMapping(ctx, queryLabels)
-	if err != nil {
-		return nil, errors.Wrap(err, "get label mapping")
-	}
-
-	timeseries, err := q.queryTimeseries(ctx, start, end, matcherSets, mapping)
+	timeseries, err := q.queryTimeseries(ctx, matcherSets)
 	if err != nil {
 		return nil, errors.Wrap(err, "query timeseries hashes")
 	}
@@ -171,17 +162,12 @@ func (q *exemplarQuerier) Select(startMs, endMs int64, matcherSets ...[]*labels.
 	return result, nil
 }
 
-func (q *exemplarQuerier) extractParams(startMs, endMs int64, matcherSets [][]*labels.Matcher) (start, end time.Time, mlabels []string) {
+func (q *exemplarQuerier) extractParams(startMs, endMs int64) (start, end time.Time) {
 	if startMs != promapi.MinTime.UnixMilli() {
 		start = time.UnixMilli(startMs)
 	}
 	if endMs != promapi.MaxTime.UnixMilli() {
 		end = time.UnixMilli(endMs)
 	}
-	for _, set := range matcherSets {
-		for _, m := range set {
-			mlabels = append(mlabels, m.Name)
-		}
-	}
-	return start, end, mlabels
+	return start, end
 }
