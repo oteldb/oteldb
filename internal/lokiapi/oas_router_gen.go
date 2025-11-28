@@ -250,12 +250,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // Route is route object.
 type Route struct {
-	name        string
-	summary     string
-	operationID string
-	pathPattern string
-	count       int
-	args        [1]string
+	name           string
+	summary        string
+	operationID    string
+	operationGroup string
+	pathPattern    string
+	count          int
+	args           [1]string
 }
 
 // Name returns ogen operation name.
@@ -273,6 +274,11 @@ func (r Route) Summary() string {
 // OperationID returns OpenAPI operationId.
 func (r Route) OperationID() string {
 	return r.operationID
+}
+
+// OperationGroup returns the x-ogen-operation-group value.
+func (r Route) OperationGroup() string {
+	return r.operationGroup
 }
 
 // PathPattern returns OpenAPI path.
@@ -350,6 +356,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.name = IndexStatsOperation
 						r.summary = ""
 						r.operationID = "indexStats"
+						r.operationGroup = ""
 						r.pathPattern = "/loki/api/v1/index/stats"
 						r.args = args
 						r.count = 0
@@ -407,6 +414,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								r.name = LabelValuesOperation
 								r.summary = ""
 								r.operationID = "labelValues"
+								r.operationGroup = ""
 								r.pathPattern = "/loki/api/v1/label/{name}/values"
 								r.args = args
 								r.count = 1
@@ -433,6 +441,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							r.name = LabelsOperation
 							r.summary = ""
 							r.operationID = "labels"
+							r.operationGroup = ""
 							r.pathPattern = "/loki/api/v1/labels"
 							r.args = args
 							r.count = 0
@@ -459,6 +468,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.name = PushOperation
 						r.summary = ""
 						r.operationID = "push"
+						r.operationGroup = ""
 						r.pathPattern = "/loki/api/v1/push"
 						r.args = args
 						r.count = 0
@@ -482,6 +492,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.name = QueryOperation
 						r.summary = ""
 						r.operationID = "query"
+						r.operationGroup = ""
 						r.pathPattern = "/loki/api/v1/query"
 						r.args = args
 						r.count = 0
@@ -506,6 +517,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							r.name = QueryRangeOperation
 							r.summary = ""
 							r.operationID = "queryRange"
+							r.operationGroup = ""
 							r.pathPattern = "/loki/api/v1/query_range"
 							r.args = args
 							r.count = 0
@@ -532,6 +544,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.name = SeriesOperation
 						r.summary = ""
 						r.operationID = "series"
+						r.operationGroup = ""
 						r.pathPattern = "/loki/api/v1/series"
 						r.args = args
 						r.count = 0

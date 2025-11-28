@@ -29,6 +29,10 @@ func (c *codeRecorder) WriteHeader(status int) {
 	c.ResponseWriter.WriteHeader(status)
 }
 
+func (c *codeRecorder) Unwrap() http.ResponseWriter {
+	return c.ResponseWriter
+}
+
 // handleBuildInfoRequest handles buildInfo operation.
 //
 // Returns Tempo buildinfo, in the same format as Prometheus `/api/v1/status/buildinfo`.
