@@ -850,6 +850,7 @@ func decodeQueryParams(args [0]string, argsEscaped bool, r *http.Request) (param
 							MaxExclusive:  false,
 							MultipleOfSet: false,
 							MultipleOf:    0,
+							Pattern:       nil,
 						}).Validate(int64(value)); err != nil {
 							return errors.Wrap(err, "int")
 						}
@@ -1373,6 +1374,7 @@ func decodeQueryRangeParams(args [0]string, argsEscaped bool, r *http.Request) (
 							MaxExclusive:  false,
 							MultipleOfSet: false,
 							MultipleOf:    0,
+							Pattern:       nil,
 						}).Validate(int64(value)); err != nil {
 							return errors.Wrap(err, "int")
 						}

@@ -81,13 +81,17 @@ func (s *ErrorStatusCode) Validate() error {
 func (s SpanID) Validate() error {
 	alias := (string)(s)
 	if err := (validate.String{
-		MinLength:    0,
-		MinLengthSet: false,
-		MaxLength:    0,
-		MaxLengthSet: false,
-		Email:        false,
-		Hostname:     false,
-		Regex:        regexMap["[[:xdigit:]]{16}"],
+		MinLength:     0,
+		MinLengthSet:  false,
+		MaxLength:     0,
+		MaxLengthSet:  false,
+		Email:         false,
+		Hostname:      false,
+		Regex:         regexMap["[[:xdigit:]]{16}"],
+		MinNumeric:    0,
+		MinNumericSet: false,
+		MaxNumeric:    0,
+		MaxNumericSet: false,
 	}).Validate(string(alias)); err != nil {
 		return errors.Wrap(err, "string")
 	}
@@ -120,13 +124,17 @@ func (s *SubmitReportReq) Validate() error {
 func (s TraceID) Validate() error {
 	alias := (string)(s)
 	if err := (validate.String{
-		MinLength:    0,
-		MinLengthSet: false,
-		MaxLength:    0,
-		MaxLengthSet: false,
-		Email:        false,
-		Hostname:     false,
-		Regex:        regexMap["[[:xdigit:]]{32}"],
+		MinLength:     0,
+		MinLengthSet:  false,
+		MaxLength:     0,
+		MaxLengthSet:  false,
+		Email:         false,
+		Hostname:      false,
+		Regex:         regexMap["[[:xdigit:]]{32}"],
+		MinNumeric:    0,
+		MinNumericSet: false,
+		MaxNumeric:    0,
+		MaxNumericSet: false,
 	}).Validate(string(alias)); err != nil {
 		return errors.Wrap(err, "string")
 	}

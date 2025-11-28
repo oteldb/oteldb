@@ -334,12 +334,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // Route is route object.
 type Route struct {
-	name        string
-	summary     string
-	operationID string
-	pathPattern string
-	count       int
-	args        [1]string
+	name           string
+	summary        string
+	operationID    string
+	operationGroup string
+	pathPattern    string
+	count          int
+	args           [1]string
 }
 
 // Name returns ogen operation name.
@@ -357,6 +358,11 @@ func (r Route) Summary() string {
 // OperationID returns OpenAPI operationId.
 func (r Route) OperationID() string {
 	return r.operationID
+}
+
+// OperationGroup returns the x-ogen-operation-group value.
+func (r Route) OperationGroup() string {
+	return r.operationGroup
 }
 
 // PathPattern returns OpenAPI path.
@@ -434,6 +440,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.name = EchoOperation
 						r.summary = ""
 						r.operationID = "echo"
+						r.operationGroup = ""
 						r.pathPattern = "/api/echo"
 						r.args = args
 						r.count = 0
@@ -469,6 +476,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							r.name = SearchOperation
 							r.summary = ""
 							r.operationID = "search"
+							r.operationGroup = ""
 							r.pathPattern = "/api/search"
 							r.args = args
 							r.count = 0
@@ -526,6 +534,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 										r.name = SearchTagValuesOperation
 										r.summary = ""
 										r.operationID = "searchTagValues"
+										r.operationGroup = ""
 										r.pathPattern = "/api/search/tag/{tag_name}/values"
 										r.args = args
 										r.count = 1
@@ -552,6 +561,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 									r.name = SearchTagsOperation
 									r.summary = ""
 									r.operationID = "searchTags"
+									r.operationGroup = ""
 									r.pathPattern = "/api/search/tags"
 									r.args = args
 									r.count = 0
@@ -580,6 +590,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							r.name = BuildInfoOperation
 							r.summary = ""
 							r.operationID = "buildInfo"
+							r.operationGroup = ""
 							r.pathPattern = "/api/status/buildinfo"
 							r.args = args
 							r.count = 0
@@ -615,6 +626,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.name = TraceByIDOperation
 						r.summary = ""
 						r.operationID = "traceByID"
+						r.operationGroup = ""
 						r.pathPattern = "/api/traces/{traceID}"
 						r.args = args
 						r.count = 1
@@ -672,6 +684,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								r.name = SearchTagValuesV2Operation
 								r.summary = ""
 								r.operationID = "searchTagValuesV2"
+								r.operationGroup = ""
 								r.pathPattern = "/api/v2/search/tag/{attribute_selector}/values"
 								r.args = args
 								r.count = 1
@@ -698,6 +711,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							r.name = SearchTagsV2Operation
 							r.summary = ""
 							r.operationID = "searchTagsV2"
+							r.operationGroup = ""
 							r.pathPattern = "/api/v2/search/tags"
 							r.args = args
 							r.count = 0

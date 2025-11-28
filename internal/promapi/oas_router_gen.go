@@ -294,12 +294,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // Route is route object.
 type Route struct {
-	name        string
-	summary     string
-	operationID string
-	pathPattern string
-	count       int
-	args        [1]string
+	name           string
+	summary        string
+	operationID    string
+	operationGroup string
+	pathPattern    string
+	count          int
+	args           [1]string
 }
 
 // Name returns ogen operation name.
@@ -317,6 +318,11 @@ func (r Route) Summary() string {
 // OperationID returns OpenAPI operationId.
 func (r Route) OperationID() string {
 	return r.operationID
+}
+
+// OperationGroup returns the x-ogen-operation-group value.
+func (r Route) OperationGroup() string {
+	return r.operationGroup
 }
 
 // PathPattern returns OpenAPI path.
@@ -427,6 +433,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								r.name = GetLabelValuesOperation
 								r.summary = ""
 								r.operationID = "getLabelValues"
+								r.operationGroup = ""
 								r.pathPattern = "/api/v1/label/{label}/values"
 								r.args = args
 								r.count = 1
@@ -453,6 +460,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							r.name = GetLabelsOperation
 							r.summary = ""
 							r.operationID = "getLabels"
+							r.operationGroup = ""
 							r.pathPattern = "/api/v1/labels"
 							r.args = args
 							r.count = 0
@@ -461,6 +469,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							r.name = PostLabelsOperation
 							r.summary = ""
 							r.operationID = "postLabels"
+							r.operationGroup = ""
 							r.pathPattern = "/api/v1/labels"
 							r.args = args
 							r.count = 0
@@ -487,6 +496,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.name = GetMetadataOperation
 						r.summary = ""
 						r.operationID = "getMetadata"
+						r.operationGroup = ""
 						r.pathPattern = "/api/v1/metadata"
 						r.args = args
 						r.count = 0
@@ -510,6 +520,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.name = GetQueryOperation
 						r.summary = ""
 						r.operationID = "getQuery"
+						r.operationGroup = ""
 						r.pathPattern = "/api/v1/query"
 						r.args = args
 						r.count = 0
@@ -518,6 +529,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.name = PostQueryOperation
 						r.summary = ""
 						r.operationID = "postQuery"
+						r.operationGroup = ""
 						r.pathPattern = "/api/v1/query"
 						r.args = args
 						r.count = 0
@@ -554,6 +566,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								r.name = GetQueryExemplarsOperation
 								r.summary = ""
 								r.operationID = "getQueryExemplars"
+								r.operationGroup = ""
 								r.pathPattern = "/api/v1/query_exemplars"
 								r.args = args
 								r.count = 0
@@ -562,6 +575,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								r.name = PostQueryExemplarsOperation
 								r.summary = ""
 								r.operationID = "postQueryExemplars"
+								r.operationGroup = ""
 								r.pathPattern = "/api/v1/query_exemplars"
 								r.args = args
 								r.count = 0
@@ -586,6 +600,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								r.name = GetQueryRangeOperation
 								r.summary = ""
 								r.operationID = "getQueryRange"
+								r.operationGroup = ""
 								r.pathPattern = "/api/v1/query_range"
 								r.args = args
 								r.count = 0
@@ -594,6 +609,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								r.name = PostQueryRangeOperation
 								r.summary = ""
 								r.operationID = "postQueryRange"
+								r.operationGroup = ""
 								r.pathPattern = "/api/v1/query_range"
 								r.args = args
 								r.count = 0
@@ -622,6 +638,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.name = GetRulesOperation
 						r.summary = ""
 						r.operationID = "getRules"
+						r.operationGroup = ""
 						r.pathPattern = "/api/v1/rules"
 						r.args = args
 						r.count = 0
@@ -646,6 +663,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.name = GetSeriesOperation
 						r.summary = ""
 						r.operationID = "getSeries"
+						r.operationGroup = ""
 						r.pathPattern = "/api/v1/series"
 						r.args = args
 						r.count = 0
@@ -654,6 +672,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.name = PostSeriesOperation
 						r.summary = ""
 						r.operationID = "postSeries"
+						r.operationGroup = ""
 						r.pathPattern = "/api/v1/series"
 						r.args = args
 						r.count = 0
