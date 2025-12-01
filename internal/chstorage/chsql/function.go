@@ -30,6 +30,11 @@ func Array(args ...Expr) Expr {
 	return Function("array", args...)
 }
 
+// ArrayElement returns `arrayElement(<arr>, <index>)` function call expression.
+func ArrayElement(arr, index Expr) Expr {
+	return Function("arrayElement", arr, index)
+}
+
 // ArrayConcat returns `arrayConcat(<args>...)` function call expression.
 func ArrayConcat(args ...Expr) Expr {
 	return Function("arrayConcat", args...)
