@@ -11,10 +11,51 @@ func UnixNano(t time.Time) Expr {
 	return Integer(t.UnixNano())
 }
 
-// DateTime64 returns an expression returing DateTime64 using given time t.
+// DateTime returns an expression representing [time.Time] as DateTime.
+func DateTime(t time.Time) Expr {
+	return ToDateTime(Integer(t.Unix()))
+}
+
+// DateTime64 returns an expression representing [time.Time] with given precision as DateTime64.
 func DateTime64(t time.Time, prec proto.Precision) Expr {
 	s := t.UTC().Format("2006-01-02 15:04:05.999999999")
 	return ToDateTime64(String(s), prec)
+}
+
+// Interval converts duration d to ClickHouse Interval expression with given precision.
+func Interval(d time.Duration) Expr {
+	type unit struct {
+		dur  time.Duration
+		name string
+	}
+
+	units := []unit{
+		{365 * 24 * time.Hour, "toIntervalYear"},
+		{90 * 24 * time.Hour, "toIntervalQuarter"},
+		{30 * 24 * time.Hour, "toIntervalMonth"},
+		{7 * 24 * time.Hour, "toIntervalWeek"},
+		{24 * time.Hour, "toIntervalDay"},
+		{time.Hour, "toIntervalHour"},
+		{time.Minute, "toIntervalMinute"},
+		{time.Second, "toIntervalSecond"},
+		{time.Millisecond, "toIntervalMillisecond"},
+		{time.Microsecond, "toIntervalMicrosecond"},
+		{time.Nanosecond, "toIntervalNanosecond"},
+	}
+
+	var chosen unit
+	for _, u := range units {
+		if d%u.dur == 0 && d/u.dur != 0 {
+			chosen = u
+			break
+		}
+	}
+	if chosen.name == "" {
+		chosen = units[len(units)-1]
+	}
+
+	n := int64(d / chosen.dur)
+	return Function(chosen.name, Integer(n))
 }
 
 // InTimeRange returns boolean expression to filter by [start:end].
