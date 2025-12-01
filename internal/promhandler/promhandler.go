@@ -22,6 +22,7 @@ import (
 
 	"github.com/go-faster/oteldb/internal/metricstorage"
 	"github.com/go-faster/oteldb/internal/promapi"
+	"github.com/go-faster/oteldb/internal/xattribute"
 )
 
 // Engine is a Prometheus engine interface.
@@ -291,7 +292,15 @@ func (h *PromAPI) GetQuery(ctx context.Context, params promapi.GetQueryParams) (
 	}
 	defer q.Close()
 
-	return h.execQuery(ctx, rawQuery, q)
+	span := trace.SpanFromContext(ctx)
+	span.AddEvent("executing_query", trace.WithAttributes(
+		xattribute.UnixNano("promapi.time", t),
+		attribute.String("promapi.query", q.String()),
+	))
+	r := q.Exec(ctx)
+
+	span.AddEvent("mapping_result")
+	return mapResult(rawQuery, r)
 }
 
 // PostQuery implements postQuery operation.
@@ -343,13 +352,12 @@ func (h *PromAPI) GetQueryRange(ctx context.Context, params promapi.GetQueryRang
 	}
 	defer q.Close()
 
-	return h.execQuery(ctx, rawQuery, q)
-}
-
-func (h *PromAPI) execQuery(ctx context.Context, rawQuery string, q promql.Query) (*promapi.QueryResponse, error) {
 	span := trace.SpanFromContext(ctx)
 	span.AddEvent("executing_query", trace.WithAttributes(
-		attribute.String("promql.query", q.String()),
+		xattribute.UnixNano("promapi.start", start),
+		xattribute.UnixNano("promapi.end", end),
+		attribute.Stringer("promapi.step", step),
+		attribute.String("promapi.query", q.String()),
 	))
 	r := q.Exec(ctx)
 
