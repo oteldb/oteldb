@@ -53,6 +53,33 @@ func TestInTimeRange(t *testing.T) {
 	}
 }
 
+func TestInterval(t *testing.T) {
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{0, "toIntervalNanosecond(0)"},
+		{time.Microsecond, "toIntervalMicrosecond(1)"},
+		{time.Millisecond, "toIntervalMillisecond(1)"},
+		{time.Second, "toIntervalSecond(1)"},
+		{2 * time.Second, "toIntervalSecond(2)"},
+		{62 * time.Second, "toIntervalSecond(62)"},
+		{time.Minute, "toIntervalMinute(1)"},
+		{time.Hour, "toIntervalHour(1)"},
+		{24 * time.Hour, "toIntervalDay(1)"},
+	}
+	for i, tt := range tests {
+		tt := tt
+		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+			got := Interval(tt.d)
+
+			p := GetPrinter()
+			require.NoError(t, p.WriteExpr(got))
+			require.Equal(t, tt.want, p.String())
+		})
+	}
+}
+
 func TestJoinAnd(t *testing.T) {
 	tests := []struct {
 		args []Expr
