@@ -2,6 +2,7 @@ package chstorage
 
 import (
 	"context"
+	"encoding/hex"
 	"slices"
 	"strconv"
 	"strings"
@@ -111,9 +112,9 @@ func DecodeUnicodeLabel(v string) string {
 	)
 	for i := 0; i < len(runes); i++ {
 		if runes[i] == '_' && i+3 < len(runes) && runes[i+3] == '_' {
-			// Try to decode _XX_ where XX is hex
-			hex := string([]rune{runes[i+1], runes[i+2]})
-			if b, err := strconv.ParseUint(hex, 16, 8); err == nil {
+			// Try to decode _XX_ where XX is hexNumber
+			hexNumber := string([]rune{runes[i+1], runes[i+2]})
+			if b, err := strconv.ParseUint(hexNumber, 16, 8); err == nil {
 				sb.WriteByte(byte(b))
 				i += 3 // Skip _XX_
 			} else {
@@ -226,7 +227,7 @@ func (p *promQuerier) Select(ctx context.Context, sortSeries bool, hints *storag
 			span.End()
 		}()
 		parentSpan.AddLink(trace.LinkFromContext(ctx))
-		return p.selectSeries(ctx, sortSeries, start, end, matchers...)
+		return p.selectSeries(ctx, sortSeries, start, end, hints, matchers...)
 	})
 
 	select {
@@ -239,7 +240,7 @@ func (p *promQuerier) Select(ctx context.Context, sortSeries bool, hints *storag
 			// Query did not complete, probably stuck.
 			span.AddEvent("retry_query")
 			// Try again without singleflight.
-			result, err = p.selectSeries(ctx, sortSeries, start, end, matchers...)
+			result, err = p.selectSeries(ctx, sortSeries, start, end, hints, matchers...)
 			shared = false
 		}
 		if err != nil {
@@ -300,10 +301,22 @@ func hashSelectParams(sortSeries bool, start, end time.Time, hints *storage.Sele
 	return h.Sum128()
 }
 
-func (p *promQuerier) selectSeries(ctx context.Context, sortSeries bool, start, end time.Time, matchers ...*labels.Matcher) (_ *seriesSet[storage.Series], rerr error) {
+func (p *promQuerier) selectSeries(
+	ctx context.Context,
+	sortSeries bool,
+	start, end time.Time,
+	hints *storage.SelectHints,
+	matchers ...*labels.Matcher,
+) (_ *seriesSet[storage.Series], rerr error) {
 	timeseries, err := p.queryTimeseries(ctx, [][]*labels.Matcher{matchers})
 	if err != nil {
 		return nil, errors.Wrap(err, "query timeseries hashes")
+	}
+
+	if len(timeseries) == 0 {
+		// No data.
+		trace.SpanFromContext(ctx).AddEvent("chstorage.no_timeseries_selected")
+		return newSeriesSet[storage.Series](nil), nil
 	}
 
 	var (
@@ -314,12 +327,21 @@ func (p *promQuerier) selectSeries(ctx context.Context, sortSeries bool, start, 
 	grp.Go(func() error {
 		ctx := grpCtx
 
-		result, err := p.queryPoints(ctx, p.tables.Points, start, end, timeseries)
-		if err != nil {
-			return errors.Wrap(err, "query points")
+		stepDuration := (time.Duration(hints.Step) * time.Millisecond)
+		if hints.Func == "" && stepDuration > time.Minute {
+			result, err := p.querySampledPoints(ctx, p.tables.Points, hints.By, hints.Grouping, start, end, stepDuration, timeseries)
+			if err != nil {
+				return errors.Wrap(err, "query sampled points")
+			}
+			points = result
+		} else {
+			result, err := p.queryPoints(ctx, p.tables.Points, start, end, timeseries)
+			if err != nil {
+				return errors.Wrap(err, "query points")
+			}
+			points = result
 		}
 
-		points = result
 		return nil
 	})
 	grp.Go(func() error {
@@ -433,6 +455,179 @@ func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end 
 		},
 
 		Type:   "QueryPoints",
+		Signal: "metrics",
+		Table:  table,
+	}); err != nil {
+		return nil, err
+	}
+	span.AddEvent("points_fetched", trace.WithAttributes(
+		attribute.Int("chstorage.total_series", len(set)),
+		attribute.Int("chstorage.total_points", totalPoints),
+	))
+
+	result := make([]storage.Series, 0, len(set))
+	for _, s := range set {
+		result = append(result, s)
+	}
+	return result, nil
+}
+
+type groupMapping struct {
+	// groups maps the unique group hash to the canonical set of labels that define that group.
+	// This set of labels is the result of applying the grouping criteria (e.g., 'by job, instance').
+	groups map[uint64]labels.Labels
+
+	// inputHash contains a hash of timeseries.
+	inputHash proto.ColFixedStr16
+	// mapExpr contains a map literal mapping timeseries to a corresponding group.
+	mapExpr chsql.Expr
+}
+
+// makeGroupMapping generates a mapping to group timeseries by labels.
+func makeGroupMapping(on bool, groupBy []string, timeseries map[[16]byte]labels.Labels) (m groupMapping) {
+	m = groupMapping{
+		groups: map[uint64]labels.Labels{},
+	}
+	kv := make([]chsql.Expr, 0, len(timeseries))
+	for tsHash, labels := range timeseries {
+		labels = labels.MatchLabels(on, groupBy...)
+		groupHash := labels.Hash()
+		m.groups[groupHash] = labels
+
+		m.inputHash.Append(tsHash)
+
+		key := chsql.String(hex.EncodeToString(tsHash[:]))
+		value := chsql.Integer(groupHash)
+		kv = append(kv,
+			chsql.Unhex(key),
+			value,
+		)
+	}
+	m.mapExpr = chsql.Map(kv...)
+	return m
+}
+
+// querySampledPoints selects pre-sampled points from Clickhouse.
+//
+// Since PromQL engine selects only the last value in the vector for each step in some cases, we don't actually need to query every sample.
+// Instead, we select only last one within time window.
+//
+// It reduces overall memory usage and data transfer.
+func (p *promQuerier) querySampledPoints(ctx context.Context, table string, on bool, groupBy []string, start, end time.Time, step time.Duration, timeseries map[[16]byte]labels.Labels) (_ []storage.Series, rerr error) {
+	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.querySampledPoints",
+		trace.WithAttributes(
+			xattribute.UnixNano("chstorage.range.start", start),
+			xattribute.UnixNano("chstorage.range.end", end),
+			attribute.Stringer("chstorage.step", step),
+			attribute.Bool("chstorage.group.on", on),
+			attribute.StringSlice("chstorage.group.by", groupBy),
+			attribute.String("chstorage.table", table),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+		}
+		span.End()
+	}()
+
+	mapping := makeGroupMapping(on, groupBy, timeseries)
+	var (
+		group     = new(proto.ColUInt64).LowCardinality()
+		timestamp = new(proto.ColDateTime)
+		value     proto.ColFloat64
+
+		datetime = chsql.ToDateTime(chsql.Ident("timestamp"))
+		query    = chsql.Select(table,
+			chsql.ResultColumn{
+				Name: "group",
+				Expr: chsql.ArrayElement(
+					chsql.Ident("grouping"),
+					chsql.Ident("hash"),
+				),
+				Data: group,
+			},
+			chsql.ResultColumn{
+				Name: "step_ts",
+				Expr: chsql.Ident("window_end"),
+				Data: timestamp,
+			},
+			chsql.ResultColumn{
+				Name: "agg",
+				Expr: chsql.LastValue(chsql.Ident("value")),
+				Data: &value,
+			},
+		).
+			With("step", chsql.Interval(step)).
+			With("window_start", chsql.TumbleStart(datetime, step)).
+			With("window_end", chsql.TumbleEnd(datetime, step)).
+			With("grouping", mapping.mapExpr).
+			Where(
+				chsql.In(
+					chsql.Ident("hash"),
+					chsql.Ident("timeseries_hashes"),
+				),
+			).
+			GroupBy(
+				chsql.Ident("group"),
+				chsql.Ident("window_start"),
+				chsql.Ident("window_end"),
+			).
+			Order(chsql.Ident("group"), chsql.Asc).
+			Order(chsql.Ident("window_end"), chsql.Asc)
+	)
+	if !start.IsZero() {
+		query.Where(chsql.Gte(
+			chsql.Ident("timestamp"),
+			chsql.DateTime(start),
+		))
+	}
+	if !end.IsZero() {
+		query.Where(chsql.Lte(
+			chsql.Ident("timestamp"),
+			chsql.DateTime(end),
+		))
+	}
+
+	var (
+		set         = map[uint64]*series[pointData]{}
+		totalPoints int
+	)
+	if err := p.do(ctx, selectQuery{
+		Query:         query,
+		ExternalTable: "timeseries_hashes",
+		ExternalData: []proto.InputColumn{
+			{Name: "hash", Data: &mapping.inputHash},
+		},
+		OnResult: func(ctx context.Context, block proto.Block) error {
+			for i := 0; i < timestamp.Rows(); i++ {
+				var (
+					group     = group.Row(i)
+					value     = value.Row(i)
+					timestamp = timestamp.Row(i)
+				)
+				s, ok := set[group]
+				if !ok {
+					lb, ok := mapping.groups[group]
+					if !ok {
+						zctx.From(ctx).Error("Can't find labels for requested series")
+						continue
+					}
+					s = &series[pointData]{
+						labels: lb,
+					}
+					set[group] = s
+				}
+
+				s.data.values = append(s.data.values, value)
+				s.ts = append(s.ts, timestamp.UnixMilli())
+
+				totalPoints++
+			}
+			return nil
+		},
+
+		Type:   "QuerySampledPoints",
 		Signal: "metrics",
 		Table:  table,
 	}); err != nil {
