@@ -99,14 +99,16 @@ func (q *timeseriesQuerier) Query(ctx context.Context, matcherSets [][]*labels.M
 		span.End()
 	}()
 
-	matchersHash := q.hashMatchers(matcherSets)
+	var (
+		parentSpan   = span
+		parentLink   = trace.LinkFromContext(ctx)
+		matchersHash = q.hashMatchers(matcherSets)
+	)
 	resultCh := q.sg.DoChan(matchersHash, func() (metricsTimeseries, error) {
-		link := trace.LinkFromContext(ctx)
-
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		return q.queryTimeseries(ctx, link, matcherSets)
+		return q.queryTimeseries(ctx, parentSpan, parentLink, matcherSets)
 	})
 	select {
 	case <-ctx.Done():
@@ -117,7 +119,7 @@ func (q *timeseriesQuerier) Query(ctx context.Context, matcherSets [][]*labels.M
 			// Query did not complete, probably stuck.
 			span.AddEvent("retry_query")
 			// Try again without singleflight.
-			result, err = q.queryTimeseries(ctx, trace.Link{}, matcherSets)
+			result, err = q.queryTimeseries(ctx, trace.Span(nil), trace.Link{}, matcherSets)
 			shared = false
 		}
 		if err != nil {
@@ -132,14 +134,14 @@ func (q *timeseriesQuerier) Query(ctx context.Context, matcherSets [][]*labels.M
 	}
 }
 
-func (q *timeseriesQuerier) queryTimeseries(ctx context.Context, link trace.Link, matcherSets [][]*labels.Matcher) (_ map[[16]byte]labels.Labels, rerr error) {
+func (q *timeseriesQuerier) queryTimeseries(ctx context.Context, parentSpan trace.Span, parentLink trace.Link, matcherSets [][]*labels.Matcher) (_ map[[16]byte]labels.Labels, rerr error) {
 	table := q.tables.Timeseries
 
 	ctx, span := q.tracer.Start(ctx, "chstorage.metrics.timeseries.queryTimeseries",
 		trace.WithAttributes(
 			attribute.String("chstorage.table", table),
 		),
-		trace.WithLinks(link),
+		trace.WithLinks(parentLink),
 	)
 	defer func() {
 		if rerr != nil {
@@ -147,6 +149,9 @@ func (q *timeseriesQuerier) queryTimeseries(ctx context.Context, link trace.Link
 		}
 		span.End()
 	}()
+	if parentSpan != nil {
+		parentSpan.AddLink(trace.LinkFromContext(ctx))
+	}
 
 	var (
 		c           = newTimeseriesColumns()
