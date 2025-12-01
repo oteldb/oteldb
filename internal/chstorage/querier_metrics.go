@@ -210,8 +210,22 @@ func (p *promQuerier) Select(ctx context.Context, sortSeries bool, hints *storag
 		return ss
 	}
 
-	hash := hashSelectParams(sortSeries, start, end, hints, matchers)
-	resultCh := p.metricsSg.DoChanContext(ctx, hash, func(ctx context.Context) (*seriesSet[storage.Series], error) {
+	var (
+		parentSpan = span
+		parentLink = trace.LinkFromContext(ctx)
+		hash       = hashSelectParams(sortSeries, start, end, hints, matchers)
+	)
+	resultCh := p.metricsSg.DoChanContext(ctx, hash, func(ctx context.Context) (_ *seriesSet[storage.Series], rerr error) {
+		ctx, span := p.tracer.Start(ctx, "chstorage.metrics.singelflight.selectSeries",
+			trace.WithLinks(parentLink),
+		)
+		defer func() {
+			if rerr != nil {
+				span.RecordError(rerr)
+			}
+			span.End()
+		}()
+		parentSpan.AddLink(trace.LinkFromContext(ctx))
 		return p.selectSeries(ctx, sortSeries, start, end, matchers...)
 	})
 
