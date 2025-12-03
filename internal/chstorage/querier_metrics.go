@@ -491,8 +491,8 @@ type groupMapping struct {
 
 	// inputHash contains a hash of timeseries.
 	inputHash proto.ColFixedStr16
-	// mapExpr contains a map literal mapping timeseries to a corresponding group.
-	mapExpr chsql.Expr
+	// groupingExpr contains a map literal mapping timeseries to a corresponding group.
+	groupingExpr chsql.Expr
 }
 
 // makeGroupMapping generates a mapping to group timeseries by labels.
@@ -500,22 +500,32 @@ func makeGroupMapping(on bool, groupBy []string, timeseries map[[16]byte]labels.
 	m = groupMapping{
 		groups: map[uint64]labels.Labels{},
 	}
-	kv := make([]chsql.Expr, 0, len(timeseries))
+
+	var (
+		kv = make([]chsql.Expr, 0, len(timeseries))
+		i  uint64
+	)
 	for tsHash, labels := range timeseries {
-		labels = labels.MatchLabels(on, groupBy...)
-		groupHash := labels.Hash()
+		var groupHash uint64
+		if len(groupBy) > 0 {
+			labels = labels.MatchLabels(on, groupBy...)
+			groupHash = labels.Hash()
+		} else {
+			groupHash = i
+			i++
+		}
 		m.groups[groupHash] = labels
 
 		m.inputHash.Append(tsHash)
 
 		key := chsql.String(hex.EncodeToString(tsHash[:]))
-		value := chsql.Integer(groupHash)
+		value := chsql.ToUInt64(chsql.Integer(groupHash))
 		kv = append(kv,
 			chsql.Unhex(key),
 			value,
 		)
 	}
-	m.mapExpr = chsql.Map(kv...)
+	m.groupingExpr = chsql.Map(kv...)
 	return m
 }
 
@@ -573,7 +583,7 @@ func (p *promQuerier) querySampledPoints(ctx context.Context, table string, on b
 			With("step", chsql.Interval(step)).
 			With("window_start", chsql.TumbleStart(datetime, step)).
 			With("window_end", chsql.TumbleEnd(datetime, step)).
-			With("grouping", mapping.mapExpr).
+			With("grouping", mapping.groupingExpr).
 			Where(
 				chsql.In(
 					chsql.Ident("hash"),
