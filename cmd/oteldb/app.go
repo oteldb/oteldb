@@ -47,18 +47,18 @@ type App struct {
 	shutdown func()
 	otelStorage
 
-	lg      *zap.Logger
-	metrics *sdkapp.Telemetry
+	lg        *zap.Logger
+	telemetry *sdkapp.Telemetry
 }
 
 func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err error) {
 	cfg.setDefaults()
 
 	app := &App{
-		cfg:      cfg,
-		services: map[string]func(context.Context) error{},
-		lg:       zctx.From(ctx),
-		metrics:  m,
+		cfg:       cfg,
+		services:  map[string]func(context.Context) error{},
+		lg:        zctx.From(ctx),
+		telemetry: m,
 	}
 
 	{
@@ -139,7 +139,7 @@ func addOgen[
 			Addr: addr,
 			Handler: httpmiddleware.Wrap(server,
 				httpmiddleware.InjectLogger(zctx.From(ctx)),
-				httpmiddleware.Instrument("oteldb."+name, routeFinder, app.metrics),
+				httpmiddleware.Instrument("oteldb."+name, routeFinder, app.telemetry),
 				httpmiddleware.LogRequests(routeFinder),
 			),
 			ReadHeaderTimeout: 15 * time.Second,
@@ -178,13 +178,13 @@ func (app *App) trySetupTempo() error {
 	cfg.setDefaults()
 
 	engine := traceqlengine.NewEngine(app.traceQuerier, traceqlengine.Options{
-		TracerProvider: app.metrics.TracerProvider(),
+		TracerProvider: app.telemetry.TracerProvider(),
 	})
 	tempo := tempohandler.NewTempoAPI(q, engine, tempohandler.TempoAPIOptions{})
 
 	s, err := tempoapi.NewServer(tempo,
-		tempoapi.WithTracerProvider(app.metrics.TracerProvider()),
-		tempoapi.WithMeterProvider(app.metrics.MeterProvider()),
+		tempoapi.WithTracerProvider(app.telemetry.TracerProvider()),
+		tempoapi.WithMeterProvider(app.telemetry.MeterProvider()),
 	)
 	if err != nil {
 		return err
@@ -211,8 +211,8 @@ func (app *App) trySetupLoki() error {
 		},
 		LookbackDuration: cfg.LookbackDelta,
 		Optimizers:       optimizers,
-		MeterProvider:    app.metrics.MeterProvider(),
-		TracerProvider:   app.metrics.TracerProvider(),
+		MeterProvider:    app.telemetry.MeterProvider(),
+		TracerProvider:   app.telemetry.TracerProvider(),
 	})
 	if err != nil {
 		return errors.Wrap(err, "create LogQL engine")
@@ -220,8 +220,8 @@ func (app *App) trySetupLoki() error {
 	loki := lokihandler.NewLokiAPI(q, engine)
 
 	s, err := lokiapi.NewServer(loki,
-		lokiapi.WithTracerProvider(app.metrics.TracerProvider()),
-		lokiapi.WithMeterProvider(app.metrics.MeterProvider()),
+		lokiapi.WithTracerProvider(app.telemetry.TracerProvider()),
+		lokiapi.WithMeterProvider(app.telemetry.MeterProvider()),
 		lokiapi.WithErrorHandler(func(ctx context.Context, w http.ResponseWriter, r *http.Request, err error) {
 			code := ogenerrors.ErrorCode(err)
 			w.Header().Set("Content-Type", "application/json")
@@ -270,8 +270,8 @@ func (app *App) trySetupProm() error {
 	prom := promhandler.NewPromAPI(engine, q, q, promhandler.PromAPIOptions{})
 
 	s, err := promapi.NewServer(prom,
-		promapi.WithTracerProvider(app.metrics.TracerProvider()),
-		promapi.WithMeterProvider(app.metrics.MeterProvider()),
+		promapi.WithTracerProvider(app.telemetry.TracerProvider()),
+		promapi.WithMeterProvider(app.telemetry.MeterProvider()),
 		promapi.WithMiddleware(promhandler.TimeoutMiddleware()),
 	)
 	if err != nil {
@@ -330,13 +330,13 @@ func (app *App) setupCollector() error {
 		sig := app.cfg.CollectorSignals
 		if sig["logs"] {
 			telemetry.Logger = app.lg
-			telemetry.LoggerProvider = app.metrics.LoggerProvider()
+			telemetry.LoggerProvider = app.telemetry.LoggerProvider()
 		}
 		if sig["metrics"] {
-			telemetry.MeterProvider = app.metrics.MeterProvider()
+			telemetry.MeterProvider = app.telemetry.MeterProvider()
 		}
 		if sig["trace"] {
-			telemetry.TracerProvider = app.metrics.TracerProvider()
+			telemetry.TracerProvider = app.telemetry.TracerProvider()
 		}
 	}
 
