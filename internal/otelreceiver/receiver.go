@@ -3,7 +3,6 @@ package otelreceiver
 
 import (
 	"github.com/go-faster/errors"
-	"github.com/go-faster/sdk/app"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor"
@@ -14,6 +13,12 @@ import (
 	"go.opentelemetry.io/collector/processor/batchprocessor"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
+	"go.opentelemetry.io/otel/log"
+	lognoop "go.opentelemetry.io/otel/log/noop"
+	"go.opentelemetry.io/otel/metric"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/trace"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/oteldb/internal/otelreceiver/oteldbexporter"
@@ -42,8 +47,32 @@ func exporterFactoryMap() (map[component.Type]exporter.Factory, error) {
 	)
 }
 
+// TelemetrySettings provides telemetry for collector.
+type TelemetrySettings struct {
+	Logger         *zap.Logger
+	LoggerProvider log.LoggerProvider
+	MeterProvider  metric.MeterProvider
+	TracerProvider trace.TracerProvider
+}
+
+func (s *TelemetrySettings) setDefaults() {
+	if s.Logger == nil {
+		s.Logger = zap.NewNop()
+	}
+	if s.LoggerProvider == nil {
+		s.LoggerProvider = lognoop.NewLoggerProvider()
+	}
+	if s.MeterProvider == nil {
+		s.MeterProvider = metricnoop.NewMeterProvider()
+	}
+	if s.TracerProvider == nil {
+		s.TracerProvider = tracenoop.NewTracerProvider()
+	}
+}
+
 // Factories returns oteldb factories list.
-func Factories(lg *zap.Logger, tel *app.Telemetry) func() (f otelcol.Factories, _ error) {
+func Factories(settings TelemetrySettings) func() (f otelcol.Factories, _ error) {
+	settings.setDefaults()
 	return func() (f otelcol.Factories, _ error) {
 		receivers, err := receiverFactoryMap()
 		if err != nil {
@@ -64,7 +93,7 @@ func Factories(lg *zap.Logger, tel *app.Telemetry) func() (f otelcol.Factories, 
 			Receivers:  receivers,
 			Processors: processors,
 			Exporters:  exporters,
-			Telemetry:  telemetryFactory(lg, tel),
+			Telemetry:  telemetryFactory(settings),
 		}, nil
 	}
 }
