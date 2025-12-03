@@ -47,11 +47,20 @@ type Config struct {
 	LokiConfig  LokiConfig        `json:"loki" yaml:"loki"`
 	HealthCheck HealthCheckConfig `json:"health_check" yaml:"health_check"`
 
+	// Whether if enable certain collector/inserter signals.
+	CollectorSignals map[string]bool `json:"collector_signals" yaml:"collector_signals"`
+
 	// Collector is an otelcol config.
 	Collector map[string]any `json:"otelcol" yaml:"otelcol"`
 }
 
 func (cfg *Config) setDefaults() {
+	if len(cfg.CollectorSignals) == 0 {
+		cfg.CollectorSignals = map[string]bool{
+			"metrics": true,
+			"logs":    true,
+		}
+	}
 	if cfg.Collector == nil {
 		cfg.Collector = map[string]any{
 			"receivers": map[string]any{

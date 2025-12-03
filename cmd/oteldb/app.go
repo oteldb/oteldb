@@ -325,8 +325,23 @@ func (app *App) handleStartupProbe(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (app *App) setupCollector() error {
+	var telemetry otelreceiver.TelemetrySettings
+	{
+		sig := app.cfg.CollectorSignals
+		if sig["logs"] {
+			telemetry.Logger = app.lg
+			telemetry.LoggerProvider = app.metrics.LoggerProvider()
+		}
+		if sig["metrics"] {
+			telemetry.MeterProvider = app.metrics.MeterProvider()
+		}
+		if sig["trace"] {
+			telemetry.TracerProvider = app.metrics.TracerProvider()
+		}
+	}
+
 	col, err := otelcol.NewCollector(otelcol.CollectorSettings{
-		Factories: otelreceiver.Factories(app.lg, app.metrics),
+		Factories: otelreceiver.Factories(telemetry),
 		BuildInfo: component.NewDefaultBuildInfo(),
 		LoggingOptions: []zap.Option{
 			zap.WrapCore(func(zapcore.Core) zapcore.Core {
