@@ -91,7 +91,7 @@ func (rec *Receiver) Start(ctx context.Context, host component.Host) (err error)
 	rec.startOnce.Do(func() {
 		rec.host = host
 		rec.server, err = rec.config.ServerConfig.ToServer(ctx,
-			host,
+			host.GetExtensions(),
 			rec.params.TelemetrySettings,
 			rec,
 			confighttp.WithDecoder("snappy", snappyDecoder),
