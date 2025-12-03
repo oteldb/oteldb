@@ -2,12 +2,14 @@ version: "3"
 
 services:
   clickhouse:
-    image: "ghcr.io/go-faster/clickhouse-server:23.12"
+    image: "clickhouse/clickhouse-server:25.9"
+    environment:
+      - CLICKHOUSE_PASSWORD=default
     ports:
       - "9000:9000"
       - "8123:8123"
     volumes:
-      - ./clickhouse.xml:/etc/clickhouse-server/config.d/monitoring.xml
+      - ./clickhouse.xml:/etc/clickhouse-server/config.d/clickhouse.xml
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:8123/ping"]
       interval: 1s
@@ -21,7 +23,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - OTELDB_STORAGE=ch
-      - CH_DSN=clickhouse://clickhouse:9000
+      - CH_DSN=clickhouse://default:default@clickhouse:9000
       - OTEL_LOG_LEVEL=info
       - OTEL_TRACES_EXPORTER=none
       - OTEL_METRICS_EXPORTER=none

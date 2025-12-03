@@ -3,6 +3,8 @@ version: "3"
 services:
   clickhouse-01:
     image: "clickhouse/clickhouse-server:25.9"
+    environment:
+      - CLICKHOUSE_PASSWORD=default
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:8123/ping"]
       interval: 1s
@@ -18,6 +20,8 @@ services:
       - clickhouse-keeper
   clickhouse-02:
     image: "clickhouse/clickhouse-server:25.9"
+    environment:
+      - CLICKHOUSE_PASSWORD=default
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:8123/ping"]
       interval: 1s
@@ -33,6 +37,8 @@ services:
       - clickhouse-keeper
   clickhouse-03:
     image: "clickhouse/clickhouse-server:25.9"
+    environment:
+      - CLICKHOUSE_PASSWORD=default
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:8123/ping"]
       interval: 1s
