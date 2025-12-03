@@ -6,6 +6,7 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
+	enginestorage "github.com/oteldb/promql-engine/storage"
 	"github.com/prometheus/prometheus/storage"
 	"go.uber.org/zap"
 
@@ -36,6 +37,7 @@ type traceQuerier interface {
 type metricQuerier interface {
 	storage.Queryable
 	storage.ExemplarQueryable
+	MetricsScanners() (enginestorage.Scanners, error)
 }
 
 func setupCH(

@@ -301,6 +301,18 @@ func hashSelectParams(sortSeries bool, start, end time.Time, hints *storage.Sele
 	return h.Sum128()
 }
 
+func canUseSampledPoints(stepDuration time.Duration, hints *storage.SelectHints) bool {
+	if stepDuration < time.Second {
+		return false
+	}
+	switch hints.Func {
+	case "", "count":
+		return true
+	default:
+		return false
+	}
+}
+
 func (p *promQuerier) selectSeries(
 	ctx context.Context,
 	sortSeries bool,
@@ -327,8 +339,8 @@ func (p *promQuerier) selectSeries(
 	grp.Go(func() error {
 		ctx := grpCtx
 
-		stepDuration := (time.Duration(hints.Step) * time.Millisecond)
-		if hints.Func == "" && stepDuration > time.Minute {
+		stepDuration := time.Duration(hints.Step) * time.Millisecond
+		if canUseSampledPoints(stepDuration, hints) {
 			result, err := p.querySampledPoints(ctx, p.tables.Points, hints.By, hints.Grouping, start, end, stepDuration, timeseries)
 			if err != nil {
 				return errors.Wrap(err, "query sampled points")

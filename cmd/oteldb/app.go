@@ -255,7 +255,12 @@ func (app *App) trySetupProm() error {
 	cfg := app.cfg.Prometheus
 	cfg.setDefaults()
 
-	engine := promqlengine.New(promqlengine.Opts{
+	scanners, err := q.MetricsScanners()
+	if err != nil {
+		return errors.Wrap(err, "setup scanners")
+	}
+
+	engine := promqlengine.NewWithScanners(promqlengine.Opts{
 		EngineOpts: promql.EngineOpts{
 			// NOTE: zero-value MaxSamples and Timeout makes
 			// all queries to fail with error.
@@ -266,7 +271,7 @@ func (app *App) trySetupProm() error {
 			EnableNegativeOffset: *cfg.EnableNegativeOffset,
 			EnablePerStepStats:   cfg.EnablePerStepStats,
 		},
-	})
+	}, scanners)
 	prom := promhandler.NewPromAPI(engine, q, q, promhandler.PromAPIOptions{})
 
 	s, err := promapi.NewServer(prom,
