@@ -7,7 +7,7 @@ require (
 	github.com/ClickHouse/ch-go v0.69.0
 	github.com/MakeNowJust/heredoc/v2 v2.0.1
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/VictoriaMetrics/easyproto v0.1.4
+	github.com/VictoriaMetrics/easyproto v1.0.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cheggaaa/pb/v3 v3.1.7
