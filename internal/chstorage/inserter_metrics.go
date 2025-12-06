@@ -104,33 +104,7 @@ func (b *metricsBatch) Insert(ctx context.Context, tables Tables, client ClickHo
 	lg := zctx.From(ctx)
 
 	labelColumns := newLabelsColumns()
-	insertLabel := func(
-		key string,
-		value string,
-		scope labelScope,
-	) {
-		labelColumns.name.Append(key)
-		labelColumns.value.Append(value)
-		labelColumns.scope.Append(proto.Enum8(scope))
-	}
-	for pair, scopes := range b.labels {
-		key, value := pair[0], pair[1]
-
-		if scopes == 0 {
-			insertLabel(key, value, labelScopeNone)
-		} else {
-			for _, scope := range [3]labelScope{
-				labelScopeResource,
-				labelScopeInstrumentation,
-				labelScopeAttribute,
-			} {
-				if scopes&scope == 0 {
-					continue
-				}
-				insertLabel(key, value, scope)
-			}
-		}
-	}
+	labelColumns.AppendMap(b.labels)
 
 	grp, grpCtx := errgroup.WithContext(ctx)
 	type columns interface {

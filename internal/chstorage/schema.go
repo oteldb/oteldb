@@ -161,6 +161,15 @@ func (t Tables) generateQuery(opts generateOptions) (string, error) {
 
 // Create creates tables.
 func (t Tables) Create(ctx context.Context, c ClickHouseClient) error {
+	return t.create(ctx, c, true)
+}
+
+// CreateNonDestructive creates tables, but does not re-create them if schema mismatches.
+func (t Tables) CreateNonDestructive(ctx context.Context, c ClickHouseClient) error {
+	return t.create(ctx, c, false)
+}
+
+func (t Tables) create(ctx context.Context, c ClickHouseClient, destructive bool) error {
 	lg := zctx.From(ctx)
 
 	if err := t.Validate(); err != nil {
@@ -231,6 +240,10 @@ func (t Tables) Create(ctx context.Context, c ClickHouseClient) error {
 		}
 		target := fmt.Sprintf("%x", sha256.Sum256([]byte(query)))
 		if current, ok := hashes[s.Name]; ok && current != target {
+			if !destructive {
+				return errors.Errorf("unexpected %q table schema, changing schema is not allowed", baseName)
+			}
+
 			// HACK: this will DROP all data in the table
 			// TODO: implement ALTER TABLE
 			lg.Warn("DROPPING TABLE (schema changed!)",

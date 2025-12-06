@@ -323,6 +323,36 @@ func (c *labelsColumns) Input() proto.Input                { return c.Columns().
 func (c *labelsColumns) Result() proto.Results             { return c.Columns().Result() }
 func (c *labelsColumns) ChsqlResult() []chsql.ResultColumn { return c.Columns().ChsqlResult() }
 
+func (c *labelsColumns) AppendMap(m map[[2]string]labelScope) {
+	insertLabel := func(
+		key string,
+		value string,
+		scope labelScope,
+	) {
+		c.name.Append(key)
+		c.value.Append(value)
+		c.scope.Append(proto.Enum8(scope))
+	}
+	for pair, scopes := range m {
+		key, value := pair[0], pair[1]
+
+		if scopes == 0 {
+			insertLabel(key, value, labelScopeNone)
+		} else {
+			for _, scope := range [3]labelScope{
+				labelScopeResource,
+				labelScopeInstrumentation,
+				labelScopeAttribute,
+			} {
+				if scopes&scope == 0 {
+					continue
+				}
+				insertLabel(key, value, scope)
+			}
+		}
+	}
+}
+
 func (c *labelsColumns) DDL() ddl.Table {
 	return ddl.Table{
 		Engine:  ddl.Engine{Type: "ReplacingMergeTree"},
