@@ -2,7 +2,9 @@ version: "3"
 
 services:
   clickhouse:
-    image: "ghcr.io/go-faster/clickhouse-server:23.12"
+    image: "clickhouse/clickhouse-server:25.9"
+    environment:
+      - CLICKHOUSE_PASSWORD=default
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:8123:8123"

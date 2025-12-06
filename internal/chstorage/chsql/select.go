@@ -17,6 +17,7 @@ type SelectQuery struct {
 	sub      *SelectQuery
 	distinct bool
 	final    bool
+	with     []WithColumn
 	columns  []ResultColumn
 
 	// prewhere is a set of expression joined by AND
@@ -51,6 +52,12 @@ func SelectFrom(sub *SelectQuery, columns ...ResultColumn) *SelectQuery {
 		sub:     sub,
 		columns: columns,
 	}
+}
+
+// With adds common table expressions to a query.
+func (q *SelectQuery) With(name string, expr Expr) *SelectQuery {
+	q.with = append(q.with, WithColumn{Name: name, Expr: expr})
+	return q
 }
 
 // Distinct sets if query is `DISTINCT`.
@@ -136,6 +143,26 @@ func (q *SelectQuery) Results() (r proto.Results) {
 
 // WriteSQL writes SQL query.
 func (q *SelectQuery) WriteSQL(p *Printer) error {
+	if len(q.with) > 0 {
+		p.With()
+		for i, c := range q.with {
+			if i != 0 {
+				p.Comma()
+			}
+
+			cexpr := c.Expr
+			if cexpr.IsZero() {
+				// If expression is not defined, assume that column
+				// name is expected.
+				cexpr = Ident(c.Name)
+			}
+			cexpr = aliasColumn(c.Name, cexpr)
+
+			if err := p.WriteExpr(cexpr); err != nil {
+				return errors.Wrapf(err, "with %q", c.Name)
+			}
+		}
+	}
 	p.Select()
 	if q.distinct {
 		p.Distinct()
@@ -277,11 +304,17 @@ type ResultColumn struct {
 	Data proto.ColResult
 }
 
-// Column returns new Result
+// Column returns new [ResultColumn].
 func Column(name string, data proto.ColResult) ResultColumn {
 	return ResultColumn{
 		Name: name,
 		Expr: Ident(name),
 		Data: data,
 	}
+}
+
+// WithColumn defines a Common table expression.
+type WithColumn struct {
+	Name string
+	Expr Expr
 }
