@@ -47,6 +47,7 @@ func (c *timeseriesColumns) Columns() Columns {
 	return MergeColumns(
 		Columns{
 			{Name: "name", Data: c.name},
+			{Name: "unit", Data: c.unit},
 			{Name: "description", Data: c.description},
 			{Name: "hash", Data: c.hash},
 			{Name: "first_seen", Data: c.firstSeen},
