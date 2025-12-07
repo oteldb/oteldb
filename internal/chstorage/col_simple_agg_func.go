@@ -15,8 +15,10 @@ type colSimpleAggregateFunction[T any] struct {
 }
 
 var (
-	_ proto.Column    = (*colSimpleAggregateFunction[proto.DateTime64])(nil)
-	_ proto.Inferable = (*colSimpleAggregateFunction[proto.DateTime64])(nil)
+	_ proto.Column       = (*colSimpleAggregateFunction[proto.DateTime64])(nil)
+	_ proto.Inferable    = (*colSimpleAggregateFunction[proto.DateTime64])(nil)
+	_ proto.StateEncoder = (*colSimpleAggregateFunction[proto.DateTime64])(nil)
+	_ proto.StateDecoder = (*colSimpleAggregateFunction[proto.DateTime64])(nil)
 )
 
 // DecodeColumn implements [proto.Column].
@@ -27,6 +29,21 @@ func (a *colSimpleAggregateFunction[T]) DecodeColumn(r *proto.Reader, rows int) 
 // EncodeColumn implements [proto.Column].
 func (a *colSimpleAggregateFunction[T]) EncodeColumn(b *proto.Buffer) {
 	a.Data.EncodeColumn(b)
+}
+
+// DecodeState implements [proto.StateDecoder].
+func (a *colSimpleAggregateFunction[T]) DecodeState(r *proto.Reader) error {
+	if d, ok := a.Data.(proto.StateDecoder); ok {
+		return d.DecodeState(r)
+	}
+	return nil
+}
+
+// EncodeState implements [proto.StateEncoder].
+func (a *colSimpleAggregateFunction[T]) EncodeState(b *proto.Buffer) {
+	if e, ok := a.Data.(proto.StateEncoder); ok {
+		e.EncodeState(b)
+	}
 }
 
 // Reset implements [proto.Column].
