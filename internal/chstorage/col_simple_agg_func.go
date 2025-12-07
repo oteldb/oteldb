@@ -19,6 +19,7 @@ var (
 	_ proto.Inferable    = (*colSimpleAggregateFunction[proto.DateTime64])(nil)
 	_ proto.StateEncoder = (*colSimpleAggregateFunction[proto.DateTime64])(nil)
 	_ proto.StateDecoder = (*colSimpleAggregateFunction[proto.DateTime64])(nil)
+	_ proto.Preparable   = (*colSimpleAggregateFunction[proto.DateTime64])(nil)
 )
 
 // DecodeColumn implements [proto.Column].
@@ -44,6 +45,14 @@ func (a *colSimpleAggregateFunction[T]) EncodeState(b *proto.Buffer) {
 	if e, ok := a.Data.(proto.StateEncoder); ok {
 		e.EncodeState(b)
 	}
+}
+
+// Prepare implements [proto.Preparable].
+func (a *colSimpleAggregateFunction[T]) Prepare() error {
+	if p, ok := a.Data.(proto.Preparable); ok {
+		return p.Prepare()
+	}
+	return nil
 }
 
 // Reset implements [proto.Column].
