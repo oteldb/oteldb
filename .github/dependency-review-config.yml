@@ -7,5 +7,6 @@ allow_licenses:
   - "BSD-2-Clause"
   - "BSD-3-Clause"
   - "Apache-2.0"
+  - "LicenseRef-scancode-google-patent-license-golang"
 allow-dependencies-licenses:
   - "pkg:golang/github.com/grafana/loki/pkg/push"
