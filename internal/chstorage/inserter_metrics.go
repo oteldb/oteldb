@@ -20,7 +20,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
-	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/go-faster/oteldb/internal/globalmetric"
@@ -73,10 +72,11 @@ type metricsBatch struct {
 
 func (b *metricsBatch) Reset() {
 	b.timeseries.Columns().Reset()
+	clear(b.seenTimeseries)
 	b.points.Columns().Reset()
 	b.expHistograms.Columns().Reset()
 	b.exemplars.Columns().Reset()
-	maps.Clear(b.labels)
+	clear(b.labels)
 }
 
 func newMetricBatch(tracker globalmetric.Tracker) *metricsBatch {
