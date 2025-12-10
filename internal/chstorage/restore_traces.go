@@ -27,6 +27,10 @@ type tracesRestore struct {
 func (r *tracesRestore) Do(ctx context.Context, root string) error {
 	dirs, err := os.ReadDir(root)
 	if err != nil {
+		if os.IsNotExist(err) {
+			r.logger.Info("No traces to restore")
+			return nil
+		}
 		return err
 	}
 	for _, d := range dirs {
@@ -56,6 +60,10 @@ func (r *tracesRestore) restore(ctx context.Context, dir string) error {
 func (r *tracesRestore) restoreSpans(ctx context.Context, dir string) error {
 	w, err := openBackupReader(dir, "traces")
 	if err != nil {
+		if os.IsNotExist(err) {
+			r.logger.Info("No traces backup found", zap.String("dir", dir))
+			return nil
+		}
 		return err
 	}
 	defer func() { _ = w.Close() }()

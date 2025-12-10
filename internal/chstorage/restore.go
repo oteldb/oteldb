@@ -37,9 +37,12 @@ func (b *Restore) Restore(ctx context.Context, dir string) error {
 	}
 	var (
 		metrics = metricsRestore{
-			client: b.client,
-			tables: b.tables,
-			logger: b.logger.Named("metrics"),
+			client:         b.client,
+			tables:         b.tables,
+			logger:         b.logger.Named("metrics"),
+			timeseries:     newTimeseriesColumns(),
+			seenTimeseries: map[[16]byte]struct{}{},
+			labels:         map[[2]string]labelScope{},
 		}
 		traces = tracesRestore{
 			client: b.client,
@@ -55,21 +58,21 @@ func (b *Restore) Restore(ctx context.Context, dir string) error {
 	grp, grpCtx := errgroup.WithContext(ctx)
 	grp.Go(func() error {
 		ctx := grpCtx
-		if err := metrics.Do(ctx, dir); err != nil {
+		if err := metrics.Do(ctx, filepath.Join(dir, "metrics")); err != nil {
 			return errors.Wrap(err, "restore metrics")
 		}
 		return nil
 	})
 	grp.Go(func() error {
 		ctx := grpCtx
-		if err := traces.Do(ctx, dir); err != nil {
+		if err := traces.Do(ctx, filepath.Join(dir, "traces")); err != nil {
 			return errors.Wrap(err, "restore traces")
 		}
 		return nil
 	})
 	grp.Go(func() error {
 		ctx := grpCtx
-		if err := logs.Do(ctx, dir); err != nil {
+		if err := logs.Do(ctx, filepath.Join(dir, "logs")); err != nil {
 			return errors.Wrap(err, "restore logs")
 		}
 		return nil

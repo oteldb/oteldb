@@ -29,6 +29,10 @@ type logsRestore struct {
 func (r *logsRestore) Do(ctx context.Context, root string) error {
 	dirs, err := os.ReadDir(root)
 	if err != nil {
+		if os.IsNotExist(err) {
+			r.logger.Info("No logs to restore")
+			return nil
+		}
 		return err
 	}
 	for _, d := range dirs {
@@ -58,6 +62,10 @@ func (r *logsRestore) restore(ctx context.Context, dir string) error {
 func (r *logsRestore) restoreLogs(ctx context.Context, dir string) error {
 	w, err := openBackupReader(dir, "logs")
 	if err != nil {
+		if os.IsNotExist(err) {
+			r.logger.Info("No logs backup found", zap.String("dir", dir))
+			return nil
+		}
 		return err
 	}
 	defer func() { _ = w.Close() }()

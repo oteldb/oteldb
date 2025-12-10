@@ -34,6 +34,10 @@ type metricsRestore struct {
 func (r *metricsRestore) Do(ctx context.Context, root string) error {
 	dirs, err := os.ReadDir(root)
 	if err != nil {
+		if os.IsNotExist(err) {
+			r.logger.Info("No metrics to restore")
+			return nil
+		}
 		return err
 	}
 	for _, d := range dirs {
@@ -111,6 +115,10 @@ func (r *metricsRestore) restore(ctx context.Context, dir string) error {
 func (r *metricsRestore) restorePoints(ctx context.Context, dir string) error {
 	w, err := openBackupReader(dir, "metrics_points")
 	if err != nil {
+		if os.IsNotExist(err) {
+			r.logger.Info("No metrics points backup found", zap.String("dir", dir))
+			return nil
+		}
 		return err
 	}
 	defer func() {
@@ -199,6 +207,10 @@ func (r *metricsRestore) restorePoints(ctx context.Context, dir string) error {
 func (r *metricsRestore) restoreExpHistograms(ctx context.Context, dir string) error {
 	w, err := openBackupReader(dir, "metrics_exp_histograms")
 	if err != nil {
+		if os.IsNotExist(err) {
+			r.logger.Info("No metrics exp_histograms backup found", zap.String("dir", dir))
+			return nil
+		}
 		return err
 	}
 	defer func() {
@@ -311,6 +323,10 @@ func (r *metricsRestore) restoreExpHistograms(ctx context.Context, dir string) e
 func (r *metricsRestore) restoreExemplars(ctx context.Context, dir string) error {
 	w, err := openBackupReader(dir, "metrics_exemplars")
 	if err != nil {
+		if os.IsNotExist(err) {
+			r.logger.Info("No metrics exemplars backup found", zap.String("dir", dir))
+			return nil
+		}
 		return err
 	}
 	defer func() {
