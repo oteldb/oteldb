@@ -20,11 +20,19 @@ type logsBackup struct {
 }
 
 func (b *logsBackup) Do(ctx context.Context, dir string) error {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return errors.Wrap(err, "create directory")
+	}
+
 	mint, maxt, err := queryMinMaxTimestamp(ctx, b.client,
 		[2]string{b.tables.Logs, "timestamp"},
 	)
 	if err != nil {
 		return errors.Wrap(err, "query min/max timestamp")
+	}
+	if mint.IsZero() && maxt.IsZero() {
+		b.logger.Info("No logs to backup")
+		return nil
 	}
 
 	step := 24 * time.Hour
@@ -43,7 +51,7 @@ func (b *logsBackup) backup(ctx context.Context, root string, start, end time.Ti
 		stopwatch = time.Now()
 		dir       = filepath.Join(root, start.Format("2006-01-02_15-04-05"))
 	)
-	b.logger.Info("Backing up logs dir", zap.Time("start", start))
+	b.logger.Info("Backing up logs", zap.Time("start", start))
 
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return errors.Wrap(err, "create directory")
@@ -53,7 +61,7 @@ func (b *logsBackup) backup(ctx context.Context, root string, start, end time.Ti
 		return errors.Wrap(err, "backup logs")
 	}
 
-	b.logger.Info("Backed up logs dir", zap.Duration("took", time.Since(stopwatch)), zap.String("dir", dir))
+	b.logger.Info("Backed up logs", zap.Duration("took", time.Since(stopwatch)), zap.String("dir", dir))
 	return nil
 }
 

@@ -36,36 +36,54 @@ func NewBackup(client ClickHouseClient, tables Tables, logger *zap.Logger) *Back
 
 // Create creates a backup in the specified directory.
 func (b *Backup) Create(ctx context.Context, dir string) error {
-	m := metricsBackup{
-		client: b.client,
-		tables: b.tables,
-		logger: b.logger.Named("metrics"),
-	}
-	if err := m.Do(ctx, dir); err != nil {
-		return err
-	}
-
-	// Traces backup.
-	t := tracesBackup{
-		client: b.client,
-		tables: b.tables,
-		logger: b.logger.Named("traces"),
-	}
-	if err := t.Do(ctx, dir); err != nil {
-		return err
-	}
-
-	// Logs backup.
-	l := logsBackup{
-		client: b.client,
-		tables: b.tables,
-		logger: b.logger.Named("logs"),
-	}
-	return l.Do(ctx, dir)
+	var (
+		metrics = metricsBackup{
+			client: b.client,
+			tables: b.tables,
+			logger: b.logger.Named("metrics"),
+		}
+		traces = tracesBackup{
+			client: b.client,
+			tables: b.tables,
+			logger: b.logger.Named("traces"),
+		}
+		logs = logsBackup{
+			client: b.client,
+			tables: b.tables,
+			logger: b.logger.Named("logs"),
+		}
+	)
+	grp, grpCtx := errgroup.WithContext(ctx)
+	grp.Go(func() error {
+		ctx := grpCtx
+		if err := metrics.Do(ctx, filepath.Join(dir, "metrics")); err != nil {
+			return errors.Wrap(err, "backup metrics")
+		}
+		return nil
+	})
+	grp.Go(func() error {
+		ctx := grpCtx
+		if err := traces.Do(ctx, filepath.Join(dir, "traces")); err != nil {
+			return errors.Wrap(err, "backup traces")
+		}
+		return nil
+	})
+	grp.Go(func() error {
+		ctx := grpCtx
+		if err := logs.Do(ctx, filepath.Join(dir, "logs")); err != nil {
+			return errors.Wrap(err, "backup logs")
+		}
+		return nil
+	})
+	return grp.Wait()
 }
 
 func openBackupWriter(dir, name string) (io.WriteCloser, error) {
 	dumpPath := filepath.Join(dir, name+".native.zstd")
+
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return nil, errors.Wrap(err, "create dump directory")
+	}
 
 	f, err := os.Create(filepath.Clean(dumpPath))
 	if err != nil {
@@ -189,11 +207,15 @@ func queryMinMaxTimestamp(ctx context.Context, client ClickHouseClient, tableCol
 		}
 	}
 
-	if mint.IsZero() {
+	switch {
+	case mint.IsZero() && maxt.IsZero():
+		// No data.
+		return time.Time{}, time.Time{}, nil
+	case mint.IsZero():
 		return time.Time{}, time.Time{}, errors.New("unable to determine min timestamp")
-	}
-	if maxt.IsZero() {
+	case maxt.IsZero():
 		return time.Time{}, time.Time{}, errors.New("unable to determine max timestamp")
+	default:
+		return mint, maxt, nil
 	}
-	return mint, maxt, nil
 }

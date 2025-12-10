@@ -21,6 +21,10 @@ type metricsBackup struct {
 }
 
 func (b *metricsBackup) Do(ctx context.Context, dir string) error {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return errors.Wrap(err, "create directory")
+	}
+
 	mint, maxt, err := queryMinMaxTimestamp(ctx, b.client,
 		[2]string{b.tables.Points, "timestamp"},
 		[2]string{b.tables.ExpHistograms, "timestamp"},
@@ -28,6 +32,10 @@ func (b *metricsBackup) Do(ctx context.Context, dir string) error {
 	)
 	if err != nil {
 		return errors.Wrap(err, "query min/max timestamp")
+	}
+	if mint.IsZero() && maxt.IsZero() {
+		b.logger.Info("No metrics to backup")
+		return nil
 	}
 
 	var (
@@ -48,11 +56,7 @@ func (b *metricsBackup) backup(ctx context.Context, root string, start, end time
 		stopwatch = time.Now()
 		dir       = filepath.Join(root, start.Format("2006-01-02_15-04-05"))
 	)
-	b.logger.Info("Backing up metrics dir", zap.Time("start", start))
-
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return errors.Wrap(err, "create directory")
-	}
+	b.logger.Info("Backing up metrics", zap.Time("start", start))
 
 	grp, grpCtx := errgroup.WithContext(ctx)
 	grp.Go(func() error {
@@ -80,7 +84,7 @@ func (b *metricsBackup) backup(ctx context.Context, root string, start, end time
 		return err
 	}
 
-	b.logger.Info("Backed up metrics dir", zap.Duration("took", time.Since(stopwatch)), zap.String("dir", dir))
+	b.logger.Info("Backed up metrics", zap.Duration("took", time.Since(stopwatch)), zap.String("dir", dir))
 	return nil
 }
 
@@ -142,7 +146,7 @@ func (b *metricsBackup) backupPoints(ctx context.Context, dir string, start, end
   ts.resource AS resource
 FROM
   `+table+` p
-  INNER JOIN metrics_timeseries ts ON p.hash = ts.hash
+  INNER JOIN `+b.tables.Timeseries+` ts ON p.hash = ts.hash
 WHERE timestamp >= toDateTime(%d) AND timestamp <= toDateTime(%d)`, start.Unix(), end.Unix()),
 		Result: columns.Result(),
 		OnResult: func(ctx context.Context, block proto.Block) error {
@@ -243,7 +247,7 @@ func (b *metricsBackup) backupExpHistograms(ctx context.Context, dir string, sta
   ts.resource AS resource
 FROM
   `+table+` p
-  INNER JOIN metrics_timeseries ts ON p.hash = ts.hash
+  INNER JOIN `+b.tables.Timeseries+` ts ON p.hash = ts.hash
 WHERE timestamp >= toDateTime(%d) AND timestamp <= toDateTime(%d)`, start.Unix(), end.Unix()),
 		Result: columns.Result(),
 		OnResult: func(ctx context.Context, block proto.Block) error {
@@ -326,7 +330,7 @@ func (b *metricsBackup) backupExemplars(ctx context.Context, dir string, start, 
   ts.resource AS resource
 FROM
   `+table+` p
-  INNER JOIN metrics_timeseries ts ON p.hash = ts.hash
+  INNER JOIN `+b.tables.Timeseries+` ts ON p.hash = ts.hash
 WHERE timestamp >= toDateTime(%d) AND timestamp <= toDateTime(%d)`, start.Unix(), end.Unix()),
 		Result: columns.Result(),
 		OnResult: func(ctx context.Context, block proto.Block) error {
