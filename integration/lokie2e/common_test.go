@@ -48,23 +48,24 @@ func setupDB(
 	querier logstorage.Querier,
 	engineQuerier logqlengine.Querier,
 ) *lokiapi.Client {
-	consumer := logstorage.NewConsumer(inserter)
+	if inserter != nil {
+		consumer := logstorage.NewConsumer(inserter)
 
-	logEncoder := plog.JSONMarshaler{}
-	var out bytes.Buffer
-	for i, b := range set.Batches {
-		if err := consumer.ConsumeLogs(ctx, b); err != nil {
-			t.Fatalf("Send batch %d: %+v", i, err)
+		logEncoder := plog.JSONMarshaler{}
+		var out bytes.Buffer
+		for i, b := range set.Batches {
+			if err := consumer.ConsumeLogs(ctx, b); err != nil {
+				t.Fatalf("Send batch %d: %+v", i, err)
+			}
+			data, err := logEncoder.MarshalLogs(b)
+			require.NoError(t, err)
+			outData, err := yaml.JSONToYAML(data)
+			require.NoError(t, err)
+			out.WriteString("---\n")
+			out.Write(outData)
 		}
-		data, err := logEncoder.MarshalLogs(b)
-		require.NoError(t, err)
-		outData, err := yaml.JSONToYAML(data)
-		require.NoError(t, err)
-		out.WriteString("---\n")
-		out.Write(outData)
+		gold.Str(t, out.String(), "logs.yml")
 	}
-
-	gold.Str(t, out.String(), "logs.yml")
 
 	var optimizers []logqlengine.Optimizer
 	optimizers = append(optimizers, logqlengine.DefaultOptimizers()...)

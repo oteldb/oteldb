@@ -1,11 +1,12 @@
 package lokie2e_test
 
 import (
-	"context"
 	"crypto/rand"
 	"fmt"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ClickHouse/ch-go"
 	"github.com/ClickHouse/ch-go/chpool"
@@ -26,13 +27,12 @@ func randomPrefix() string {
 	return fmt.Sprintf("%x", data[:])
 }
 
-func TestCH(t *testing.T) {
-	integration.Skip(t)
-	ctx := context.Background()
-	provider := integration.TraceProvider(t)
+func setupCH(t *testing.T, name string, provider trace.TracerProvider) (chstorage.ClickHouseClient, chstorage.Tables) {
+	t.Helper()
+	ctx := t.Context()
 
 	req := testcontainers.ContainerRequest{
-		Name:         "oteldb-lokie2e-clickhouse",
+		Name:         fmt.Sprintf("oteldb-%s-clickhouse", name),
 		Image:        "clickhouse/clickhouse-server:25.9",
 		ExposedPorts: []string{"8123/tcp", "9000/tcp"},
 		Env: map[string]string{
@@ -87,6 +87,16 @@ func TestCH(t *testing.T) {
 	t.Logf("Test tables prefix: %s", prefix)
 	require.NoError(t, tables.Create(ctx, c))
 
+	return c, tables
+}
+
+func TestCH(t *testing.T) {
+	integration.Skip(t)
+	ctx := t.Context()
+	provider := integration.TraceProvider(t)
+
+	c, tables := setupCH(t, "lokie2e", provider)
+
 	inserter, err := chstorage.NewInserter(c, chstorage.InserterOptions{
 		Tables:         tables,
 		TracerProvider: provider,
@@ -101,4 +111,54 @@ func TestCH(t *testing.T) {
 
 	ctx = zctx.Base(ctx, integration.Logger(t))
 	runTest(ctx, t, provider, inserter, querier, querier)
+}
+
+func TestCHBackup(t *testing.T) {
+	t.Parallel()
+	integration.Skip(t)
+	var (
+		ctx       = t.Context()
+		backupDir = t.TempDir()
+		provider  = integration.TraceProvider(t)
+	)
+
+	// Create backup.
+	{
+		client, tables := setupCH(t, "lokie2e-backup", provider)
+
+		inserter, err := chstorage.NewInserter(client, chstorage.InserterOptions{
+			Tables:         tables,
+			TracerProvider: provider,
+		})
+		require.NoError(t, err)
+
+		querier, err := chstorage.NewQuerier(client, chstorage.QuerierOptions{
+			Tables:         tables,
+			TracerProvider: provider,
+		})
+		require.NoError(t, err)
+
+		ctx = zctx.Base(ctx, integration.Logger(t))
+		runTest(ctx, t, provider, inserter, querier, querier)
+
+		b := chstorage.NewBackup(client, tables, integration.Logger(t).Named("backup"))
+		require.NoError(t, b.Create(ctx, backupDir))
+	}
+
+	// Restore into destination
+	{
+		client, tables := setupCH(t, "lokie2e-restore", provider)
+
+		r := chstorage.NewRestore(client, tables, integration.Logger(t).Named("restore"))
+		require.NoError(t, r.Restore(ctx, backupDir))
+
+		querier, err := chstorage.NewQuerier(client, chstorage.QuerierOptions{
+			Tables:         tables,
+			TracerProvider: provider,
+		})
+		require.NoError(t, err)
+
+		ctx = zctx.Base(ctx, integration.Logger(t))
+		runTest(ctx, t, provider, nil, querier, querier)
+	}
 }
