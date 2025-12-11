@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/ClickHouse/ch-go/proto"
-	"github.com/go-faster/oteldb/internal/chstorage/chsql"
 	singleflight "github.com/go-faster/sdk/singleflightx"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/zeebo/xxh3"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/go-faster/oteldb/internal/chstorage/chsql"
 )
 
 type timeseriesQuerier struct {
