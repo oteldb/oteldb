@@ -85,7 +85,7 @@ func (r *logsRestore) restoreLogs(ctx context.Context, dir string) error {
 		scopeName    = new(proto.ColStr).LowCardinality()
 		scopeVersion = new(proto.ColStr).LowCardinality()
 
-		attributes = NewAttributes(colAttrs)
+		attributes = NewAttributes(colAttrs, WithLowCardinality(false))
 		scope      = NewAttributes(colScope)
 		resource   = NewAttributes(colResource)
 

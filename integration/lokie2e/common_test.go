@@ -44,29 +44,9 @@ func setupDB(
 	t *testing.T,
 	provider trace.TracerProvider,
 	set *lokie2e.BatchSet,
-	inserter logstorage.Inserter,
 	querier logstorage.Querier,
 	engineQuerier logqlengine.Querier,
 ) *lokiapi.Client {
-	if inserter != nil {
-		consumer := logstorage.NewConsumer(inserter)
-
-		logEncoder := plog.JSONMarshaler{}
-		var out bytes.Buffer
-		for i, b := range set.Batches {
-			if err := consumer.ConsumeLogs(ctx, b); err != nil {
-				t.Fatalf("Send batch %d: %+v", i, err)
-			}
-			data, err := logEncoder.MarshalLogs(b)
-			require.NoError(t, err)
-			outData, err := yaml.JSONToYAML(data)
-			require.NoError(t, err)
-			out.WriteString("---\n")
-			out.Write(outData)
-		}
-		gold.Str(t, out.String(), "logs.yml")
-	}
-
 	var optimizers []logqlengine.Optimizer
 	optimizers = append(optimizers, logqlengine.DefaultOptimizers()...)
 	optimizers = append(optimizers, &chstorage.ClickhouseOptimizer{})
@@ -94,14 +74,7 @@ func setupDB(
 	return c
 }
 
-func runTest(
-	ctx context.Context,
-	t *testing.T,
-	provider trace.TracerProvider,
-	inserter logstorage.Inserter,
-	querier logstorage.Querier,
-	engineQuerier logqlengine.Querier,
-) {
+func loadTestData(ctx context.Context, t *testing.T, inserter logstorage.Inserter) *lokie2e.BatchSet {
 	now := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
 	set, err := generateLogs(now, 1)
 	require.NoError(t, err)
@@ -112,7 +85,35 @@ func runTest(
 	require.NotZero(t, set.End)
 	require.GreaterOrEqual(t, set.End, set.Start)
 
-	c := setupDB(ctx, t, provider, set, inserter, querier, engineQuerier)
+	var (
+		consumer   = logstorage.NewConsumer(inserter)
+		logEncoder = plog.JSONMarshaler{}
+	)
+	var out bytes.Buffer
+	for i, b := range set.Batches {
+		if err := consumer.ConsumeLogs(ctx, b); err != nil {
+			t.Fatalf("Send batch %d: %+v", i, err)
+		}
+		data, err := logEncoder.MarshalLogs(b)
+		require.NoError(t, err)
+		outData, err := yaml.JSONToYAML(data)
+		require.NoError(t, err)
+		out.WriteString("---\n")
+		out.Write(outData)
+	}
+	gold.Str(t, out.String(), "logs.yml")
+	return set
+}
+
+func runTest(
+	ctx context.Context,
+	t *testing.T,
+	provider trace.TracerProvider,
+	set *lokie2e.BatchSet,
+	querier logstorage.Querier,
+	engineQuerier logqlengine.Querier,
+) {
+	c := setupDB(ctx, t, provider, set, querier, engineQuerier)
 
 	t.Run("Labels", func(t *testing.T) {
 		a := require.New(t)

@@ -18,6 +18,7 @@ import (
 	testcontainerslog "github.com/testcontainers/testcontainers-go/log"
 
 	"github.com/go-faster/oteldb/integration"
+	"github.com/go-faster/oteldb/integration/lokie2e"
 	"github.com/go-faster/oteldb/internal/chstorage"
 )
 
@@ -102,6 +103,7 @@ func TestCH(t *testing.T) {
 		TracerProvider: provider,
 	})
 	require.NoError(t, err)
+	set := loadTestData(ctx, t, inserter)
 
 	querier, err := chstorage.NewQuerier(c, chstorage.QuerierOptions{
 		Tables:         tables,
@@ -110,7 +112,7 @@ func TestCH(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx = zctx.Base(ctx, integration.Logger(t))
-	runTest(ctx, t, provider, inserter, querier, querier)
+	runTest(ctx, t, provider, set, querier, querier)
 }
 
 func TestCHBackup(t *testing.T) {
@@ -120,6 +122,7 @@ func TestCHBackup(t *testing.T) {
 		ctx       = t.Context()
 		backupDir = t.TempDir()
 		provider  = integration.TraceProvider(t)
+		set       *lokie2e.BatchSet
 	)
 
 	// Create backup.
@@ -131,21 +134,13 @@ func TestCHBackup(t *testing.T) {
 			TracerProvider: provider,
 		})
 		require.NoError(t, err)
-
-		querier, err := chstorage.NewQuerier(client, chstorage.QuerierOptions{
-			Tables:         tables,
-			TracerProvider: provider,
-		})
-		require.NoError(t, err)
-
-		ctx = zctx.Base(ctx, integration.Logger(t))
-		runTest(ctx, t, provider, inserter, querier, querier)
+		set = loadTestData(ctx, t, inserter)
 
 		b := chstorage.NewBackup(client, tables, integration.Logger(t).Named("backup"))
 		require.NoError(t, b.Create(ctx, backupDir))
 	}
 
-	// Restore into destination
+	// Restore from backup and check.
 	{
 		client, tables := setupCH(t, "lokie2e-restore", provider)
 
@@ -159,6 +154,6 @@ func TestCHBackup(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx = zctx.Base(ctx, integration.Logger(t))
-		runTest(ctx, t, provider, nil, querier, querier)
+		runTest(ctx, t, provider, set, querier, querier)
 	}
 }

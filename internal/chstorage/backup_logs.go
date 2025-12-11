@@ -88,7 +88,7 @@ func (b *logsBackup) backupLogs(ctx context.Context, dir string, start, end time
 		scopeName    = new(proto.ColStr).LowCardinality()
 		scopeVersion = new(proto.ColStr).LowCardinality()
 
-		attribute = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
+		attribute = new(proto.ColStr)
 		scope     = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
 		resource  = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
 	)
