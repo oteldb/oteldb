@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -454,6 +455,10 @@ func (r *metricsRestore) collectLabels(name string, m metricMapping, res, scope,
 	defer r.labelsMux.Unlock()
 
 	r.labels[[2]string{labels.MetricName, name}] |= 0
+	// NOTE: A summary may have not quantiles, but we still need to return the metric name as-is for label values request.
+	if originalName := strings.TrimSuffix(name, m.NameSuffix()); m.IsSummary() && originalName != name {
+		r.labels[[2]string{labels.MetricName, originalName}] |= 0
+	}
 
 	collectAttrs := func(scope labelScope, attrs otelstorage.Attrs) {
 		for k, v := range attrs.AsMap().All() {
