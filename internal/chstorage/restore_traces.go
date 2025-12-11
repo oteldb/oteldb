@@ -71,8 +71,8 @@ func (r *tracesRestore) restoreSpans(ctx context.Context, dir string) error {
 	var (
 		traceID    proto.ColRawOf[otelstorage.TraceID]
 		spanID     proto.ColRawOf[otelstorage.SpanID]
-		parentSpan proto.ColRawOf[otelstorage.SpanID]
 		traceState proto.ColStr
+		parentSpan proto.ColRawOf[otelstorage.SpanID]
 
 		name          = new(proto.ColStr).LowCardinality()
 		kind          proto.ColEnum8
@@ -116,7 +116,8 @@ func (r *tracesRestore) restoreSpans(ctx context.Context, dir string) error {
 				{Name: "events_timestamps", Data: eventsTimestamps},
 				{Name: "events_names", Data: eventsNames},
 				{Name: "events_attributes", Data: eventsAttributes},
-
+			},
+			Columns{
 				{Name: "links_trace_ids", Data: linksTraceIDs},
 				{Name: "links_span_ids", Data: linksSpanIDs},
 				{Name: "links_tracestates", Data: linksTracestates},
@@ -125,6 +126,10 @@ func (r *tracesRestore) restoreSpans(ctx context.Context, dir string) error {
 			attributes.Columns(),
 			scope.Columns(),
 			resource.Columns(),
+			Columns{
+				{Name: "scope_name", Data: scopeName},
+				{Name: "scope_version", Data: scopeVersion},
+			},
 		)
 
 		block proto.Block

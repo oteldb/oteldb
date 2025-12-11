@@ -81,89 +81,94 @@ func (b *tracesBackup) backupSpans(ctx context.Context, dir string, start, end t
 		parentSpan proto.ColRawOf[otelstorage.SpanID]
 		traceState proto.ColStr
 
-		name          = new(proto.ColStr).LowCardinality()
+		name          = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
 		kind          proto.ColEnum8
 		startTime     = new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano)
 		endTime       = new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano)
 		statusCode    proto.ColUInt8
-		statusMessage = new(proto.ColStr).LowCardinality()
+		statusMessage = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
 		batchID       proto.ColUUID
+		scopeName     = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
+		scopeVersion  = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
+
+		eventsTimestamps = new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano).Array()
+		eventsNames      = new(proto.ColStr).Array()
+		eventsAttributes = new(proto.ColBytes).Array()
+
+		linksTraceIDs    = proto.NewArray(&proto.ColRawOf[otelstorage.TraceID]{})
+		linksSpanIDs     = proto.NewArray(&proto.ColRawOf[otelstorage.SpanID]{})
+		linksTracestates = new(proto.ColStr).Array()
+		linksAttributes  = new(proto.ColBytes).Array()
 
 		attribute = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
 		scope     = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
 		resource  = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
 
-		eventsTimestamps = &proto.ColArr[time.Time]{}
-		eventsNames      = &proto.ColArr[string]{}
-		eventsAttributes = &proto.ColArr[[]byte]{}
+		columns = MergeColumns(
+			Columns{
+				{Name: "trace_id", Data: &traceID},
+				{Name: "span_id", Data: &spanID},
+				{Name: "trace_state", Data: &traceState},
+				{Name: "parent_span_id", Data: &parentSpan},
 
-		linksTraceIDs    = &proto.ColArr[otelstorage.TraceID]{}
-		linksSpanIDs     = &proto.ColArr[otelstorage.SpanID]{}
-		linksTraceStates = &proto.ColArr[string]{}
-		linksAttributes  = &proto.ColArr[[]byte]{}
+				{Name: "name", Data: name},
+				{Name: "kind", Data: &kind},
+				{Name: "start", Data: startTime},
+				{Name: "end", Data: endTime},
+				{Name: "status_code", Data: &statusCode},
+				{Name: "status_message", Data: statusMessage},
+				{Name: "batch_id", Data: &batchID},
+			},
+			Columns{
+				{Name: "events_timestamps", Data: eventsTimestamps},
+				{Name: "events_names", Data: eventsNames},
+				{Name: "events_attributes", Data: eventsAttributes},
+			},
+			Columns{
+				{Name: "links_trace_ids", Data: linksTraceIDs},
+				{Name: "links_span_ids", Data: linksSpanIDs},
+				{Name: "links_tracestates", Data: linksTracestates},
+				{Name: "links_attributes", Data: linksAttributes},
+			},
+			Columns{
+				{Name: "attribute", Data: attribute},
+				{Name: "scope", Data: scope},
+				{Name: "resource", Data: resource},
+			},
+			Columns{
+				{Name: "scope_name", Data: scopeName},
+				{Name: "scope_version", Data: scopeVersion},
+			},
+		)
+		buf proto.Buffer
 	)
-
-	columns := MergeColumns(
-		Columns{
-			{Name: "trace_id", Data: &traceID},
-			{Name: "span_id", Data: &spanID},
-			{Name: "trace_state", Data: &traceState},
-			{Name: "parent_span_id", Data: &parentSpan},
-
-			{Name: "name", Data: name},
-			{Name: "kind", Data: proto.Wrap(&kind, kindDDL)},
-			{Name: "start", Data: startTime},
-			{Name: "end", Data: endTime},
-			{Name: "status_code", Data: &statusCode},
-			{Name: "status_message", Data: statusMessage},
-			{Name: "batch_id", Data: &batchID},
-		},
-		Columns{
-			{Name: "events_timestamps", Data: eventsTimestamps},
-			{Name: "events_names", Data: eventsNames},
-			{Name: "events_attributes", Data: eventsAttributes},
-
-			{Name: "links_trace_ids", Data: linksTraceIDs},
-			{Name: "links_span_ids", Data: linksSpanIDs},
-			{Name: "links_tracestates", Data: linksTraceStates},
-			{Name: "links_attributes", Data: linksAttributes},
-		},
-		Columns{
-			{Name: "attribute", Data: attribute},
-			{Name: "scope", Data: scope},
-			{Name: "resource", Data: resource},
-		},
-	)
-
-	var buf proto.Buffer
-
-	q := fmt.Sprintf(`SELECT
-    trace_id,
-    span_id,
-    trace_state,
-    parent_span_id,
-    name,
-    kind,
-    start,
-    end,
-    status_code,
-    status_message,
-    batch_id,
-    events_timestamps,
-    events_names,
-    events_attributes,
-    links_trace_ids,
-    links_span_ids,
-    links_tracestates,
-    links_attributes,
-    attribute,
-    scope,
-    resource
-FROM %s
-WHERE start >= toDateTime(%d) AND start <= toDateTime(%d)`, table, start.Unix(), end.Unix())
-
 	if err := b.client.Do(ctx, ch.Query{
-		Body:   q,
+		Body: fmt.Sprintf(`SELECT
+	trace_id,
+	span_id,
+	trace_state,
+	parent_span_id,
+	name,
+	kind,
+	start,
+	end,
+	status_code,
+	status_message,
+	batch_id,
+	events_timestamps,
+	events_names,
+	events_attributes,
+	links_trace_ids,
+	links_span_ids,
+	links_tracestates,
+	links_attributes,
+	attribute,
+	scope,
+	resource,
+	scope_name,
+	scope_version
+FROM %s
+WHERE start >= toDateTime(%d) AND start <= toDateTime(%d)`, table, start.Unix(), end.Unix()),
 		Result: columns.Result(),
 		OnResult: func(ctx context.Context, block proto.Block) error {
 			buf.Reset()
