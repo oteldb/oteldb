@@ -41,10 +41,8 @@ func readBatchSet(p string) (s tempoe2e.BatchSet, _ error) {
 }
 
 func setupDB(
-	ctx context.Context,
 	t *testing.T,
 	provider trace.TracerProvider,
-	set tempoe2e.BatchSet,
 	querier tracestorage.Querier,
 	engineQuerier traceqlengine.Querier,
 ) *tempoapi.Client {
@@ -114,7 +112,7 @@ func runTest(
 		}
 	}
 
-	c := setupDB(ctx, t, provider, set, querier, engineQuerier)
+	c := setupDB(t, provider, querier, engineQuerier)
 	var (
 		start = tempoapi.NewOptUnixSeconds(set.Start.AsTime().Add(-time.Second))
 		end   = tempoapi.NewOptUnixSeconds(set.End.AsTime())

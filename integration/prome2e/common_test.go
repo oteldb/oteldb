@@ -104,10 +104,8 @@ findLoop:
 }
 
 func setupDB(
-	ctx context.Context,
 	t *testing.T,
 	provider trace.TracerProvider,
-	set prome2e.BatchSet,
 	querier storage.Queryable,
 	exemplarQuerier storage.ExemplarQueryable,
 ) *promapi.Client {
@@ -156,7 +154,7 @@ func runTest(
 	querier storage.Queryable,
 	exemplarQuerier storage.ExemplarQueryable,
 ) {
-	c := setupDB(ctx, t, provider, set, querier, exemplarQuerier)
+	c := setupDB(t, provider, querier, exemplarQuerier)
 
 	t.Run("Labels", func(t *testing.T) {
 		t.Run("All", func(t *testing.T) {

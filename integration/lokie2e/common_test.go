@@ -40,10 +40,8 @@ func TestMain(m *testing.M) {
 }
 
 func setupDB(
-	ctx context.Context,
 	t *testing.T,
 	provider trace.TracerProvider,
-	set *lokie2e.BatchSet,
 	querier logstorage.Querier,
 	engineQuerier logqlengine.Querier,
 ) *lokiapi.Client {
@@ -113,7 +111,7 @@ func runTest(
 	querier logstorage.Querier,
 	engineQuerier logqlengine.Querier,
 ) {
-	c := setupDB(ctx, t, provider, set, querier, engineQuerier)
+	c := setupDB(t, provider, querier, engineQuerier)
 
 	t.Run("Labels", func(t *testing.T) {
 		a := require.New(t)
