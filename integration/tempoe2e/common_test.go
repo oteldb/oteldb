@@ -49,10 +49,12 @@ func setupDB(
 	querier tracestorage.Querier,
 	engineQuerier traceqlengine.Querier,
 ) *tempoapi.Client {
-	consumer := tracestorage.NewConsumer(inserter)
-	for i, b := range set.Batches {
-		if err := consumer.ConsumeTraces(ctx, b); err != nil {
-			t.Fatalf("Send batch %d: %+v", i, err)
+	if inserter != nil {
+		consumer := tracestorage.NewConsumer(inserter)
+		for i, b := range set.Batches {
+			if err := consumer.ConsumeTraces(ctx, b); err != nil {
+				t.Fatalf("Send batch %d: %+v", i, err)
+			}
 		}
 	}
 
