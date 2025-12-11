@@ -1,7 +1,7 @@
 package prome2e_test
 
 import (
-	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	testcontainerslog "github.com/testcontainers/testcontainers-go/log"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-faster/oteldb/integration"
 	"github.com/go-faster/oteldb/internal/chstorage"
@@ -23,11 +24,84 @@ import (
 func TestCH(t *testing.T) {
 	t.Parallel()
 	integration.Skip(t)
-	ctx := context.Background()
-	provider := integration.TraceProvider(t)
+	var (
+		ctx      = t.Context()
+		provider = integration.TraceProvider(t)
+	)
+	c, tables := setupCH(t, "prome2e", provider)
+
+	inserter, err := chstorage.NewInserter(c, chstorage.InserterOptions{
+		Tables:         tables,
+		TracerProvider: provider,
+	})
+	require.NoError(t, err)
+
+	querier, err := chstorage.NewQuerier(c, chstorage.QuerierOptions{
+		Tables:         tables,
+		TracerProvider: provider,
+	})
+	require.NoError(t, err)
+
+	ctx = zctx.Base(ctx, integration.Logger(t))
+	runTest(ctx, t, provider, inserter, querier, querier)
+}
+
+func TestCHBackup(t *testing.T) {
+	t.Parallel()
+	integration.Skip(t)
+	var (
+		ctx       = t.Context()
+		backupDir = t.TempDir()
+		provider  = integration.TraceProvider(t)
+	)
+
+	// Create backup.
+	{
+		client, tables := setupCH(t, "prome2e-backup", provider)
+
+		inserter, err := chstorage.NewInserter(client, chstorage.InserterOptions{
+			Tables:         tables,
+			TracerProvider: provider,
+		})
+		require.NoError(t, err)
+
+		set, err := readBatchSet("_testdata/metrics.json")
+		require.NoError(t, err)
+		for i, b := range set.Batches {
+			tryGenerateExemplars(b)
+			if err := inserter.ConsumeMetrics(ctx, b); err != nil {
+				t.Fatalf("Send batch %d: %+v", i, err)
+			}
+		}
+
+		b := chstorage.NewBackup(client, tables, integration.Logger(t).Named("backup"))
+		require.NoError(t, b.Create(ctx, backupDir))
+	}
+
+	// Restore into destination
+	{
+		client, tables := setupCH(t, "prome2e-restore", provider)
+
+		r := chstorage.NewRestore(client, tables, integration.Logger(t).Named("restore"))
+		require.NoError(t, r.Restore(ctx, backupDir))
+
+		querier, err := chstorage.NewQuerier(client, chstorage.QuerierOptions{
+			Tables:         tables,
+			TracerProvider: provider,
+		})
+		require.NoError(t, err)
+
+		ctx = zctx.Base(ctx, integration.Logger(t))
+		runTest(ctx, t, provider, nil, querier, querier)
+	}
+}
+
+func setupCH(t *testing.T, name string, provider trace.TracerProvider) (chstorage.ClickHouseClient, chstorage.Tables) {
+	t.Helper()
+	ctx := t.Context()
 
 	req := testcontainers.ContainerRequest{
-		Name:         "oteldb-prome2e-clickhouse",
+		Name:         fmt.Sprintf("oteldb-%s-clickhouse", name),
 		Image:        "clickhouse/clickhouse-server:25.9",
 		ExposedPorts: []string{"8123/tcp", "9000/tcp"},
 		Env: map[string]string{
@@ -81,18 +155,5 @@ func TestCH(t *testing.T) {
 	t.Logf("Test tables prefix: %s", prefix)
 	require.NoError(t, tables.Create(ctx, c))
 
-	inserter, err := chstorage.NewInserter(c, chstorage.InserterOptions{
-		Tables:         tables,
-		TracerProvider: provider,
-	})
-	require.NoError(t, err)
-
-	querier, err := chstorage.NewQuerier(c, chstorage.QuerierOptions{
-		Tables:         tables,
-		TracerProvider: provider,
-	})
-	require.NoError(t, err)
-
-	ctx = zctx.Base(ctx, integration.Logger(t))
-	runTest(ctx, t, provider, inserter, querier, querier)
+	return c, tables
 }

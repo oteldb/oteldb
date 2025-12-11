@@ -112,10 +112,12 @@ func setupDB(
 	querier storage.Queryable,
 	exemplarQuerier storage.ExemplarQueryable,
 ) *promapi.Client {
-	for i, b := range set.Batches {
-		tryGenerateExemplars(b)
-		if err := consumer.ConsumeMetrics(ctx, b); err != nil {
-			t.Fatalf("Send batch %d: %+v", i, err)
+	if consumer != nil {
+		for i, b := range set.Batches {
+			tryGenerateExemplars(b)
+			if err := consumer.ConsumeMetrics(ctx, b); err != nil {
+				t.Fatalf("Send batch %d: %+v", i, err)
+			}
 		}
 	}
 
