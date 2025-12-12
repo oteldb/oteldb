@@ -5,7 +5,9 @@ volumes:
 
 services:
   clickhouse:
-    image: "ghcr.io/go-faster/clickhouse-server:23.12"
+    image: "clickhouse/clickhouse-server:25.9"
+    environment:
+      - CLICKHOUSE_PASSWORD=default
     volumes:
       - ./clickhouse.xml:/etc/clickhouse-server/config.d/monitoring.xml
     healthcheck:
