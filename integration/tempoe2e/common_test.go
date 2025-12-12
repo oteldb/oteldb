@@ -41,21 +41,11 @@ func readBatchSet(p string) (s tempoe2e.BatchSet, _ error) {
 }
 
 func setupDB(
-	ctx context.Context,
 	t *testing.T,
 	provider trace.TracerProvider,
-	set tempoe2e.BatchSet,
-	inserter tracestorage.Inserter,
 	querier tracestorage.Querier,
 	engineQuerier traceqlengine.Querier,
 ) *tempoapi.Client {
-	consumer := tracestorage.NewConsumer(inserter)
-	for i, b := range set.Batches {
-		if err := consumer.ConsumeTraces(ctx, b); err != nil {
-			t.Fatalf("Send batch %d: %+v", i, err)
-		}
-	}
-
 	var engine *traceqlengine.Engine
 	if engineQuerier != nil {
 		engine = traceqlengine.NewEngine(engineQuerier, traceqlengine.Options{
@@ -81,20 +71,30 @@ func setupDB(
 	return c
 }
 
-func runTest(
-	ctx context.Context,
-	t *testing.T,
-	provider trace.TracerProvider,
-	inserter tracestorage.Inserter,
-	querier tracestorage.Querier,
-	engineQuerier traceqlengine.Querier,
-) {
+func loadTestData(ctx context.Context, t *testing.T, inserter tracestorage.Inserter) tempoe2e.BatchSet {
 	set, err := readBatchSet("_testdata/traces.json")
 	require.NoError(t, err)
 	require.NotEmpty(t, set.Batches)
 	require.NotEmpty(t, set.Tags)
 	require.NotEmpty(t, set.Traces)
 
+	consumer := tracestorage.NewConsumer(inserter)
+	for i, b := range set.Batches {
+		if err := consumer.ConsumeTraces(ctx, b); err != nil {
+			t.Fatalf("Send batch %d: %+v", i, err)
+		}
+	}
+	return set
+}
+
+func runTest(
+	ctx context.Context,
+	t *testing.T,
+	provider trace.TracerProvider,
+	set tempoe2e.BatchSet,
+	querier tracestorage.Querier,
+	engineQuerier traceqlengine.Querier,
+) {
 	var (
 		resourceTagNames = map[string]struct{}{}
 		spanTagNames     = map[string]struct{}{}
@@ -112,7 +112,7 @@ func runTest(
 		}
 	}
 
-	c := setupDB(ctx, t, provider, set, inserter, querier, engineQuerier)
+	c := setupDB(t, provider, querier, engineQuerier)
 	var (
 		start = tempoapi.NewOptUnixSeconds(set.Start.AsTime().Add(-time.Second))
 		end   = tempoapi.NewOptUnixSeconds(set.End.AsTime())

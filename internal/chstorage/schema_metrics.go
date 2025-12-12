@@ -9,6 +9,46 @@ import (
 
 type metricMapping int8
 
+func (m metricMapping) NameSuffix() string {
+	switch m {
+	case histogramMin:
+		return "_min"
+	case histogramMax:
+		return "_max"
+	case histogramBucket:
+		return "_bucket"
+	case histogramCount, summaryCount:
+		return "_count"
+	case histogramSum, summarySum:
+		return "_sum"
+	default:
+		return ""
+	}
+}
+
+func (m metricMapping) IsHistogram() bool {
+	switch m {
+	case histogramCount,
+		histogramSum,
+		histogramMin,
+		histogramMax:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m metricMapping) IsSummary() bool {
+	switch m {
+	case summaryCount,
+		summaryQuantile,
+		summarySum:
+		return true
+	default:
+		return false
+	}
+}
+
 const (
 	noMapping metricMapping = iota
 	histogramCount

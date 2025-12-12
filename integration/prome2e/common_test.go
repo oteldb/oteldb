@@ -104,21 +104,11 @@ findLoop:
 }
 
 func setupDB(
-	ctx context.Context,
 	t *testing.T,
 	provider trace.TracerProvider,
-	set prome2e.BatchSet,
-	consumer MetricsConsumer,
 	querier storage.Queryable,
 	exemplarQuerier storage.ExemplarQueryable,
 ) *promapi.Client {
-	for i, b := range set.Batches {
-		tryGenerateExemplars(b)
-		if err := consumer.ConsumeMetrics(ctx, b); err != nil {
-			t.Fatalf("Send batch %d: %+v", i, err)
-		}
-	}
-
 	engine := promql.NewEngine(promql.EngineOpts{
 		Timeout:              time.Minute,
 		MaxSamples:           1_000_000,
@@ -141,19 +131,30 @@ func setupDB(
 	return c
 }
 
-func runTest(
-	ctx context.Context,
-	t *testing.T,
-	provider trace.TracerProvider,
-	consumer MetricsConsumer,
-	querier storage.Queryable,
-	exemplarQuerier storage.ExemplarQueryable,
-) {
+func loadTestData(ctx context.Context, t *testing.T, consumer MetricsConsumer) prome2e.BatchSet {
 	set, err := readBatchSet("_testdata/metrics.json")
 	require.NoError(t, err)
 	require.NotEmpty(t, set.Batches)
 	require.NotEmpty(t, set.Labels)
-	c := setupDB(ctx, t, provider, set, consumer, querier, exemplarQuerier)
+
+	for i, b := range set.Batches {
+		tryGenerateExemplars(b)
+		if err := consumer.ConsumeMetrics(ctx, b); err != nil {
+			t.Fatalf("Send batch %d: %+v", i, err)
+		}
+	}
+	return set
+}
+
+func runTest(
+	ctx context.Context,
+	t *testing.T,
+	provider trace.TracerProvider,
+	set prome2e.BatchSet,
+	querier storage.Queryable,
+	exemplarQuerier storage.ExemplarQueryable,
+) {
+	c := setupDB(t, provider, querier, exemplarQuerier)
 
 	t.Run("Labels", func(t *testing.T) {
 		t.Run("All", func(t *testing.T) {
