@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	promqlengine "github.com/oteldb/promql-engine/engine"
+	enginestorage "github.com/oteldb/promql-engine/storage"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
@@ -103,17 +105,27 @@ findLoop:
 	attrs.PutInt("code", 10)
 }
 
+type Querier interface {
+	storage.Queryable
+	MetricsScanners() (enginestorage.Scanners, error)
+}
+
 func setupDB(
 	t *testing.T,
 	provider trace.TracerProvider,
-	querier storage.Queryable,
+	querier Querier,
 	exemplarQuerier storage.ExemplarQueryable,
 ) *promapi.Client {
-	engine := promql.NewEngine(promql.EngineOpts{
-		Timeout:              time.Minute,
-		MaxSamples:           1_000_000,
-		EnableNegativeOffset: true,
-	})
+	scanners, err := querier.MetricsScanners()
+	require.NoError(t, err)
+
+	engine := promqlengine.NewWithScanners(promqlengine.Opts{
+		EngineOpts: promql.EngineOpts{
+			Timeout:              time.Minute,
+			MaxSamples:           1_000_000,
+			EnableNegativeOffset: true,
+		},
+	}, scanners)
 	api := promhandler.NewPromAPI(engine, querier, exemplarQuerier, promhandler.PromAPIOptions{})
 	promh, err := promapi.NewServer(api,
 		promapi.WithTracerProvider(provider),
@@ -151,7 +163,7 @@ func runTest(
 	t *testing.T,
 	provider trace.TracerProvider,
 	set prome2e.BatchSet,
-	querier storage.Queryable,
+	querier Querier,
 	exemplarQuerier storage.ExemplarQueryable,
 ) {
 	c := setupDB(t, provider, querier, exemplarQuerier)
