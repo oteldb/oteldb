@@ -95,7 +95,7 @@ jobs:
 
       - name: Upload report
         if: ${{ env.TEST_BROKEN != 'true' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: report.yml
           path: ${{ env.WORKDIR }}/report.yml
