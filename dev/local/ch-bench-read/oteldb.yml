@@ -1,4 +1,4 @@
-dsn: clickhouse://clickhouse:9000
+dsn: clickhouse://default:default@clickhouse:9000
 prometheus:
   bind: 0.0.0.0:9090
   max_samples: 1_000_000
@@ -13,7 +13,7 @@ otelcol:
       time_threshold: 100_000 # hours
   exporters:
     oteldbexporter:
-      dsn: clickhouse://clickhouse:9000
+      dsn: clickhouse://default:default@clickhouse:9000
   service:
     pipelines:
       metrics:

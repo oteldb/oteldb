@@ -1,4 +1,4 @@
-dsn: clickhouse://clickhouse:9000
+dsn: clickhouse://default:default@clickhouse:9000
 loki:
   bind: 0.0.0.0:3100
 health_check:
@@ -13,7 +13,7 @@ otelcol:
           endpoint: 0.0.0.0:4318
   exporters:
     oteldbexporter:
-      dsn: clickhouse://clickhouse:9000
+      dsn: clickhouse://default:default@clickhouse:9000
   service:
     pipelines:
       logs:

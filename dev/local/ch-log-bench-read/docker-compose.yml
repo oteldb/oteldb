@@ -28,6 +28,7 @@ services:
     environment:
       - PPROF_ADDR=0.0.0.0:9010
       - OTELDB_STORAGE=ch
+      - CH_DSN=clickhouse://default:default@clickhouse:9000
       - OTEL_LOG_LEVEL=info
       - OTEL_EXPORTER_PROMETHEUS_HOST=0.0.0.0
       - OTEL_EXPORTER_PROMETHEUS_PORT=9464
@@ -60,6 +61,7 @@ services:
       dockerfile: chotel.Dockerfile
     restart: always
     environment:
+      - CH_DSN=clickhouse://default:default@clickhouse:9000
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_EXPORTER_OTLP_INSECURE=true

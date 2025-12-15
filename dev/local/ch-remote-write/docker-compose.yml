@@ -27,6 +27,7 @@ services:
       dockerfile: chotel.Dockerfile
     restart: always
     environment:
+      - CH_DSN=clickhouse://default:default@clickhouse:9000
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_EXPORTER_OTLP_INSECURE=true
