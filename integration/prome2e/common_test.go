@@ -8,10 +8,6 @@ import (
 	"testing"
 	"time"
 
-	promqlengine "github.com/oteldb/promql-engine/engine"
-	enginestorage "github.com/oteldb/promql-engine/storage"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -22,6 +18,7 @@ import (
 	"github.com/go-faster/oteldb/integration/requirex"
 	"github.com/go-faster/oteldb/internal/promapi"
 	"github.com/go-faster/oteldb/internal/promhandler"
+	"github.com/go-faster/oteldb/internal/promql"
 )
 
 // MetricsConsumer is metrics consumer.
@@ -105,28 +102,18 @@ findLoop:
 	attrs.PutInt("code", 10)
 }
 
-type Querier interface {
-	storage.Queryable
-	MetricsScanners() (enginestorage.Scanners, error)
-}
-
 func setupDB(
 	t *testing.T,
 	provider trace.TracerProvider,
-	querier Querier,
-	exemplarQuerier storage.ExemplarQueryable,
+	querier promql.Querier,
 ) *promapi.Client {
-	scanners, err := querier.MetricsScanners()
+	engine, err := promql.New(querier, promql.EngineOpts{
+		Timeout:              time.Minute,
+		MaxSamples:           1_000_000,
+		EnableNegativeOffset: true,
+	})
 	require.NoError(t, err)
-
-	engine := promqlengine.NewWithScanners(promqlengine.Opts{
-		EngineOpts: promql.EngineOpts{
-			Timeout:              time.Minute,
-			MaxSamples:           1_000_000,
-			EnableNegativeOffset: true,
-		},
-	}, scanners)
-	api := promhandler.NewPromAPI(engine, querier, exemplarQuerier, promhandler.PromAPIOptions{})
+	api := promhandler.NewPromAPI(engine, querier, querier, promhandler.PromAPIOptions{})
 	promh, err := promapi.NewServer(api,
 		promapi.WithTracerProvider(provider),
 	)
@@ -163,10 +150,9 @@ func runTest(
 	t *testing.T,
 	provider trace.TracerProvider,
 	set prome2e.BatchSet,
-	querier Querier,
-	exemplarQuerier storage.ExemplarQueryable,
+	querier promql.Querier,
 ) {
-	c := setupDB(t, provider, querier, exemplarQuerier)
+	c := setupDB(t, provider, querier)
 
 	t.Run("Labels", func(t *testing.T) {
 		t.Run("All", func(t *testing.T) {

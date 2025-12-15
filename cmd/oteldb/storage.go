@@ -6,14 +6,13 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
-	enginestorage "github.com/oteldb/promql-engine/storage"
-	"github.com/prometheus/prometheus/storage"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/oteldb/internal/chstorage"
 	"github.com/go-faster/oteldb/internal/globalmetric"
 	"github.com/go-faster/oteldb/internal/logql/logqlengine"
 	"github.com/go-faster/oteldb/internal/logstorage"
+	"github.com/go-faster/oteldb/internal/promql"
 	"github.com/go-faster/oteldb/internal/traceql/traceqlengine"
 	"github.com/go-faster/oteldb/internal/tracestorage"
 )
@@ -34,11 +33,7 @@ type traceQuerier interface {
 	traceqlengine.Querier
 }
 
-type metricQuerier interface {
-	storage.Queryable
-	storage.ExemplarQueryable
-	MetricsScanners() (enginestorage.Scanners, error)
-}
+type metricQuerier = promql.Querier
 
 func setupCH(
 	ctx context.Context,

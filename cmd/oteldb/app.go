@@ -13,8 +13,6 @@ import (
 	sdkapp "github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
 	"github.com/ogen-go/ogen/ogenerrors"
-	promqlengine "github.com/oteldb/promql-engine/engine"
-	"github.com/prometheus/prometheus/promql"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/provider/envprovider"
@@ -34,6 +32,7 @@ import (
 	"github.com/go-faster/oteldb/internal/otelreceiver"
 	"github.com/go-faster/oteldb/internal/promapi"
 	"github.com/go-faster/oteldb/internal/promhandler"
+	"github.com/go-faster/oteldb/internal/promql"
 	"github.com/go-faster/oteldb/internal/tempoapi"
 	"github.com/go-faster/oteldb/internal/tempohandler"
 	"github.com/go-faster/oteldb/internal/traceql/traceqlengine"
@@ -255,23 +254,19 @@ func (app *App) trySetupProm() error {
 	cfg := app.cfg.Prometheus
 	cfg.setDefaults()
 
-	scanners, err := q.MetricsScanners()
+	engine, err := promql.New(q, promql.EngineOpts{
+		// NOTE: zero-value MaxSamples and Timeout makes
+		// all queries to fail with error.
+		MaxSamples:           cfg.MaxSamples,
+		Timeout:              cfg.Timeout,
+		LookbackDelta:        cfg.LookbackDelta,
+		EnableAtModifier:     cfg.EnableAtModifier,
+		EnableNegativeOffset: *cfg.EnableNegativeOffset,
+		EnablePerStepStats:   cfg.EnablePerStepStats,
+	})
 	if err != nil {
-		return errors.Wrap(err, "setup scanners")
+		return errors.Wrap(err, "create PromQL engine")
 	}
-
-	engine := promqlengine.NewWithScanners(promqlengine.Opts{
-		EngineOpts: promql.EngineOpts{
-			// NOTE: zero-value MaxSamples and Timeout makes
-			// all queries to fail with error.
-			MaxSamples:           cfg.MaxSamples,
-			Timeout:              cfg.Timeout,
-			LookbackDelta:        cfg.LookbackDelta,
-			EnableAtModifier:     cfg.EnableAtModifier,
-			EnableNegativeOffset: *cfg.EnableNegativeOffset,
-			EnablePerStepStats:   cfg.EnablePerStepStats,
-		},
-	}, scanners)
 	prom := promhandler.NewPromAPI(engine, q, q, promhandler.PromAPIOptions{})
 
 	s, err := promapi.NewServer(prom,
