@@ -54,22 +54,26 @@ func (s *promScanners) NewVectorSelector(
 		hints.ProjectionInclude = logicalNode.Projection.Include
 	}
 
-	pq, err := s.storage.Querier(hints.Start, hints.End)
+	q, err := s.storage.Querier(hints.Start, hints.End)
 	if err != nil {
 		return nil, errors.Wrap(err, "make querier")
 	}
-	q := pq.(*promQuerier)
 
 	selector := s.makeFilteredSelector(q, logicalNode.VectorSelector.LabelMatchers, logicalNode.Filters, hints)
 	if logicalNode.DecodeNativeHistogramStats {
 		selector = newHistogramStatsSelector(selector)
 	}
-	if canUseSampledPoints(time.Duration(hints.Step)*time.Millisecond, &hints) {
+	var (
+		step     = time.Duration(hints.Step) * time.Millisecond
+		aggRange = time.Duration(hints.Range) * time.Millisecond
+	)
+
+	if canUseSampledPoints(step, &hints) {
 		// HACK(tdakkota): Since we generate the step entirely within ClickHouse, at high step values the
 		// 	PromQL engine may consider the metric stale due to a low data point density.
 		cpyOpts := *opts
-		cpyOpts.LookbackDelta = math.MaxInt64
-		cpyOpts.ExtLookbackDelta = math.MaxInt64
+		cpyOpts.LookbackDelta = max(step, aggRange, opts.LookbackDelta)
+		cpyOpts.ExtLookbackDelta = max(step, aggRange, opts.ExtLookbackDelta)
 		opts = &cpyOpts
 	}
 
@@ -85,128 +89,6 @@ func (s *promScanners) NewVectorSelector(
 	)
 	op = exchange.NewConcurrent(op, 2, opts)
 	return op, nil
-}
-
-func (s *promScanners) makeSelector(q storage.Querier, matchers []*labels.Matcher, hints storage.SelectHints) promscanners.SeriesSelector {
-	return newSeriesSelector(q, matchers, hints)
-}
-
-type seriesSelector struct {
-	storage  storage.Querier
-	matchers []*labels.Matcher
-	hints    storage.SelectHints
-
-	once   sync.Once
-	series []promscanners.SignedSeries
-}
-
-func newSeriesSelector(querier storage.Querier, matchers []*labels.Matcher, hints storage.SelectHints) *seriesSelector {
-	return &seriesSelector{
-		storage:  querier,
-		matchers: matchers,
-		hints:    hints,
-	}
-}
-
-func (o *seriesSelector) Matchers() []*labels.Matcher {
-	return o.matchers
-}
-
-func (o *seriesSelector) GetSeries(ctx context.Context, shard, numShards int) ([]promscanners.SignedSeries, error) {
-	var err error
-	o.once.Do(func() { err = o.loadSeries(ctx) })
-	if err != nil {
-		return nil, err
-	}
-
-	return seriesShard(o.series, shard, numShards), nil
-}
-
-func (o *seriesSelector) loadSeries(ctx context.Context) error {
-	seriesSet := o.storage.Select(ctx, false, &o.hints, o.matchers...)
-	i := 0
-	for seriesSet.Next() {
-		s := seriesSet.At()
-		o.series = append(o.series, promscanners.SignedSeries{
-			Series:    s,
-			Signature: uint64(i),
-		})
-		i++
-	}
-
-	for _, w := range seriesSet.Warnings() {
-		warnings.AddToContext(w, ctx)
-	}
-	return seriesSet.Err()
-}
-
-func (s *promScanners) makeFilteredSelector(q storage.Querier, matchers, filters []*labels.Matcher, hints storage.SelectHints) promscanners.SeriesSelector {
-	sub := s.makeSelector(q, matchers, hints)
-	return newFilteredSelector(sub, promscanners.NewFilter(filters))
-}
-
-type filteredSelector struct {
-	selector promscanners.SeriesSelector
-	filter   promscanners.Filter
-
-	once   sync.Once
-	series []promscanners.SignedSeries
-}
-
-func newFilteredSelector(selector promscanners.SeriesSelector, filter promscanners.Filter) promscanners.SeriesSelector {
-	return &filteredSelector{
-		selector: selector,
-		filter:   filter,
-	}
-}
-
-func (f *filteredSelector) Matchers() []*labels.Matcher {
-	return slices.Concat(f.selector.Matchers(), f.filter.Matchers())
-}
-
-func (f *filteredSelector) GetSeries(ctx context.Context, shard, numShards int) ([]promscanners.SignedSeries, error) {
-	var err error
-	f.once.Do(func() { err = f.loadSeries(ctx) })
-	if err != nil {
-		return nil, err
-	}
-
-	return seriesShard(f.series, shard, numShards), nil
-}
-
-func seriesShard(series []promscanners.SignedSeries, index, numShards int) []promscanners.SignedSeries {
-	start := index * len(series) / numShards
-	end := min((index+1)*len(series)/numShards, len(series))
-
-	slice := series[start:end]
-	shard := make([]promscanners.SignedSeries, len(slice))
-	copy(shard, slice)
-
-	for i := range shard {
-		shard[i].Signature = uint64(i)
-	}
-	return shard
-}
-
-func (f *filteredSelector) loadSeries(ctx context.Context) error {
-	series, err := f.selector.GetSeries(ctx, 0, 1)
-	if err != nil {
-		return err
-	}
-
-	var i uint64
-	f.series = make([]promscanners.SignedSeries, 0, len(series))
-	for _, s := range series {
-		if f.filter.Matches(s) {
-			f.series = append(f.series, promscanners.SignedSeries{
-				Series:    s.Series,
-				Signature: i,
-			})
-			i++
-		}
-	}
-
-	return nil
 }
 
 // NewVectorSelector selects a PromQL matrix from the storage.
@@ -287,6 +169,119 @@ func (s *promScanners) NewMatrixSelector(
 	}
 	op = exchange.NewConcurrent(op, 2, opts)
 	return op, nil
+}
+
+type seriesSelector struct {
+	storage  storage.Querier
+	matchers []*labels.Matcher
+	hints    storage.SelectHints
+
+	once   sync.Once
+	series []promscanners.SignedSeries
+}
+
+func (s *promScanners) makeSelector(q storage.Querier, matchers []*labels.Matcher, hints storage.SelectHints) promscanners.SeriesSelector {
+	return &seriesSelector{
+		storage:  q,
+		matchers: matchers,
+		hints:    hints,
+	}
+}
+
+func (o *seriesSelector) Matchers() []*labels.Matcher {
+	return o.matchers
+}
+
+func (o *seriesSelector) GetSeries(ctx context.Context, shard, numShards int) ([]promscanners.SignedSeries, error) {
+	var err error
+	o.once.Do(func() { err = o.loadSeries(ctx) })
+	if err != nil {
+		return nil, err
+	}
+
+	return seriesShard(o.series, shard, numShards), nil
+}
+
+func (o *seriesSelector) loadSeries(ctx context.Context) error {
+	seriesSet := o.storage.Select(ctx, false, &o.hints, o.matchers...)
+	i := 0
+	for seriesSet.Next() {
+		s := seriesSet.At()
+		o.series = append(o.series, promscanners.SignedSeries{
+			Series:    s,
+			Signature: uint64(i),
+		})
+		i++
+	}
+
+	for _, w := range seriesSet.Warnings() {
+		warnings.AddToContext(w, ctx)
+	}
+	return seriesSet.Err()
+}
+
+type filteredSelector struct {
+	selector promscanners.SeriesSelector
+	filter   promscanners.Filter
+
+	once   sync.Once
+	series []promscanners.SignedSeries
+}
+
+func (s *promScanners) makeFilteredSelector(q storage.Querier, matchers, filters []*labels.Matcher, hints storage.SelectHints) promscanners.SeriesSelector {
+	return &filteredSelector{
+		selector: s.makeSelector(q, matchers, hints),
+		filter:   promscanners.NewFilter(filters),
+	}
+}
+
+func (f *filteredSelector) Matchers() []*labels.Matcher {
+	return slices.Concat(f.selector.Matchers(), f.filter.Matchers())
+}
+
+func (f *filteredSelector) GetSeries(ctx context.Context, shard, numShards int) ([]promscanners.SignedSeries, error) {
+	var err error
+	f.once.Do(func() { err = f.loadSeries(ctx) })
+	if err != nil {
+		return nil, err
+	}
+
+	return seriesShard(f.series, shard, numShards), nil
+}
+
+func (f *filteredSelector) loadSeries(ctx context.Context) error {
+	series, err := f.selector.GetSeries(ctx, 0, 1)
+	if err != nil {
+		return err
+	}
+
+	var i uint64
+	f.series = make([]promscanners.SignedSeries, 0, len(series))
+	for _, s := range series {
+		if f.filter.Matches(s) {
+			f.series = append(f.series, promscanners.SignedSeries{
+				Series:    s.Series,
+				Signature: i,
+			})
+			i++
+		}
+	}
+
+	return nil
+}
+
+func seriesShard(series []promscanners.SignedSeries, index, numShards int) []promscanners.SignedSeries {
+	start := index * len(series) / numShards
+	end := min((index+1)*len(series)/numShards, len(series))
+
+	slice := series[start:end]
+	shard := make([]promscanners.SignedSeries, len(slice))
+	copy(shard, slice)
+
+	for i := range shard {
+		shard[i].Signature = uint64(i)
+	}
+	return shard
 }
 
 type histogramStatsSelector struct {
