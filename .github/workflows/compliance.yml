@@ -70,7 +70,7 @@ jobs:
           -end 1m -range 1m > result.oteldb.json || true
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: result.promql.json
           path: dev/local/ch-compliance/result.oteldb.json
@@ -141,7 +141,7 @@ jobs:
 
       - name: Upload artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: result.logql.json
           path: dev/local/ch-logql-compliance/result.oteldb.json
