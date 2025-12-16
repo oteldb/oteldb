@@ -34,5 +34,11 @@ func New(q Querier, opts promql.EngineOpts) (Engine, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "create scanners")
 	}
-	return promqlengine.NewWithScanners(promqlengine.Opts{EngineOpts: opts}, scanners), nil
+	return promqlengine.NewWithScanners(
+		promqlengine.Opts{
+			EngineOpts:     opts,
+			EnableAnalysis: true,
+		},
+		scanners,
+	), nil
 }
