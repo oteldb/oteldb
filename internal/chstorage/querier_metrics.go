@@ -61,7 +61,7 @@ type promQuerier struct {
 	labelLimit int
 
 	queryTimeseries queryMetricsTimeseriesFunc
-	metricsSg       *singleflight.Group[xxh3.Uint128, *seriesSet[storage.Series]]
+	metricsSg       *singleflight.Group[xxh3.Uint128, metricSelectResult]
 	do              func(ctx context.Context, s selectQuery) error
 
 	tracer trace.Tracer
@@ -211,173 +211,22 @@ func (p *promQuerier) Select(ctx context.Context, sortSeries bool, hints *storag
 		return ss
 	}
 
-	var (
-		parentSpan = span
-		parentLink = trace.LinkFromContext(ctx)
-		hash       = hashSelectParams(sortSeries, start, end, hints, matchers)
-	)
-	resultCh := p.metricsSg.DoChanContext(ctx, hash, func(ctx context.Context) (_ *seriesSet[storage.Series], rerr error) {
-		ctx, span := p.tracer.Start(ctx, "chstorage.metrics.singelflight.selectSeries",
-			trace.WithLinks(parentLink),
-		)
-		defer func() {
-			if rerr != nil {
-				span.RecordError(rerr)
-			}
-			span.End()
-		}()
-		parentSpan.AddLink(trace.LinkFromContext(ctx))
-		return p.selectSeries(ctx, sortSeries, start, end, hints, matchers...)
+	r, err := p.querySeriesSingleflight(ctx, false, metricSelectParams{
+		Matchers:        matchers,
+		Step:            time.Duration(hints.Step) * time.Millisecond,
+		Start:           start,
+		End:             end,
+		Range:           time.Duration(hints.Range) * time.Millisecond,
+		LookbackDelta:   0,
+		Function:        hints.Func,
+		SelectTimestamp: false,
+		GroupBy:         hints.By,
+		Grouping:        hints.Grouping,
 	})
-
-	select {
-	case <-ctx.Done():
-		return storage.ErrSeriesSet(ctx.Err())
-	case r := <-resultCh:
-		result, shared, err := r.Val, r.Shared, r.Err
-
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			// Query did not complete, probably stuck.
-			span.AddEvent("retry_query")
-			// Try again without singleflight.
-			result, err = p.selectSeries(ctx, sortSeries, start, end, hints, matchers...)
-			shared = false
-		}
-		if err != nil {
-			return storage.ErrSeriesSet(err)
-		}
-
-		span.AddEvent("got_series_set", trace.WithAttributes(
-			attribute.Bool("chstorage.shared_result", shared),
-			attribute.Int("chstorage.total_series", len(result.set)),
-		))
-		if shared {
-			result = result.Clone()
-		}
-		return result
-	}
-}
-
-func hashSelectParams(sortSeries bool, start, end time.Time, hints *storage.SelectHints, matchers []*labels.Matcher) xxh3.Uint128 {
-	const sep = ","
-	writeBool := func(h *xxh3.Hasher, val bool) {
-		if val {
-			_, _ = h.Write([]byte{1})
-		} else {
-			_, _ = h.Write([]byte{0})
-		}
-		_, _ = h.WriteString(sep)
-	}
-	writeInt64 := func(h *xxh3.Hasher, val int64) {
-		_, _ = h.WriteString(strconv.FormatInt(val, 10))
-		_, _ = h.WriteString(sep)
-	}
-	writeStrings := func(h *xxh3.Hasher, ss []string) {
-		for i, v := range ss {
-			if i != 0 {
-				_, _ = h.WriteString(";")
-			}
-			_, _ = h.WriteString(v)
-		}
-		_, _ = h.WriteString(sep)
-	}
-
-	h := xxh3.New()
-	writeBool(h, sortSeries)
-	if hints != nil {
-		writeInt64(h, start.UnixMilli())
-		writeInt64(h, end.UnixMilli())
-		writeInt64(h, hints.Step)
-		_, _ = h.WriteString(hints.Func)
-		_, _ = h.WriteString(sep)
-		writeStrings(h, hints.Grouping)
-		writeBool(h, hints.By)
-		writeStrings(h, hints.ProjectionLabels)
-		writeBool(h, hints.ProjectionInclude)
-	}
-	_, _ = h.WriteString(sep)
-	hashPrometheusMatchers(h, [][]*labels.Matcher{matchers})
-
-	return h.Sum128()
-}
-
-func canUseSampledPoints(stepDuration time.Duration, hints *storage.SelectHints) bool {
-	if stepDuration < time.Second {
-		return false
-	}
-	switch hints.Func {
-	case "", "count":
-		return true
-	default:
-		return false
-	}
-}
-
-func (p *promQuerier) selectSeries(
-	ctx context.Context,
-	sortSeries bool,
-	start, end time.Time,
-	hints *storage.SelectHints,
-	matchers ...*labels.Matcher,
-) (_ *seriesSet[storage.Series], rerr error) {
-	timeseries, err := p.queryTimeseries(ctx, [][]*labels.Matcher{matchers})
 	if err != nil {
-		return nil, errors.Wrap(err, "query timeseries hashes")
+		return storage.ErrSeriesSet(err)
 	}
-
-	if len(timeseries) == 0 {
-		// No data.
-		trace.SpanFromContext(ctx).AddEvent("chstorage.no_timeseries_selected")
-		return newSeriesSet[storage.Series](nil), nil
-	}
-
-	var (
-		points        []storage.Series
-		expHistSeries []storage.Series
-	)
-	grp, grpCtx := errgroup.WithContext(ctx)
-	grp.Go(func() error {
-		ctx := grpCtx
-
-		stepDuration := time.Duration(hints.Step) * time.Millisecond
-		if canUseSampledPoints(stepDuration, hints) {
-			result, err := p.querySampledPoints(ctx, p.tables.Points, hints.By, hints.Grouping, start, end, stepDuration, timeseries)
-			if err != nil {
-				return errors.Wrap(err, "query sampled points")
-			}
-			points = result
-		} else {
-			result, err := p.queryPoints(ctx, p.tables.Points, start, end, timeseries)
-			if err != nil {
-				return errors.Wrap(err, "query points")
-			}
-			points = result
-		}
-
-		return nil
-	})
-	grp.Go(func() error {
-		ctx := grpCtx
-
-		result, err := p.queryExpHistograms(ctx, p.tables.ExpHistograms, start, end, timeseries)
-		if err != nil {
-			return errors.Wrap(err, "query exponential histograms")
-		}
-
-		expHistSeries = result
-		return nil
-	})
-	if err := grp.Wait(); err != nil {
-		return nil, err
-	}
-
-	points = append(points, expHistSeries...)
-	if sortSeries {
-		slices.SortFunc(points, func(a, b storage.Series) int {
-			return labels.Compare(a.Labels(), b.Labels())
-		})
-	}
-	return newSeriesSet(points), nil
+	return r.Set(sortSeries)
 }
 
 func (p *promQuerier) extractHints(hints *storage.SelectHints) (_ *storage.SelectHints, start, end time.Time) {
@@ -394,7 +243,218 @@ func (p *promQuerier) extractHints(hints *storage.SelectHints) (_ *storage.Selec
 	return hints, start, end
 }
 
-func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (_ []storage.Series, rerr error) {
+type metricSelectParams struct {
+	Matchers   []*labels.Matcher
+	Step       time.Duration
+	Start, End time.Time
+
+	Range         time.Duration
+	LookbackDelta time.Duration
+
+	Function string
+
+	SelectTimestamp bool
+	GroupBy         bool
+	Grouping        []string
+}
+
+func (p *metricSelectParams) Hash() xxh3.Uint128 {
+	const sep = ","
+	writeBool := func(h *xxh3.Hasher, val bool) {
+		if val {
+			_, _ = h.Write([]byte{1})
+		} else {
+			_, _ = h.Write([]byte{0})
+		}
+		_, _ = h.WriteString(sep)
+	}
+	writeInt64 := func(h *xxh3.Hasher, val int64) {
+		_, _ = h.WriteString(strconv.FormatInt(val, 10))
+		_, _ = h.WriteString(sep)
+	}
+	writeString := func(h *xxh3.Hasher, val string) {
+		_, _ = h.WriteString(val)
+		_, _ = h.WriteString(sep)
+	}
+	writeStrings := func(h *xxh3.Hasher, ss []string) {
+		for i, v := range ss {
+			if i != 0 {
+				_, _ = h.WriteString(";")
+			}
+			_, _ = h.WriteString(v)
+		}
+		_, _ = h.WriteString(sep)
+	}
+
+	h := xxh3.New()
+	hashPrometheusMatchers(h, [][]*labels.Matcher{p.Matchers})
+	writeInt64(h, p.Step.Milliseconds())
+	writeInt64(h, p.Start.UnixMilli())
+	writeInt64(h, p.End.UnixMilli())
+	writeInt64(h, p.Range.Milliseconds())
+	writeInt64(h, p.LookbackDelta.Milliseconds())
+	writeString(h, p.Function)
+	writeBool(h, p.SelectTimestamp)
+	writeBool(h, p.GroupBy)
+	writeStrings(h, p.Grouping)
+	return h.Sum128()
+}
+
+type metricSelectResult struct {
+	points  []*series[pointData]
+	expHist []*series[expHistData]
+}
+
+func (r *metricSelectResult) Set(sortSeries bool) *seriesSet[storage.Series] {
+	result := make([]storage.Series, 0, len(r.points)+len(r.expHist))
+	for _, s := range r.points {
+		result = append(result, s)
+	}
+	for _, s := range r.expHist {
+		result = append(result, s)
+	}
+	if sortSeries {
+		slices.SortFunc(result, func(a, b storage.Series) int {
+			return labels.Compare(a.Labels(), b.Labels())
+		})
+	}
+	return newSeriesSet(result)
+}
+
+func (p *promQuerier) querySeriesSingleflight(ctx context.Context, samplePoints bool, params metricSelectParams) (_ metricSelectResult, rerr error) {
+	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.querySeriesSingleflight",
+		trace.WithAttributes(
+			xattribute.StringerSlice("promql.matchers", params.Matchers),
+			attribute.Int64("promql.step", params.Step.Milliseconds()),
+			attribute.Int64("promql.start", params.Start.UnixMilli()),
+			attribute.Int64("promql.end", params.End.UnixMilli()),
+			attribute.Int64("promql.range", params.Range.Milliseconds()),
+			attribute.Int64("promql.lookback_delta", params.LookbackDelta.Milliseconds()),
+			attribute.String("promql.function", params.Function),
+			attribute.Bool("promql.select_timestamp", params.SelectTimestamp),
+			attribute.Bool("promql.group_by", params.GroupBy),
+			attribute.StringSlice("promql.grouping", params.Grouping),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+		}
+		span.End()
+	}()
+
+	var (
+		parentSpan = span
+		parentLink = trace.LinkFromContext(ctx)
+		hash       = params.Hash()
+	)
+	resultCh := p.metricsSg.DoChanContext(ctx, hash, func(ctx context.Context) (_ metricSelectResult, rerr error) {
+		ctx, span := p.tracer.Start(ctx, "chstorage.metrics.singelflight.querySeries",
+			trace.WithLinks(parentLink),
+		)
+		defer func() {
+			if rerr != nil {
+				span.RecordError(rerr)
+			}
+			span.End()
+		}()
+		parentSpan.AddLink(trace.LinkFromContext(ctx))
+		return p.querySeries(ctx, samplePoints, params)
+	})
+
+	select {
+	case <-ctx.Done():
+		return metricSelectResult{}, ctx.Err()
+	case r := <-resultCh:
+		result, shared, err := r.Val, r.Shared, r.Err
+
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			// Query did not complete, probably stuck.
+			span.AddEvent("retry_query")
+			// Try again without singleflight.
+			result, err = p.querySeries(ctx, samplePoints, params)
+			shared = false
+		}
+		if err != nil {
+			return result, err
+		}
+
+		span.AddEvent("got_series_set", trace.WithAttributes(
+			attribute.Bool("chstorage.shared_result", shared),
+			attribute.Int("chstorage.point_series", len(result.points)),
+			attribute.Int("chstorage.exp_hist_series", len(result.expHist)),
+		))
+		return result, nil
+	}
+}
+
+func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params metricSelectParams) (result metricSelectResult, _ error) {
+	span := trace.SpanFromContext(ctx)
+
+	timeseries, err := p.queryTimeseries(ctx, [][]*labels.Matcher{params.Matchers})
+	if err != nil {
+		return result, errors.Wrap(err, "query timeseries hashes")
+	}
+
+	if len(timeseries) == 0 {
+		// No data.
+		trace.SpanFromContext(ctx).AddEvent("chstorage.no_timeseries_selected")
+		return result, nil
+	}
+
+	step := params.Step
+	if r := params.LookbackDelta; r != 0 && r < step {
+		step = r
+	}
+	if r := params.Range; r != 0 && r < step {
+		step = r
+	}
+
+	grp, grpCtx := errgroup.WithContext(ctx)
+	grp.Go(func() error {
+		ctx := grpCtx
+
+		if samplePoints && canUseSampledPoints(step, params.Function) {
+			span.AddEvent("chstorage.use_sampled_points", trace.WithAttributes(
+				attribute.Int64("chstorage.window_step", step.Milliseconds()),
+			))
+
+			points, err := p.querySampledPoints(ctx, params.GroupBy, params.Grouping, params.Start, params.End, step, timeseries)
+			if err != nil {
+				return errors.Wrap(err, "query sampled points")
+			}
+			result.points = points
+		} else {
+			points, err := p.queryPoints(ctx, p.tables.Points, params.Start, params.End, timeseries)
+			if err != nil {
+				return errors.Wrap(err, "query points")
+			}
+			result.points = points
+		}
+
+		return nil
+	})
+	if !params.SelectTimestamp {
+		grp.Go(func() error {
+			ctx := grpCtx
+
+			expHist, err := p.queryExpHistograms(ctx, p.tables.ExpHistograms, params.Start, params.End, timeseries)
+			if err != nil {
+				return errors.Wrap(err, "query exponential histograms")
+			}
+			result.expHist = expHist
+
+			return nil
+		})
+	}
+	if err := grp.Wait(); err != nil {
+		return result, err
+	}
+
+	return result, nil
+}
+
+func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (_ []*series[pointData], rerr error) {
 	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.queryPoints",
 		trace.WithAttributes(
 			xattribute.UnixNano("chstorage.range.start", start),
@@ -477,7 +537,7 @@ func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end 
 		attribute.Int("chstorage.total_points", totalPoints),
 	))
 
-	result := make([]storage.Series, 0, len(set))
+	result := make([]*series[pointData], 0, len(set))
 	for _, s := range set {
 		result = append(result, s)
 	}
@@ -535,7 +595,9 @@ func makeGroupMapping(on bool, groupBy []string, timeseries map[[16]byte]labels.
 // Instead, we select only last one within time window.
 //
 // It reduces overall memory usage and data transfer.
-func (p *promQuerier) querySampledPoints(ctx context.Context, table string, on bool, groupBy []string, start, end time.Time, step time.Duration, timeseries map[[16]byte]labels.Labels) (_ []storage.Series, rerr error) {
+func (p *promQuerier) querySampledPoints(ctx context.Context, on bool, groupBy []string, start, end time.Time, step time.Duration, timeseries map[[16]byte]labels.Labels) (_ []*series[pointData], rerr error) {
+	table := p.tables.Points
+
 	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.querySampledPoints",
 		trace.WithAttributes(
 			xattribute.UnixNano("chstorage.range.start", start),
@@ -660,14 +722,14 @@ func (p *promQuerier) querySampledPoints(ctx context.Context, table string, on b
 		attribute.Int("chstorage.total_points", totalPoints),
 	))
 
-	result := make([]storage.Series, 0, len(set))
+	result := make([]*series[pointData], 0, len(set))
 	for _, s := range set {
 		result = append(result, s)
 	}
 	return result, nil
 }
 
-func (p *promQuerier) queryExpHistograms(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (_ []storage.Series, rerr error) {
+func (p *promQuerier) queryExpHistograms(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (_ []*series[expHistData], rerr error) {
 	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.queryExpHistograms",
 		trace.WithAttributes(
 			xattribute.UnixNano("chstorage.range.start", start),
@@ -768,7 +830,7 @@ func (p *promQuerier) queryExpHistograms(ctx context.Context, table string, star
 		attribute.Int("chstorage.total_points", totalPoints),
 	))
 
-	result := make([]storage.Series, 0, len(set))
+	result := make([]*series[expHistData], 0, len(set))
 	for _, s := range set {
 		result = append(result, s)
 	}
