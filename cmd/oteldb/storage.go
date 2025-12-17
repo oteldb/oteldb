@@ -65,6 +65,8 @@ func setupCH(
 		return store, errors.Wrap(err, "create tables")
 	}
 
+	zctx.From(ctx).Info("Tables are ready")
+
 	tracker, err := globalmetric.NewTracker(m.MeterProvider(), m.TracerProvider())
 	if err != nil {
 		return store, errors.Wrap(err, "create global metric tracker")

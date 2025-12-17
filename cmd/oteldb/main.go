@@ -38,6 +38,9 @@ func main() {
 		if err != nil {
 			return errors.Wrap(err, "setup")
 		}
+
+		lg.Info("Starting oteldb")
+
 		return root.Run(m.ShutdownContext())
 	},
 		app.WithServiceName("oteldb"),
