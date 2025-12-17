@@ -28,8 +28,28 @@ import (
 
 var _ storage.Queryable = (*Querier)(nil)
 
-// Querier returns a new Querier on the storage.
+// Querier returns a new metrics [storage.Querier].
 func (q *Querier) Querier(mint, maxt int64) (storage.Querier, error) {
+	return q.metricsQuerier(mint, maxt), nil
+}
+
+type promQuerier struct {
+	mint time.Time
+	maxt time.Time
+
+	tables     Tables
+	labelLimit int
+
+	queryTimeseries queryMetricsTimeseriesFunc
+	metricsSg       *singleflight.Group[xxh3.Uint128, metricSelectResult]
+	do              func(ctx context.Context, s selectQuery) error
+
+	tracer trace.Tracer
+}
+
+var _ storage.Querier = (*promQuerier)(nil)
+
+func (q *Querier) metricsQuerier(mint, maxt int64) *promQuerier {
 	var minTime, maxTime time.Time
 
 	// In case if Prometheus passes min/max time, keep it zero.
@@ -50,24 +70,8 @@ func (q *Querier) Querier(mint, maxt int64) (storage.Querier, error) {
 		do:              q.do,
 
 		tracer: q.tracer,
-	}, nil
+	}
 }
-
-type promQuerier struct {
-	mint time.Time
-	maxt time.Time
-
-	tables     Tables
-	labelLimit int
-
-	queryTimeseries queryMetricsTimeseriesFunc
-	metricsSg       *singleflight.Group[xxh3.Uint128, metricSelectResult]
-	do              func(ctx context.Context, s selectQuery) error
-
-	tracer trace.Tracer
-}
-
-var _ storage.Querier = (*promQuerier)(nil)
 
 // Close releases the resources of the Querier.
 func (p *promQuerier) Close() error {

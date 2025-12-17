@@ -58,12 +58,7 @@ func (s *promScanners) NewVectorSelector(
 		hints.ProjectionLabels = logicalNode.Projection.Labels
 		hints.ProjectionInclude = logicalNode.Projection.Include
 	}
-
-	pq, err := s.storage.Querier(hints.Start, hints.End)
-	if err != nil {
-		return nil, errors.Wrap(err, "make querier")
-	}
-	q := pq.(*promQuerier)
+	q := s.storage.metricsQuerier(hints.Start, hints.End)
 
 	op := newVectorSelector(
 		model.NewVectorPool(opts.StepsBatch),
