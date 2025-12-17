@@ -9,7 +9,6 @@ import (
 	"github.com/go-faster/errors"
 	singleflight "github.com/go-faster/sdk/singleflightx"
 	"github.com/go-faster/sdk/zctx"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/zeebo/xxh3"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -32,7 +31,7 @@ type Querier struct {
 	labelLimit int
 
 	timeseries *timeseriesQuerier
-	metricsSg  *singleflight.Group[xxh3.Uint128, *seriesSet[storage.Series]]
+	metricsSg  *singleflight.Group[xxh3.Uint128, metricSelectResult]
 
 	clickhouseRequestHistogram metric.Float64Histogram
 	tracer                     trace.Tracer
@@ -87,7 +86,7 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 		ch:         c,
 		tables:     opts.Tables,
 		labelLimit: opts.LabelLimit,
-		metricsSg:  new(singleflight.Group[xxh3.Uint128, *seriesSet[storage.Series]]),
+		metricsSg:  new(singleflight.Group[xxh3.Uint128, metricSelectResult]),
 
 		tracer:                     opts.TracerProvider.Tracer("chstorage.Querier"),
 		tracker:                    opts.Tracker,

@@ -2,7 +2,9 @@ version: "3"
 
 services:
   clickhouse:
-    image: "ghcr.io/go-faster/clickhouse-server:23.12"
+    image: "clickhouse/clickhouse-server:25.9"
+    environment:
+      - CLICKHOUSE_PASSWORD=default
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:8123:8123"
@@ -47,7 +49,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - OTELDB_STORAGE=ch
-      - CH_DSN=clickhouse://clickhouse:9000
+      - CH_DSN=clickhouse://default:default@clickhouse:9000
       - OTEL_LOG_LEVEL=warn
       - OTEL_METRICS_EXPORTER=none
       - OTEL_LOGS_EXPORTER=none

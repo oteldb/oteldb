@@ -34,7 +34,7 @@ func TestCH(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx = zctx.Base(ctx, integration.Logger(t))
-	runTest(ctx, t, provider, set, querier, querier)
+	runTest(ctx, t, provider, set, querier)
 }
 
 func TestCHBackup(t *testing.T) {
@@ -77,6 +77,6 @@ func TestCHBackup(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx = zctx.Base(ctx, integration.Logger(t))
-		runTest(ctx, t, provider, set, querier, querier)
+		runTest(ctx, t, provider, set, querier)
 	}
 }

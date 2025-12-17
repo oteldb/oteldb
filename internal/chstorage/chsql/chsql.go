@@ -182,6 +182,11 @@ func (p *Printer) And() {
 	p.Ident("AND")
 }
 
+// With writes `WITH` ident.
+func (p *Printer) With() {
+	p.Ident("WITH")
+}
+
 // Select writes `SELECT` ident.
 func (p *Printer) Select() {
 	p.Ident("SELECT")

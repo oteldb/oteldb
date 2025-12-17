@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -20,6 +18,7 @@ import (
 	"github.com/go-faster/oteldb/integration/requirex"
 	"github.com/go-faster/oteldb/internal/promapi"
 	"github.com/go-faster/oteldb/internal/promhandler"
+	"github.com/go-faster/oteldb/internal/promql"
 )
 
 // MetricsConsumer is metrics consumer.
@@ -106,15 +105,15 @@ findLoop:
 func setupDB(
 	t *testing.T,
 	provider trace.TracerProvider,
-	querier storage.Queryable,
-	exemplarQuerier storage.ExemplarQueryable,
+	querier promql.Querier,
 ) *promapi.Client {
-	engine := promql.NewEngine(promql.EngineOpts{
+	engine, err := promql.New(querier, promql.EngineOpts{
 		Timeout:              time.Minute,
 		MaxSamples:           1_000_000,
 		EnableNegativeOffset: true,
 	})
-	api := promhandler.NewPromAPI(engine, querier, exemplarQuerier, promhandler.PromAPIOptions{})
+	require.NoError(t, err)
+	api := promhandler.NewPromAPI(engine, querier, querier, promhandler.PromAPIOptions{})
 	promh, err := promapi.NewServer(api,
 		promapi.WithTracerProvider(provider),
 	)
@@ -151,10 +150,9 @@ func runTest(
 	t *testing.T,
 	provider trace.TracerProvider,
 	set prome2e.BatchSet,
-	querier storage.Queryable,
-	exemplarQuerier storage.ExemplarQueryable,
+	querier promql.Querier,
 ) {
-	c := setupDB(t, provider, querier, exemplarQuerier)
+	c := setupDB(t, provider, querier)
 
 	t.Run("Labels", func(t *testing.T) {
 		t.Run("All", func(t *testing.T) {

@@ -5,7 +5,9 @@ volumes:
 
 services:
   clickhouse:
-    image: "ghcr.io/go-faster/clickhouse-server:23.12"
+    image: "clickhouse/clickhouse-server:25.9"
+    environment:
+      - CLICKHOUSE_PASSWORD=default
     ports:
       - "9000:9000"
       - "8123:8123"
@@ -25,6 +27,7 @@ services:
       dockerfile: chotel.Dockerfile
     restart: always
     environment:
+      - CH_DSN=clickhouse://default:default@clickhouse:9000
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_EXPORTER_OTLP_INSECURE=true
@@ -76,7 +79,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - OTELDB_STORAGE=ch
-      - CH_DSN=clickhouse://clickhouse:9000
+      - CH_DSN=clickhouse://default:default@clickhouse:9000
       - OTEL_LOG_LEVEL=info
       - OTEL_METRICS_EXPORTER=otlp
       - OTEL_LOGS_EXPORTER=otlp
