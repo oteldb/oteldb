@@ -382,18 +382,6 @@ func (o *vectorSelector) selectExpHistPoint(tss []int64, samples expHistData, ts
 	return t, h, true, nil
 }
 
-func canUseSampledPoints(stepDuration time.Duration, fn string) bool {
-	if stepDuration < time.Second {
-		return false
-	}
-	switch fn {
-	case "", "count":
-		return true
-	default:
-		return false
-	}
-}
-
 func (o *vectorSelector) loadSeries(ctx context.Context) error {
 	var err error
 	o.once.Do(func() {

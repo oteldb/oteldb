@@ -418,12 +418,12 @@ func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params
 	grp.Go(func() error {
 		ctx := grpCtx
 
-		if samplePoints && canUseSampledPoints(step, params.Function) {
+		if s, ok := canUseSampledPoints(step, params.Function); samplePoints && ok {
 			span.AddEvent("chstorage.use_sampled_points", trace.WithAttributes(
 				attribute.Int64("chstorage.window_step", step.Milliseconds()),
 			))
 
-			points, err := p.querySampledPoints(ctx, params.GroupBy, params.Grouping, params.Start, params.End, step, timeseries)
+			points, err := p.querySampledPoints(ctx, s, params.GroupBy, params.Grouping, params.Start, params.End, step, timeseries)
 			if err != nil {
 				return errors.Wrap(err, "query sampled points")
 			}
@@ -456,6 +456,33 @@ func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params
 	}
 
 	return result, nil
+}
+
+func canUseSampledPoints(stepDuration time.Duration, fn string) (pointsSampler, bool) {
+	if stepDuration < time.Second {
+		return pointsSampler{}, false
+	}
+	switch fn {
+	case "":
+		return pointsSampler{
+			pointExpr:  chsql.LastValue,
+			needPoints: true,
+		}, true
+	case "count":
+		return pointsSampler{
+			pointExpr: func(column chsql.Expr) chsql.Expr {
+				return column
+			},
+			needPoints: false,
+		}, true
+	default:
+		return pointsSampler{}, false
+	}
+}
+
+type pointsSampler struct {
+	pointExpr  func(column chsql.Expr) chsql.Expr
+	needPoints bool
 }
 
 func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (_ []*series[pointData], rerr error) {
@@ -595,11 +622,18 @@ func makeGroupMapping(on bool, groupBy []string, timeseries map[[16]byte]labels.
 
 // querySampledPoints selects pre-sampled points from Clickhouse.
 //
-// Since PromQL engine selects only the last value in the vector for each step in some cases, we don't actually need to query every sample.
-// Instead, we select only last one within time window.
+// Since PromQL engine selects only the few values in the vector for each step in some cases, we don't actually need to query every sample.
+// Instead, we select only these few values within time window.
 //
 // It reduces overall memory usage and data transfer.
-func (p *promQuerier) querySampledPoints(ctx context.Context, on bool, groupBy []string, start, end time.Time, step time.Duration, timeseries map[[16]byte]labels.Labels) (_ []*series[pointData], rerr error) {
+func (p *promQuerier) querySampledPoints(
+	ctx context.Context,
+	sampler pointsSampler,
+	on bool, groupBy []string,
+	start, end time.Time,
+	step time.Duration,
+	timeseries map[[16]byte]labels.Labels,
+) (_ []*series[pointData], rerr error) {
 	table := p.tables.Points
 
 	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.querySampledPoints",
@@ -609,6 +643,7 @@ func (p *promQuerier) querySampledPoints(ctx context.Context, on bool, groupBy [
 			attribute.Stringer("chstorage.step", step),
 			attribute.Bool("chstorage.group.on", on),
 			attribute.StringSlice("chstorage.group.by", groupBy),
+			attribute.Bool("chstorage.sampler.need_points", sampler.needPoints),
 			attribute.String("chstorage.table", table),
 		),
 	)
@@ -619,15 +654,14 @@ func (p *promQuerier) querySampledPoints(ctx context.Context, on bool, groupBy [
 		span.End()
 	}()
 
-	mapping := makeGroupMapping(on, groupBy, timeseries)
 	var (
+		mapping = makeGroupMapping(on, groupBy, timeseries)
+
 		group     = new(proto.ColUInt64).LowCardinality()
 		timestamp = new(proto.ColDateTime)
 		value     proto.ColFloat64
-
-		datetime = chsql.ToDateTime(chsql.Ident("timestamp"))
-		query    = chsql.Select(table,
-			chsql.ResultColumn{
+		results   = []chsql.ResultColumn{
+			{
 				Name: "group",
 				Expr: chsql.ArrayElement(
 					chsql.Ident("grouping"),
@@ -635,27 +669,39 @@ func (p *promQuerier) querySampledPoints(ctx context.Context, on bool, groupBy [
 				),
 				Data: group,
 			},
-			chsql.ResultColumn{
+			{
 				Name: "step_ts",
 				Expr: chsql.Ident("window_end"),
 				Data: timestamp,
 			},
-			chsql.ResultColumn{
-				Name: "agg",
-				Expr: chsql.LastValue(chsql.Ident("value")),
-				Data: &value,
-			},
-		).
-			With("step", chsql.Interval(step)).
-			With("window_start", chsql.TumbleStart(datetime, step)).
-			With("window_end", chsql.TumbleEnd(datetime, step)).
-			With("grouping", mapping.groupingExpr).
-			Where(
-				chsql.In(
-					chsql.Ident("hash"),
-					chsql.Ident("timeseries_hashes"),
-				),
-			).
+		}
+	)
+	if sampler.needPoints {
+		expr := sampler.pointExpr(chsql.Ident("value"))
+		results = append(results, chsql.ResultColumn{
+			Name: "agg",
+			Expr: expr,
+			Data: &value,
+		})
+
+		printer := chsql.GetPrinter()
+		if err := printer.WriteExpr(expr); err == nil {
+			span.SetAttributes(attribute.String("chstorage.sampler.agg_expr", printer.String()))
+		}
+		chsql.PutPrinter(printer)
+	}
+
+	var (
+		datetime = chsql.ToDateTime(chsql.Ident("timestamp"))
+		query    = chsql.Select(table, results...).
+				With("step", chsql.Interval(step)).
+				With("window_start", chsql.TumbleStart(datetime, step)).
+				With("window_end", chsql.TumbleEnd(datetime, step)).
+				With("grouping", mapping.groupingExpr).
+				Where(chsql.In(
+				chsql.Ident("hash"),
+				chsql.Ident("timeseries_hashes"),
+			)).
 			GroupBy(
 				chsql.Ident("group"),
 				chsql.Ident("window_start"),
@@ -691,7 +737,6 @@ func (p *promQuerier) querySampledPoints(ctx context.Context, on bool, groupBy [
 			for i := 0; i < timestamp.Rows(); i++ {
 				var (
 					group     = group.Row(i)
-					value     = value.Row(i)
 					timestamp = timestamp.Row(i)
 				)
 				s, ok := set[group]
@@ -707,7 +752,11 @@ func (p *promQuerier) querySampledPoints(ctx context.Context, on bool, groupBy [
 					set[group] = s
 				}
 
-				s.data.values = append(s.data.values, value)
+				if sampler.needPoints {
+					s.data.values = append(s.data.values, value.Row(i))
+				} else {
+					s.data.values = append(s.data.values, 1)
+				}
 				s.ts = append(s.ts, timestamp.UnixMilli())
 
 				totalPoints++
