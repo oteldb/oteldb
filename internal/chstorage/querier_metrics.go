@@ -262,7 +262,7 @@ type metricSelectParams struct {
 	Grouping        []string
 }
 
-func (p *metricSelectParams) Hash() xxh3.Uint128 {
+func (p *metricSelectParams) Hash(samplePoints bool) xxh3.Uint128 {
 	const sep = ","
 	writeBool := func(h *xxh3.Hasher, val bool) {
 		if val {
@@ -301,6 +301,7 @@ func (p *metricSelectParams) Hash() xxh3.Uint128 {
 	writeBool(h, p.SelectTimestamp)
 	writeBool(h, p.GroupBy)
 	writeStrings(h, p.Grouping)
+	writeBool(h, samplePoints)
 	return h.Sum128()
 }
 
@@ -350,7 +351,7 @@ func (p *promQuerier) querySeriesSingleflight(ctx context.Context, samplePoints 
 	var (
 		parentSpan = span
 		parentLink = trace.LinkFromContext(ctx)
-		hash       = params.Hash()
+		hash       = params.Hash(samplePoints)
 	)
 	resultCh := p.metricsSg.DoChanContext(ctx, hash, func(ctx context.Context) (_ metricSelectResult, rerr error) {
 		ctx, span := p.tracer.Start(ctx, "chstorage.metrics.singelflight.querySeries",
