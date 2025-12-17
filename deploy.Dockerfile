@@ -1,9 +1,8 @@
-FROM clickhouse/clickhouse-server
+ARG BASE_IMAGE=ubuntu:25.10
+FROM ${BASE_IMAGE}
 
-ADD oteldb /usr/local/bin/oteldb
-VOLUME /clickhouse
-
-VOLUME /clickhouse
-ENV EMBEDDED_CLICKHOUSE_HOST=0.0.0.0
+ADD oteldb     /usr/local/bin/oteldb
+ADD odbbackup  /usr/local/bin/odbbackup
+ADD odbrestore /usr/local/bin/odbrestore
 
 ENTRYPOINT ["oteldb"]

@@ -1,4 +1,6 @@
-FROM golang:latest as builder
+ARG BASE_IMAGE=alpine:latest
+
+FROM golang:latest AS builder
 
 WORKDIR /app
 
@@ -8,7 +10,7 @@ RUN go mod download
 COPY . ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -o /otelbench ./cmd/otelbench
 
-FROM alpine:latest
+FROM ${BASE_IMAGE}
 RUN apk --no-cache add ca-certificates
 
 # Some dependencies that otelbench promrw launches with os.Exec:

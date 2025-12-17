@@ -52,6 +52,8 @@ jobs:
           CGO_ENABLED: 0
         run: |
           go build -trimpath -buildvcs=false -v ./cmd/oteldb
+          go build -trimpath -buildvcs=false -v ./cmd/odbbackup
+          go build -trimpath -buildvcs=false -v ./cmd/odbrestore
 
       - name: Start
         working-directory: dev/local/ch-compliance
@@ -123,6 +125,8 @@ jobs:
           CGO_ENABLED: 0
         run: |
           go build -trimpath -buildvcs=false -v ./cmd/oteldb
+          go build -trimpath -buildvcs=false -v ./cmd/odbbackup
+          go build -trimpath -buildvcs=false -v ./cmd/odbrestore
 
       - name: Start
         working-directory: dev/local/ch-logql-compliance

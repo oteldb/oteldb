@@ -1,4 +1,6 @@
-FROM golang:latest as builder
+ARG BASE_IMAGE=alpine:latest
+
+FROM golang:latest AS builder
 
 WORKDIR /app
 
@@ -6,14 +8,15 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -o /app/oteldb ./cmd/oteldb
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -o /app/oteldb     ./cmd/oteldb
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -o /app/odbbackup  ./cmd/odbbackup
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -o /app/odbrestore ./cmd/odbrestore
 
-FROM clickhouse/clickhouse-server
+FROM ${BASE_IMAGE}
 
 WORKDIR /app
 COPY --from=builder /app/oteldb /oteldb
-
-VOLUME /clickhouse
-ENV EMBEDDED_CLICKHOUSE_HOST=0.0.0.0
+COPY --from=builder /app/odbbackup /oteldb
+COPY --from=builder /app/odbrestore /oteldb
 
 ENTRYPOINT ["/oteldb"]
