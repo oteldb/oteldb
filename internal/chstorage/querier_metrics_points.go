@@ -8,18 +8,18 @@ import (
 )
 
 func seekIterator(ts []int64, n *int, seek int64) bool {
-	idx, _ := slices.BinarySearch(ts, seek)
+	idx, ok := slices.BinarySearch(ts, seek)
 	switch {
 	case idx >= len(ts):
 		// Outside of the range.
 		*n = len(ts)
 		return false
-	case idx < 1:
+	case idx == 0 && !ok:
 		// Move to the first point.
 		*n = 0
 		return true
 	default:
-		*n = idx - 1
+		*n = idx
 		return true
 	}
 }
