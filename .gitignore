@@ -21,6 +21,8 @@ secret.yaml
 /otelproxy
 /otelfaker
 /chotel
+/odbbackup
+/odbrestore
 
 vmagent-remotewrite-data
 
