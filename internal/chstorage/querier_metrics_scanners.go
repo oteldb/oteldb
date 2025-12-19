@@ -333,7 +333,7 @@ func (o *vectorSelector) selectPoint(tss []int64, samples []float64, ts, lookbac
 		refTime = ts - offset
 		idx     int
 	)
-	if !seekIterator(tss, &idx, refTime) {
+	if !seekIterator(tss, &idx, refTime) || tss[idx] > refTime {
 		// Look for previous sample.
 		idx--
 		if idx < 0 || idx >= len(tss) {
@@ -358,7 +358,7 @@ func (o *vectorSelector) selectExpHistPoint(tss []int64, samples expHistData, ts
 
 		idx int
 	)
-	if !seekIterator(tss, &idx, refTime) {
+	if !seekIterator(tss, &idx, refTime) || tss[idx] > refTime {
 		// Look for previous sample.
 		idx--
 		if idx < 0 || idx >= len(tss) {
