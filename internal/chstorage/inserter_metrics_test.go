@@ -9,6 +9,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
+	noopmeter "go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/go-faster/oteldb/internal/globalmetric"
 	"github.com/go-faster/oteldb/internal/otelbench"
@@ -36,7 +37,11 @@ func Benchmark_metricsBatch(b *testing.B) {
 	timeSeries, err := prw.FromTimeSeries(rw.Timeseries, prw.Settings{TimeThreshold: 1_000_000})
 	require.NoError(b, err)
 
-	batch := newMetricBatch(globalmetric.NewNoopTracker())
+	meterProvider := noopmeter.NewMeterProvider()
+	var stats inserterStats
+	require.NoError(b, stats.Init(meterProvider.Meter("test")))
+
+	batch := newMetricBatch(stats, globalmetric.NewNoopTracker())
 	b.SetBytes(int64(len(raw)))
 	b.ResetTimer()
 	for b.Loop() {

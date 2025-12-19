@@ -73,13 +73,8 @@ func (i *Inserter) submitTraces(
 		if rerr != nil {
 			span.RecordError(rerr)
 		} else {
-			i.stats.InsertedSpans.Add(ctx, int64(spans.spanID.Rows()))
-			i.stats.InsertedTags.Add(ctx, int64(attrs.name.Rows()))
-
 			i.stats.Inserts.Add(ctx, 1,
-				metric.WithAttributes(
-					semconv.Signal(semconv.SignalTraces),
-				),
+				metric.WithAttributes(semconv.Signal(semconv.SignalTraces)),
 			)
 		}
 		span.End()
@@ -94,26 +89,40 @@ func (i *Inserter) submitTraces(
 	grp.Go(func() error {
 		ctx := grpCtx
 
+		table := i.tables.Spans
 		if err := i.ch.Do(ctx, ch.Query{
 			Logger:          zctx.From(ctx).Named("ch"),
-			Body:            spans.Body(i.tables.Spans),
+			Body:            spans.Body(table),
 			Input:           spans.Input(),
 			OnProfileEvents: track.OnProfiles,
 		}); err != nil {
 			return errors.Wrap(err, "insert spans")
 		}
+		i.stats.BatchSize.Record(ctx, int64(spans.spanID.Rows()), metric.WithAttributes(
+			semconv.Signal(semconv.SignalTraces),
+			attribute.String("chstorage.table", table),
+		))
+		i.stats.InsertedSpans.Add(ctx, int64(spans.spanID.Rows()))
+
 		return nil
 	})
 	grp.Go(func() error {
 		ctx := grpCtx
 
+		table := i.tables.Tags
 		if err := i.ch.Do(ctx, ch.Query{
 			Logger: zctx.From(ctx).Named("ch"),
-			Body:   attrs.Body(i.tables.Tags),
+			Body:   attrs.Body(table),
 			Input:  attrs.Input(),
 		}); err != nil {
 			return errors.Wrap(err, "insert tags")
 		}
+		i.stats.BatchSize.Record(ctx, int64(attrs.name.Rows()), metric.WithAttributes(
+			semconv.Signal(semconv.SignalTraces),
+			attribute.String("chstorage.table", table),
+		))
+		i.stats.InsertedTags.Add(ctx, int64(attrs.name.Rows()))
+
 		return nil
 	})
 	return grp.Wait()

@@ -23,23 +23,32 @@ type Inserter struct {
 	ch     ClickHouseClient
 	tables Tables
 
-	stats struct {
-		// Logs.
-		InsertedRecords   metric.Int64Counter `name:"logs.inserted_records" description:"Number of inserted log records"`
-		InsertedLogLabels metric.Int64Counter `name:"logs.inserted_log_labels" description:"Number of inserted log labels"`
-		// Metrics.
-		InsertedPoints       metric.Int64Counter `name:"metrics.inserted_points" description:"Number of inserted points"`
-		InsertedHistograms   metric.Int64Counter `name:"metrics.inserted_histograms" description:"Number of inserted exponential (native) histograms"`
-		InsertedExemplars    metric.Int64Counter `name:"metrics.inserted_exemplars" description:"Number of inserted exemplars"`
-		InsertedMetricLabels metric.Int64Counter `name:"metrics.inserted_metric_labels" description:"Number of inserted metric labels"`
-		// Traces.
-		InsertedSpans metric.Int64Counter `name:"traces.inserted_spans" description:"Number of inserted spans"`
-		InsertedTags  metric.Int64Counter `name:"traces.inserted_tags" description:"Number of inserted trace attributes"`
-		// Common.
-		Inserts metric.Int64Counter `name:"inserts" description:"Number of insert invocations"`
-	}
+	stats   inserterStats
 	tracer  trace.Tracer
 	tracker globalmetric.Tracker
+}
+
+type inserterStats struct {
+	// Logs.
+	InsertedRecords   metric.Int64Counter `name:"logs.inserted_records" description:"Number of inserted log records"`
+	InsertedLogLabels metric.Int64Counter `name:"logs.inserted_log_labels" description:"Number of inserted log labels"`
+	// Metrics.
+	InsertedPoints       metric.Int64Counter `name:"metrics.inserted_points" description:"Number of inserted points"`
+	InsertedHistograms   metric.Int64Counter `name:"metrics.inserted_histograms" description:"Number of inserted exponential (native) histograms"`
+	InsertedExemplars    metric.Int64Counter `name:"metrics.inserted_exemplars" description:"Number of inserted exemplars"`
+	InsertedMetricLabels metric.Int64Counter `name:"metrics.inserted_metric_labels" description:"Number of inserted metric labels"`
+	// Traces.
+	InsertedSpans metric.Int64Counter `name:"traces.inserted_spans" description:"Number of inserted spans"`
+	InsertedTags  metric.Int64Counter `name:"traces.inserted_tags" description:"Number of inserted trace attributes"`
+	// Common.
+	Inserts   metric.Int64Counter   `name:"inserts" description:"Number of insert invocations"`
+	BatchSize metric.Int64Histogram `name:"batch_size" description:"Histogram of the batch size"`
+}
+
+func (s *inserterStats) Init(meter metric.Meter) error {
+	return autometric.Init(meter, s, autometric.InitOptions{
+		Prefix: "chstorage.",
+	})
 }
 
 // InserterOptions is Inserter's options.
@@ -82,9 +91,7 @@ func NewInserter(c ClickHouseClient, opts InserterOptions) (*Inserter, error) {
 	}
 
 	meter := opts.MeterProvider.Meter("chstorage.Inserter")
-	if err := autometric.Init(meter, &inserter.stats, autometric.InitOptions{
-		Prefix: "chstorage.",
-	}); err != nil {
+	if err := inserter.stats.Init(meter); err != nil {
 		return nil, errors.Wrap(err, "init stats")
 	}
 

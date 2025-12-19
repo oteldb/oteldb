@@ -50,7 +50,7 @@ func (i *Inserter) insertBatch(ctx context.Context, b *metricsBatch) (rerr error
 
 // ConsumeMetrics inserts given metrics.
 func (i *Inserter) ConsumeMetrics(ctx context.Context, metrics pmetric.Metrics) error {
-	b := newMetricBatch(i.tracker)
+	b := newMetricBatch(i.stats, i.tracker)
 	if err := b.mapMetrics(metrics); err != nil {
 		return errors.Wrap(err, "map metrics")
 	}
@@ -67,7 +67,9 @@ type metricsBatch struct {
 	expHistograms  *expHistogramColumns
 	exemplars      *exemplarColumns
 	labels         map[[2]string]labelScope
-	tracker        globalmetric.Tracker
+
+	stats   inserterStats
+	tracker globalmetric.Tracker
 }
 
 func (b *metricsBatch) Reset() {
@@ -79,7 +81,7 @@ func (b *metricsBatch) Reset() {
 	clear(b.labels)
 }
 
-func newMetricBatch(tracker globalmetric.Tracker) *metricsBatch {
+func newMetricBatch(stats inserterStats, tracker globalmetric.Tracker) *metricsBatch {
 	return &metricsBatch{
 		timeseries:     newTimeseriesColumns(),
 		seenTimeseries: map[[16]byte]struct{}{},
@@ -87,6 +89,7 @@ func newMetricBatch(tracker globalmetric.Tracker) *metricsBatch {
 		expHistograms:  newExpHistogramColumns(),
 		exemplars:      newExemplarColumns(),
 		labels:         map[[2]string]labelScope{},
+		stats:          stats,
 		tracker:        tracker,
 	}
 }
@@ -148,6 +151,15 @@ func (b *metricsBatch) Insert(ctx context.Context, tables Tables, client ClickHo
 					if pe, ok := errors.Into[proto.Error](err); ok && pe == proto.ErrQueryWithSameIDIsAlreadyRunning {
 						lg.Debug("Query already running")
 						err = nil
+					}
+					if err == nil {
+						if len(input) > 0 {
+							rows := input[0].Data.Rows()
+							b.stats.BatchSize.Record(ctx, int64(rows), metric.WithAttributes(
+								semconv.Signal(semconv.SignalMetrics),
+								attribute.String("chstorage.table", table.name),
+							))
+						}
 					}
 					return err
 				}

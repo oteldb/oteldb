@@ -69,9 +69,6 @@ func (i *Inserter) submitLogs(ctx context.Context, logs *logColumns, attrs *logA
 		if rerr != nil {
 			span.RecordError(rerr)
 		} else {
-			i.stats.InsertedRecords.Add(ctx, int64(logs.body.Rows()))
-			i.stats.InsertedLogLabels.Add(ctx, int64(attrs.name.Rows()))
-
 			i.stats.Inserts.Add(ctx, 1,
 				metric.WithAttributes(
 					semconv.Signal(semconv.SignalLogs),
@@ -100,6 +97,12 @@ func (i *Inserter) submitLogs(ctx context.Context, logs *logColumns, attrs *logA
 		}); err != nil {
 			return errors.Wrap(err, "insert records")
 		}
+		i.stats.BatchSize.Record(ctx, int64(logs.body.Rows()), metric.WithAttributes(
+			semconv.Signal(semconv.SignalLogs),
+			attribute.String("chstorage.table", table),
+		))
+		i.stats.InsertedRecords.Add(ctx, int64(logs.body.Rows()))
+
 		return nil
 	})
 	grp.Go(func() error {
@@ -120,6 +123,12 @@ func (i *Inserter) submitLogs(ctx context.Context, logs *logColumns, attrs *logA
 		}); err != nil {
 			return errors.Wrap(err, "insert labels")
 		}
+		i.stats.BatchSize.Record(ctx, int64(attrs.name.Rows()), metric.WithAttributes(
+			semconv.Signal(semconv.SignalLogs),
+			attribute.String("chstorage.table", table),
+		))
+		i.stats.InsertedLogLabels.Add(ctx, int64(attrs.name.Rows()), metric.WithAttributes())
+
 		return nil
 	})
 	return grp.Wait()
