@@ -26,9 +26,10 @@ var _ tracestorage.Querier = (*Querier)(nil)
 
 // Querier implements tracestorage.Querier using Clickhouse.
 type Querier struct {
-	ch         ClickHouseClient
-	tables     Tables
-	labelLimit int
+	ch              ClickHouseClient
+	tables          Tables
+	labelLimit      int
+	timeseriesLimit int
 
 	timeseries *timeseriesQuerier
 	metricsSg  *singleflight.Group[xxh3.Uint128, metricSelectResult]
@@ -44,6 +45,8 @@ type QuerierOptions struct {
 	Tables Tables
 	// LabelLimit defines limit for label lookup in the main table.
 	LabelLimit int
+	// MetricSeriesLimit defines limit for total number of series requested by the query.
+	MetricSeriesLimit int
 	// MeterProvider provides OpenTelemetry meter for this querier.
 	MeterProvider metric.MeterProvider
 	// TracerProvider provides OpenTelemetry tracer for this querier.
@@ -58,6 +61,9 @@ func (opts *QuerierOptions) setDefaults() {
 	}
 	if opts.LabelLimit == 0 {
 		opts.LabelLimit = 1000
+	}
+	if opts.MetricSeriesLimit == 0 {
+		opts.MetricSeriesLimit = 1_000_000
 	}
 	if opts.MeterProvider == nil {
 		opts.MeterProvider = otel.GetMeterProvider()
@@ -83,10 +89,11 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 		return nil, errors.Wrap(err, "create clickhouse.request histogram metric")
 	}
 	q := &Querier{
-		ch:         c,
-		tables:     opts.Tables,
-		labelLimit: opts.LabelLimit,
-		metricsSg:  new(singleflight.Group[xxh3.Uint128, metricSelectResult]),
+		ch:              c,
+		tables:          opts.Tables,
+		labelLimit:      opts.LabelLimit,
+		timeseriesLimit: opts.MetricSeriesLimit,
+		metricsSg:       new(singleflight.Group[xxh3.Uint128, metricSelectResult]),
 
 		tracer:                     opts.TracerProvider.Tracer("chstorage.Querier"),
 		tracker:                    opts.Tracker,

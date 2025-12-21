@@ -27,6 +27,7 @@ func (q *Querier) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier,
 		ctx: ctx,
 
 		tables:          q.tables,
+		timeseriesLimit: q.timeseriesLimit,
 		queryTimeseries: q.timeseries.Query,
 		do:              q.do,
 
@@ -38,6 +39,7 @@ type exemplarQuerier struct {
 	ctx context.Context
 
 	tables          Tables
+	timeseriesLimit int
 	queryTimeseries queryMetricsTimeseriesFunc
 	do              func(ctx context.Context, s selectQuery) error
 
@@ -68,6 +70,10 @@ func (q *exemplarQuerier) Select(startMs, endMs int64, matcherSets ...[]*labels.
 	timeseries, err := q.queryTimeseries(ctx, matcherSets)
 	if err != nil {
 		return nil, errors.Wrap(err, "query timeseries hashes")
+	}
+	if q.timeseriesLimit > 0 && len(timeseries) > q.timeseriesLimit {
+		span.AddEvent("chstorage.too_many_timeseries")
+		return nil, errors.Wrapf(ErrMetricsTooManySeries, "%d > %d series requested", len(timeseries), q.timeseriesLimit)
 	}
 
 	var (

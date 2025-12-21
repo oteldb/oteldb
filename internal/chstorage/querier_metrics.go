@@ -37,8 +37,9 @@ type promQuerier struct {
 	mint time.Time
 	maxt time.Time
 
-	tables     Tables
-	labelLimit int
+	tables          Tables
+	labelLimit      int
+	timeseriesLimit int
 
 	queryTimeseries queryMetricsTimeseriesFunc
 	metricsSg       *singleflight.Group[xxh3.Uint128, metricSelectResult]
@@ -65,6 +66,8 @@ func (q *Querier) metricsQuerier(mint, maxt int64) *promQuerier {
 
 		tables:          q.tables,
 		labelLimit:      q.labelLimit,
+		timeseriesLimit: q.timeseriesLimit,
+
 		metricsSg:       q.metricsSg,
 		queryTimeseries: q.timeseries.Query,
 		do:              q.do,
@@ -393,6 +396,9 @@ func (p *promQuerier) querySeriesSingleflight(ctx context.Context, samplePoints 
 	}
 }
 
+// ErrMetricsTooManySeries whether if query requested more timeseries than allowed.
+var ErrMetricsTooManySeries = errors.New("too many timeseries requested")
+
 func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params metricSelectParams) (result metricSelectResult, _ error) {
 	span := trace.SpanFromContext(ctx)
 
@@ -405,6 +411,10 @@ func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params
 		// No data.
 		trace.SpanFromContext(ctx).AddEvent("chstorage.no_timeseries_selected")
 		return result, nil
+	}
+	if p.timeseriesLimit > 0 && len(timeseries) > p.timeseriesLimit {
+		trace.SpanFromContext(ctx).AddEvent("chstorage.too_many_timeseries")
+		return result, errors.Wrapf(ErrMetricsTooManySeries, "%d > %d series requested", len(timeseries), p.timeseriesLimit)
 	}
 
 	step := params.Step

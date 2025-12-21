@@ -20,6 +20,7 @@ import (
 	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/go-faster/oteldb/internal/chstorage"
 	"github.com/go-faster/oteldb/internal/metricstorage"
 	"github.com/go-faster/oteldb/internal/promapi"
 	"github.com/go-faster/oteldb/internal/xattribute"
@@ -617,6 +618,9 @@ func (h *PromAPI) querier(ctx context.Context, mint, maxt time.Time) (storage.Qu
 //
 // Used for common default response.
 func (h *PromAPI) NewError(_ context.Context, err error) *promapi.FailStatusCode {
+	if errors.Is(err, chstorage.ErrMetricsTooManySeries) {
+		return fail(promapi.FailErrorTypeExecution, err)
+	}
 	if _, ok := errors.Into[promql.ErrQueryCanceled](err); ok || errors.Is(err, context.Canceled) {
 		return fail(promapi.FailErrorTypeCanceled, err)
 	}
