@@ -117,6 +117,7 @@ func (cfg *TempoConfig) setDefaults() {
 type PrometheusConfig struct {
 	Bind                 string        `json:"bind" yaml:"bind"`
 	MaxSamples           int           `json:"max_samples" yaml:"max_samples"`
+	MaxTimeseries        int           `json:"max_timeseries" yaml:"max_timeseries"`
 	Timeout              time.Duration `json:"timeout" yaml:"timeout"`
 	LookbackDelta        time.Duration `json:"lookback_delta" yaml:"lookback_delta"`
 	EnableAtModifier     bool          `json:"enable_at_modifier" yaml:"enable_at_modifier"`
@@ -130,6 +131,9 @@ func (cfg *PrometheusConfig) setDefaults() {
 	}
 	if cfg.MaxSamples == 0 {
 		cfg.MaxSamples = 1_000_000
+	}
+	if cfg.MaxTimeseries == 0 {
+		cfg.MaxTimeseries = 1_000_000
 	}
 	if cfg.Timeout == 0 {
 		cfg.Timeout = time.Minute

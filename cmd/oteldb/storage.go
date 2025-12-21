@@ -75,10 +75,11 @@ func setupCH(
 	globalmetric.SetTracker(tracker)
 
 	querier, err := chstorage.NewQuerier(c, chstorage.QuerierOptions{
-		Tables:         tables,
-		MeterProvider:  m.MeterProvider(),
-		TracerProvider: m.TracerProvider(),
-		Tracker:        tracker,
+		Tables:            tables,
+		MeterProvider:     m.MeterProvider(),
+		TracerProvider:    m.TracerProvider(),
+		Tracker:           tracker,
+		MetricSeriesLimit: cfg.Prometheus.MaxTimeseries,
 	})
 	if err != nil {
 		return store, errors.Wrap(err, "create querier")
