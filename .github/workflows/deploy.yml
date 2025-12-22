@@ -70,16 +70,16 @@ jobs:
         env:
           CGO_ENABLED: 0
         run: |
-          go build -trimpath -buildvcs=false -v ./cmd/oteldb
-          go build -trimpath -buildvcs=false -v ./cmd/odbbackup
-          go build -trimpath -buildvcs=false -v ./cmd/odbrestore
-          go build -trimpath -buildvcs=false -v ./cmd/otelproxy
-          go build -trimpath -buildvcs=false -v ./cmd/chotel
+          go build -trimpath -buildvcs=false -v -o ./dev/deploy/oteldb     ./cmd/oteldb
+          go build -trimpath -buildvcs=false -v -o ./dev/deploy/odbbackup  ./cmd/odbbackup
+          go build -trimpath -buildvcs=false -v -o ./dev/deploy/odbrestore ./cmd/odbrestore
+          go build -trimpath -buildvcs=false -v -o ./dev/deploy/otelproxy  ./cmd/otelproxy
+          go build -trimpath -buildvcs=false -v -o ./dev/deploy/chotel     ./cmd/chotel
 
       - name: Base image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./dev/deploy
           file: deploy.Dockerfile
           push: true
           tags: "${{ env.IMAGE_TAG }}:${{ env.sha }}"
@@ -89,7 +89,7 @@ jobs:
       - name: Proxy image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./dev/deploy
           file: deploy.proxy.Dockerfile
           push: true
           tags: "${{ env.IMAGE_TAG }}/proxy:${{ env.sha }}"
@@ -99,7 +99,7 @@ jobs:
       - name: ClickHouse OTEL Exporter Image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./dev/deploy
           file: deploy.chotel.Dockerfile
           push: true
           tags: "${{ env.IMAGE_TAG }}/chotel:${{ env.sha }}"
