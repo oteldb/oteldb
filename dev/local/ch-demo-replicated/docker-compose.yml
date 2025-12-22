@@ -64,7 +64,7 @@ services:
     image: ghcr.io/oteldb/oteldb/chotel
     build:
       context: ../../../
-      dockerfile: chotel.Dockerfile
+      dockerfile: dev/chotel.Dockerfile
     restart: always
     environment:
       - CH_DSN=clickhouse://clickhouse-01:9000
@@ -83,7 +83,7 @@ services:
     image: ghcr.io/oteldb/oteldb
     build:
       context: ../../../
-      dockerfile: Dockerfile
+      dockerfile: dev/Dockerfile
     environment:
       - OTELDB_STORAGE=ch
       - CH_DSN=clickhouse://clickhouse-01:9000

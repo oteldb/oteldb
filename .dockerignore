@@ -1,8 +1,8 @@
 **/.git
-/.k8s
-/.github
-/docs
-/dev
+**/.k8s
+**/.github
+**/docs
+**/dev
 *.md
 *.Dockerfile
 docker-compose.yml
