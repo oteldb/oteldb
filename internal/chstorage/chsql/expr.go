@@ -20,6 +20,7 @@ const (
 // Expr is a Clickhouse expression.
 type Expr struct {
 	typ      exprType
+	prefix   string
 	tok      string
 	args     []Expr
 	subQuery Query
@@ -28,11 +29,13 @@ type Expr struct {
 func (e Expr) IsZero() bool {
 	var s struct {
 		typ      exprType
+		prefix   string
 		tok      string
 		args     []Expr
 		subQuery Query
 	} = e
 	return s.typ == 0 &&
+		s.prefix == "" &&
 		s.tok == "" &&
 		s.args == nil &&
 		s.subQuery == nil
@@ -41,6 +44,11 @@ func (e Expr) IsZero() bool {
 // Ident returns identifier.
 func Ident(tok string) Expr {
 	return Expr{typ: exprIdent, tok: tok}
+}
+
+// PrefixedIdent return identifier with prefix.
+func PrefixedIdent(prefix, tok string) Expr {
+	return Expr{typ: exprIdent, prefix: prefix, tok: tok}
 }
 
 // Value returns literal.

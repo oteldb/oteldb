@@ -1,1 +1,1 @@
-SELECT (toString(name) AS name) FROM spans
+SELECT name FROM spans

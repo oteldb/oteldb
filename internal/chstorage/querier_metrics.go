@@ -2,7 +2,6 @@ package chstorage
 
 import (
 	"context"
-	"encoding/hex"
 	"slices"
 	"strconv"
 	"strings"
@@ -592,21 +591,18 @@ type groupMapping struct {
 	groups map[uint64]labels.Labels
 
 	// inputHash contains a hash of timeseries.
-	inputHash proto.ColFixedStr16
-	// groupingExpr contains a map literal mapping timeseries to a corresponding group.
-	groupingExpr chsql.Expr
+	inputHash     proto.ColFixedStr16
+	inputGrouping *proto.ColLowCardinality[uint64]
 }
 
 // makeGroupMapping generates a mapping to group timeseries by labels.
 func makeGroupMapping(on bool, groupBy []string, timeseries map[[16]byte]labels.Labels) (m groupMapping) {
 	m = groupMapping{
-		groups: map[uint64]labels.Labels{},
+		groups:        map[uint64]labels.Labels{},
+		inputGrouping: new(proto.ColUInt64).LowCardinality(),
 	}
 
-	var (
-		kv = make([]chsql.Expr, 0, len(timeseries))
-		i  uint64
-	)
+	var i uint64
 	for tsHash, labels := range timeseries {
 		var groupHash uint64
 		if len(groupBy) > 0 {
@@ -619,15 +615,8 @@ func makeGroupMapping(on bool, groupBy []string, timeseries map[[16]byte]labels.
 		m.groups[groupHash] = labels
 
 		m.inputHash.Append(tsHash)
-
-		key := chsql.String(hex.EncodeToString(tsHash[:]))
-		value := chsql.ToUInt64(chsql.Integer(groupHash))
-		kv = append(kv,
-			chsql.Unhex(key),
-			value,
-		)
+		m.inputGrouping.Append(groupHash)
 	}
-	m.groupingExpr = chsql.Map(kv...)
 	return m
 }
 
@@ -666,7 +655,8 @@ func (p *promQuerier) querySampledPoints(
 	}()
 
 	var (
-		mapping = makeGroupMapping(on, groupBy, timeseries)
+		inputTable = "timeseries_hashes"
+		mapping    = makeGroupMapping(on, groupBy, timeseries)
 
 		group     = new(proto.ColUInt64).LowCardinality()
 		timestamp = new(proto.ColDateTime)
@@ -674,10 +664,7 @@ func (p *promQuerier) querySampledPoints(
 		results   = []chsql.ResultColumn{
 			{
 				Name: "group",
-				Expr: chsql.ArrayElement(
-					chsql.Ident("grouping"),
-					chsql.Ident("hash"),
-				),
+				Expr: chsql.PrefixedIdent(inputTable, "grouping"),
 				Data: group,
 			},
 			{
@@ -703,15 +690,21 @@ func (p *promQuerier) querySampledPoints(
 	}
 
 	var (
-		datetime = chsql.ToDateTime(chsql.Ident("timestamp"))
-		query    = chsql.Select(table, results...).
-				With("step", chsql.Interval(step)).
-				With("window_start", chsql.TumbleStart(datetime, step)).
-				With("window_end", chsql.TumbleEnd(datetime, step)).
-				With("grouping", mapping.groupingExpr).
-				Where(chsql.In(
+		datetime  = chsql.ToDateTime(chsql.Ident("timestamp"))
+		hashQuery = chsql.Select(inputTable, chsql.Column("hash", nil))
+		joinExpr  = chsql.Eq(
+			chsql.PrefixedIdent(inputTable, "hash"),
+			chsql.PrefixedIdent(table, "hash"),
+		)
+
+		query = chsql.Select(table, results...).
+			With("step", chsql.Interval(step)).
+			With("window_start", chsql.TumbleStart(datetime, step)).
+			With("window_end", chsql.TumbleEnd(datetime, step)).
+			InnerJoin(inputTable, "", joinExpr).
+			Where(chsql.In(
 				chsql.Ident("hash"),
-				chsql.Ident("timeseries_hashes"),
+				chsql.SubQuery(hashQuery),
 			)).
 			GroupBy(
 				chsql.Ident("group"),
@@ -740,9 +733,10 @@ func (p *promQuerier) querySampledPoints(
 	)
 	if err := p.do(ctx, selectQuery{
 		Query:         query,
-		ExternalTable: "timeseries_hashes",
+		ExternalTable: inputTable,
 		ExternalData: []proto.InputColumn{
 			{Name: "hash", Data: &mapping.inputHash},
+			{Name: "grouping", Data: mapping.inputGrouping},
 		},
 		OnResult: func(ctx context.Context, block proto.Block) error {
 			for i := 0; i < timestamp.Rows(); i++ {

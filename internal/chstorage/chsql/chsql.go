@@ -77,6 +77,11 @@ func (p *Printer) CloseParen() {
 	p.needSpace = true
 }
 
+// Dot writes a dot.
+func (p *Printer) Dot() {
+	p.sb.WriteByte('.')
+}
+
 // Ident writes an identifier.
 func (p *Printer) Ident(tok string) {
 	p.maybeSpace()
@@ -95,6 +100,10 @@ func (p *Printer) Literal(lit string) {
 func (p *Printer) WriteExpr(e Expr) error {
 	switch e.typ {
 	case exprIdent:
+		if e.prefix != "" {
+			p.Ident(e.prefix)
+			p.Dot()
+		}
 		p.Ident(e.tok)
 
 		return nil
@@ -205,6 +214,46 @@ func (p *Printer) Final() {
 // From writes `FROM` ident.
 func (p *Printer) From() {
 	p.Ident("FROM")
+}
+
+// Inner writes `INNER` ident.
+func (p *Printer) Inner() {
+	p.Ident("INNER")
+}
+
+// Left writes `LEFT` ident.
+func (p *Printer) Left() {
+	p.Ident("LEFT")
+}
+
+// Right writes `RIGHT` ident.
+func (p *Printer) Right() {
+	p.Ident("RIGHT")
+}
+
+// Full writes `FULL` ident.
+func (p *Printer) Full() {
+	p.Ident("FULL")
+}
+
+// Outer writes `OUTER` ident.
+func (p *Printer) Outer() {
+	p.Ident("OUTER")
+}
+
+// Cross writes `CROSS` ident.
+func (p *Printer) Cross() {
+	p.Ident("CROSS")
+}
+
+// Join writes `JOIN` ident.
+func (p *Printer) Join() {
+	p.Ident("JOIN")
+}
+
+// On writes `ON` ident.
+func (p *Printer) On() {
+	p.Ident("ON")
 }
 
 // Prewhere writes `PREWHERE` ident.
