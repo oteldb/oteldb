@@ -1,1 +1,1 @@
-SELECT column FROM spans
+SELECT (column AS name) FROM spans

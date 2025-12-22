@@ -14,12 +14,14 @@ import (
 // SelectQuery is a SELECT query builder.
 type SelectQuery struct {
 	table    string
+	alias    string
 	sub      *SelectQuery
 	distinct bool
 	final    bool
 	with     []WithColumn
 	columns  []ResultColumn
 
+	join []joinExpr
 	// prewhere is a set of expression joined by AND
 	prewhere []Expr
 	// where is a set of expression joined by AND
@@ -69,6 +71,23 @@ func (q *SelectQuery) Distinct(b bool) *SelectQuery {
 // Final sets if query is `FINAL`.
 func (q *SelectQuery) Final(b bool) *SelectQuery {
 	q.final = b
+	return q
+}
+
+// Alias sets alias for selected table.
+func (q *SelectQuery) Alias(alias string) *SelectQuery {
+	q.alias = alias
+	return q
+}
+
+// InnerJoin adds an INNER JOIN to query.
+func (q *SelectQuery) InnerJoin(table, alias string, on Expr) *SelectQuery {
+	q.join = append(q.join, joinExpr{
+		typ:   innerJoin,
+		table: table,
+		alias: alias,
+		on:    on,
+	})
 	return q
 }
 
@@ -203,6 +222,40 @@ func (q *SelectQuery) WriteSQL(p *Printer) error {
 		p.CloseParen()
 	default:
 		return errors.New("either table or sub-query must be present")
+	}
+	if q.alias != "" {
+		p.Ident(q.alias)
+	}
+	for i, j := range q.join {
+		switch j.typ {
+		case innerJoin:
+			p.Inner()
+		case leftOuterJoin:
+			p.Left()
+			p.Outer()
+		case rightOuterJoin:
+			p.Right()
+			p.Outer()
+		case fullOuterJoin:
+			p.Full()
+			p.Outer()
+		case crossJoin:
+			p.Cross()
+		default:
+			return errors.Errorf("unknown join type %v", j.typ)
+		}
+		p.Join()
+
+		p.Ident(j.table)
+		if j.alias != "" {
+			p.Ident(j.alias)
+		}
+		if !j.on.IsZero() {
+			p.On()
+			if err := p.WriteExpr(j.on); err != nil {
+				return errors.Wrapf(err, "join[%d] %q", i, j.table)
+			}
+		}
 	}
 	if len(q.prewhere) > 0 {
 		p.Prewhere()

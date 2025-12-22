@@ -1,0 +1,1 @@
+SELECT body FROM logs t1 INNER JOIN logs_inner_join ON true INNER JOIN logs_inner_join_alias t3 ON true

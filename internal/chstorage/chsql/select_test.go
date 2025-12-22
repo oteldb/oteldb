@@ -110,6 +110,13 @@ func TestSelect(t *testing.T) {
 			},
 			false,
 		},
+		// Ensure builder properly handles zero value result expression.
+		{
+			func() *SelectQuery {
+				return Select("spans", ResultColumn{Name: "name"})
+			},
+			false,
+		},
 		// Ensure aliasing is properly handled.
 		//
 		// Alias expression.
@@ -175,6 +182,18 @@ func TestSelect(t *testing.T) {
 						HasToken(Ident("body"), "Error"),
 						HasToken(Ident("level"), "Error"),
 					)
+			},
+			false,
+		},
+		// Test JOINs and table aliases.
+		{
+			func() *SelectQuery {
+				return Select(
+					"logs",
+					Column("body", nil),
+				).Alias("t1").
+					InnerJoin("logs_inner_join", "", Value(true)).
+					InnerJoin("logs_inner_join_alias", "t3", Value(true))
 			},
 			false,
 		},
