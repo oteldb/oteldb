@@ -66,21 +66,16 @@ jobs:
         run: |
           echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-      - name: Go build
-        env:
-          CGO_ENABLED: 0
-        run: |
-          go build -trimpath -buildvcs=false -v -o ./dev/deploy/oteldb     ./cmd/oteldb
-          go build -trimpath -buildvcs=false -v -o ./dev/deploy/odbbackup  ./cmd/odbbackup
-          go build -trimpath -buildvcs=false -v -o ./dev/deploy/odbrestore ./cmd/odbrestore
-          go build -trimpath -buildvcs=false -v -o ./dev/deploy/otelproxy  ./cmd/otelproxy
-          go build -trimpath -buildvcs=false -v -o ./dev/deploy/chotel     ./cmd/chotel
+      - name: Install Task
+        uses: go-task/setup-task@v1
+      - name: Build binaries
+        run: task build-deploy
 
       - name: Base image
         uses: docker/build-push-action@v6
         with:
-          context: ./dev/deploy
-          file: deploy.Dockerfile
+          context: .
+          file: ./dev/deploy/deploy.Dockerfile
           push: true
           tags: "${{ env.IMAGE_TAG }}:${{ env.sha }}"
           cache-from: type=gha
@@ -89,8 +84,8 @@ jobs:
       - name: Proxy image
         uses: docker/build-push-action@v6
         with:
-          context: ./dev/deploy
-          file: deploy.proxy.Dockerfile
+          context: .
+          file: ./dev/deploy/deploy.proxy.Dockerfile
           push: true
           tags: "${{ env.IMAGE_TAG }}/proxy:${{ env.sha }}"
           cache-from: type=gha
@@ -99,8 +94,8 @@ jobs:
       - name: ClickHouse OTEL Exporter Image
         uses: docker/build-push-action@v6
         with:
-          context: ./dev/deploy
-          file: deploy.chotel.Dockerfile
+          context: .
+          file: ./dev/deploy/deploy.chotel.Dockerfile
           push: true
           tags: "${{ env.IMAGE_TAG }}/chotel:${{ env.sha }}"
           cache-from: type=gha

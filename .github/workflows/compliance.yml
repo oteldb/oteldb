@@ -47,13 +47,10 @@ jobs:
           restore-keys: |
             promql-compliance-${{ runner.os }}-go-${{ env.goversion }}
 
-      - name: Go build
-        env:
-          CGO_ENABLED: 0
-        run: |
-          go build -trimpath -buildvcs=false -v ./cmd/oteldb
-          go build -trimpath -buildvcs=false -v ./cmd/odbbackup
-          go build -trimpath -buildvcs=false -v ./cmd/odbrestore
+      - name: Install Task
+        uses: go-task/setup-task@v1
+      - name: Build binaries
+        run: task build-deploy
 
       - name: Start
         working-directory: dev/local/ch-compliance
@@ -120,13 +117,10 @@ jobs:
           restore-keys: |
             logql-compliance-${{ runner.os }}-go-${{ env.goversion }}
 
-      - name: Go build
-        env:
-          CGO_ENABLED: 0
-        run: |
-          go build -trimpath -buildvcs=false -v ./cmd/oteldb
-          go build -trimpath -buildvcs=false -v ./cmd/odbbackup
-          go build -trimpath -buildvcs=false -v ./cmd/odbrestore
+      - name: Install Task
+        uses: go-task/setup-task@v1
+      - name: Build binaries
+        run: task build-deploy
 
       - name: Start
         working-directory: dev/local/ch-logql-compliance

@@ -20,7 +20,7 @@ services:
     image: ghcr.io/oteldb/oteldb
     build:
       context: ../../../
-      dockerfile: deploy.Dockerfile
+      dockerfile: ./dev/deploy/deploy.Dockerfile
     environment:
       - OTELDB_STORAGE=ch
       - CH_DSN=clickhouse://default:default@clickhouse:9000
