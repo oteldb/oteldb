@@ -19,7 +19,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": 171,
+  "id": 7,
   "links": [],
   "panels": [
     {
@@ -1313,7 +1313,7 @@
             "h": 10,
             "w": 24,
             "x": 0,
-            "y": 18
+            "y": 34
           },
           "id": 11,
           "options": {
@@ -1517,8 +1517,115 @@
           "useBackend": false
         }
       ],
-      "title": "Ingestion rate",
+      "title": "Ingestion $signal rate",
       "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ds}"
+      },
+      "description": "Average $signal batch size by table",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "always",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "fieldMinMax": true,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "dark-red",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1000
+              },
+              {
+                "color": "dark-green",
+                "value": 10000
+              }
+            ]
+          },
+          "unit": "rowsps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "id": 26,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "repeat": "signal",
+      "repeatDirection": "h",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (\"chstorage.table\") ({\"chstorage.batch_size_sum\", \"chstorage.signal\"=\"$signal\"}/{\"chstorage.batch_size_count\", \"chstorage.signal\"=\"$signal\"}) != 0",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Average $signal batch size",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -1526,7 +1633,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 52
+        "y": 62
       },
       "id": 4,
       "panels": [],
@@ -1563,7 +1670,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 53
+        "y": 63
       },
       "id": 1,
       "options": {
@@ -1637,7 +1744,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 53
+        "y": 63
       },
       "id": 5,
       "options": {
@@ -1719,7 +1826,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 53
+        "y": 63
       },
       "id": 12,
       "options": {
@@ -1751,6 +1858,111 @@
       ],
       "title": "Query histogram for $signal",
       "type": "histogram"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ds}"
+      },
+      "description": "Average batch size by table",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "always",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "fieldMinMax": true,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "dark-red",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1000
+              },
+              {
+                "color": "dark-green",
+                "value": 10000
+              }
+            ]
+          },
+          "unit": "rowsps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 71
+      },
+      "id": 27,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (\"chstorage.table\") ({\"chstorage.batch_size_sum\", \"chstorage.signal\"=\"$signal\"}/{\"chstorage.batch_size_count\",\"chstorage.signal\"=\"$signal\"}) != 0",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Average batch size",
+      "type": "timeseries"
     }
   ],
   "preload": false,
@@ -1810,5 +2022,5 @@
   "timezone": "browser",
   "title": "oteldb: internals",
   "uid": "oteldb-internals",
-  "version": 2
+  "version": 3
 }
