@@ -9,4 +9,7 @@ allow_licenses:
   - "Apache-2.0"
   - "LicenseRef-scancode-google-patent-license-golang"
 allow-dependencies-licenses:
+  # Have a separate non-GPL license.
   - "pkg:golang/github.com/grafana/loki/pkg/push"
+  # Used in CI, is not directly linked or used by oteldb.
+  - "pkg:actions/go-task/setup-task"

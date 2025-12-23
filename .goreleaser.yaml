@@ -1,5 +1,6 @@
 version: 2
 project_name: oteldb
+
 builds:
   - id: oteldb
     binary: "oteldb{{ .Ext }}"
@@ -15,6 +16,52 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
     flags:
       - -trimpath
+
+  - id: chotel
+    binary: "chotel{{ .Ext }}"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - riscv64
+    main: ./cmd/chotel
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+
+  - id: odbbackup
+    binary: "odbbackup{{ .Ext }}"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - riscv64
+    main: ./cmd/odbbackup
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+
+  - id: odbrestore
+    binary: "odbrestore{{ .Ext }}"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - riscv64
+    main: ./cmd/odbrestore
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+
   - id: docker-logql
     binary: "docker-logql{{ .Ext }}"
     env:
@@ -65,23 +112,30 @@ release:
     ```
 
 dockers_v2:
-  - id: distroless
+  - id: ubuntu
     images:
       - "ghcr.io/oteldb/oteldb"
 
     dockerfile: release.Dockerfile
+
+    # Keep tag in sync with produced images tags.
+    build_args:
+      BASE_IMAGE: "ubuntu:questing"
 
     platforms:
       - linux/amd64
       - linux/arm64
 
     tags:
-      - "v{{ .Version }}"
-      - "{{ if .IsNightly }}nightly{{ end }}"
       - "{{ if not .IsNightly }}latest{{ end }}"
-
-    build_args:
-      IMG: "gcr.io/distroless/static"
+      - "{{ if not .IsNightly }}latest-ubuntu{{ end }}"
+      - "{{ if not .IsNightly }}ubuntu{{ end }}"
+      - "{{ if not .IsNightly }}questing{{ end }}"
+      - "v{{ .Version }}"
+      - "v{{ .Version }}-ubuntu"
+      - "v{{ .Version }}-questing"
+      - "{{ if .IsNightly }}nightly-ubuntu{{ end }}"
+      - "{{ if .IsNightly }}nightly-questing{{ end }}"
 
     labels:
       "io.artifacthub.package.readme-url": "https://github.com/oteldb/oteldb/blob/main/README.md"
@@ -96,22 +150,56 @@ dockers_v2:
       "org.opencontainers.image.version": "{{.Version}}"
       "org.opencontainers.image.source": "{{.GitURL}}"
 
-  - id: clickhouse
+  - id: distroless
     images:
       - "ghcr.io/oteldb/oteldb"
 
     dockerfile: release.Dockerfile
 
+    build_args:
+      BASE_IMAGE: "gcr.io/distroless/static"
+
     platforms:
       - linux/amd64
+      - linux/arm64
 
     tags:
-      - "v{{ .Version }}-clickhouse"
-      - "{{ if .IsNightly }}nightly-clickhouse{{ end }}"
-      - "{{ if not .IsNightly }}latest-clickhouse{{ end }}"
+      - "{{ if not .IsNightly }}distroless{{ end }}"
+      - "v{{ .Version }}-distroless"
+      - "{{ if .IsNightly }}nightly-distroless{{ end }}"
+
+    labels:
+      "io.artifacthub.package.readme-url": "https://github.com/oteldb/oteldb/blob/main/README.md"
+      "io.artifacthub.package.logo-url": "https://avatars.githubusercontent.com/u/131437363"
+      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"}]'
+      "io.artifacthub.package.license": "Apache 2.0"
+
+      "org.opencontainers.image.description": "OpenTelemetry signal storage"
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.name": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
+
+  - id: distroless-chotel
+    images:
+      - "ghcr.io/oteldb/oteldb/chotel"
+
+    dockerfile: release.Dockerfile
 
     build_args:
-      IMG: "clickhouse/clickhouse-server"
+      BASE_IMAGE: "gcr.io/distroless/static"
+
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
+    tags:
+      - "{{ if not .IsNightly }}latest{{ end }}"
+      - "{{ if not .IsNightly }}distroless{{ end }}"
+      - "v{{ .Version }}"
+      - "v{{ .Version }}-distroless"
+      - "{{ if .IsNightly }}nightly-distroless{{ end }}"
 
     labels:
       "io.artifacthub.package.readme-url": "https://github.com/oteldb/oteldb/blob/main/README.md"
@@ -189,6 +277,9 @@ nfpms:
     package_name: oteldb
     ids:
       - oteldb
+      - chotel
+      - odbbackup
+      - odbrestore
     homepage: https://github.com/oteldb/oteldb
     maintainer: Aleksandr Razumov <ernado@go-faster.org>
     description: OpenTelemetry signal storage

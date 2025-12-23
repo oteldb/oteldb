@@ -8,7 +8,7 @@ services:
     image: ghcr.io/oteldb/oteldb
     build:
       context: ../../../
-      dockerfile: Dockerfile
+      dockerfile: dev/Dockerfile
     volumes:
       - clickhouse:/clickhouse
     environment:

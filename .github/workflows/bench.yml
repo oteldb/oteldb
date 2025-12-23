@@ -54,14 +54,10 @@ jobs:
           restore-keys: |
             Benchmark-${{ runner.os }}-go-${{ env.goversion }}
 
-      - name: Go build
-        env:
-          CGO_ENABLED: 0
-        run: |
-          go build -trimpath -buildvcs=false -v ./cmd/oteldb
-          go build -trimpath -buildvcs=false -v ./cmd/odbbackup
-          go build -trimpath -buildvcs=false -v ./cmd/odbrestore
-          go build -trimpath -buildvcs=false -v ./cmd/chotel
+      - name: Install Task
+        uses: go-task/setup-task@v1
+      - name: Build binaries
+        run: task build-deploy
 
       - name: Reset compose
         working-directory: ${{ env.WORKDIR }}

@@ -28,7 +28,7 @@ services:
     image: ghcr.io/oteldb/oteldb
     build:
       context: ../../../
-      dockerfile: deploy.Dockerfile
+      dockerfile: ./dev/deploy/deploy.Dockerfile
     command:
       - --config=/etc/otel/cfg.yml
     volumes:
@@ -66,7 +66,7 @@ services:
     image: ghcr.io/oteldb/oteldb/chotel
     build:
       context: ../../../
-      dockerfile: deploy.chotel.Dockerfile
+      dockerfile: ./dev/deploy/deploy.chotel.Dockerfile
     restart: always
     environment:
       - CH_DSN=clickhouse://default:default@clickhouse:9000

@@ -72,7 +72,7 @@ services:
   otelproxy:
     build:
       context: ../../
-      dockerfile: otelproxy.Dockerfile
+      dockerfile: dev/otelproxy.Dockerfile
     environment:
       - "LOKI_URL=http://loki:3100"
       - "PYROSCOPE_URL=http://pyroscope:4040"
