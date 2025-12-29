@@ -36,23 +36,32 @@ func NewBackup(client ClickHouseClient, tables Tables, logger *zap.Logger) *Back
 
 // Create creates a backup in the specified directory.
 func (b *Backup) Create(ctx context.Context, dir string) error {
+	db, err := queryCurrentDatabase(ctx, b.client)
+	if err != nil {
+		return errors.Wrap(err, "query current database")
+	}
+
 	var (
 		metrics = metricsBackup{
-			client: b.client,
-			tables: b.tables,
-			logger: b.logger.Named("metrics"),
+			client:   b.client,
+			tables:   b.tables,
+			database: db,
+			logger:   b.logger.Named("metrics"),
 		}
 		traces = tracesBackup{
-			client: b.client,
-			tables: b.tables,
-			logger: b.logger.Named("traces"),
+			client:   b.client,
+			tables:   b.tables,
+			database: db,
+			logger:   b.logger.Named("traces"),
 		}
 		logs = logsBackup{
-			client: b.client,
-			tables: b.tables,
-			logger: b.logger.Named("logs"),
+			client:   b.client,
+			tables:   b.tables,
+			database: db,
+			logger:   b.logger.Named("logs"),
 		}
 	)
+
 	grp, grpCtx := errgroup.WithContext(ctx)
 	grp.Go(func() error {
 		ctx := grpCtx

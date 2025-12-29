@@ -119,7 +119,7 @@ func (t Tables) saveHashes(ctx context.Context, c ClickHouseClient, m map[string
 	return nil
 }
 
-func (t Tables) getDatabase(ctx context.Context, c ClickHouseClient) (string, error) {
+func queryCurrentDatabase(ctx context.Context, c ClickHouseClient) (string, error) {
 	var col proto.ColStr
 
 	if err := c.Do(ctx, ch.Query{
@@ -175,7 +175,7 @@ func (t Tables) create(ctx context.Context, c ClickHouseClient, destructive bool
 	if err := t.Validate(); err != nil {
 		return errors.Wrap(err, "validate")
 	}
-	database, err := t.getDatabase(ctx, c)
+	database, err := queryCurrentDatabase(ctx, c)
 	if err != nil {
 		return errors.Wrap(err, "get current database")
 	}
