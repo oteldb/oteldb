@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/go-faster/oteldb/internal/chstorage/chsql"
+	"github.com/go-faster/oteldb/internal/ddl"
 )
 
 // Backup implements a oteldb backup process.
@@ -227,4 +228,107 @@ func queryMinMaxTimestamp(ctx context.Context, client ClickHouseClient, tableCol
 	default:
 		return mint, maxt, nil
 	}
+}
+
+func queryTableColumns(ctx context.Context, client ClickHouseClient, database, table string) (r []ddl.Column, _ error) {
+	var (
+		name              proto.ColStr
+		comment           proto.ColStr
+		defaultKind       proto.ColStr
+		defaultExpression proto.ColStr
+		columnType        proto.ColStr
+		compressionCodec  proto.ColStr
+
+		columns = Columns{
+			{Name: "name", Data: &name},
+			{Name: "comment", Data: &comment},
+			{Name: "default_kind", Data: &defaultKind},
+			{Name: "default_expression", Data: &defaultExpression},
+			{Name: "type", Data: &columnType},
+			{Name: "compression_codec", Data: &compressionCodec},
+		}
+		query = chsql.Select("system.columns", columns.ChsqlResult()...).Where(
+			chsql.ColumnEq("database", database),
+			chsql.ColumnEq("table", table),
+		)
+	)
+
+	chq, err := query.Prepare(func(ctx context.Context, block proto.Block) error {
+		for i := 0; i < name.Rows(); i++ {
+			var (
+				name              = name.Row(i)
+				comment           = comment.Row(i)
+				defaultKind       = defaultKind.Row(i)
+				defaultExpression = defaultExpression.Row(i)
+				columnType        = columnType.Row(i)
+				compressionCodec  = compressionCodec.Row(i)
+			)
+			c := ddl.Column{
+				Name:         name,
+				Comment:      comment,
+				Default:      "",
+				Type:         proto.ColumnType(columnType),
+				Codec:        proto.ColumnType(compressionCodec),
+				Materialized: "",
+			}
+			switch defaultKind {
+			case "MATERIALIZED":
+				c.Materialized = defaultExpression
+			case "DEFAULT":
+				c.Default = defaultExpression
+			case "ALIAS":
+			}
+			r = append(r, c)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "prepare query")
+	}
+	if err := client.Do(ctx, chq); err != nil {
+		return nil, errors.Wrap(err, "execute query")
+	}
+	return r, nil
+}
+
+type backupColumn struct {
+	Name    string
+	Expr    chsql.Expr
+	Data    proto.Column
+	Default chsql.Expr
+}
+
+type backupColumns []backupColumn
+
+func (c backupColumns) Input() proto.Input {
+	cols := make(proto.Input, len(c))
+	for i, col := range c {
+		cols[i] = proto.InputColumn{
+			Name: col.Name,
+			Data: col.Data,
+		}
+	}
+	return cols
+}
+
+func (c backupColumns) ChsqlResult(existingColumns map[string]struct{}) ([]chsql.ResultColumn, error) {
+	cols := make([]chsql.ResultColumn, len(c))
+	for i, col := range c {
+		expr := col.Expr
+		if expr.IsZero() {
+			expr = chsql.Ident(col.Name)
+		}
+		if _, exist := existingColumns[col.Name]; !exist {
+			if col.Default.IsZero() {
+				return nil, errors.Errorf("column %q is not found, but required", col.Name)
+			}
+			expr = col.Default
+		}
+		cols[i] = chsql.ResultColumn{
+			Name: col.Name,
+			Data: col.Data,
+			Expr: expr,
+		}
+	}
+	return cols, nil
 }
