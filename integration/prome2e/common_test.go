@@ -26,6 +26,12 @@ type MetricsConsumer interface {
 	ConsumeMetrics(ctx context.Context, ld pmetric.Metrics) error
 }
 
+type MetricsConsumerFunc func(ctx context.Context, ld pmetric.Metrics) error
+
+func (f MetricsConsumerFunc) ConsumeMetrics(ctx context.Context, ld pmetric.Metrics) error {
+	return f(ctx, ld)
+}
+
 func readBatchSet(p string) (s prome2e.BatchSet, _ error) {
 	f, err := os.Open(p)
 	if err != nil {

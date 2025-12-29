@@ -1,9 +1,11 @@
 package tempoe2e_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/go-faster/sdk/zctx"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-faster/oteldb/integration"
@@ -15,10 +17,15 @@ func TestCH(t *testing.T) {
 	t.Parallel()
 	integration.Skip(t)
 	var (
-		ctx      = t.Context()
-		provider = integration.TraceProvider(t)
+		ctx         = t.Context()
+		provider    = integration.TraceProvider(t)
+		tablePrefix = strings.ReplaceAll(uuid.NewString(), "-", "")
 	)
-	c, tables := integration.SetupCH(t, "tempoe2e", provider)
+	_, c, tables := integration.SetupCH(t, integration.SetupCHOptions{
+		Name:           "tempoe2e",
+		TablePrefix:    tablePrefix,
+		TracerProvider: provider,
+	})
 
 	inserter, err := chstorage.NewInserter(c, chstorage.InserterOptions{
 		Tables:         tables,
@@ -41,16 +48,21 @@ func TestCHBackup(t *testing.T) {
 	t.Parallel()
 	integration.Skip(t)
 	var (
-		ctx       = t.Context()
-		backupDir = t.TempDir()
-		provider  = integration.TraceProvider(t)
+		ctx         = t.Context()
+		provider    = integration.TraceProvider(t)
+		tablePrefix = strings.ReplaceAll(uuid.NewString(), "-", "")
 
-		set tempoe2e.BatchSet
+		backupDir = t.TempDir()
+		set       tempoe2e.BatchSet
 	)
 
 	// Create backup.
 	{
-		client, tables := integration.SetupCH(t, "tempoe2e-backup", provider)
+		_, client, tables := integration.SetupCH(t, integration.SetupCHOptions{
+			Name:           "tempoe2e-backup",
+			TablePrefix:    tablePrefix,
+			TracerProvider: provider,
+		})
 
 		inserter, err := chstorage.NewInserter(client, chstorage.InserterOptions{
 			Tables:         tables,
@@ -65,7 +77,11 @@ func TestCHBackup(t *testing.T) {
 
 	// Restore from backup and check.
 	{
-		client, tables := integration.SetupCH(t, "tempoe2e-restore", provider)
+		_, client, tables := integration.SetupCH(t, integration.SetupCHOptions{
+			Name:           "tempoe2e-restore",
+			TablePrefix:    tablePrefix,
+			TracerProvider: provider,
+		})
 
 		r := chstorage.NewRestore(client, tables, integration.Logger(t).Named("restore"))
 		require.NoError(t, r.Restore(ctx, backupDir))

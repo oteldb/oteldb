@@ -2,7 +2,6 @@ package integration
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -10,27 +9,48 @@ import (
 	"github.com/ClickHouse/ch-go/chpool"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-faster/errors"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	testcontainerslog "github.com/testcontainers/testcontainers-go/log"
 	"go.opentelemetry.io/otel/trace"
+	nooptrace "go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/go-faster/oteldb/internal/chstorage"
 )
 
+// SetupCHOptions defines options [SetupCH].
+type SetupCHOptions struct {
+	Name           string
+	TablePrefix    string
+	Networks       []string
+	SkipMigrate    bool
+	TracerProvider trace.TracerProvider
+}
+
+func (opts *SetupCHOptions) setDefaults() {
+	if opts.TracerProvider == nil {
+		opts.TracerProvider = nooptrace.NewTracerProvider()
+	}
+}
+
 // SetupCH runs a new Clickhouse instance.
-func SetupCH(t *testing.T, name string, provider trace.TracerProvider) (chstorage.ClickHouseClient, chstorage.Tables) {
+func SetupCH(t *testing.T, opts SetupCHOptions) (testcontainers.Container, chstorage.ClickHouseClient, chstorage.Tables) {
 	t.Helper()
 	ctx := t.Context()
+	opts.setDefaults()
 
+	chName := "oteldb-clickhouse"
+	if n := opts.Name; n != "" {
+		chName = fmt.Sprintf("oteldb-%s-clickhouse", n)
+	}
 	req := testcontainers.ContainerRequest{
-		Name:         fmt.Sprintf("oteldb-%s-clickhouse", name),
+		Name:         chName,
 		Image:        "clickhouse/clickhouse-server:25.9",
 		ExposedPorts: []string{"8123/tcp", "9000/tcp"},
 		Env: map[string]string{
 			"CLICKHOUSE_PASSWORD": "default",
 		},
+		Networks: opts.Networks,
 	}
 	chContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -43,14 +63,14 @@ func SetupCH(t *testing.T, name string, provider trace.TracerProvider) (chstorag
 	endpoint, err := chContainer.PortEndpoint(ctx, "9000", "")
 	require.NoError(t, err, "container endpoint")
 
-	opts := ch.Options{
+	clientOpts := ch.Options{
 		Address:  endpoint,
 		Database: "default",
 		User:     "default",
 		Password: "default",
 
 		OpenTelemetryInstrumentation: true,
-		TracerProvider:               provider,
+		TracerProvider:               opts.TracerProvider,
 	}
 
 	connectBackoff := backoff.NewExponentialBackOff()
@@ -58,7 +78,7 @@ func SetupCH(t *testing.T, name string, provider trace.TracerProvider) (chstorag
 	connectBackoff.MaxElapsedTime = time.Minute
 	c, err := backoff.RetryWithData(func() (*chpool.Pool, error) {
 		c, err := chpool.Dial(ctx, chpool.Options{
-			ClientOptions: opts,
+			ClientOptions: clientOpts,
 		})
 		if err != nil {
 			return nil, errors.Wrap(err, "dial")
@@ -69,17 +89,18 @@ func SetupCH(t *testing.T, name string, provider trace.TracerProvider) (chstorag
 		t.Fatal(err)
 	}
 
-	prefix := strings.ReplaceAll(uuid.NewString(), "-", "")
 	tables := chstorage.DefaultTables()
-	if err := tables.Each(func(name *string) error {
-		old := *name
-		*name = prefix + "_" + old
-		return nil
-	}); err != nil {
-		t.Fatal(err)
+	if !opts.SkipMigrate {
+		if err := tables.Each(func(name *string) error {
+			old := *name
+			*name = opts.TablePrefix + "_" + old
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("Test tables prefix: %s", opts.TablePrefix)
+		require.NoError(t, tables.Create(ctx, c))
 	}
-	t.Logf("Test tables prefix: %s", prefix)
-	require.NoError(t, tables.Create(ctx, c))
 
-	return c, tables
+	return chContainer, c, tables
 }
