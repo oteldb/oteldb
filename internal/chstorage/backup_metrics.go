@@ -2,21 +2,25 @@ package chstorage
 
 import (
 	"context"
-	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
-	"github.com/ClickHouse/ch-go"
 	"github.com/ClickHouse/ch-go/proto"
 	"github.com/go-faster/errors"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/go-faster/oteldb/internal/chstorage/chsql"
 )
 
 type metricsBackup struct {
-	client ClickHouseClient
-	tables Tables
+	client   ClickHouseClient
+	tables   Tables
+	database string
+
 	logger *zap.Logger
 }
 
@@ -58,24 +62,29 @@ func (b *metricsBackup) backup(ctx context.Context, root string, start, end time
 	)
 	b.logger.Info("Backing up metrics", zap.Time("start", start))
 
+	tsColumns, err := b.queryExistingColumns(ctx, b.tables.Timeseries)
+	if err != nil {
+		return err
+	}
+
 	grp, grpCtx := errgroup.WithContext(ctx)
 	grp.Go(func() error {
 		ctx := grpCtx
-		if err := b.backupPoints(ctx, dir, start, end); err != nil {
+		if err := b.backupPoints(ctx, dir, start, end, tsColumns); err != nil {
 			return errors.Wrap(err, "backup points")
 		}
 		return nil
 	})
 	grp.Go(func() error {
 		ctx := grpCtx
-		if err := b.backupExpHistograms(ctx, dir, start, end); err != nil {
+		if err := b.backupExpHistograms(ctx, dir, start, end, tsColumns); err != nil {
 			return errors.Wrap(err, "backup exp histograms")
 		}
 		return nil
 	})
 	grp.Go(func() error {
 		ctx := grpCtx
-		if err := b.backupExemplars(ctx, dir, start, end); err != nil {
+		if err := b.backupExemplars(ctx, dir, start, end, tsColumns); err != nil {
 			return errors.Wrap(err, "backup exp histograms")
 		}
 		return nil
@@ -88,7 +97,7 @@ func (b *metricsBackup) backup(ctx context.Context, root string, start, end time
 	return nil
 }
 
-func (b *metricsBackup) backupPoints(ctx context.Context, dir string, start, end time.Time) error {
+func (b *metricsBackup) backupPoints(ctx context.Context, dir string, start, end time.Time, tsColumns map[string]struct{}) error {
 	table := b.tables.Points
 	w, err := openBackupWriter(dir, "metrics_points")
 	if err != nil {
@@ -97,75 +106,24 @@ func (b *metricsBackup) backupPoints(ctx context.Context, dir string, start, end
 	defer func() {
 		_ = w.Close()
 	}()
-	var (
-		timestamp = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
-		value     proto.ColFloat64
+	columns := backupColumns{
+		{Name: "timestamp", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)},
+		{Name: "value", Data: new(proto.ColFloat64)},
 
-		mapping proto.ColEnum8
-		flags   proto.ColUInt8
-
-		name        = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-		unit        = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-		description proto.ColStr
-
-		attribute = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-		scope     = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-		resource  = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-
-		columns = MergeColumns(
-			Columns{
-				{Name: "timestamp", Data: timestamp},
-				{Name: "value", Data: &value},
-
-				{Name: "mapping", Data: proto.Wrap(&mapping, metricMappingDDL)},
-				{Name: "flags", Data: &flags},
-			},
-			Columns{
-				{Name: "name", Data: name},
-				{Name: "unit", Data: unit},
-				{Name: "description", Data: &description},
-
-				{Name: "attribute", Data: attribute},
-				{Name: "scope", Data: scope},
-				{Name: "resource", Data: resource},
-			},
-		)
-		buf proto.Buffer
-	)
-	if err := b.client.Do(ctx, ch.Query{
-		Body: fmt.Sprintf(`SELECT
-  timestamp,
-  value,
-  mapping,
-  flags,
-  ts.name AS name,
-  toString(ts.unit) AS unit,
-  toString(ts.description) AS description,
-  ts.attribute AS attribute,
-  ts.scope AS scope,
-  ts.resource AS resource
-FROM
-  `+table+` p
-  INNER JOIN `+b.tables.Timeseries+` ts ON p.hash = ts.hash
-WHERE timestamp >= toDateTime(%d) AND timestamp <= toDateTime(%d)`, start.Unix(), end.Unix()),
-		Result: columns.Result(),
-		OnResult: func(ctx context.Context, block proto.Block) error {
-			buf.Reset()
-			if err := block.EncodeRawBlock(&buf, 54451, columns.Input()); err != nil {
-				return errors.Wrap(err, "encode raw block")
-			}
-			if _, err := w.Write(buf.Buf); err != nil {
-				return errors.Wrap(err, "write block")
-			}
-			return nil
-		},
-	}); err != nil {
+		{Name: "mapping", Data: new(proto.ColEnum8)},
+		{Name: "flags", Data: new(proto.ColUInt8), Default: chsql.Integer[uint8](0)},
+	}
+	q, input, err := b.buildBackupQuery(ctx, table, columns, start, end, tsColumns)
+	if err != nil {
+		return err
+	}
+	if err := b.saveBackup(ctx, q, input, w); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (b *metricsBackup) backupExpHistograms(ctx context.Context, dir string, start, end time.Time) error {
+func (b *metricsBackup) backupExpHistograms(ctx context.Context, dir string, start, end time.Time, tsColumns map[string]struct{}) error {
 	table := b.tables.ExpHistograms
 	w, err := openBackupWriter(dir, "metrics_exp_histograms")
 	if err != nil {
@@ -174,99 +132,32 @@ func (b *metricsBackup) backupExpHistograms(ctx context.Context, dir string, sta
 	defer func() {
 		_ = w.Close()
 	}()
-	var (
-		timestamp            = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
-		count                proto.ColUInt64
-		sum                  = new(proto.ColFloat64).Nullable()
-		cmin                 = new(proto.ColFloat64).Nullable()
-		cmax                 = new(proto.ColFloat64).Nullable()
-		scale                proto.ColInt32
-		zerocount            proto.ColUInt64
-		positiveOffset       proto.ColInt32
-		positiveBucketCounts = new(proto.ColUInt64).Array()
-		negativeOffset       proto.ColInt32
-		negativeBucketCounts = new(proto.ColUInt64).Array()
+	columns := backupColumns{
+		{Name: "timestamp", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)},
+		{Name: "exp_histogram_count", Data: new(proto.ColUInt64)},
+		{Name: "exp_histogram_sum", Data: new(proto.ColFloat64).Nullable()},
+		{Name: "exp_histogram_min", Data: new(proto.ColFloat64).Nullable()},
+		{Name: "exp_histogram_max", Data: new(proto.ColFloat64).Nullable()},
+		{Name: "exp_histogram_scale", Data: new(proto.ColInt32)},
+		{Name: "exp_histogram_zerocount", Data: new(proto.ColUInt64)},
+		{Name: "exp_histogram_positive_offset", Data: new(proto.ColInt32)},
+		{Name: "exp_histogram_positive_bucket_counts", Data: new(proto.ColUInt64).Array()},
+		{Name: "exp_histogram_negative_offset", Data: new(proto.ColInt32)},
+		{Name: "exp_histogram_negative_bucket_counts", Data: new(proto.ColUInt64).Array()},
 
-		flags proto.ColUInt8
-
-		name        = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-		unit        = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-		description proto.ColStr
-
-		attribute = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-		scope     = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-		resource  = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-
-		columns = MergeColumns(
-			Columns{
-				{Name: "timestamp", Data: timestamp},
-				{Name: "exp_histogram_count", Data: &count},
-				{Name: "exp_histogram_sum", Data: sum},
-				{Name: "exp_histogram_min", Data: cmin},
-				{Name: "exp_histogram_max", Data: cmax},
-				{Name: "exp_histogram_scale", Data: &scale},
-				{Name: "exp_histogram_zerocount", Data: &zerocount},
-				{Name: "exp_histogram_positive_offset", Data: &positiveOffset},
-				{Name: "exp_histogram_positive_bucket_counts", Data: positiveBucketCounts},
-				{Name: "exp_histogram_negative_offset", Data: &negativeOffset},
-				{Name: "exp_histogram_negative_bucket_counts", Data: negativeBucketCounts},
-
-				{Name: "flags", Data: &flags},
-			},
-			Columns{
-				{Name: "name", Data: name},
-				{Name: "unit", Data: unit},
-				{Name: "description", Data: &description},
-
-				{Name: "attribute", Data: attribute},
-				{Name: "scope", Data: scope},
-				{Name: "resource", Data: resource},
-			},
-		)
-		buf proto.Buffer
-	)
-	if err := b.client.Do(ctx, ch.Query{
-		Body: fmt.Sprintf(`SELECT
-  timestamp,
-  exp_histogram_count,
-  exp_histogram_sum,
-  exp_histogram_min,
-  exp_histogram_max,
-  exp_histogram_scale,
-  exp_histogram_zerocount,
-  exp_histogram_positive_offset,
-  exp_histogram_positive_bucket_counts,
-  exp_histogram_negative_offset,
-  exp_histogram_negative_bucket_counts,
-  flags,
-  ts.name AS name,
-  toString(ts.unit) AS unit,
-  toString(ts.description) AS description,
-  ts.attribute AS attribute,
-  ts.scope AS scope,
-  ts.resource AS resource
-FROM
-  `+table+` p
-  INNER JOIN `+b.tables.Timeseries+` ts ON p.hash = ts.hash
-WHERE timestamp >= toDateTime(%d) AND timestamp <= toDateTime(%d)`, start.Unix(), end.Unix()),
-		Result: columns.Result(),
-		OnResult: func(ctx context.Context, block proto.Block) error {
-			buf.Reset()
-			if err := block.EncodeRawBlock(&buf, 54451, columns.Input()); err != nil {
-				return errors.Wrap(err, "encode raw block")
-			}
-			if _, err := w.Write(buf.Buf); err != nil {
-				return errors.Wrap(err, "write block")
-			}
-			return nil
-		},
-	}); err != nil {
+		{Name: "flags", Data: new(proto.ColUInt8)},
+	}
+	q, input, err := b.buildBackupQuery(ctx, table, columns, start, end, tsColumns)
+	if err != nil {
+		return err
+	}
+	if err := b.saveBackup(ctx, q, input, w); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (b *metricsBackup) backupExemplars(ctx context.Context, dir string, start, end time.Time) error {
+func (b *metricsBackup) backupExemplars(ctx context.Context, dir string, start, end time.Time, tsColumns map[string]struct{}) error {
 	table := b.tables.Exemplars
 	w, err := openBackupWriter(dir, "metrics_exemplars")
 	if err != nil {
@@ -275,76 +166,117 @@ func (b *metricsBackup) backupExemplars(ctx context.Context, dir string, start, 
 	defer func() {
 		_ = w.Close()
 	}()
-	var (
-		timestamp = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
+	columns := backupColumns{
+		{Name: "timestamp", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)},
 
-		filteredAttributes proto.ColBytes
-		exemplarTimestamp  = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
-		value              proto.ColFloat64
-		spanID             proto.ColFixedStr8
-		traceID            proto.ColFixedStr16
-
-		name        = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-		unit        = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-		description proto.ColStr
-
-		attribute = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-		scope     = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-		resource  = &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}
-
-		columns = MergeColumns(
-			Columns{
-				{Name: "timestamp", Data: timestamp},
-
-				{Name: "filtered_attributes", Data: &filteredAttributes},
-				{Name: "exemplar_timestamp", Data: exemplarTimestamp},
-				{Name: "value", Data: &value},
-				{Name: "span_id", Data: &spanID},
-				{Name: "trace_id", Data: &traceID},
-			},
-			Columns{
-				{Name: "name", Data: name},
-				{Name: "unit", Data: unit},
-				{Name: "description", Data: &description},
-
-				{Name: "attribute", Data: attribute},
-				{Name: "scope", Data: scope},
-				{Name: "resource", Data: resource},
-			},
-		)
-		buf proto.Buffer
-	)
-	if err := b.client.Do(ctx, ch.Query{
-		Body: fmt.Sprintf(`SELECT
-  timestamp,
-  filtered_attributes,
-  exemplar_timestamp,
-  value,
-  span_id,
-  trace_id,
-  ts.name AS name,
-  toString(ts.unit) AS unit,
-  toString(ts.description) AS description,
-  ts.attribute AS attribute,
-  ts.scope AS scope,
-  ts.resource AS resource
-FROM
-  `+table+` p
-  INNER JOIN `+b.tables.Timeseries+` ts ON p.hash = ts.hash
-WHERE timestamp >= toDateTime(%d) AND timestamp <= toDateTime(%d)`, start.Unix(), end.Unix()),
-		Result: columns.Result(),
-		OnResult: func(ctx context.Context, block proto.Block) error {
-			buf.Reset()
-			if err := block.EncodeRawBlock(&buf, 54451, columns.Input()); err != nil {
-				return errors.Wrap(err, "encode raw block")
-			}
-			if _, err := w.Write(buf.Buf); err != nil {
-				return errors.Wrap(err, "write block")
-			}
-			return nil
-		},
-	}); err != nil {
+		{Name: "filtered_attributes", Data: new(proto.ColBytes)},
+		{Name: "exemplar_timestamp", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)},
+		{Name: "value", Data: new(proto.ColFloat64)},
+		{Name: "span_id", Data: new(proto.ColFixedStr8)},
+		{Name: "trace_id", Data: new(proto.ColFixedStr16)},
+	}
+	q, input, err := b.buildBackupQuery(ctx, table, columns, start, end, tsColumns)
+	if err != nil {
+		return err
+	}
+	if err := b.saveBackup(ctx, q, input, w); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (b *metricsBackup) saveBackup(ctx context.Context, q *chsql.SelectQuery, input proto.Input, w io.Writer) error {
+	var buf proto.Buffer
+	chq, err := q.Prepare(func(ctx context.Context, block proto.Block) error {
+		buf.Reset()
+		if err := block.EncodeRawBlock(&buf, 54451, input); err != nil {
+			return errors.Wrap(err, "encode raw block")
+		}
+		if _, err := w.Write(buf.Buf); err != nil {
+			return errors.Wrap(err, "write block")
+		}
+		return nil
+	})
+	if err != nil {
+		return errors.Wrap(err, "prepare query")
+	}
+	if err := b.client.Do(ctx, chq); err != nil {
+		return errors.Wrap(err, "do query")
+	}
+	return nil
+}
+
+func (b *metricsBackup) buildBackupQuery(ctx context.Context, table string, columns backupColumns, start, end time.Time, existingTSColumns map[string]struct{}) (*chsql.SelectQuery, proto.Input, error) {
+	const tsAlias = "ts"
+
+	tsColumns := b.timeseriesColumns(tsAlias)
+	input := slices.Concat(columns, tsColumns).Input()
+
+	existingColumns, err := b.queryExistingColumns(ctx, table)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	dataResult, err := columns.ChsqlResult(existingColumns)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "build expressions for %q", table)
+	}
+	tsResult, err := tsColumns.ChsqlResult(existingTSColumns)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "build expressions for %q", tsAlias)
+	}
+	results := slices.Concat(dataResult, tsResult)
+
+	query := chsql.Select(table, results...).
+		Alias("t").
+		InnerJoin(b.tables.Timeseries, tsAlias,
+			chsql.Eq(
+				chsql.PrefixedIdent("t", "hash"),
+				chsql.PrefixedIdent(tsAlias, "hash"),
+			),
+		).
+		Where(
+			chsql.Gte(chsql.Ident("timestamp"), chsql.DateTime(start)),
+			chsql.Lte(chsql.Ident("timestamp"), chsql.DateTime(end)),
+		)
+	return query, input, nil
+}
+
+func (b *metricsBackup) queryExistingColumns(ctx context.Context, table string) (map[string]struct{}, error) {
+	sourceColumns, err := queryTableColumns(ctx, b.client, b.database, table)
+	if err != nil {
+		return nil, errors.Wrapf(err, "query %s.%s columns", b.database, table)
+	}
+	existingColumns := make(map[string]struct{}, len(sourceColumns))
+	for _, dc := range sourceColumns {
+		existingColumns[dc.Name] = struct{}{}
+	}
+	return existingColumns, nil
+}
+
+func (b *metricsBackup) timeseriesColumns(table string) backupColumns {
+	return backupColumns{
+		{
+			Name:    "name",
+			Expr:    chsql.Cast(chsql.PrefixedIdent(table, "name"), "LowCardinality(String)"),
+			Data:    &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)},
+			Default: chsql.Cast(chsql.String(""), "LowCardinality(String)"),
+		},
+		{
+			Name:    "unit",
+			Expr:    chsql.Cast(chsql.PrefixedIdent(table, "unit"), "LowCardinality(String)"),
+			Data:    &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)},
+			Default: chsql.Cast(chsql.String(""), "LowCardinality(String)"),
+		},
+		{
+			Name:    "description",
+			Expr:    chsql.Cast(chsql.PrefixedIdent(table, "description"), "String"),
+			Data:    new(proto.ColStr),
+			Default: chsql.String(""),
+		},
+
+		{Name: "attribute", Expr: chsql.PrefixedIdent(table, "attribute"), Data: &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}},
+		{Name: "scope", Expr: chsql.PrefixedIdent(table, "scope"), Data: &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}},
+		{Name: "resource", Expr: chsql.PrefixedIdent(table, "resource"), Data: &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)}},
+	}
 }

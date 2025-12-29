@@ -14,9 +14,10 @@ import (
 )
 
 type logsBackup struct {
-	client ClickHouseClient
-	tables Tables
-	logger *zap.Logger
+	client   ClickHouseClient
+	tables   Tables
+	database string
+	logger   *zap.Logger
 }
 
 func (b *logsBackup) Do(ctx context.Context, dir string) error {
