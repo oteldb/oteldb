@@ -311,7 +311,7 @@ func (t Tables) createTable(ctx context.Context, c ClickHouseClient, query strin
 func (t Tables) dropTable(ctx context.Context, c ClickHouseClient, name string) error {
 	query := fmt.Sprintf("DROP TABLE IF EXISTS %s", name)
 	if t.Cluster != "" {
-		query += fmt.Sprintf(" ON CLUSTER '%s'", t.Cluster)
+		query += fmt.Sprintf("SYNC ON CLUSTER '%s'", t.Cluster)
 	}
 	lg := zctx.From(ctx)
 	q := ch.Query{
