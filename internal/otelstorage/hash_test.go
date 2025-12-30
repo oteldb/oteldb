@@ -13,6 +13,16 @@ func TestHash(t *testing.T) {
 	require.NotEqual(t, AttrHash(m), Hash{})
 }
 
+func TestHashNotEqual(t *testing.T) {
+	a := pcommon.NewMap()
+	a.PutStr("cpu", "1")
+
+	b := pcommon.NewMap()
+	b.PutStr("quantile", "1")
+
+	require.NotEqual(t, AttrHash(a), AttrHash(b))
+}
+
 func BenchmarkAttrHash(b *testing.B) {
 	m := pcommon.NewMap()
 	m.PutStr("net.transport", "ip_tcp")
