@@ -107,7 +107,7 @@ func hashMap(h *xxh3.Hasher, m pcommon.Map) {
 	})
 
 	for _, pair := range pairs {
-		h.WriteString(pair.key)
+		_, _ = h.WriteString(pair.key)
 		hashValue(h, pair.value)
 	}
 }
