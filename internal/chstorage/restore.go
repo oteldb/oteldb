@@ -32,9 +32,6 @@ func NewRestore(client ClickHouseClient, tables Tables, logger *zap.Logger) *Res
 
 // Restore performs restore from the given directory.
 func (b *Restore) Restore(ctx context.Context, dir string) error {
-	if err := b.tables.CreateNonDestructive(ctx, b.client); err != nil {
-		return errors.Wrap(err, "create tables")
-	}
 	var (
 		metrics = metricsRestore{
 			client:         b.client,
