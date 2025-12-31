@@ -181,20 +181,25 @@ func (t Tables) create(ctx context.Context, c ClickHouseClient, destructive bool
 	}
 
 	{
+		table := ddl.Table{
+			Engine: ddl.Engine{
+				Type: "ReplacingMergeTree",
+				Args: []string{"ts"},
+			},
+			OrderBy: []string{"table"},
+			Columns: []ddl.Column{
+				{Name: "table", Type: "String"},
+				{Name: "ddl", Type: "String"},
+				{Name: "ts", Type: "DateTime", Default: "now()"},
+			},
+		}
+		if t.Replicated {
+			rep, _ := table.Engine.Replicated(t.Migration)
+			table.Engine = rep
+		}
 		query, err := t.generateQuery(generateOptions{
 			Name: t.Migration,
-			DDL: ddl.Table{
-				Engine: ddl.Engine{
-					Type: "ReplacingMergeTree",
-					Args: []string{"ts"},
-				},
-				OrderBy: []string{"table"},
-				Columns: []ddl.Column{
-					{Name: "table", Type: "String"},
-					{Name: "ddl", Type: "String"},
-					{Name: "ts", Type: "DateTime", Default: "now()"},
-				},
-			},
+			DDL:  table,
 		})
 		if err != nil {
 			return errors.Wrap(err, "generate migration table ddl")
