@@ -123,7 +123,7 @@ func addOgen[
 	name string,
 	server Server,
 	defaultPort string,
-	auth []AuthConfig,
+	authCfg []AuthConfig,
 ) {
 	lg := app.lg.Named(name)
 
@@ -132,8 +132,8 @@ func addOgen[
 		addr = defaultPort
 	}
 
-	if auth == nil {
-		auth = app.cfg.Auth
+	if authCfg == nil {
+		authCfg = app.cfg.Auth
 	}
 
 	app.services[name] = func(ctx context.Context) error {
@@ -149,13 +149,13 @@ func addOgen[
 			}
 		)
 
-		auth, err := makeAuthMiddlewares(auth)
+		auth, err := makeAuthMiddlewares(authCfg)
 		if err != nil {
 			return errors.Wrap(err, "create auth middlewares")
 		}
-		if len(auth) > 0 {
-			lg.Info("Enabling authentication middlewares", zap.Int("count", len(auth)))
-			middlewares = append(middlewares, auth...)
+		if auth != nil {
+			lg.Info("Enabling authentication middleware", zap.Int("configs", len(authCfg)))
+			middlewares = append(middlewares, auth)
 		}
 
 		httpServer := &http.Server{
@@ -188,26 +188,26 @@ func addOgen[
 	}
 }
 
-func makeAuthMiddlewares(auth []AuthConfig) (r []httpmiddleware.Middleware, _ error) {
+func makeAuthMiddlewares(auth []AuthConfig) (httpmiddleware.Middleware, error) {
 	if len(auth) == 0 {
-		return r, nil
+		return nil, nil
 	}
 
-	r = make([]httpmiddleware.Middleware, 0, len(auth))
+	r := make([]httpmiddleware.Authenticator, 0, len(auth))
 	for _, a := range auth {
 		if !a.Type.IsValid() {
-			return r, errors.Errorf("invalid auth type %q", a.Type)
+			return nil, errors.Errorf("invalid auth type %q", a.Type)
 		}
 
 		a.setDefaults()
 		switch a.Type {
 		case AuthTypeBasic:
-			r = append(r, httpmiddleware.BasicAuthMiddleware(a.Users))
+			r = append(r, httpmiddleware.BasicAuth(a.Users))
 		case AuthTypeBearerToken:
-			r = append(r, httpmiddleware.BearerTokenMiddleware(a.Tokens))
+			r = append(r, httpmiddleware.BearerToken(a.Tokens))
 		}
 	}
-	return r, nil
+	return httpmiddleware.Auth(r, nil), nil
 }
 
 func (app *App) trySetupTempo() error {
@@ -338,9 +338,9 @@ func (app *App) setupHealthCheck() error {
 	if err != nil {
 		return errors.Wrap(err, "create auth middlewares")
 	}
-	if len(auth) > 0 {
-		app.lg.Info("Enabling healthcheck authentication middlewares", zap.Int("count", len(auth)))
-		handler = httpmiddleware.Wrap(handler, auth...)
+	if auth != nil {
+		app.lg.Info("Enabling healthcheck authentication middleware", zap.Int("configs", len(cfg.Auth)))
+		handler = httpmiddleware.Wrap(handler, auth)
 	}
 
 	srv := &http.Server{
