@@ -1,0 +1,51 @@
+dsn: clickhouse://default:default@clickhouse:9000
+prometheus:
+  bind: 0.0.0.0:9090
+  max_samples: 1_000_000
+  timeout: 1m
+  enable_negative_offset: true
+  auth:
+    - type: bearertoken
+      tokens:
+        - token: "prometheus-very-secret-token"
+tempo:
+  bind: 0.0.0.0:3200
+loki:
+  bind: 0.0.0.0:3100
+  auth:
+    - type: basicauth
+      users:
+        - user: admin
+          password: admin
+health_check:
+  bind: 0.0.0.0:13133
+  auth:
+auth:
+  - type: bearertoken
+    tokens:
+      - token: "oteldb-secret-token"
+otelcol:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+    prometheusremotewrite:
+      endpoint: 0.0.0.0:19291
+      time_threshold: 100_000 # hours
+  exporters:
+    oteldbexporter:
+      dsn: clickhouse://default:default@clickhouse:9000
+  service:
+    pipelines:
+      metrics:
+        receivers: [otlp, prometheusremotewrite]
+        exporters: [oteldbexporter]
+      traces:
+        receivers: [otlp]
+        exporters: [oteldbexporter]
+      logs:
+        receivers: [otlp]
+        exporters: [oteldbexporter]

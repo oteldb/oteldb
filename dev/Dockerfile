@@ -15,8 +15,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -o /app/odbresto
 FROM ${BASE_IMAGE}
 
 WORKDIR /app
-COPY --from=builder /app/oteldb /oteldb
-COPY --from=builder /app/odbbackup /oteldb
-COPY --from=builder /app/odbrestore /oteldb
+COPY --from=builder /app/oteldb     /usr/local/bin/oteldb
+COPY --from=builder /app/odbbackup  /usr/local/bin/odbbackup
+COPY --from=builder /app/odbrestore /usr/local/bin/odbrestore
 
-ENTRYPOINT ["/oteldb"]
+ENTRYPOINT ["/usr/local/bin/oteldb"]

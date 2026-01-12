@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/go-faster/yaml"
+
+	"github.com/go-faster/oteldb/internal/httpmiddleware"
 )
 
 func loadConfig(name string) (cfg Config, _ error) {
@@ -44,8 +46,11 @@ type Config struct {
 
 	Tempo       TempoConfig       `json:"tempo" yaml:"tempo"`
 	Prometheus  PrometheusConfig  `json:"prometheus" yaml:"prometheus"`
-	LokiConfig  LokiConfig        `json:"loki" yaml:"loki"`
+	Loki        LokiConfig        `json:"loki" yaml:"loki"`
 	HealthCheck HealthCheckConfig `json:"health_check" yaml:"health_check"`
+
+	// Auth is global auth config.
+	Auth []AuthConfig `json:"auth" yaml:"auth"`
 
 	// Whether if enable certain collector/inserter signals.
 	CollectorSignals map[string]bool `json:"collector_signals" yaml:"collector_signals"`
@@ -104,7 +109,8 @@ func (cfg *Config) setDefaults() {
 
 // TempoConfig is Tempo API config.
 type TempoConfig struct {
-	Bind string `json:"bind" yaml:"bind"`
+	Bind string       `json:"bind" yaml:"bind"`
+	Auth []AuthConfig `json:"auth" yaml:"auth"`
 }
 
 func (cfg *TempoConfig) setDefaults() {
@@ -115,7 +121,9 @@ func (cfg *TempoConfig) setDefaults() {
 
 // PrometheusConfig is Prometheus API config.
 type PrometheusConfig struct {
-	Bind                 string        `json:"bind" yaml:"bind"`
+	Bind string       `json:"bind" yaml:"bind"`
+	Auth []AuthConfig `json:"auth" yaml:"auth"`
+
 	MaxSamples           int           `json:"max_samples" yaml:"max_samples"`
 	MaxTimeseries        int           `json:"max_timeseries" yaml:"max_timeseries"`
 	Timeout              time.Duration `json:"timeout" yaml:"timeout"`
@@ -148,7 +156,9 @@ func (cfg *PrometheusConfig) setDefaults() {
 
 // LokiConfig is Loki API config.
 type LokiConfig struct {
-	Bind          string        `json:"bind" yaml:"bind"`
+	Bind string       `json:"bind" yaml:"bind"`
+	Auth []AuthConfig `json:"auth" yaml:"auth"`
+
 	LookbackDelta time.Duration `json:"lookback_delta" yaml:"lookback_delta"`
 }
 
@@ -160,11 +170,44 @@ func (cfg *LokiConfig) setDefaults() {
 
 // HealthCheckConfig is health check config.
 type HealthCheckConfig struct {
-	Bind string `json:"bind" yaml:"bind"`
+	Bind string       `json:"bind" yaml:"bind"`
+	Auth []AuthConfig `json:"auth" yaml:"auth"`
 }
 
 func (cfg *HealthCheckConfig) setDefaults() {
 	if cfg.Bind == "" {
 		cfg.Bind = ":13133"
+	}
+}
+
+// AuthType defines authentication method type.
+type AuthType string
+
+const (
+	AuthTypeNone        AuthType = "none"
+	AuthTypeBasic       AuthType = "basicauth"
+	AuthTypeBearerToken AuthType = "bearertoken"
+)
+
+// IsValid checks if auth type is valid.
+func (t AuthType) IsValid() bool {
+	switch t {
+	case AuthTypeNone, AuthTypeBasic, AuthTypeBearerToken:
+		return true
+	default:
+		return false
+	}
+}
+
+// AuthConfig is authentication config.
+type AuthConfig struct {
+	Type   AuthType                         `json:"type" yaml:"type"`
+	Tokens []httpmiddleware.Token           `json:"tokens" yaml:"tokens"`
+	Users  []httpmiddleware.UserCredentials `json:"users" yaml:"users"`
+}
+
+func (cfg *AuthConfig) setDefaults() {
+	if cfg.Type == "" {
+		cfg.Type = AuthTypeNone
 	}
 }
