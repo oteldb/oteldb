@@ -3,6 +3,13 @@ package otelreceiver
 
 import (
 	"github.com/go-faster/errors"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/failoverconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/roundrobinconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/servicegraphconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/signaltometricsconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/sumconnector"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/basicauthextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension"
@@ -61,7 +68,15 @@ func extensionFactoryMap() (map[component.Type]extension.Factory, error) {
 }
 
 func connectorFactoryMap() (map[component.Type]connector.Factory, error) {
-	return otelcol.MakeFactoryMap[connector.Factory]()
+	return otelcol.MakeFactoryMap(
+		countconnector.NewFactory(),
+		exceptionsconnector.NewFactory(),
+		failoverconnector.NewFactory(),
+		servicegraphconnector.NewFactory(),
+		sumconnector.NewFactory(),
+		signaltometricsconnector.NewFactory(),
+		roundrobinconnector.NewFactory(),
+	)
 }
 
 // TelemetrySettings provides telemetry for collector.
