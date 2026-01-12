@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ClickHouse/ch-go"
+	"github.com/ClickHouse/ch-go/proto"
 	"github.com/go-faster/errors"
 	"github.com/klauspost/compress/zstd"
 	"go.uber.org/zap"
@@ -98,4 +100,122 @@ func openBackupReader(dir, name string) (io.ReadCloser, error) {
 		Closer: f,
 	}
 	return rc, nil
+}
+
+type restoreTable struct {
+	File       string
+	NewColumns func() (proto.Input, Columns, func(), func() int)
+
+	BatchSize  int
+	BatchLimit int
+	Logger     *zap.Logger
+}
+
+func (r *restoreTable) setDefaults() {
+	if r.BatchSize == 0 {
+		r.BatchSize = 1_000_000
+	}
+	if r.BatchLimit == 0 {
+		r.BatchLimit = 100_000_000
+	}
+	if r.Logger == nil {
+		r.Logger = zap.NewNop()
+	}
+}
+
+func (r *restoreTable) Do(ctx context.Context, dir, table string, client ClickHouseClient) error {
+	r.setDefaults()
+
+	decodeCh := make(chan proto.Input)
+	grp, grpCtx := errgroup.WithContext(ctx)
+	grp.Go(func() error {
+		ctx := grpCtx
+		defer close(decodeCh)
+		return r.batcher(ctx, dir, decodeCh)
+	})
+	grp.Go(func() error {
+		ctx := grpCtx
+		return r.inserter(ctx, table, client, decodeCh)
+	})
+	return grp.Wait()
+}
+
+func (r *restoreTable) batcher(ctx context.Context, dir string, decodeCh chan<- proto.Input) error {
+	br, err := openBackupReader(dir, r.File)
+	if err != nil {
+		if os.IsNotExist(err) {
+			r.Logger.Info("No backup found", zap.String("dir", dir), zap.String("file", r.File))
+			return nil
+		}
+		return err
+	}
+	defer func() {
+		_ = br.Close()
+	}()
+
+	var (
+		block                     proto.Block
+		rd                        = proto.NewReader(br)
+		input, columns, add, rows = r.NewColumns()
+	)
+	for {
+		columns.Reset()
+		if err := block.DecodeRawBlock(rd, 54451, columns.Result()); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
+		}
+
+		add()
+		total := rows()
+
+		if total > r.BatchLimit {
+			// Wait until inserter takes the buffer away.
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case decodeCh <- input:
+				input, columns, add, rows = r.NewColumns()
+			}
+		}
+		if total > r.BatchSize {
+			// Try to insert block, if inserter have no work.
+			// Otherwise, keep filling the buffer.
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case decodeCh <- input:
+				input, columns, add, rows = r.NewColumns()
+			default:
+			}
+		}
+	}
+	if rows() > 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case decodeCh <- input:
+		}
+	}
+	return nil
+}
+
+func (r *restoreTable) inserter(ctx context.Context, table string, client ClickHouseClient, decodeCh <-chan proto.Input) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case input, ok := <-decodeCh:
+			if !ok {
+				return nil
+			}
+			if err := client.Do(ctx, ch.Query{
+				Body:  input.Into(table),
+				Input: input,
+			}); err != nil {
+				return errors.Wrapf(err, "insert %s", table)
+			}
+		}
+	}
 }
