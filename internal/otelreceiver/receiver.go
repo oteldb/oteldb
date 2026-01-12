@@ -3,11 +3,16 @@ package otelreceiver
 
 import (
 	"github.com/go-faster/errors"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/basicauthextension"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/connector"
 	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/extension"
 	"go.opentelemetry.io/collector/otelcol"
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/batchprocessor"
@@ -34,8 +39,8 @@ func receiverFactoryMap() (map[component.Type]receiver.Factory, error) {
 
 func processorFactoryMap() (map[component.Type]processor.Factory, error) {
 	return otelcol.MakeFactoryMap(
-		batchprocessor.NewFactory(),
 		attributesprocessor.NewFactory(),
+		batchprocessor.NewFactory(),
 		resourceprocessor.NewFactory(),
 		metricstransformprocessor.NewFactory(),
 	)
@@ -45,6 +50,18 @@ func exporterFactoryMap() (map[component.Type]exporter.Factory, error) {
 	return otelcol.MakeFactoryMap(
 		oteldbexporter.NewFactory(),
 	)
+}
+
+func extensionFactoryMap() (map[component.Type]extension.Factory, error) {
+	return otelcol.MakeFactoryMap(
+		basicauthextension.NewFactory(),
+		bearertokenauthextension.NewFactory(),
+		oidcauthextension.NewFactory(),
+	)
+}
+
+func connectorFactoryMap() (map[component.Type]connector.Factory, error) {
+	return otelcol.MakeFactoryMap[connector.Factory]()
 }
 
 // TelemetrySettings provides telemetry for collector.
@@ -89,10 +106,22 @@ func Factories(settings TelemetrySettings) func() (f otelcol.Factories, _ error)
 			return f, errors.Wrap(err, "get exporter factory map")
 		}
 
+		extensions, err := extensionFactoryMap()
+		if err != nil {
+			return f, errors.Wrap(err, "get extension factory map")
+		}
+
+		connectors, err := connectorFactoryMap()
+		if err != nil {
+			return f, errors.Wrap(err, "get connector factory map")
+		}
+
 		return otelcol.Factories{
 			Receivers:  receivers,
 			Processors: processors,
 			Exporters:  exporters,
+			Extensions: extensions,
+			Connectors: connectors,
 			Telemetry:  telemetryFactory(settings),
 		}, nil
 	}
