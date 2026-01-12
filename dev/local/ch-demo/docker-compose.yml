@@ -89,8 +89,10 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
       - OTEL_RESOURCE_ATTRIBUTES=service.name=oteldb
       - OTEL_METRIC_EXPORT_INTERVAL=5000
-    ports:
-      - "9090:9090" # prometheus API
+    command:
+      - --config=/etc/otel/cfg.yml
+    volumes:
+      - ./oteldb.yml:/etc/otel/cfg.yml:ro
     depends_on:
       - clickhouse
 

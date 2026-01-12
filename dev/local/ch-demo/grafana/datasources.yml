@@ -12,18 +12,18 @@ datasources:
       tracesToLogsV2:
         # Field with an internal link pointing to a logs data source in Grafana.
         # datasourceUid value must match the uid value of the logs data source.
-        datasourceUid: 'loki-oteldb'
-        spanStartTimeShift: '-1h'
-        spanEndTimeShift: '1h'
+        datasourceUid: "loki-oteldb"
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
         customQuery: true
         query: '{$${__tags}} |= "$${__span.traceId}"'
         tags:
           - key: service.name
             value: service_name
       tracesToMetrics:
-        datasourceUid: 'prom-oteldb'
-        spanStartTimeShift: '-1h'
-        spanEndTimeShift: '1h'
+        datasourceUid: "prom-oteldb"
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
         tags:
           - key: service.name
             value: service_name
@@ -32,7 +32,10 @@ datasources:
       serviceMap:
         datasourceUid: prom-oteldb
       lokiSearch:
-        datasourceUid: 'loki-oteldb'
+        datasourceUid: "loki-oteldb"
+      httpHeaderName1: "Authorization"
+    secureJsonData:
+      httpHeaderValue1: "Bearer oteldb-secret-token"
 
   - name: "LogQL"
     type: loki
@@ -49,8 +52,12 @@ datasources:
           matcherType: label
           matcherRegex: trace_id
           name: trace
-          url: '$${__value.raw}'
-          urlDisplayLabel: 'View Trace'
+          url: "$${__value.raw}"
+          urlDisplayLabel: "View Trace"
+    basicAuth: true
+    basicAuthUser: admin
+    secureJsonData:
+      basicAuthPassword: admin
 
   - name: "PromQL"
     type: prometheus
@@ -66,6 +73,9 @@ datasources:
       exemplarTraceIdDestinations:
         - datasourceUid: tempo-oteldb
           name: trace_id
+      httpHeaderName1: "Authorization"
+    secureJsonData:
+      httpHeaderValue1: "Bearer prometheus-very-secret-token"
 
   - name: ClickHouse
     type: grafana-clickhouse-datasource
