@@ -93,7 +93,9 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 		app.otelStorage = store
 	}
 
-	app.setupHealthCheck()
+	if err := app.setupHealthCheck(); err != nil {
+		return nil, errors.Wrap(err, "healthcheck")
+	}
 	if err := app.setupCollector(); err != nil {
 		return nil, errors.Wrap(err, "otelcol")
 	}
@@ -104,7 +106,7 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 		return nil, errors.Wrap(err, "loki")
 	}
 	if err := app.trySetupProm(); err != nil {
-		return nil, errors.Wrap(err, "prom")
+		return nil, errors.Wrap(err, "prometheus")
 	}
 
 	return app, nil
@@ -121,6 +123,7 @@ func addOgen[
 	name string,
 	server Server,
 	defaultPort string,
+	auth []AuthConfig,
 ) {
 	lg := app.lg.Named(name)
 
@@ -129,18 +132,35 @@ func addOgen[
 		addr = defaultPort
 	}
 
+	if auth == nil {
+		auth = app.cfg.Auth
+	}
+
 	app.services[name] = func(ctx context.Context) error {
 		lg := lg.With(zap.String("addr", addr))
 		lg.Info("Starting HTTP server")
 
-		routeFinder := httpmiddleware.MakeRouteFinder(server)
-		httpServer := &http.Server{
-			Addr: addr,
-			Handler: httpmiddleware.Wrap(server,
+		var (
+			routeFinder = httpmiddleware.MakeRouteFinder(server)
+			middlewares = []httpmiddleware.Middleware{
 				httpmiddleware.InjectLogger(zctx.From(ctx)),
 				httpmiddleware.Instrument("oteldb."+name, routeFinder, app.telemetry),
 				httpmiddleware.LogRequests(routeFinder),
-			),
+			}
+		)
+
+		auth, err := makeAuthMiddlewares(auth)
+		if err != nil {
+			return errors.Wrap(err, "create auth middlewares")
+		}
+		if len(auth) > 0 {
+			lg.Info("Enabling authentication middlewares", zap.Int("count", len(auth)))
+			middlewares = append(middlewares, auth...)
+		}
+
+		httpServer := &http.Server{
+			Addr:              addr,
+			Handler:           httpmiddleware.Wrap(server, middlewares...),
 			ReadHeaderTimeout: 15 * time.Second,
 		}
 
@@ -168,6 +188,28 @@ func addOgen[
 	}
 }
 
+func makeAuthMiddlewares(auth []AuthConfig) (r []httpmiddleware.Middleware, _ error) {
+	if len(auth) == 0 {
+		return r, nil
+	}
+
+	r = make([]httpmiddleware.Middleware, 0, len(auth))
+	for _, a := range auth {
+		if !a.Type.IsValid() {
+			return r, errors.Errorf("invalid auth type %q", a.Type)
+		}
+
+		a.setDefaults()
+		switch a.Type {
+		case AuthTypeBasic:
+			r = append(r, httpmiddleware.BasicAuthMiddleware(a.Users))
+		case AuthTypeBearerToken:
+			r = append(r, httpmiddleware.BearerTokenMiddleware(a.Tokens))
+		}
+	}
+	return r, nil
+}
+
 func (app *App) trySetupTempo() error {
 	q := app.traceQuerier
 	if q == nil {
@@ -189,7 +231,7 @@ func (app *App) trySetupTempo() error {
 		return err
 	}
 
-	addOgen[tempoapi.Route](app, "tempo", s, cfg.Bind)
+	addOgen(app, "tempo", s, cfg.Bind, cfg.Auth)
 	return nil
 }
 
@@ -198,7 +240,7 @@ func (app *App) trySetupLoki() error {
 	if q == nil {
 		return nil
 	}
-	cfg := app.cfg.LokiConfig
+	cfg := app.cfg.Loki
 	cfg.setDefaults()
 
 	var optimizers []logqlengine.Optimizer
@@ -242,7 +284,7 @@ func (app *App) trySetupLoki() error {
 		return err
 	}
 
-	addOgen[lokiapi.Route](app, "loki", s, cfg.Bind)
+	addOgen(app, "loki", s, cfg.Bind, cfg.Auth)
 	return nil
 }
 
@@ -278,20 +320,32 @@ func (app *App) trySetupProm() error {
 		return err
 	}
 
-	addOgen[promapi.Route](app, "prom", s, cfg.Bind)
+	addOgen(app, "prom", s, cfg.Bind, cfg.Auth)
 	return nil
 }
 
-func (app *App) setupHealthCheck() {
+func (app *App) setupHealthCheck() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/readiness", app.handleReadinessProbe)
 	mux.HandleFunc("/liveness", app.handleLivenessProbe)
 	mux.HandleFunc("/startup", app.handleStartupProbe)
+	var handler http.Handler = mux
+
 	cfg := app.cfg.HealthCheck
 	cfg.setDefaults()
+
+	auth, err := makeAuthMiddlewares(cfg.Auth)
+	if err != nil {
+		return errors.Wrap(err, "create auth middlewares")
+	}
+	if len(auth) > 0 {
+		app.lg.Info("Enabling healthcheck authentication middlewares", zap.Int("count", len(auth)))
+		handler = httpmiddleware.Wrap(handler, auth...)
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.Bind,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: time.Second,
 	}
 	app.services["healthcheck"] = func(ctx context.Context) error {
@@ -310,6 +364,7 @@ func (app *App) setupHealthCheck() {
 		}
 		return nil
 	}
+	return nil
 }
 
 func (app *App) handleReadinessProbe(w http.ResponseWriter, _ *http.Request) {
