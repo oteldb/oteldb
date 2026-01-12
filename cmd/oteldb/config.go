@@ -185,8 +185,8 @@ type AuthType string
 
 const (
 	AuthTypeNone        AuthType = "none"
-	AuthTypeBasic       AuthType = "basic"
-	AuthTypeBearerToken AuthType = "bearer_token"
+	AuthTypeBasic       AuthType = "basicauth"
+	AuthTypeBearerToken AuthType = "bearertoken"
 )
 
 // IsValid checks if auth type is valid.
@@ -202,7 +202,7 @@ func (t AuthType) IsValid() bool {
 // AuthConfig is authentication config.
 type AuthConfig struct {
 	Type   AuthType                         `json:"type" yaml:"type"`
-	Tokens []string                         `json:"tokens" yaml:"tokens"`
+	Tokens []httpmiddleware.Token           `json:"tokens" yaml:"tokens"`
 	Users  []httpmiddleware.UserCredentials `json:"users" yaml:"users"`
 }
 

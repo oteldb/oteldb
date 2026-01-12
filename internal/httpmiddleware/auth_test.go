@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,10 +14,18 @@ import (
 )
 
 func TestBasicAuth(t *testing.T) {
-	auth := httpmiddleware.BasicAuth([]httpmiddleware.UserCredentials{
+	var (
+		dir        = t.TempDir()
+		secretFile = filepath.Join(dir, "password")
+	)
+	err := os.WriteFile(secretFile, []byte("qwerty"), 0o600)
+	require.NoError(t, err)
+
+	auth, err := httpmiddleware.BasicAuth([]httpmiddleware.UserCredentials{
 		{User: "alice", Password: "secret"},
-		{User: "bob", Password: "qwerty"},
+		{User: "bob", PasswordFile: secretFile},
 	})
+	require.NoError(t, err)
 
 	req, err := http.NewRequest(http.MethodPost, "/", http.NoBody)
 	require.NoError(t, err)
@@ -45,7 +55,18 @@ func TestBasicAuth(t *testing.T) {
 }
 
 func TestBearerToken(t *testing.T) {
-	auth := httpmiddleware.BearerToken([]string{"abc", "def"})
+	var (
+		dir        = t.TempDir()
+		secretFile = filepath.Join(dir, "token")
+	)
+	err := os.WriteFile(secretFile, []byte("def"), 0o600)
+	require.NoError(t, err)
+
+	auth, err := httpmiddleware.BearerToken([]httpmiddleware.Token{
+		{Token: "abc"},
+		{TokenFile: secretFile},
+	})
+	require.NoError(t, err)
 
 	req, err := http.NewRequest(http.MethodPost, "/", http.NoBody)
 	require.NoError(t, err)
@@ -73,11 +94,16 @@ func TestAuth(t *testing.T) {
 		return rec.Body.String()
 	}
 
-	first := httpmiddleware.BearerToken([]string{"abc", "def"})
-	second := httpmiddleware.BasicAuth([]httpmiddleware.UserCredentials{
+	first, err := httpmiddleware.BearerToken([]httpmiddleware.Token{
+		{Token: "abc"},
+		{Token: "def"},
+	})
+	require.NoError(t, err)
+	second, err := httpmiddleware.BasicAuth([]httpmiddleware.UserCredentials{
 		{User: "alice", Password: "secret"},
 		{User: "bob", Password: "qwerty"},
 	})
+	require.NoError(t, err)
 	auths := []httpmiddleware.Authenticator{first, second}
 
 	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

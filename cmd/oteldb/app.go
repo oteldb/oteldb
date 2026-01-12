@@ -202,11 +202,20 @@ func makeAuthMiddlewares(auth []AuthConfig) (httpmiddleware.Middleware, error) {
 		a.setDefaults()
 		switch a.Type {
 		case AuthTypeBasic:
-			r = append(r, httpmiddleware.BasicAuth(a.Users))
+			m, err := httpmiddleware.BasicAuth(a.Users)
+			if err != nil {
+				return nil, errors.Wrap(err, "setup basic auth")
+			}
+			r = append(r, m)
 		case AuthTypeBearerToken:
-			r = append(r, httpmiddleware.BearerToken(a.Tokens))
+			m, err := httpmiddleware.BearerToken(a.Tokens)
+			if err != nil {
+				return nil, errors.Wrap(err, "setup bearer token auth")
+			}
+			r = append(r, m)
 		}
 	}
+
 	return httpmiddleware.Auth(r, nil), nil
 }
 
