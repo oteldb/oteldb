@@ -2,7 +2,9 @@ receivers:
   otlp:
     protocols:
       grpc:
+        endpoint: 0.0.0.0:4317
       http:
+        endpoint: 0.0.0.0:4318
   prometheus:
     config:
       scrape_configs:
@@ -14,6 +16,7 @@ receivers:
           scrape_interval: 5s
           static_configs:
             - targets: [node-exporter:9100]
+
 processors:
   batch:
     timeout: 1s
@@ -21,8 +24,8 @@ processors:
     send_batch_size: 500
   memory_limiter:
     check_interval: 5s
-    limit_mib: 256
-    spike_limit_mib: 500
+    limit_mib: 512
+    spike_limit_mib: 256
   # normalize between prometheus and otel
   resource/normalize:
     attributes:
@@ -37,15 +40,20 @@ exporters:
   otlp:
     endpoint: oteldb:4317
     tls:
-      insecure: true
+      ca_file: /etc/otelcol-contrib/server.crt
+    auth:
+      authenticator: bearertokenauth
 
 extensions:
+  bearertokenauth:
+    scheme: "Bearer"
+    token: "inserter-token"
   health_check:
   pprof:
   zpages:
 
 service:
-  extensions: [health_check, pprof, zpages]
+  extensions: [bearertokenauth, health_check, pprof, zpages]
   pipelines:
     traces:
       receivers: [otlp]

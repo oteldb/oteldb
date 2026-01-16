@@ -25,20 +25,37 @@ auth:
     tokens:
       - token: "oteldb-secret-token"
 otelcol:
+  extensions:
+    bearertokenauth:
+      scheme: "Bearer"
+      token: "inserter-token"
   receivers:
     otlp:
       protocols:
         grpc:
           endpoint: 0.0.0.0:4317
+          auth:
+            authenticator: bearertokenauth
+          tls:
+            cert_file: /etc/oteldb/server.crt
+            key_file: /etc/oteldb/server.key
         http:
           endpoint: 0.0.0.0:4318
+          auth:
+            authenticator: bearertokenauth
+          tls:
+            cert_file: /etc/oteldb/server.crt
+            key_file: /etc/oteldb/server.key
     prometheusremotewrite:
       endpoint: 0.0.0.0:19291
       time_threshold: 100_000 # hours
+      auth:
+        authenticator: bearertokenauth
   exporters:
     oteldbexporter:
       dsn: clickhouse://default:default@clickhouse:9000
   service:
+    extensions: [bearertokenauth]
     pipelines:
       metrics:
         receivers: [otlp, prometheusremotewrite]

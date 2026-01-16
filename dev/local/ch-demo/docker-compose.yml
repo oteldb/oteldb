@@ -54,6 +54,7 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
       - OTEL_RESOURCE_ATTRIBUTES=service.name=client
       - OTEL_METRIC_EXPORT_INTERVAL=5000
+
   server:
     image: ghcr.io/oteldb/oteldb/oteldemo
     command: ["server"]
@@ -90,29 +91,26 @@ services:
       - OTEL_RESOURCE_ATTRIBUTES=service.name=oteldb
       - OTEL_METRIC_EXPORT_INTERVAL=5000
     command:
-      - --config=/etc/otel/cfg.yml
+      - --config=/etc/oteldb/cfg.yml
     volumes:
-      - ./oteldb.yml:/etc/otel/cfg.yml:ro
+      - ./oteldb.yml:/etc/oteldb/cfg.yml:ro
+      - ./server.crt:/etc/oteldb/server.crt:ro
+      - ./server.key:/etc/oteldb/server.key:ro
     depends_on:
       - clickhouse
 
   # https://opentelemetry.io/docs/collector/installation/#docker-compose
   otelcol:
-    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.89.0
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.143.0
+    environment:
+      - OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=none
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
     volumes:
-      - ./otelcol.yml:/etc/otelcol-contrib/config.yaml
+      - ./otelcol.yml:/etc/otelcol-contrib/config.yaml:ro
+      - ./server.crt:/etc/otelcol-contrib/server.crt:ro
     depends_on:
       - oteldb
-    environment:
-      # probably excessive
-      - OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
-      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otelcol:4317
-    command:
-      - "--config"
-      - "/etc/otelcol-contrib/config.yaml"
-      #  https://github.com/open-telemetry/opentelemetry-collector/blob/main/docs/observability.md#how-we-expose-telemetry
-      - "--feature-gates=telemetry.useOtelForInternalMetrics"
-      - "--feature-gates=telemetry.useOtelWithSDKConfigurationForInternalTelemetry"
 
   node-exporter:
     image: prom/node-exporter
