@@ -284,6 +284,124 @@ paths:
                 $ref: "#/components/schemas/IndexStats"
         default:
           $ref: "#/components/responses/Error"
+  /loki/api/v1/index/volume_range:
+    get:
+      operationId: queryVolumeRange
+      description: Query the index for volume information about label and label-value combinations.
+      parameters:
+        - name: query
+          description: The LogQL matchers to check (that is, `{job="foo", env=~".+"}`).
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: start
+          description: Start timestamp.
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/LokiTime"
+        - name: end
+          description: End timestamp.
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/LokiTime"
+        - name: limit
+          description: |
+            How many metric series to return.
+            The parameter is optional, the default is `100`.
+          in: query
+          schema:
+            type: integer
+        - name: step
+          description: |
+            Query resolution step width in duration format or float number of seconds.
+            `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`.
+            For example, `5m` refers to a duration of 5 minutes.
+
+            Defaults to a dynamic value based on `start` and `end`.
+            Only applies when querying the `volume_range` endpoint, which will always return a Prometheus style matrix response.
+            The default step configured for range queries will be used when not provided.
+          in: query
+          schema:
+            $ref: "#/components/schemas/PrometheusDuration"
+        - name: targetLabels
+          description: |
+            A comma separated list of labels to aggregate into.
+            When not provided, volumes will be aggregated into the matching labels or label-value pairs.
+          in: query
+          schema:
+            type: string
+        - name: aggregateBy
+          description: |
+            Whether to aggregate into labels or label-value pairs.
+            This parameter is optional, the default is label-value pairs.
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Volume data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /loki/api/v1/index/volume:
+    get:
+      operationId: queryVolume
+      description: Query the index for volume information about label and label-value combinations.
+      parameters:
+        - name: query
+          description: The LogQL matchers to check (that is, `{job="foo", env=~".+"}`).
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: start
+          description: Start timestamp.
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/LokiTime"
+        - name: end
+          description: End timestamp.
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/LokiTime"
+        - name: limit
+          description: |
+            How many metric series to return.
+            The parameter is optional, the default is `100`.
+          in: query
+          schema:
+            type: integer
+        - name: targetLabels
+          description: |
+            A comma separated list of labels to aggregate into.
+            When not provided, volumes will be aggregated into the matching labels or label-value pairs.
+          in: query
+          schema:
+            type: string
+        - name: aggregateBy
+          description: |
+            Whether to aggregate into labels or label-value pairs.
+            This parameter is optional, the default is label-value pairs.
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Volume data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryResponse"
+        default:
+          $ref: "#/components/responses/Error"
 components:
   responses:
     Error:
