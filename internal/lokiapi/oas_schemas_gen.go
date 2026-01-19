@@ -13,6 +13,47 @@ func (s *ErrorStatusCode) Error() string {
 	return fmt.Sprintf("code %d: %+v", s.StatusCode, s.Response)
 }
 
+// Ref: #/components/schemas/DetectedLabel
+type DetectedLabel struct {
+	Label       string `json:"label"`
+	Cardinality int    `json:"cardinality"`
+}
+
+// GetLabel returns the value of Label.
+func (s *DetectedLabel) GetLabel() string {
+	return s.Label
+}
+
+// GetCardinality returns the value of Cardinality.
+func (s *DetectedLabel) GetCardinality() int {
+	return s.Cardinality
+}
+
+// SetLabel sets the value of Label.
+func (s *DetectedLabel) SetLabel(val string) {
+	s.Label = val
+}
+
+// SetCardinality sets the value of Cardinality.
+func (s *DetectedLabel) SetCardinality(val int) {
+	s.Cardinality = val
+}
+
+// Ref: #/components/schemas/DetectedLabels
+type DetectedLabels struct {
+	DetectedLabels []DetectedLabel `json:"detectedLabels"`
+}
+
+// GetDetectedLabels returns the value of DetectedLabels.
+func (s *DetectedLabels) GetDetectedLabels() []DetectedLabel {
+	return s.DetectedLabels
+}
+
+// SetDetectedLabels sets the value of DetectedLabels.
+func (s *DetectedLabels) SetDetectedLabels(val []DetectedLabel) {
+	s.DetectedLabels = val
+}
+
 // Ref: #/components/schemas/Direction
 type Direction string
 
@@ -54,6 +95,45 @@ func (s *Direction) UnmarshalText(data []byte) error {
 		return errors.Errorf("invalid value: %q", data)
 	}
 }
+
+// Ref: #/components/schemas/DrilldownLimits
+type DrilldownLimits struct {
+	Limits                 *DrilldownLimitsLimits `json:"limits"`
+	PatternIngesterEnabled bool                   `json:"pattern_ingester_enabled"`
+	Version                string                 `json:"version"`
+}
+
+// GetLimits returns the value of Limits.
+func (s *DrilldownLimits) GetLimits() *DrilldownLimitsLimits {
+	return s.Limits
+}
+
+// GetPatternIngesterEnabled returns the value of PatternIngesterEnabled.
+func (s *DrilldownLimits) GetPatternIngesterEnabled() bool {
+	return s.PatternIngesterEnabled
+}
+
+// GetVersion returns the value of Version.
+func (s *DrilldownLimits) GetVersion() string {
+	return s.Version
+}
+
+// SetLimits sets the value of Limits.
+func (s *DrilldownLimits) SetLimits(val *DrilldownLimitsLimits) {
+	s.Limits = val
+}
+
+// SetPatternIngesterEnabled sets the value of PatternIngesterEnabled.
+func (s *DrilldownLimits) SetPatternIngesterEnabled(val bool) {
+	s.PatternIngesterEnabled = val
+}
+
+// SetVersion sets the value of Version.
+func (s *DrilldownLimits) SetVersion(val string) {
+	s.Version = val
+}
+
+type DrilldownLimitsLimits struct{}
 
 type Error string
 

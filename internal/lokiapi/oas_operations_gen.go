@@ -6,11 +6,15 @@ package lokiapi
 type OperationName = string
 
 const (
-	IndexStatsOperation  OperationName = "IndexStats"
-	LabelValuesOperation OperationName = "LabelValues"
-	LabelsOperation      OperationName = "Labels"
-	PushOperation        OperationName = "Push"
-	QueryOperation       OperationName = "Query"
-	QueryRangeOperation  OperationName = "QueryRange"
-	SeriesOperation      OperationName = "Series"
+	DetectedLabelsOperation   OperationName = "DetectedLabels"
+	DrilldownLimitsOperation  OperationName = "DrilldownLimits"
+	IndexStatsOperation       OperationName = "IndexStats"
+	LabelValuesOperation      OperationName = "LabelValues"
+	LabelsOperation           OperationName = "Labels"
+	PushOperation             OperationName = "Push"
+	QueryOperation            OperationName = "Query"
+	QueryRangeOperation       OperationName = "QueryRange"
+	QueryVolumeOperation      OperationName = "QueryVolume"
+	QueryVolumeRangeOperation OperationName = "QueryVolumeRange"
+	SeriesOperation           OperationName = "Series"
 )

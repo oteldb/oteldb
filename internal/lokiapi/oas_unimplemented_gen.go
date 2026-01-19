@@ -13,6 +13,26 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// DetectedLabels implements detectedLabels operation.
+//
+// Get detected labels.
+// Used by Grafana to test Logs Drilldown availability.
+//
+// GET /loki/api/v1/detected_labels
+func (UnimplementedHandler) DetectedLabels(ctx context.Context, params DetectedLabelsParams) (r *DetectedLabels, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// DrilldownLimits implements drilldownLimits operation.
+//
+// Get drilldown limits.
+// Used by Grafana to get limits from Loki.
+//
+// GET /loki/api/v1/drilldown-limits
+func (UnimplementedHandler) DrilldownLimits(ctx context.Context) (r *DrilldownLimits, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // IndexStats implements indexStats operation.
 //
 // Get index stats.
@@ -65,6 +85,24 @@ func (UnimplementedHandler) Query(ctx context.Context, params QueryParams) (r *Q
 //
 // GET /loki/api/v1/query_range
 func (UnimplementedHandler) QueryRange(ctx context.Context, params QueryRangeParams) (r *QueryResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// QueryVolume implements queryVolume operation.
+//
+// Query the index for volume information about label and label-value combinations.
+//
+// GET /loki/api/v1/index/volume
+func (UnimplementedHandler) QueryVolume(ctx context.Context, params QueryVolumeParams) (r *QueryResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// QueryVolumeRange implements queryVolumeRange operation.
+//
+// Query the index for volume information about label and label-value combinations.
+//
+// GET /loki/api/v1/index/volume_range
+func (UnimplementedHandler) QueryVolumeRange(ctx context.Context, params QueryVolumeRangeParams) (r *QueryResponse, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

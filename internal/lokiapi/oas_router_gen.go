@@ -61,24 +61,133 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			switch elem[0] {
-			case 'i': // Prefix: "index/stats"
+			case 'd': // Prefix: "d"
 
-				if l := len("index/stats"); len(elem) >= l && elem[0:l] == "index/stats" {
+				if l := len("d"); len(elem) >= l && elem[0:l] == "d" {
 					elem = elem[l:]
 				} else {
 					break
 				}
 
 				if len(elem) == 0 {
-					// Leaf node.
-					switch r.Method {
-					case "GET":
-						s.handleIndexStatsRequest([0]string{}, elemIsEscaped, w, r)
-					default:
-						s.notAllowed(w, r, "GET")
+					break
+				}
+				switch elem[0] {
+				case 'e': // Prefix: "etected_labels"
+
+					if l := len("etected_labels"); len(elem) >= l && elem[0:l] == "etected_labels" {
+						elem = elem[l:]
+					} else {
+						break
 					}
 
-					return
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "GET":
+							s.handleDetectedLabelsRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, "GET")
+						}
+
+						return
+					}
+
+				case 'r': // Prefix: "rilldown-limits"
+
+					if l := len("rilldown-limits"); len(elem) >= l && elem[0:l] == "rilldown-limits" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "GET":
+							s.handleDrilldownLimitsRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, "GET")
+						}
+
+						return
+					}
+
+				}
+
+			case 'i': // Prefix: "index/"
+
+				if l := len("index/"); len(elem) >= l && elem[0:l] == "index/" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case 's': // Prefix: "stats"
+
+					if l := len("stats"); len(elem) >= l && elem[0:l] == "stats" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "GET":
+							s.handleIndexStatsRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, "GET")
+						}
+
+						return
+					}
+
+				case 'v': // Prefix: "volume"
+
+					if l := len("volume"); len(elem) >= l && elem[0:l] == "volume" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						switch r.Method {
+						case "GET":
+							s.handleQueryVolumeRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, "GET")
+						}
+
+						return
+					}
+					switch elem[0] {
+					case '_': // Prefix: "_range"
+
+						if l := len("_range"); len(elem) >= l && elem[0:l] == "_range" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "GET":
+								s.handleQueryVolumeRangeRequest([0]string{}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, "GET")
+							}
+
+							return
+						}
+
+					}
+
 				}
 
 			case 'l': // Prefix: "label"
@@ -341,29 +450,158 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 				break
 			}
 			switch elem[0] {
-			case 'i': // Prefix: "index/stats"
+			case 'd': // Prefix: "d"
 
-				if l := len("index/stats"); len(elem) >= l && elem[0:l] == "index/stats" {
+				if l := len("d"); len(elem) >= l && elem[0:l] == "d" {
 					elem = elem[l:]
 				} else {
 					break
 				}
 
 				if len(elem) == 0 {
-					// Leaf node.
-					switch method {
-					case "GET":
-						r.name = IndexStatsOperation
-						r.summary = ""
-						r.operationID = "indexStats"
-						r.operationGroup = ""
-						r.pathPattern = "/loki/api/v1/index/stats"
-						r.args = args
-						r.count = 0
-						return r, true
-					default:
-						return
+					break
+				}
+				switch elem[0] {
+				case 'e': // Prefix: "etected_labels"
+
+					if l := len("etected_labels"); len(elem) >= l && elem[0:l] == "etected_labels" {
+						elem = elem[l:]
+					} else {
+						break
 					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "GET":
+							r.name = DetectedLabelsOperation
+							r.summary = ""
+							r.operationID = "detectedLabels"
+							r.operationGroup = ""
+							r.pathPattern = "/loki/api/v1/detected_labels"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
+				case 'r': // Prefix: "rilldown-limits"
+
+					if l := len("rilldown-limits"); len(elem) >= l && elem[0:l] == "rilldown-limits" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "GET":
+							r.name = DrilldownLimitsOperation
+							r.summary = ""
+							r.operationID = "drilldownLimits"
+							r.operationGroup = ""
+							r.pathPattern = "/loki/api/v1/drilldown-limits"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
+				}
+
+			case 'i': // Prefix: "index/"
+
+				if l := len("index/"); len(elem) >= l && elem[0:l] == "index/" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case 's': // Prefix: "stats"
+
+					if l := len("stats"); len(elem) >= l && elem[0:l] == "stats" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "GET":
+							r.name = IndexStatsOperation
+							r.summary = ""
+							r.operationID = "indexStats"
+							r.operationGroup = ""
+							r.pathPattern = "/loki/api/v1/index/stats"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
+				case 'v': // Prefix: "volume"
+
+					if l := len("volume"); len(elem) >= l && elem[0:l] == "volume" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						switch method {
+						case "GET":
+							r.name = QueryVolumeOperation
+							r.summary = ""
+							r.operationID = "queryVolume"
+							r.operationGroup = ""
+							r.pathPattern = "/loki/api/v1/index/volume"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+					switch elem[0] {
+					case '_': // Prefix: "_range"
+
+						if l := len("_range"); len(elem) >= l && elem[0:l] == "_range" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "GET":
+								r.name = QueryVolumeRangeOperation
+								r.summary = ""
+								r.operationID = "queryVolumeRange"
+								r.operationGroup = ""
+								r.pathPattern = "/loki/api/v1/index/volume_range"
+								r.args = args
+								r.count = 0
+								return r, true
+							default:
+								return
+							}
+						}
+
+					}
+
 				}
 
 			case 'l': // Prefix: "label"

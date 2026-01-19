@@ -8,6 +8,20 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// DetectedLabels implements detectedLabels operation.
+	//
+	// Get detected labels.
+	// Used by Grafana to test Logs Drilldown availability.
+	//
+	// GET /loki/api/v1/detected_labels
+	DetectedLabels(ctx context.Context, params DetectedLabelsParams) (*DetectedLabels, error)
+	// DrilldownLimits implements drilldownLimits operation.
+	//
+	// Get drilldown limits.
+	// Used by Grafana to get limits from Loki.
+	//
+	// GET /loki/api/v1/drilldown-limits
+	DrilldownLimits(ctx context.Context) (*DrilldownLimits, error)
 	// IndexStats implements indexStats operation.
 	//
 	// Get index stats.
@@ -45,6 +59,18 @@ type Handler interface {
 	//
 	// GET /loki/api/v1/query_range
 	QueryRange(ctx context.Context, params QueryRangeParams) (*QueryResponse, error)
+	// QueryVolume implements queryVolume operation.
+	//
+	// Query the index for volume information about label and label-value combinations.
+	//
+	// GET /loki/api/v1/index/volume
+	QueryVolume(ctx context.Context, params QueryVolumeParams) (*QueryResponse, error)
+	// QueryVolumeRange implements queryVolumeRange operation.
+	//
+	// Query the index for volume information about label and label-value combinations.
+	//
+	// GET /loki/api/v1/index/volume_range
+	QueryVolumeRange(ctx context.Context, params QueryVolumeRangeParams) (*QueryResponse, error)
 	// Series implements series operation.
 	//
 	// Get series.
