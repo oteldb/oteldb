@@ -69,6 +69,24 @@ func (s *Server) QueryRange(ctx context.Context, params lokiapi.QueryRangeParams
 	return s.api.QueryRange(ctx, params)
 }
 
+// QueryVolume implements queryVolume operation.
+//
+// Query the index for volume information about label and label-value combinations.
+//
+// GET /loki/api/v1/index/volume
+func (s *Server) QueryVolume(ctx context.Context, params lokiapi.QueryVolumeParams) (*lokiapi.QueryResponse, error) {
+	return s.api.QueryVolume(ctx, params)
+}
+
+// QueryVolumeRange implements queryVolumeRange operation.
+//
+// Query the index for volume information about label and label-value combinations.
+//
+// GET /loki/api/v1/index/volume_range
+func (s *Server) QueryVolumeRange(ctx context.Context, params lokiapi.QueryVolumeRangeParams) (*lokiapi.QueryResponse, error) {
+	return s.api.QueryVolumeRange(ctx, params)
+}
+
 // Series implements series operation.
 //
 // Get series.
