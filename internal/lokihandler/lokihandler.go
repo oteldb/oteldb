@@ -221,6 +221,24 @@ func (h *LokiAPI) QueryRange(ctx context.Context, params lokiapi.QueryRangeParam
 	}, nil
 }
 
+// QueryVolume implements queryVolume operation.
+//
+// Query the index for volume information about label and label-value combinations.
+//
+// GET /loki/api/v1/index/volume
+func (h *LokiAPI) QueryVolume(ctx context.Context, params lokiapi.QueryVolumeParams) (*lokiapi.QueryResponse, error) {
+	return nil, ht.ErrNotImplemented
+}
+
+// QueryVolumeRange implements queryVolumeRange operation.
+//
+// Query the index for volume information about label and label-value combinations.
+//
+// GET /loki/api/v1/index/volume_range
+func (h *LokiAPI) QueryVolumeRange(ctx context.Context, params lokiapi.QueryVolumeRangeParams) (*lokiapi.QueryResponse, error) {
+	return nil, ht.ErrNotImplemented
+}
+
 // Series implements series operation.
 //
 // Get series.
