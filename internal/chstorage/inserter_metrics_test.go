@@ -13,8 +13,8 @@ import (
 
 	"github.com/go-faster/oteldb/internal/globalmetric"
 	"github.com/go-faster/oteldb/internal/otelbench"
-	prw "github.com/go-faster/oteldb/internal/otelreceiver/prometheusremotewrite"
 	"github.com/go-faster/oteldb/internal/prompb"
+	prw "github.com/go-faster/oteldb/prometheusremotewrite"
 )
 
 func Benchmark_metricsBatch(b *testing.B) {

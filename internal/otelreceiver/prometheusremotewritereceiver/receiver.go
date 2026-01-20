@@ -16,16 +16,12 @@
 package prometheusremotewritereceiver
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"io"
 	"net"
 	"net/http"
 	"sync"
 
-	"github.com/golang/snappy"
-	"github.com/valyala/bytebufferpool"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componentstatus"
 	"go.opentelemetry.io/collector/config/confighttp"
@@ -34,9 +30,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/internal/otelreceiver/prometheusremotewrite"
-	"github.com/go-faster/oteldb/internal/prompb"
-	"github.com/go-faster/oteldb/internal/xsync"
+	"github.com/go-faster/oteldb/prometheusremotewrite"
 )
 
 const receiverFormat = "protobuf"
@@ -94,7 +88,7 @@ func (rec *Receiver) Start(ctx context.Context, host component.Host) (err error)
 			host.GetExtensions(),
 			rec.params.TelemetrySettings,
 			rec,
-			confighttp.WithDecoder("snappy", snappyDecoder),
+			confighttp.WithDecoder("snappy", prometheusremotewrite.SnappyDecoder),
 		)
 		var listener net.Listener
 		listener, err = rec.config.ServerConfig.ToListener(ctx)
@@ -112,53 +106,10 @@ func (rec *Receiver) Start(ctx context.Context, host component.Host) (err error)
 	return err
 }
 
-func snappyDecoder(body io.ReadCloser) (io.ReadCloser, error) {
-	compressed := bytebufferpool.Get()
-	defer bytebufferpool.Put(compressed)
-
-	if _, err := io.Copy(compressed, body); err != nil {
-		return nil, err
-	}
-
-	decompressed, err := snappy.Decode(nil, compressed.Bytes())
-	if err != nil {
-		return nil, err
-	}
-
-	return &closerReader{
-		data:   decompressed,
-		Reader: *bytes.NewReader(decompressed),
-	}, nil
-}
-
-func decodeRequest(r io.Reader, bb *bytebufferpool.ByteBuffer, rw *prompb.WriteRequest) error {
-	switch r := r.(type) {
-	case *closerReader:
-		// Do not make an unnecessary copy of data.
-		bb.Set(r.data)
-	default:
-		if _, err := bb.ReadFrom(r); err != nil {
-			return err
-		}
-	}
-	return rw.Unmarshal(bb.B)
-}
-
 func (rec *Receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := rec.obsrecv.StartMetricsOp(r.Context())
 
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
-	wr := xsync.GetReset(writeRequestPool)
-	defer writeRequestPool.Put(wr)
-
-	if err := decodeRequest(r.Body, bb, wr); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	pms, err := prometheusremotewrite.FromTimeSeries(wr.Timeseries, prometheusremotewrite.Settings{
+	pms, err := prometheusremotewrite.DecodeRequest(r.Body, prometheusremotewrite.Settings{
 		TimeThreshold: *rec.timeThreshold,
 		Logger:        *rec.logger,
 	})
