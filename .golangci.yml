@@ -85,7 +85,7 @@ linters:
         text: "ifElseChain:"
       - linters:
           - unused
-        path: internal/otelreceiver/prometheusremotewrite
+        path: prometheusremotewrite
       - linters:
           - staticcheck
         path: internal/prompb
