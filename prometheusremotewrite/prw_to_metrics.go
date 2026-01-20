@@ -34,7 +34,7 @@ func FromTimeSeries(tss []prompb.TimeSeries, settings Settings) (pmetric.Metrics
 		lg = settings.Logger
 
 		pms           = pmetric.NewMetrics()
-		timeThreshold = time.Now().Add(-time.Duration(settings.TimeThreshold) * time.Hour)
+		timeThreshold = time.Now().Add(-settings.TimeThreshold)
 	)
 	for _, ts := range tss {
 		pm := pms.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()

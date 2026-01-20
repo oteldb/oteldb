@@ -4,6 +4,7 @@ package prometheusremotewrite
 import (
 	"bytes"
 	"io"
+	"time"
 
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
@@ -18,8 +19,8 @@ import (
 
 // Settings defines translation settings.
 type Settings struct {
-	TimeThreshold int64
-	Logger        zap.Logger
+	TimeThreshold time.Duration
+	Logger        *zap.Logger
 }
 
 // DecodeRequest decodes data from reader to given dst.

@@ -18,9 +18,11 @@ package prometheusremotewritereceiver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componentstatus"
@@ -48,7 +50,7 @@ type Receiver struct {
 
 	server        *http.Server
 	config        *Config
-	timeThreshold *int64
+	timeThreshold time.Duration
 	logger        *zap.Logger
 	obsrecv       *receiverhelper.ObsReport
 }
@@ -60,13 +62,16 @@ func NewReceiver(params receiver.Settings, config *Config, mconsumer consumer.Me
 		Transport:              "http",
 		ReceiverCreateSettings: params,
 	})
+	if config.TimeThreshold < 0 {
+		return nil, fmt.Errorf("'time_threshold' must be non-negative value")
+	}
 	zr := &Receiver{
 		params:        params,
 		nextConsumer:  mconsumer,
 		config:        config,
 		logger:        params.Logger,
 		obsrecv:       obsrecv,
-		timeThreshold: &config.TimeThreshold,
+		timeThreshold: config.TimeThreshold,
 	}
 	return zr, err
 }
@@ -110,8 +115,8 @@ func (rec *Receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := rec.obsrecv.StartMetricsOp(r.Context())
 
 	pms, err := prometheusremotewrite.DecodeRequest(r.Body, prometheusremotewrite.Settings{
-		TimeThreshold: *rec.timeThreshold,
-		Logger:        *rec.logger,
+		TimeThreshold: rec.timeThreshold,
+		Logger:        rec.logger,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

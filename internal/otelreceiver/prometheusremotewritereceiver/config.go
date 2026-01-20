@@ -15,11 +15,13 @@
 package prometheusremotewritereceiver
 
 import (
+	"time"
+
 	"go.opentelemetry.io/collector/config/confighttp"
 )
 
 // Config defines config for [Receiver].
 type Config struct {
 	confighttp.ServerConfig `mapstructure:",squash"`
-	TimeThreshold           int64 `mapstructure:"time_threshold"`
+	TimeThreshold           time.Duration `mapstructure:"time_threshold"`
 }

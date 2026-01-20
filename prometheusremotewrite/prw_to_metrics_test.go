@@ -43,7 +43,7 @@ func TestFromTimeSeries(t *testing.T) {
 	rw := &prompb.WriteRequest{}
 	require.NoError(t, rw.Unmarshal(raw))
 
-	series, err := FromTimeSeries(rw.Timeseries, Settings{TimeThreshold: 1_000_000})
+	series, err := FromTimeSeries(rw.Timeseries, Settings{TimeThreshold: 1_000_000 * time.Hour})
 	require.NoError(t, err)
 
 	var jm pmetric.JSONMarshaler
@@ -68,8 +68,8 @@ func TestPrwConfig_FromTimeSeries(t *testing.T) {
 		{
 			name: "sum",
 			settings: Settings{
-				Logger:        *zap.NewNop(),
-				TimeThreshold: 24,
+				Logger:        zap.NewNop(),
+				TimeThreshold: 24 * time.Hour,
 			},
 			args: args{
 				[]prompb.TimeSeries{
@@ -101,7 +101,7 @@ func TestPrwConfig_FromTimeSeries(t *testing.T) {
 		{
 			name: "count",
 			settings: Settings{
-				Logger:        *zap.NewNop(),
+				Logger:        zap.NewNop(),
 				TimeThreshold: 24,
 			},
 			args: args{
@@ -134,7 +134,7 @@ func TestPrwConfig_FromTimeSeries(t *testing.T) {
 		{
 			name: "bytes",
 			settings: Settings{
-				Logger:        *zap.NewNop(),
+				Logger:        zap.NewNop(),
 				TimeThreshold: 24,
 			},
 			args: args{
@@ -160,7 +160,7 @@ func TestPrwConfig_FromTimeSeries(t *testing.T) {
 		{
 			name: "bytes_total",
 			settings: Settings{
-				Logger:        *zap.NewNop(),
+				Logger:        zap.NewNop(),
 				TimeThreshold: 24,
 			},
 			args: args{
@@ -189,7 +189,7 @@ func TestPrwConfig_FromTimeSeries(t *testing.T) {
 		{
 			name: "count - old",
 			settings: Settings{
-				Logger:        *zap.NewNop(),
+				Logger:        zap.NewNop(),
 				TimeThreshold: 24,
 			},
 			args: args{
