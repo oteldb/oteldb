@@ -102,7 +102,7 @@ func TestPrwConfig_FromTimeSeries(t *testing.T) {
 			name: "count",
 			settings: Settings{
 				Logger:        zap.NewNop(),
-				TimeThreshold: 24,
+				TimeThreshold: 24 * time.Hour,
 			},
 			args: args{
 				[]prompb.TimeSeries{
@@ -135,7 +135,7 @@ func TestPrwConfig_FromTimeSeries(t *testing.T) {
 			name: "bytes",
 			settings: Settings{
 				Logger:        zap.NewNop(),
-				TimeThreshold: 24,
+				TimeThreshold: 24 * time.Hour,
 			},
 			args: args{
 				[]prompb.TimeSeries{
@@ -161,7 +161,7 @@ func TestPrwConfig_FromTimeSeries(t *testing.T) {
 			name: "bytes_total",
 			settings: Settings{
 				Logger:        zap.NewNop(),
-				TimeThreshold: 24,
+				TimeThreshold: 24 * time.Hour,
 			},
 			args: args{
 				[]prompb.TimeSeries{
@@ -190,7 +190,7 @@ func TestPrwConfig_FromTimeSeries(t *testing.T) {
 			name: "count - old",
 			settings: Settings{
 				Logger:        zap.NewNop(),
-				TimeThreshold: 24,
+				TimeThreshold: 24 * time.Hour,
 			},
 			args: args{
 				[]prompb.TimeSeries{
