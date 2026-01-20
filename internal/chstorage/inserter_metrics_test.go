@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
@@ -34,7 +35,7 @@ func Benchmark_metricsBatch(b *testing.B) {
 	rw := &prompb.WriteRequest{}
 	require.NoError(b, rw.Unmarshal(raw))
 
-	timeSeries, err := prw.FromTimeSeries(rw.Timeseries, prw.Settings{TimeThreshold: 1_000_000})
+	timeSeries, err := prw.FromTimeSeries(rw.Timeseries, prw.Settings{TimeThreshold: 1_000_000 * time.Hour})
 	require.NoError(b, err)
 
 	meterProvider := noopmeter.NewMeterProvider()

@@ -16,6 +16,7 @@ package prometheusremotewritereceiver
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
@@ -27,7 +28,7 @@ const (
 	typeStr              = "prometheusremotewrite"
 	defaultBindEndpoint  = "0.0.0.0:19291"
 	stability            = component.StabilityLevelDevelopment
-	defaultTimeThreshold = 24
+	defaultTimeThreshold = 24 * time.Hour
 )
 
 var typ = component.MustNewType(typeStr)
