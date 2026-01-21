@@ -29,17 +29,25 @@ var (
 	nowMillis = now.UnixNano() / int64(time.Millisecond)
 )
 
-func TestFromTimeSeries(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("testdata", "reqs-1k-zstd.rwq"))
+func readTestData(t require.TestingT, file string) []byte {
+	data, err := os.ReadFile(filepath.Join("testdata", file))
 	require.NoError(t, err)
+
 	reader := otelbench.NewReader(bytes.NewReader(data))
 	require.True(t, reader.Decode())
 	compressed := reader.Data()
+
 	z, err := zstd.NewReader(bytes.NewReader(compressed))
 	require.NoError(t, err)
+
 	raw, err := io.ReadAll(z)
 	require.NoError(t, err)
 
+	return raw
+}
+
+func TestFromTimeSeries(t *testing.T) {
+	raw := readTestData(t, "reqs-1k-zstd.rwq")
 	rw := &prompb.WriteRequest{}
 	require.NoError(t, rw.Unmarshal(raw))
 
