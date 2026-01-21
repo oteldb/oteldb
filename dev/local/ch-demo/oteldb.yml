@@ -48,7 +48,7 @@ otelcol:
             key_file: /etc/oteldb/server.key
     prometheusremotewrite:
       endpoint: 0.0.0.0:19291
-      time_threshold: 100_000 # hours
+      time_threshold: 100000h # hours
       auth:
         authenticator: bearertokenauth
   exporters:

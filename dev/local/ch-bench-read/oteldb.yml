@@ -10,7 +10,7 @@ otelcol:
   receivers:
     prometheusremotewrite:
       endpoint: 0.0.0.0:19291
-      time_threshold: 100_000 # hours
+      time_threshold: 100000h # hours
   exporters:
     oteldbexporter:
       dsn: clickhouse://default:default@clickhouse:9000

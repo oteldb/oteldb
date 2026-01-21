@@ -26,4 +26,4 @@ Http Server configuration settings:
 Additional server settings are mentioned here:
 <https://github.com/open-telemetry/opentelemetry-collector/tree/main/config/confighttp#server-configuration>
 
-- `time_threshold` (default = 24) - time threshold (in hours). All `timeseries` older than limit will be dropped.
+- `time_threshold` (default = `24h`) - time threshold. All `timeseries` older than limit will be dropped.
