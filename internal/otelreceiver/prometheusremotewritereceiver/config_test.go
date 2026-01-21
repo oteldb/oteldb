@@ -17,6 +17,7 @@ package prometheusremotewritereceiver
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,7 +52,7 @@ func TestLoadConfig(t *testing.T) {
 					MaxRequestBodySize: 0,
 					IncludeMetadata:    false,
 				},
-				TimeThreshold: 24,
+				TimeThreshold: 24 * time.Hour,
 			},
 		},
 	}
