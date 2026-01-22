@@ -14,8 +14,10 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/connector"
 	"go.opentelemetry.io/collector/exporter"
@@ -48,6 +50,8 @@ func processorFactoryMap() (map[component.Type]processor.Factory, error) {
 	return otelcol.MakeFactoryMap(
 		attributesprocessor.NewFactory(),
 		batchprocessor.NewFactory(),
+		filterprocessor.NewFactory(),
+		transformprocessor.NewFactory(),
 		resourceprocessor.NewFactory(),
 		metricstransformprocessor.NewFactory(),
 	)

@@ -45,8 +45,10 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.144.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.144.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.144.0
 	github.com/oteldb/promql-engine v0.4.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.5

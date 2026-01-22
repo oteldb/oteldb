@@ -567,10 +567,14 @@ github.com/open-telemetry/opentelemetry-collector-contrib/pkg/sampling v0.144.0 
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/sampling v0.144.0/go.mod h1:F8ASQLmExrE2TGLLWGKsmqEHFsVTqUhL2tH1bjsBi1w=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.144.0 h1:gRk73SsIJv3q/HI0kxMRN5TiIiJj+MRxrz0GEYx3jZw=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.144.0/go.mod h1:7b8ZcPdN6JSm6+LUq3rienoqHHiX60kyoOHDPCMM+L8=
+github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.144.0 h1:NplF2G77Y9qp3JPybGrJTeRvZrTD0+QdZybffVxRen8=
+github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.144.0/go.mod h1:8j0rg5f74vgGuuxyFNcEP4tHFRb2oIUkilDhEAU+ZM0=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v0.144.0 h1:UMFPp4lqb4s2XQI5S0VQdyTRHvBJRpo3bC8ByDe2OtM=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v0.144.0/go.mod h1:MfmtOJblrY0F+lrGH3pBvrxu5SXLA+BFwAYygSUoT14=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.144.0 h1:fLv4AjxM6shB1YOymo9RiDVtL3WHPGtEQTuHYXimcPk=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.144.0/go.mod h1:xXTeVODmeTXSvJXaBt4IAqThgN6yjZ9M5xz6zFZEasI=
+github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.144.0 h1:Yk/YzelVm2HkHmlFfNMnZkNbSM/ddfVNh3B8vdOqc2U=
+github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.144.0/go.mod h1:uNvoThBUdo1ATixEph20Mz/na1hrHEzp4bMscXdFFTI=
 github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U=
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=
