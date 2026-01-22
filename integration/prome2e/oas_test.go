@@ -128,7 +128,7 @@ func TestPrometheusOAS(t *testing.T) {
 			Query: "go_info{}",
 			Start: start,
 			End:   end,
-			Step:  "15s",
+			Step:  promapi.NewOptString("15s"),
 		})
 		require.NoError(t, err)
 		m, ok := res.Data.GetMatrix()
