@@ -79,9 +79,10 @@ paths:
           schema:
             $ref: "#/components/schemas/PrometheusTimestamp"
         - name: step
-          description: Query resolution step width in duration format or float number of seconds.
+          description: |
+            Query resolution step width in duration format or float number of seconds.
+            Official Prometheus spec requires it, but some clients do not send it (e.g vmalert).
           in: query
-          required: true
           schema:
             type: string
             description: Prometheus duration or float.
@@ -474,7 +475,7 @@ components:
           type: string
     QueryRangeForm:
       type: object
-      required: [query, start, end, step]
+      required: [query, start, end]
       properties:
         query:
           type: string
@@ -485,7 +486,9 @@ components:
           $ref: "#/components/schemas/PrometheusTimestamp"
         step:
           type: string
-          description: Query resolution step width in duration format or float number of seconds.
+          description: |
+            Query resolution step width in duration format or float number of seconds.
+            Official Prometheus spec requires it, but some clients do not send it (e.g vmalert).
         lookback_delta:
           type: string
         stats:

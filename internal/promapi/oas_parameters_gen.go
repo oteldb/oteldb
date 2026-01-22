@@ -1104,7 +1104,8 @@ type GetQueryRangeParams struct {
 	// End timestamp, inclusive.
 	End PrometheusTimestamp
 	// Query resolution step width in duration format or float number of seconds.
-	Step string
+	// Official Prometheus spec requires it, but some clients do not send it (e.g vmalert).
+	Step OptString `json:",omitempty,omitzero"`
 	// Lookback delta duration in duration format or float number of seconds.
 	LookbackDelta OptString `json:",omitempty,omitzero"`
 	// Statistics to return.
@@ -1138,7 +1139,9 @@ func unpackGetQueryRangeParams(packed middleware.Parameters) (params GetQueryRan
 			Name: "step",
 			In:   "query",
 		}
-		params.Step = packed[key].(string)
+		if v, ok := packed[key]; ok {
+			params.Step = v.(OptString)
+		}
 	}
 	{
 		key := middleware.ParameterKey{
@@ -1295,23 +1298,28 @@ func decodeGetQueryRangeParams(args [0]string, argsEscaped bool, r *http.Request
 
 		if err := q.HasParam(cfg); err == nil {
 			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				val, err := d.DecodeValue()
-				if err != nil {
+				var paramsDotStepVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotStepVal = c
+					return nil
+				}(); err != nil {
 					return err
 				}
-
-				c, err := conv.ToString(val)
-				if err != nil {
-					return err
-				}
-
-				params.Step = c
+				params.Step.SetTo(paramsDotStepVal)
 				return nil
 			}); err != nil {
 				return err
 			}
-		} else {
-			return err
 		}
 		return nil
 	}(); err != nil {

@@ -2,12 +2,15 @@ package prome2e_test
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/VictoriaMetrics/VictoriaMetrics/app/vmalert/datasource"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -16,6 +19,7 @@ import (
 
 	"github.com/go-faster/oteldb/integration/prome2e"
 	"github.com/go-faster/oteldb/integration/requirex"
+	"github.com/go-faster/oteldb/internal/httpmiddleware"
 	"github.com/go-faster/oteldb/internal/promapi"
 	"github.com/go-faster/oteldb/internal/promhandler"
 	"github.com/go-faster/oteldb/internal/promql"
@@ -112,7 +116,7 @@ func setupDB(
 	t *testing.T,
 	provider trace.TracerProvider,
 	querier promql.Querier,
-) *promapi.Client {
+) (string, *promapi.Client) {
 	engine, err := promql.New(querier, promql.EngineOpts{
 		Timeout:              time.Minute,
 		MaxSamples:           1_000_000,
@@ -125,7 +129,7 @@ func setupDB(
 	)
 	require.NoError(t, err)
 
-	s := httptest.NewServer(promh)
+	s := httptest.NewServer(httpmiddleware.Wrap(promh, promhandler.PatchForm))
 	t.Cleanup(s.Close)
 
 	c, err := promapi.NewClient(s.URL,
@@ -133,7 +137,7 @@ func setupDB(
 		promapi.WithTracerProvider(provider),
 	)
 	require.NoError(t, err)
-	return c
+	return s.URL, c
 }
 
 func loadTestData(ctx context.Context, t *testing.T, consumer MetricsConsumer) prome2e.BatchSet {
@@ -158,7 +162,7 @@ func runTest(
 	set prome2e.BatchSet,
 	querier promql.Querier,
 ) {
-	c := setupDB(t, provider, querier)
+	serverURL, c := setupDB(t, provider, querier)
 
 	t.Run("Labels", func(t *testing.T) {
 		t.Run("All", func(t *testing.T) {
@@ -579,7 +583,7 @@ func runTest(
 				Query: `count(prometheus_http_requests_total{})`,
 				Start: getPromTS(set.Start),
 				End:   getPromTS(set.End),
-				Step:  "5s",
+				Step:  promapi.NewOptString("5s"),
 			})
 			a.NoError(err)
 
@@ -602,7 +606,7 @@ func runTest(
 				Query: `prometheus_http_response_size_bytes_bucket{handler="/api/v1/write", le="+Inf"}`,
 				Start: getPromTS(set.Start),
 				End:   getPromTS(set.End),
-				Step:  "5s",
+				Step:  promapi.NewOptString("5s"),
 			})
 			a.NoError(err)
 
@@ -616,6 +620,27 @@ func runTest(
 			values := mat[0].Values
 			a.NotEmpty(values)
 		})
+	})
+	t.Run("QueryFrom_vmalert", func(t *testing.T) {
+		client := datasource.NewPrometheusClient(serverURL, nil, false, http.DefaultClient)
+		client.ApplyParams(datasource.QuerierParams{
+			QueryParams: url.Values{
+				"step": []string{"5s"},
+			},
+			Headers: map[string]string{
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+		})
+		r, err := client.QueryRange(ctx, `count(prometheus_http_requests_total{})`,
+			set.Start.AsTime(),
+			set.End.AsTime(),
+		)
+		require.NoError(t, err)
+		require.NotEmpty(t, r.Data)
+		m := r.Data[0]
+		for _, v := range m.Values {
+			require.Equal(t, float64(51), v)
+		}
 	})
 }
 

@@ -284,7 +284,10 @@ func encodePostQueryRangeRequest(
 			Explode: true,
 		}
 		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			return e.EncodeValue(conv.StringToString(request.Step))
+			if val, ok := request.Step.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
 		}); err != nil {
 			return errors.Wrap(err, "encode query")
 		}

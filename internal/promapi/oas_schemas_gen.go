@@ -1840,7 +1840,8 @@ type QueryRangeForm struct {
 	Start PrometheusTimestamp `json:"start"`
 	End   PrometheusTimestamp `json:"end"`
 	// Query resolution step width in duration format or float number of seconds.
-	Step          string    `json:"step"`
+	// Official Prometheus spec requires it, but some clients do not send it (e.g vmalert).
+	Step          OptString `json:"step"`
 	LookbackDelta OptString `json:"lookback_delta"`
 	Stats         OptString `json:"stats"`
 }
@@ -1861,7 +1862,7 @@ func (s *QueryRangeForm) GetEnd() PrometheusTimestamp {
 }
 
 // GetStep returns the value of Step.
-func (s *QueryRangeForm) GetStep() string {
+func (s *QueryRangeForm) GetStep() OptString {
 	return s.Step
 }
 
@@ -1891,7 +1892,7 @@ func (s *QueryRangeForm) SetEnd(val PrometheusTimestamp) {
 }
 
 // SetStep sets the value of Step.
-func (s *QueryRangeForm) SetStep(val string) {
+func (s *QueryRangeForm) SetStep(val OptString) {
 	s.Step = val
 }
 

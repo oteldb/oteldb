@@ -39,6 +39,7 @@ type PromAPI struct {
 	exemplars storage.ExemplarQueryable
 
 	lookbackDelta time.Duration
+	defaultStep   time.Duration
 }
 
 var _ promapi.Handler = (*PromAPI)(nil)
@@ -56,6 +57,7 @@ func NewPromAPI(
 		store:         store,
 		exemplars:     exemplars,
 		lookbackDelta: opts.LookbackDelta,
+		defaultStep:   opts.DefaultStep,
 	}
 }
 
@@ -332,7 +334,7 @@ func (h *PromAPI) GetQueryRange(ctx context.Context, params promapi.GetQueryRang
 	if err != nil {
 		return nil, validationErr("parse end", err)
 	}
-	step, err := parseStep(params.Step)
+	step, err := parseStep(params.Step.Or(""), h.defaultStep)
 	if err != nil {
 		return nil, validationErr("parse step", err)
 	}

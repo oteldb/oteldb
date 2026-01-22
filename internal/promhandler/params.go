@@ -14,8 +14,11 @@
 package promhandler
 
 import (
+	"maps"
 	"math"
+	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -62,7 +65,10 @@ func parseTimestamp[S ~string](raw S) (time.Time, error) {
 	return time.Time{}, errors.Errorf("cannot parse %q to a valid timestamp", s)
 }
 
-func parseStep[S ~string](raw S) (time.Duration, error) {
+func parseStep[S ~string](raw S, defaultStep time.Duration) (time.Duration, error) {
+	if len(raw) == 0 {
+		return defaultStep, nil
+	}
 	d, err := parseDuration(raw)
 	if err != nil {
 		return 0, err
@@ -120,4 +126,45 @@ OUTER:
 		return nil, errors.New("match[] must contain at least one non-empty matcher")
 	}
 	return matcherSets, nil
+}
+
+// PatchForm patches request form with parameters from URL.
+//
+// This is required for some PromQL client, like this one alerting tool.
+//
+// See https://github.com/VictoriaMetrics/VictoriaMetrics/blob/v1.134.0/app/vmalert/datasource/client.go.
+func PatchForm(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch req.Method {
+		case http.MethodPost,
+			http.MethodPatch,
+			http.MethodPut:
+			if !strings.Contains(
+				req.Header.Get("Content-Type"),
+				"application/x-www-form-urlencoded",
+			) {
+				next.ServeHTTP(w, req)
+				return
+			}
+		default:
+			next.ServeHTTP(w, req)
+			return
+		}
+
+		q := req.URL.Query()
+		patched := req.Clone(req.Context())
+		noForm := patched.PostForm == nil
+		if noForm {
+			if err := patched.ParseForm(); err != nil {
+				// Let handler deal with invalid form.
+				next.ServeHTTP(w, patched)
+				return
+			}
+		}
+		maps.Copy(patched.PostForm, q)
+		if c := patched.ContentLength; noForm && c == 0 {
+			patched.ContentLength = int64(len(req.URL.RawQuery))
+		}
+		next.ServeHTTP(w, patched)
+	})
 }

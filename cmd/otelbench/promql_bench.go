@@ -126,7 +126,7 @@ func toPrometheusTimestamp(t time.Time) promapi.PrometheusTimestamp {
 func (p *PromQL) sendRangeQuery(ctx context.Context, q promproxy.RangeQuery) error {
 	res, err := p.client.GetQueryRange(ctx, promapi.GetQueryRangeParams{
 		Query: q.Query,
-		Step:  strconv.Itoa(q.Step.Value),
+		Step:  promapi.NewOptString(strconv.Itoa(q.Step.Value)),
 		Start: toPrometheusTimestamp(q.Start.Value),
 		End:   toPrometheusTimestamp(q.End.Value),
 	})
