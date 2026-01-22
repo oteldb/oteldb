@@ -124,6 +124,7 @@ func addOgen[
 	server Server,
 	defaultPort string,
 	authCfg []AuthConfig,
+	additionalMiddlewares ...httpmiddleware.Middleware,
 ) {
 	lg := app.lg.Named(name)
 
@@ -157,10 +158,11 @@ func addOgen[
 			lg.Info("Enabling authentication middleware", zap.Int("configs", len(authCfg)))
 			middlewares = append(middlewares, auth)
 		}
+		middlewares = append(middlewares, additionalMiddlewares...)
 
 		httpServer := &http.Server{
 			Addr:              addr,
-			Handler:           httpmiddleware.Wrap(server, middlewares...),
+			Handler:           httpmiddleware.Wrap(server, additionalMiddlewares...),
 			ReadHeaderTimeout: 15 * time.Second,
 		}
 
@@ -329,7 +331,7 @@ func (app *App) trySetupProm() error {
 		return err
 	}
 
-	addOgen(app, "prom", s, cfg.Bind, cfg.Auth)
+	addOgen(app, "prom", s, cfg.Bind, cfg.Auth, promhandler.PatchForm)
 	return nil
 }
 

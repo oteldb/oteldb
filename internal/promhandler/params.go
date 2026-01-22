@@ -14,7 +14,9 @@
 package promhandler
 
 import (
+	"maps"
 	"math"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/go-faster/oteldb/internal/httpmiddleware"
 	"github.com/go-faster/oteldb/internal/promapi"
 )
 
@@ -121,3 +124,38 @@ OUTER:
 	}
 	return matcherSets, nil
 }
+
+// PatchForm patches request form with parameters from URL.
+//
+// This is required for some PromQL client, like this one alerting tool.
+//
+// See https://github.com/VictoriaMetrics/VictoriaMetrics/blob/v1.134.0/app/vmalert/datasource/client.go.
+func PatchForm(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch req.Method {
+		case http.MethodPost,
+			http.MethodPatch,
+			http.MethodPut:
+		default:
+			next.ServeHTTP(w, req)
+			return
+		}
+
+		q := req.URL.Query()
+		patched := req.Clone(req.Context())
+		if patched.PostForm == nil {
+			if err := patched.ParseForm(); err != nil {
+				// Let handler deal with invalid form.
+				next.ServeHTTP(w, patched)
+				return
+			}
+		}
+		maps.Copy(patched.PostForm, q)
+		if c := patched.ContentLength; c <= 0 {
+			patched.ContentLength = int64(len(req.URL.RawQuery))
+		}
+		next.ServeHTTP(w, patched)
+	})
+}
+
+var _ httpmiddleware.Middleware = PatchForm

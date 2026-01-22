@@ -1,7 +1,14 @@
 package promhandler
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,6 +123,133 @@ func TestParseLabelMatchers(t *testing.T) {
 					require.Equal(t, m.String(), gotMatcher.String())
 				}
 			}
+		})
+	}
+}
+
+func TestPatchForm(t *testing.T) {
+	type testResp struct {
+		ContentLength int64
+		Values        url.Values
+	}
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, err := json.Marshal(testResp{
+			ContentLength: r.ContentLength,
+			Values:        r.PostForm,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		_, _ = w.Write(data)
+	})
+	srv := httptest.NewServer(PatchForm(h))
+	t.Cleanup(srv.Close)
+	client := srv.Client()
+
+	makeRequest := func(ctx context.Context, method string, query, form url.Values) (testResp, error) {
+		var body io.Reader = http.NoBody
+		if form != nil {
+			body = strings.NewReader(form.Encode())
+		}
+
+		req, err := http.NewRequestWithContext(ctx, method, srv.URL, body)
+		if err != nil {
+			return testResp{}, fmt.Errorf("make request: %w", err)
+		}
+		if query != nil {
+			req.URL.RawQuery = query.Encode()
+		}
+		if form != nil {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return testResp{}, fmt.Errorf("do request: %w", err)
+		}
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return testResp{}, fmt.Errorf("read body: %w", err)
+		}
+
+		var response testResp
+		if err := json.Unmarshal(data, &response); err != nil {
+			return testResp{}, fmt.Errorf("unmarshal response: %w", err)
+		}
+		return response, nil
+	}
+
+	for _, tt := range []struct {
+		name              string
+		method            string
+		query             url.Values
+		form              url.Values
+		wantValues        url.Values
+		wantContentLength int64
+	}{
+		{
+			name:       "GetRequest",
+			method:     http.MethodGet,
+			wantValues: nil,
+		},
+		{
+			name:       "EmptyPostRequest",
+			method:     http.MethodPost,
+			wantValues: url.Values{},
+		},
+		{
+			name:              "OnlyForm",
+			method:            http.MethodPost,
+			form:              url.Values{"hello": []string{"world"}},
+			wantValues:        url.Values{"hello": []string{"world"}},
+			wantContentLength: 11,
+		},
+		{
+			name:              "OnlyQuery",
+			method:            http.MethodPost,
+			query:             url.Values{"hello": []string{"world"}},
+			wantValues:        url.Values{"hello": []string{"world"}},
+			wantContentLength: 11,
+		},
+		{
+			name:   "Disjoint",
+			method: http.MethodPost,
+			query:  url.Values{"queryParam": []string{"queryValue"}},
+			form:   url.Values{"formParam": []string{"formValue"}},
+			wantValues: url.Values{
+				"queryParam": []string{"queryValue"},
+				"formParam":  []string{"formValue"},
+			},
+			wantContentLength: 19,
+		},
+		{
+			name:   "Merge",
+			method: http.MethodPost,
+			query: url.Values{
+				"param1":     []string{"q1"},
+				"queryParam": []string{"queryValue"},
+			},
+			form: url.Values{
+				"param1":    []string{"f1"},
+				"formParam": []string{"formValue"},
+			},
+			wantValues: url.Values{
+				"param1":     []string{"q1"}, // Query have precedence.
+				"queryParam": []string{"queryValue"},
+				"formParam":  []string{"formValue"},
+			},
+			wantContentLength: 29,
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
+
+			r, err := makeRequest(ctx, tt.method, tt.query, tt.form)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantValues, r.Values)
+			require.Equal(t, tt.wantContentLength, r.ContentLength)
 		})
 	}
 }
