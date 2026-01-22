@@ -18,3 +18,6 @@ jobs:
       go: stable
   lint:
     uses: go-faster/x/.github/workflows/lint.yml@main
+    with:
+      submodules: true
+      go: stable
