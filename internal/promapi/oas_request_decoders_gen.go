@@ -619,23 +619,28 @@ func (s *Server) decodePostQueryRangeRequest(r *http.Request) (
 			}
 			if err := q.HasParam(cfg); err == nil {
 				if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-					val, err := d.DecodeValue()
-					if err != nil {
+					var requestDotStepVal string
+					if err := func() error {
+						val, err := d.DecodeValue()
+						if err != nil {
+							return err
+						}
+
+						c, err := conv.ToString(val)
+						if err != nil {
+							return err
+						}
+
+						requestDotStepVal = c
+						return nil
+					}(); err != nil {
 						return err
 					}
-
-					c, err := conv.ToString(val)
-					if err != nil {
-						return err
-					}
-
-					request.Step = c
+					request.Step.SetTo(requestDotStepVal)
 					return nil
 				}); err != nil {
 					return req, rawBody, close, errors.Wrap(err, "decode \"step\"")
 				}
-			} else {
-				return req, rawBody, close, errors.Wrap(err, "query")
 			}
 		}
 		{

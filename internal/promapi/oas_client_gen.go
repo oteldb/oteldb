@@ -985,7 +985,10 @@ func (c *Client) sendGetQueryRange(ctx context.Context, params GetQueryRangePara
 		}
 
 		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			return e.EncodeValue(conv.StringToString(params.Step))
+			if val, ok := params.Step.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
 		}); err != nil {
 			return res, errors.Wrap(err, "encode query")
 		}
