@@ -51,7 +51,11 @@ func ts(v promapi.PrometheusTimestamp) time.Time {
 	return time.Unix(seconds, 0)
 }
 
-func step(v string) OptInt {
+func step(o promapi.OptString) OptInt {
+	v, ok := o.Get()
+	if !ok {
+		return OptInt{}
+	}
 	seconds, err := strconv.Atoi(v)
 	if err != nil {
 		return OptInt{}

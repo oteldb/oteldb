@@ -18,6 +18,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -26,7 +27,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/go-faster/oteldb/internal/httpmiddleware"
 	"github.com/go-faster/oteldb/internal/promapi"
 )
 
@@ -65,7 +65,10 @@ func parseTimestamp[S ~string](raw S) (time.Time, error) {
 	return time.Time{}, errors.Errorf("cannot parse %q to a valid timestamp", s)
 }
 
-func parseStep[S ~string](raw S) (time.Duration, error) {
+func parseStep[S ~string](raw S, defaultStep time.Duration) (time.Duration, error) {
+	if len(raw) == 0 {
+		return defaultStep, nil
+	}
 	d, err := parseDuration(raw)
 	if err != nil {
 		return 0, err
@@ -136,6 +139,13 @@ func PatchForm(next http.Handler) http.Handler {
 		case http.MethodPost,
 			http.MethodPatch,
 			http.MethodPut:
+			if !strings.Contains(
+				req.Header.Get("Content-Type"),
+				"application/x-www-form-urlencoded",
+			) {
+				next.ServeHTTP(w, req)
+				return
+			}
 		default:
 			next.ServeHTTP(w, req)
 			return
@@ -143,7 +153,8 @@ func PatchForm(next http.Handler) http.Handler {
 
 		q := req.URL.Query()
 		patched := req.Clone(req.Context())
-		if patched.PostForm == nil {
+		noForm := patched.PostForm == nil
+		if noForm {
 			if err := patched.ParseForm(); err != nil {
 				// Let handler deal with invalid form.
 				next.ServeHTTP(w, patched)
@@ -151,11 +162,9 @@ func PatchForm(next http.Handler) http.Handler {
 			}
 		}
 		maps.Copy(patched.PostForm, q)
-		if c := patched.ContentLength; c <= 0 {
+		if c := patched.ContentLength; noForm && c == 0 {
 			patched.ContentLength = int64(len(req.URL.RawQuery))
 		}
 		next.ServeHTTP(w, patched)
 	})
 }
-
-var _ httpmiddleware.Middleware = PatchForm

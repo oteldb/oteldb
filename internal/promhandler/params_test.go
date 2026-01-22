@@ -43,6 +43,7 @@ func TestParseTimestamp(t *testing.T) {
 }
 
 func TestParseStep(t *testing.T) {
+	const defaultStep = 10 * time.Hour
 	tests := []struct {
 		raw     string
 		want    time.Duration
@@ -52,16 +53,18 @@ func TestParseStep(t *testing.T) {
 		{`1s`, time.Second, false},
 		{`1h`, time.Hour, false},
 
+		// Default
+		{``, defaultStep, false},
+
 		// Non-positive steps are not allowed.
 		{`0`, 0, true},
 		{`-10`, 0, true},
 		{`foo`, 0, true},
-		{``, 0, true},
 	}
 	for i, tt := range tests {
 		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
-			got, err := parseStep(tt.raw)
+			got, err := parseStep(tt.raw, defaultStep)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -158,12 +161,11 @@ func TestPatchForm(t *testing.T) {
 		if err != nil {
 			return testResp{}, fmt.Errorf("make request: %w", err)
 		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		if query != nil {
 			req.URL.RawQuery = query.Encode()
 		}
-		if form != nil {
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		}
+
 		resp, err := client.Do(req)
 		if err != nil {
 			return testResp{}, fmt.Errorf("do request: %w", err)
@@ -196,6 +198,12 @@ func TestPatchForm(t *testing.T) {
 		{
 			name:       "EmptyPostRequest",
 			method:     http.MethodPost,
+			wantValues: url.Values{},
+		},
+		{
+			name:       "EmptyFormRequest",
+			method:     http.MethodPost,
+			form:       url.Values{},
 			wantValues: url.Values{},
 		},
 		{

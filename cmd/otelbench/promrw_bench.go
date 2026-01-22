@@ -474,7 +474,7 @@ func (s *Bench) runQueryCPU(ctx context.Context, client promapi.Invoker) (*cpuQu
 		Query: q,
 		Start: prometheusTimestamp(start.Add(-time.Minute)),
 		End:   prometheusTimestamp(start),
-		Step:  "1s",
+		Step:  promapi.NewOptString("1s"),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "query")
