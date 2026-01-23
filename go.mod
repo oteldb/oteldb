@@ -4,7 +4,7 @@ go 1.25.6
 
 require (
 	entgo.io/ent v0.14.5
-	github.com/ClickHouse/ch-go v0.69.0
+	github.com/ClickHouse/ch-go v0.70.0
 	github.com/MakeNowJust/heredoc/v2 v2.0.1
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/VictoriaMetrics/VictoriaMetrics v1.134.0
@@ -221,7 +221,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pascaldekloe/name v1.0.1 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
-	github.com/pierrec/lz4/v4 v4.1.23 // indirect
+	github.com/pierrec/lz4/v4 v4.1.25 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
