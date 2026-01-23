@@ -125,17 +125,28 @@ func TestPrometheusRemoteWriteReceiver(t *testing.T) {
 
 	require.Nil(t, err)
 	require.Equal(t, http.StatusAccepted, r)
-	require.Equal(t, 4, cms.AllMetrics()[0].ResourceMetrics().Len())
+	res := cms.AllMetrics()[0].ResourceMetrics()
+	require.Equal(t, 1, res.Len())
+	scope := res.At(0).ScopeMetrics()
+	require.Equal(t, 1, scope.Len())
+	metrics := scope.At(0).Metrics()
 
-	require.Equal(t, pmetric.MetricTypeSum, cms.AllMetrics()[0].ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Type())
-	require.Equal(t, true, cms.AllMetrics()[0].ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Sum().IsMonotonic())
-	require.Equal(t, pmetric.AggregationTemporalityCumulative, cms.AllMetrics()[0].ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Sum().AggregationTemporality())
-
-	require.Equal(t, pmetric.MetricTypeSum, cms.AllMetrics()[0].ResourceMetrics().At(1).ScopeMetrics().At(0).Metrics().At(0).Type())
-	require.Equal(t, true, cms.AllMetrics()[0].ResourceMetrics().At(1).ScopeMetrics().At(0).Metrics().At(0).Sum().IsMonotonic())
-	require.Equal(t, pmetric.AggregationTemporalityCumulative, cms.AllMetrics()[0].ResourceMetrics().At(1).ScopeMetrics().At(0).Metrics().At(0).Sum().AggregationTemporality())
-
-	require.Equal(t, pmetric.MetricTypeGauge, cms.AllMetrics()[0].ResourceMetrics().At(2).ScopeMetrics().At(0).Metrics().At(0).Type())
-
-	require.Equal(t, pmetric.MetricTypeEmpty, cms.AllMetrics()[0].ResourceMetrics().At(3).ScopeMetrics().At(0).Metrics().At(0).Type())
+	{
+		m := metrics.At(0)
+		require.Equal(t, pmetric.MetricTypeSum, m.Type())
+		require.Equal(t, true, m.Sum().IsMonotonic())
+		require.Equal(t, pmetric.AggregationTemporalityCumulative, m.Sum().AggregationTemporality())
+	}
+	{
+		m := metrics.At(1)
+		require.Equal(t, pmetric.MetricTypeSum, m.Type())
+		require.Equal(t, true, m.Sum().IsMonotonic())
+		require.Equal(t, pmetric.AggregationTemporalityCumulative, m.Sum().AggregationTemporality())
+	}
+	{
+		require.Equal(t, pmetric.MetricTypeGauge, metrics.At(2).Type())
+	}
+	{
+		require.Equal(t, pmetric.MetricTypeEmpty, metrics.At(3).Type())
+	}
 }
