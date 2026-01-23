@@ -202,7 +202,7 @@ type Histogram struct {
 	PositiveDeltas []int64
 	PositiveCounts []float64
 
-	ResetHint HistogramResentHint
+	ResetHint HistogramResetHint
 	Timestamp int64
 }
 
@@ -317,7 +317,7 @@ func (h *Histogram) Unmarshal(p *pools, src []byte) (err error) {
 			if !ok {
 				return errors.Errorf("read hint (field %d)", fc.FieldNum)
 			}
-			h.ResetHint = HistogramResentHint(hint)
+			h.ResetHint = HistogramResetHint(hint)
 		case 15:
 			h.Timestamp, ok = fc.Int64()
 			if !ok {
@@ -393,11 +393,11 @@ func (s *BucketSpan) Unmarshal(src []byte) (err error) {
 	return nil
 }
 
-type HistogramResentHint int32
+type HistogramResetHint int32
 
 const (
-	HistogramResentHintUNKNOWN HistogramResentHint = 0
-	HistogramResentHintYES     HistogramResentHint = 1
-	HistogramResentHintNO      HistogramResentHint = 2
-	HistogramResentHintGAUGE   HistogramResentHint = 3
+	HistogramResentHintUNKNOWN HistogramResetHint = 0
+	HistogramResentHintYES     HistogramResetHint = 1
+	HistogramResentHintNO      HistogramResetHint = 2
+	HistogramResentHintGAUGE   HistogramResetHint = 3
 )
