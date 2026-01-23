@@ -30,14 +30,22 @@ import (
 
 // FromTimeSeries converts TimeSeries to OTLP metrics.
 func FromTimeSeries(tss []prompb.TimeSeries, settings Settings) (pmetric.Metrics, error) {
-	var (
-		lg = settings.Logger
+	settings.setDefaults()
 
-		pms           = pmetric.NewMetrics()
+	var (
+		lg            = settings.Logger
 		timeThreshold = time.Now().Add(-settings.TimeThreshold)
+
+		pms     = pmetric.NewMetrics()
+		res     = pms.ResourceMetrics().AppendEmpty()
+		scope   = res.ScopeMetrics().AppendEmpty()
+		metrics = scope.Metrics()
 	)
+	settings.Resource.CopyTo(res.Resource())
+	settings.Scope.CopyTo(scope.Scope())
+
 	for _, ts := range tss {
-		pm := pms.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+		pm := metrics.AppendEmpty()
 
 		metricName, err := finalName(ts.Labels)
 		if err != nil {

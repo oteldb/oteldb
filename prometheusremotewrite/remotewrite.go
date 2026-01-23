@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
 
@@ -21,6 +22,23 @@ import (
 type Settings struct {
 	TimeThreshold time.Duration
 	Logger        *zap.Logger
+	Resource      pcommon.Resource
+	Scope         pcommon.InstrumentationScope
+}
+
+func (s *Settings) setDefaults() {
+	if s.TimeThreshold == 0 {
+		s.TimeThreshold = 24 * time.Hour
+	}
+	if s.Logger == nil {
+		s.Logger = zap.NewNop()
+	}
+	if s.Resource == (pcommon.Resource{}) {
+		s.Resource = pcommon.NewResource()
+	}
+	if s.Scope == (pcommon.InstrumentationScope{}) {
+		s.Scope = pcommon.NewInstrumentationScope()
+	}
 }
 
 // DecodeRequest decodes data from reader to given dst.
