@@ -284,6 +284,49 @@ paths:
                 $ref: "#/components/schemas/IndexStats"
         default:
           $ref: "#/components/responses/Error"
+  /loki/api/v1/detected_labels:
+    get:
+      operationId: detectedLabels
+      description: |
+        Get labels.
+        Used by Grafana to test connection to Loki.
+      parameters:
+        - name: query
+          description: The LogQL matchers to check (that is, `{job="foo", env=~".+"}`).
+          in: query
+          schema:
+            type: string
+        - name: start
+          description: |
+            The start time for the query as a nanosecond Unix epoch.
+            Defaults to 6 hours ago.
+          in: query
+          schema:
+            $ref: "#/components/schemas/LokiTime"
+        - name: end
+          description: |
+            The end time for the query as a nanosecond Unix epoch.
+            Defaults to now.
+          in: query
+          schema:
+            $ref: "#/components/schemas/LokiTime"
+        - name: since
+          description: |
+            A `duration` used to calculate `start` relative to `end`.
+            If `end` is in the future, `start` is calculated as this duration before now.
+            Any value specified for start supersedes this parameter.
+          in: query
+          schema:
+            $ref: "#/components/schemas/PrometheusDuration"
+      responses:
+        "200":
+          description: Label names
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectedLabels"
+        default:
+          $ref: "#/components/responses/Error"
   /loki/api/v1/index/volume_range:
     get:
       operationId: queryVolumeRange
@@ -548,6 +591,25 @@ components:
         entries:
           type: integer
         bytes:
+          type: integer
+    DetectedLabels:
+      type: object
+      required:
+        - detectedLabels
+      properties:
+        detectedLabels:
+          type: array
+          items:
+            $ref: "#/components/schemas/DetectedLabel"
+    DetectedLabel:
+      type: object
+      required:
+        - label
+        - cardinality
+      properties:
+        label:
+          type: string
+        cardinality:
           type: integer
     Stats:
       type: object
