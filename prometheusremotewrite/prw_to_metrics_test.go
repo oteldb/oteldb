@@ -43,7 +43,17 @@ func TestFromTimeSeries(t *testing.T) {
 	rw := &prompb.WriteRequest{}
 	require.NoError(t, rw.Unmarshal(raw))
 
-	series, err := FromTimeSeries(rw.Timeseries, Settings{TimeThreshold: 1_000_000 * time.Hour})
+	res := pcommon.NewResource()
+	res.Attributes().PutStr("resource_attr", "resource_value")
+	scope := pcommon.NewInstrumentationScope()
+	scope.SetName("my_scope")
+	scope.SetVersion("10")
+	scope.Attributes().PutStr("scope_attr", "scope_value")
+	series, err := FromTimeSeries(rw.Timeseries, Settings{
+		TimeThreshold: 1_000_000 * time.Hour,
+		Resource:      res,
+		Scope:         scope,
+	})
 	require.NoError(t, err)
 
 	var jm pmetric.JSONMarshaler
