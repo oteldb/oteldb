@@ -1,31 +1,38 @@
 services:
   loki:
-    image: "grafana/loki:2.8.2"
+    image: "grafana/loki:3.6.0"
+    restart: unless-stopped
     command:
       - "-config.file=/etc/loki/config.yml"
       - "-log.level=debug"
       - "-log.format=json"
       - "-tracing.enabled=true"
     environment:
-      - "JAEGER_AGENT_HOST=tempo"
+      - "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc"
+      - "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://tempo:4317"
     volumes:
       - ./loki.yml:/etc/loki/config.yml
     ports:
       - "3101:3100"
   promtail:
-    image: "grafana/promtail:2.8.2"
+    image: "grafana/promtail:3.6.0"
+    restart: unless-stopped
+    depends_on:
+      - loki
     command:
       - "-config.file=/etc/promtail/config.yml"
       - "-log.level=debug"
       - "-log.format=json"
       - "-tracing.enabled=true"
     environment:
-      - "JAEGER_AGENT_HOST=tempo"
+      - "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc"
+      - "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://tempo:4317"
     volumes:
       - ./promtail.yml:/etc/promtail/config.yml
 
   pyroscope:
-    image: "pyroscope/pyroscope:latest"
+    image: "grafana/pyroscope:latest"
+    restart: unless-stopped
     command: [ "server" ]
     environment:
       - PYROSCOPE_LOG_LEVEL=debug
@@ -33,37 +40,35 @@ services:
       - "4041:4040"
 
   tempo:
-    image: "ghcr.io/go-faster/tempo"
+    image: "grafana/tempo:2.9.1"
+    restart: unless-stopped
     command: [ "-config.file=/etc/tempo.yml" ]
     environment:
       # Send traces to itself.
-      - "OTEL_EXPORTER_JAEGER_HOST=tempo"
+      - "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc"
+      - "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://tempo:4317"
     volumes:
       - ./tempo.yml:/etc/tempo.yml
     ports:
-      - "14250:14250"   # jaeger thrift_grpc
-      - "6832:6832/udp" # jaeger thrift_binary
-      - "6831:6831/udp" # jaeger thrift_compact
-      - "14268:14268"   # jaeger thrift_http
-      - "3201:3200"     # tempo
-      - "9095:9095"     # tempo grpc
-      - "4317:4317"     # otlp grpc
-      - "4318:4318"     # otlp http
-      - "9411:9411"     # zipkin
+      - "3201:3200" # tempo
   k6-tracing:
     image: "ghcr.io/grafana/xk6-client-tracing:v0.0.2"
-    environment:
-      - ENDPOINT=tempo:4317
-    restart: always
+    restart: unless-stopped
     depends_on:
       - tempo
+    environment:
+      - ENDPOINT=tempo:4317
 
   prometheus:
-    image: "ghcr.io/go-faster/prom/prometheus:v3.1.0"
+    image: "prom/prometheus:v3.4.1"
+    restart: unless-stopped
     command:
       - --config.file=/etc/prometheus.yml
       - --web.enable-remote-write-receiver
       - --enable-feature=exemplar-storage
+    environment:
+      - OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://tempo:4317
     volumes:
       - ./prometheus.yml:/etc/prometheus.yml
     ports:
@@ -73,6 +78,12 @@ services:
     build:
       context: ../../
       dockerfile: dev/otelproxy.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - loki
+      - tempo
+      - pyroscope
+      - prometheus
     environment:
       - "LOKI_URL=http://loki:3100"
       - "PYROSCOPE_URL=http://pyroscope:4040"
@@ -82,14 +93,16 @@ services:
       - "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc"
       - "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://tempo:4317"
       - "OTEL_RESOURCE_ATTRIBUTES=service.name=go-faster.otelproxy"
-    ports:
-      - "3100:3100"
-      - "4040:4040"
-      - "3200:3200"
-      - "9090:9090"
 
   grafana:
-    image: "ghcr.io/go-faster/grafana:11.5.0-pre"
+    image: "grafana/grafana-oss:12.3.1"
+    restart: unless-stopped
+    depends_on:
+      - loki
+      - tempo
+      - pyroscope
+      - prometheus
+      - otelproxy
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin

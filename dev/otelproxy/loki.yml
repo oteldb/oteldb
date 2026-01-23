@@ -3,9 +3,13 @@ auth_enabled: false
 server:
   http_listen_port: 3100
   grpc_listen_port: 9096
+  log_level: debug
+  grpc_server_max_concurrent_streams: 1000
+  http_server_read_timeout: 10m
+  http_server_write_timeout: 10m
 
 common:
-  instance_addr: 127.0.0.1
+  instance_addr: 0.0.0.0
   path_prefix: /tmp/loki
   storage:
     filesystem:
@@ -23,15 +27,30 @@ query_range:
         enabled: true
         max_size_mb: 100
 
+ingester_client:
+  remote_timeout: 10s
+
+limits_config:
+  metric_aggregation_enabled: true
+  enable_multi_variant_queries: true
+
 schema_config:
   configs:
     - from: 2020-10-24
-      store: boltdb-shipper
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v13
       index:
         prefix: index_
         period: 24h
 
-analytics:
-  reporting_enabled: false
+pattern_ingester:
+  enabled: true
+  metric_aggregation:
+    loki_address: localhost:3100
+
+frontend:
+  encoding: protobuf
+
+tracing:
+  enabled: true

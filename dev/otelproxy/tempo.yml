@@ -1,20 +1,20 @@
 server:
   http_listen_port: 3200
+  grpc_server_max_recv_msg_size: 512000000
+  grpc_server_max_send_msg_size: 512000000
 
 distributor:
-  receivers: # this configuration will listen on all ports and protocols that tempo is capable of.
-    jaeger: # the receives all come from the OpenTelemetry collector.  more configuration information can
-      protocols: # be found there: https://github.com/open-telemetry/opentelemetry-collector/tree/main/receiver
-        thrift_http: #
-        grpc: # for a production deployment you should only enable the receivers you need!
-        thrift_binary:
-        thrift_compact:
-    zipkin:
+  ingester_write_path_enabled: true
+  receivers:
     otlp:
       protocols:
-        http:
         grpc:
-    opencensus:
+          endpoint: "0.0.0.0:4317"
+          max_recv_msg_size_mib: 512
+        http:
+          endpoint: "0.0.0.0:4318"
+  log_discarded_spans:
+    enabled: true
 
 ingester:
   max_block_duration: 5m # cut the headblock when this much time passes. this is being set for demo purposes and should probably be left alone normally
@@ -45,4 +45,36 @@ storage:
 overrides:
   metrics_generator_processors: [service-graphs, span-metrics] # enables metrics generator
 
-use_otel_tracer: true
+#partition_ring_live_store: true
+stream_over_http_enabled: true
+
+backend_scheduler:
+  provider:
+    compaction:
+      compaction:
+        block_retention: 1h
+
+backend_worker:
+  backend_scheduler_addr: backend-scheduler:3200
+  compaction:
+    block_retention: 1h
+  ring:
+    kvstore:
+      store: memberlist
+
+querier:
+  frontend_worker:
+    grpc_client_config:
+      max_send_msg_size: 512000000
+      max_recv_msg_size: 512000000
+
+query_frontend:
+  rf1_after: "1999-01-01T00:00:00Z"
+  mcp_server:
+    enabled: true
+
+block_builder:
+  consume_cycle_duration: 30s
+
+usage_report:
+  reporting_enabled: false
