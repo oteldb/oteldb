@@ -1,10 +1,13 @@
+ARG GO_VERSION=latest
 ARG BASE_IMAGE=alpine:latest
 
-FROM golang:latest AS builder
+FROM golang:${GO_VERSION} AS builder
+ARG GOPROXY=https://proxy.golang.org,direct
 
 WORKDIR /app
 
 COPY go.mod go.sum ../
+ENV GOPROXY=${GOPROXY}
 RUN go mod download
 
 COPY .. ./
