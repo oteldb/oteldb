@@ -59,7 +59,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/valyala/bytebufferpool v1.0.0
-	github.com/zeebo/xxh3 v1.0.2
+	github.com/zeebo/xxh3 v1.1.0
 	go.opentelemetry.io/collector/component v1.50.0
 	go.opentelemetry.io/collector/component/componentstatus v0.144.0
 	go.opentelemetry.io/collector/component/componenttest v0.144.0
@@ -185,7 +185,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/knadh/koanf v1.5.0 // indirect
 	github.com/knadh/koanf/v2 v2.3.0 // indirect
 	github.com/lightstep/go-expohisto v1.0.0 // indirect
