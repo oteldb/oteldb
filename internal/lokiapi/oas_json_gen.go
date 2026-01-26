@@ -135,12 +135,14 @@ func (s *DetectedLabels) Encode(e *jx.Encoder) {
 // encodeFields encodes fields.
 func (s *DetectedLabels) encodeFields(e *jx.Encoder) {
 	{
-		e.FieldStart("detectedLabels")
-		e.ArrStart()
-		for _, elem := range s.DetectedLabels {
-			elem.Encode(e)
+		if s.DetectedLabels != nil {
+			e.FieldStart("detectedLabels")
+			e.ArrStart()
+			for _, elem := range s.DetectedLabels {
+				elem.Encode(e)
+			}
+			e.ArrEnd()
 		}
-		e.ArrEnd()
 	}
 }
 
@@ -153,12 +155,10 @@ func (s *DetectedLabels) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode DetectedLabels to nil")
 	}
-	var requiredBitSet [1]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
 		case "detectedLabels":
-			requiredBitSet[0] |= 1 << 0
 			if err := func() error {
 				s.DetectedLabels = make([]DetectedLabel, 0)
 				if err := d.Arr(func(d *jx.Decoder) error {
@@ -181,38 +181,6 @@ func (s *DetectedLabels) Decode(d *jx.Decoder) error {
 		return nil
 	}); err != nil {
 		return errors.Wrap(err, "decode DetectedLabels")
-	}
-	// Validate required fields.
-	var failures []validate.FieldError
-	for i, mask := range [1]uint8{
-		0b00000001,
-	} {
-		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
-			// Mask only required fields and check equality to mask using XOR.
-			//
-			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
-			// Bits of fields which would be set are actually bits of missed fields.
-			missed := bits.OnesCount8(result)
-			for bitN := 0; bitN < missed; bitN++ {
-				bitIdx := bits.TrailingZeros8(result)
-				fieldIdx := i*8 + bitIdx
-				var name string
-				if fieldIdx < len(jsonFieldsNameOfDetectedLabels) {
-					name = jsonFieldsNameOfDetectedLabels[fieldIdx]
-				} else {
-					name = strconv.Itoa(fieldIdx)
-				}
-				failures = append(failures, validate.FieldError{
-					Name:  name,
-					Error: validate.ErrFieldRequired,
-				})
-				// Reset bit.
-				result &^= 1 << bitIdx
-			}
-		}
-	}
-	if len(failures) > 0 {
-		return &validate.Error{Fields: failures}
 	}
 
 	return nil
