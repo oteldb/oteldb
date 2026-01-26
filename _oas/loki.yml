@@ -284,12 +284,27 @@ paths:
                 $ref: "#/components/schemas/IndexStats"
         default:
           $ref: "#/components/responses/Error"
+  /loki/api/v1/drilldown-limits:
+    get:
+      operationId: drilldownLimits
+      description: |
+        Get drilldown limits.
+        Used by Grafana to get limits from Loki.
+      responses:
+        "200":
+          description: Drilldown limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DrilldownLimits"
+        default:
+          $ref: "#/components/responses/Error"
   /loki/api/v1/detected_labels:
     get:
       operationId: detectedLabels
       description: |
-        Get labels.
-        Used by Grafana to test connection to Loki.
+        Get detected labels.
+        Used by Grafana to test Logs Drilldown availability.
       parameters:
         - name: query
           description: The LogQL matchers to check (that is, `{job="foo", env=~".+"}`).
@@ -320,7 +335,7 @@ paths:
             $ref: "#/components/schemas/PrometheusDuration"
       responses:
         "200":
-          description: Label names
+          description: Detected label names
           content:
             application/json:
               schema:
@@ -611,6 +626,16 @@ components:
           type: string
         cardinality:
           type: integer
+    DrilldownLimits:
+      type: object
+      required: [limit, pattern_ingester_enabled, version]
+      properties:
+        limits:
+          type: object
+        pattern_ingester_enabled:
+          type: boolean
+        version:
+          type: string
     Stats:
       type: object
     Direction:
