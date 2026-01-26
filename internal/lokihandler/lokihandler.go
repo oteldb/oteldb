@@ -37,6 +37,26 @@ func NewLokiAPI(q logstorage.Querier, engine *logqlengine.Engine) *LokiAPI {
 	}
 }
 
+// DetectedLabels implements detectedLabels operation.
+//
+// Get detected labels.
+// Used by Grafana to test Logs Drilldown availability.
+//
+// GET /loki/api/v1/detected_labels
+func (h *LokiAPI) DetectedLabels(ctx context.Context, params lokiapi.DetectedLabelsParams) (*lokiapi.DetectedLabels, error) {
+	return &lokiapi.DetectedLabels{}, nil
+}
+
+// DrilldownLimits implements drilldownLimits operation.
+//
+// Get drilldown limits.
+// Used by Grafana to get limits from Loki.
+//
+// GET /loki/api/v1/drilldown-limits
+func (h *LokiAPI) DrilldownLimits(ctx context.Context) (*lokiapi.DrilldownLimits, error) {
+	return &lokiapi.DrilldownLimits{}, nil
+}
+
 // IndexStats implements indexStats operation.
 //
 // Get index stats.
@@ -45,16 +65,6 @@ func NewLokiAPI(q logstorage.Querier, engine *logqlengine.Engine) *LokiAPI {
 func (h *LokiAPI) IndexStats(context.Context, lokiapi.IndexStatsParams) (*lokiapi.IndexStats, error) {
 	// No stats for now.
 	return &lokiapi.IndexStats{}, nil
-}
-
-// DetectedLabels implements detectedLabels operation.
-//
-// Get labels.
-//
-// GET /loki/api/v1/detected_labels
-func (h *LokiAPI) DetectedLabels(ctx context.Context, params lokiapi.DetectedLabelsParams) (*lokiapi.DetectedLabels, error) {
-	// No labels for now.
-	return &lokiapi.DetectedLabels{}, nil
 }
 
 // LabelValues implements labelValues operation.

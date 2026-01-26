@@ -24,6 +24,26 @@ type Server struct {
 	api *lokiapi.Client
 }
 
+// DetectedLabels implements detectedLabels operation.
+//
+// Get detected labels.
+// Used by Grafana to test Logs Drilldown availability.
+//
+// GET /loki/api/v1/detected_labels
+func (s *Server) DetectedLabels(ctx context.Context, params lokiapi.DetectedLabelsParams) (*lokiapi.DetectedLabels, error) {
+	return s.api.DetectedLabels(ctx, params)
+}
+
+// DrilldownLimits implements drilldownLimits operation.
+//
+// Get drilldown limits.
+// Used by Grafana to get limits from Loki.
+//
+// GET /loki/api/v1/drilldown-limits
+func (s *Server) DrilldownLimits(ctx context.Context) (*lokiapi.DrilldownLimits, error) {
+	return s.api.DrilldownLimits(ctx)
+}
+
 // IndexStats implements indexStats operation.
 //
 // Get index stats.
@@ -31,15 +51,6 @@ type Server struct {
 // GET /loki/api/v1/index/stats
 func (s *Server) IndexStats(ctx context.Context, params lokiapi.IndexStatsParams) (*lokiapi.IndexStats, error) {
 	return s.api.IndexStats(ctx, params)
-}
-
-// DetectedLabels implements detectedLabels operation.
-//
-// Get labels.
-//
-// GET /loki/api/v1/detected_labels
-func (s *Server) DetectedLabels(ctx context.Context, params lokiapi.DetectedLabelsParams) (*lokiapi.DetectedLabels, error) {
-	return s.api.DetectedLabels(ctx, params)
 }
 
 // LabelValues implements labelValues operation.
