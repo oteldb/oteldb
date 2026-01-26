@@ -609,8 +609,6 @@ components:
           type: integer
     DetectedLabels:
       type: object
-      required:
-        - detectedLabels
       properties:
         detectedLabels:
           type: array
