@@ -33,6 +33,15 @@ func (s *Server) IndexStats(ctx context.Context, params lokiapi.IndexStatsParams
 	return s.api.IndexStats(ctx, params)
 }
 
+// DetectedLabels implements detectedLabels operation.
+//
+// Get labels.
+//
+// GET /loki/api/v1/detected_labels
+func (s *Server) DetectedLabels(ctx context.Context, params lokiapi.DetectedLabelsParams) (*lokiapi.DetectedLabels, error) {
+	return s.api.DetectedLabels(ctx, params)
+}
+
 // LabelValues implements labelValues operation.
 // Get values of label.
 //

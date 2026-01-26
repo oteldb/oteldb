@@ -47,6 +47,16 @@ func (h *LokiAPI) IndexStats(context.Context, lokiapi.IndexStatsParams) (*lokiap
 	return &lokiapi.IndexStats{}, nil
 }
 
+// DetectedLabels implements detectedLabels operation.
+//
+// Get labels.
+//
+// GET /loki/api/v1/detected_labels
+func (h *LokiAPI) DetectedLabels(ctx context.Context, params lokiapi.DetectedLabelsParams) (*lokiapi.DetectedLabels, error) {
+	// No labels for now.
+	return &lokiapi.DetectedLabels{}, nil
+}
+
 // LabelValues implements labelValues operation.
 // Get values of label.
 //
