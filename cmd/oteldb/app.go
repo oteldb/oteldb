@@ -162,7 +162,7 @@ func addOgen[
 
 		httpServer := &http.Server{
 			Addr:              addr,
-			Handler:           httpmiddleware.Wrap(server, additionalMiddlewares...),
+			Handler:           httpmiddleware.Wrap(server, middlewares...),
 			ReadHeaderTimeout: 15 * time.Second,
 		}
 
