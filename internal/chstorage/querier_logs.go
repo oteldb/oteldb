@@ -25,7 +25,7 @@ var (
 	_ logqlengine.Querier = (*Querier)(nil)
 )
 
-// LabelNames implements logstorage.Querier.
+// LabelNames implements [logstorage.Querier].
 func (q *Querier) LabelNames(ctx context.Context, opts logstorage.LabelsOptions) (result []string, rerr error) {
 	table := q.tables.Logs
 
@@ -33,6 +33,9 @@ func (q *Querier) LabelNames(ctx context.Context, opts logstorage.LabelsOptions)
 		trace.WithAttributes(
 			xattribute.UnixNano("chstorage.range.start", opts.Start),
 			xattribute.UnixNano("chstorage.range.end", opts.End),
+			attribute.Stringer("chstorage.matchers", opts.Query),
+			attribute.Int("chstorage.limit", opts.Limit),
+
 			attribute.String("chstorage.table", table),
 		),
 	)
@@ -47,6 +50,13 @@ func (q *Querier) LabelNames(ctx context.Context, opts logstorage.LabelsOptions)
 		span.End()
 	}()
 
+	limit := q.labelLimit
+	if l := opts.Limit; l > 0 && l < limit {
+		limit = l
+	}
+	if limit < 0 {
+		limit = 0
+	}
 	var (
 		name  proto.ColStr
 		dedup = map[string]struct{}{
@@ -70,7 +80,7 @@ func (q *Querier) LabelNames(ctx context.Context, opts logstorage.LabelsOptions)
 				Data: &name,
 			}).
 			Distinct(true).
-			Limit(q.labelLimit),
+			Limit(limit),
 		OnResult: func(ctx context.Context, block proto.Block) error {
 			for i := 0; i < name.Rows(); i++ {
 				// TODO: add configuration option
@@ -112,7 +122,7 @@ func (l *labelStaticIterator) Next(t *logstorage.Label) bool {
 func (l *labelStaticIterator) Err() error   { return nil }
 func (l *labelStaticIterator) Close() error { return nil }
 
-// LabelValues implements logstorage.Querier.
+// LabelValues implements [logstorage.Querier].
 func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logstorage.LabelsOptions) (riter iterators.Iterator[logstorage.Label], rerr error) {
 	table := q.tables.Logs
 	labelName = DecodeUnicodeLabel(labelName)
@@ -123,6 +133,7 @@ func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logsto
 			xattribute.UnixNano("chstorage.range.start", opts.Start),
 			xattribute.UnixNano("chstorage.range.end", opts.End),
 			attribute.Stringer("chstorage.matchers", opts.Query),
+			attribute.Int("chstorage.limit", opts.Limit),
 
 			attribute.String("chstorage.table", table),
 		),
@@ -134,6 +145,13 @@ func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logsto
 		span.End()
 	}()
 
+	limit := q.labelLimit
+	if l := opts.Limit; l > 0 && l < limit {
+		limit = l
+	}
+	if limit < 0 {
+		limit = 0
+	}
 	var values []string
 	switch labelName {
 	case logstorage.LabelBody, logstorage.LabelSpanID, logstorage.LabelTraceID:
@@ -148,6 +166,7 @@ func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logsto
 			plog.SeverityNumberError.String(),
 			plog.SeverityNumberFatal.String(),
 		}
+		values = values[:limit]
 		slices.Sort(values)
 	default:
 		queryLabels := make([]string, 1+len(opts.Query.Matchers))
@@ -180,7 +199,7 @@ func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logsto
 				}).
 				Distinct(true).
 				Order(chsql.Ident("value"), chsql.Asc).
-				Limit(q.labelLimit)
+				Limit(limit)
 		)
 		if err := q.do(ctx, selectQuery{
 			Query: query,

@@ -31,6 +31,10 @@ type LabelsOptions struct {
 	End time.Time
 	// Selector that selects the streams to match.
 	Query logql.Selector
+	// Limit sets maximum number of results.
+	//
+	// Querier ignores parameter, if it is zero.
+	Limit int
 }
 
 // SeriesOptions defines options for [Querier.Series] method.
