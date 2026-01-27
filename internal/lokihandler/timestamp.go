@@ -13,8 +13,6 @@ import (
 	"github.com/go-faster/oteldb/internal/lokiapi"
 )
 
-const defaultSince = 1 * time.Hour
-
 // parseTimeRange parses optional parameters and returns time range
 //
 // Default values:
@@ -27,6 +25,7 @@ func parseTimeRange(
 	startParam lokiapi.OptLokiTime,
 	endParam lokiapi.OptLokiTime,
 	sinceParam lokiapi.OptPrometheusDuration,
+	defaultSince time.Duration,
 ) (start, end time.Time, err error) {
 	since := defaultSince
 	if v, ok := sinceParam.Get(); ok {

@@ -65,6 +65,7 @@ func Test_parseTimeRange(t *testing.T) {
 				start,
 				end,
 				since,
+				6*time.Hour,
 			)
 			if tt.wantErr {
 				require.Error(t, err)

@@ -25,15 +25,17 @@ import (
 type LokiAPI struct {
 	q      logstorage.Querier
 	engine *logqlengine.Engine
+	opts   LokiAPIOptions
 }
 
 var _ lokiapi.Handler = (*LokiAPI)(nil)
 
 // NewLokiAPI creates new LokiAPI.
-func NewLokiAPI(q logstorage.Querier, engine *logqlengine.Engine) *LokiAPI {
+func NewLokiAPI(q logstorage.Querier, engine *logqlengine.Engine, opts LokiAPIOptions) *LokiAPI {
 	return &LokiAPI{
 		q:      q,
 		engine: engine,
+		opts:   opts,
 	}
 }
 
@@ -44,6 +46,28 @@ func NewLokiAPI(q logstorage.Querier, engine *logqlengine.Engine) *LokiAPI {
 //
 // GET /loki/api/v1/detected_labels
 func (h *LokiAPI) DetectedLabels(ctx context.Context, params lokiapi.DetectedLabelsParams) (*lokiapi.DetectedLabels, error) {
+	start, end, err := parseTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		h.opts.DefaultSince,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
+	var sel logql.Selector
+	if q := params.Query.Or(""); q != "" {
+		sel, err = logql.ParseSelector(q, h.engine.ParseOptions())
+		if err != nil {
+			return nil, validationErr(err, "parse query")
+		}
+	}
+	_ = sel
+	_ = start
+	_ = end
+
 	return &lokiapi.DetectedLabels{}, nil
 }
 
@@ -79,6 +103,7 @@ func (h *LokiAPI) LabelValues(ctx context.Context, params lokiapi.LabelValuesPar
 		params.Start,
 		params.End,
 		params.Since,
+		h.opts.DefaultSince,
 	)
 	if err != nil {
 		return nil, validationErr(err, "parse time range")
@@ -136,6 +161,7 @@ func (h *LokiAPI) Labels(ctx context.Context, params lokiapi.LabelsParams) (*lok
 		params.Start,
 		params.End,
 		params.Since,
+		h.opts.DefaultSince,
 	)
 	if err != nil {
 		return nil, validationErr(err, "parse time range")
@@ -209,6 +235,7 @@ func (h *LokiAPI) QueryRange(ctx context.Context, params lokiapi.QueryRangeParam
 		params.Start,
 		params.End,
 		params.Since,
+		h.opts.DefaultSince,
 	)
 	if err != nil {
 		return nil, validationErr(err, "parse time range")
@@ -270,6 +297,7 @@ func (h *LokiAPI) Series(ctx context.Context, params lokiapi.SeriesParams) (*lok
 		params.Start,
 		params.End,
 		params.Since,
+		h.opts.DefaultSince,
 	)
 	if err != nil {
 		return nil, validationErr(err, "parse time range")
