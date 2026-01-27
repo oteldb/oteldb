@@ -8,6 +8,18 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// DetectedFieldValues implements detectedFieldValues operation.
+	//
+	// Get detected field values.
+	//
+	// GET /loki/api/v1/detected_field/{field}/values
+	DetectedFieldValues(ctx context.Context, params DetectedFieldValuesParams) (*DetectedFieldValues, error)
+	// DetectedFields implements detectedFields operation.
+	//
+	// Get detected fields.
+	//
+	// GET /loki/api/v1/detected_fields
+	DetectedFields(ctx context.Context, params DetectedFieldsParams) (*DetectedFields, error)
 	// DetectedLabels implements detectedLabels operation.
 	//
 	// Get detected labels.
@@ -41,6 +53,13 @@ type Handler interface {
 	//
 	// GET /loki/api/v1/labels
 	Labels(ctx context.Context, params LabelsParams) (*Labels, error)
+	// Patterns implements patterns operation.
+	//
+	// Endpoint can be used to query loki for patterns detected in the logs.
+	// This helps understand the structure of the logs Loki has ingested.
+	//
+	// GET /loki/api/v1/patterns
+	Patterns(ctx context.Context, params PatternsParams) (*Patterns, error)
 	// Push implements push operation.
 	//
 	// Push data.

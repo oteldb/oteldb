@@ -27,6 +27,18 @@ func trimTrailingSlashes(u *url.URL) {
 
 // Invoker invokes operations described by OpenAPI v3 specification.
 type Invoker interface {
+	// DetectedFieldValues invokes detectedFieldValues operation.
+	//
+	// Get detected field values.
+	//
+	// GET /loki/api/v1/detected_field/{field}/values
+	DetectedFieldValues(ctx context.Context, params DetectedFieldValuesParams) (*DetectedFieldValues, error)
+	// DetectedFields invokes detectedFields operation.
+	//
+	// Get detected fields.
+	//
+	// GET /loki/api/v1/detected_fields
+	DetectedFields(ctx context.Context, params DetectedFieldsParams) (*DetectedFields, error)
 	// DetectedLabels invokes detectedLabels operation.
 	//
 	// Get detected labels.
@@ -60,6 +72,13 @@ type Invoker interface {
 	//
 	// GET /loki/api/v1/labels
 	Labels(ctx context.Context, params LabelsParams) (*Labels, error)
+	// Patterns invokes patterns operation.
+	//
+	// Endpoint can be used to query loki for patterns detected in the logs.
+	// This helps understand the structure of the logs Loki has ingested.
+	//
+	// GET /loki/api/v1/patterns
+	Patterns(ctx context.Context, params PatternsParams) (*Patterns, error)
 	// Push invokes push operation.
 	//
 	// Push data.
@@ -143,6 +162,333 @@ func (c *Client) requestURL(ctx context.Context) *url.URL {
 		return c.serverURL
 	}
 	return u
+}
+
+// DetectedFieldValues invokes detectedFieldValues operation.
+//
+// Get detected field values.
+//
+// GET /loki/api/v1/detected_field/{field}/values
+func (c *Client) DetectedFieldValues(ctx context.Context, params DetectedFieldValuesParams) (*DetectedFieldValues, error) {
+	res, err := c.sendDetectedFieldValues(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendDetectedFieldValues(ctx context.Context, params DetectedFieldValuesParams) (res *DetectedFieldValues, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("detectedFieldValues"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/loki/api/v1/detected_field/{field}/values"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DetectedFieldValuesOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/loki/api/v1/detected_field/"
+	{
+		// Encode "field" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "field",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.Field))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/values"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "query" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "query",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Query.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "start" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "start",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Start.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "end" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "end",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.End.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "since" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "since",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Since.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	defer resp.Body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeDetectedFieldValuesResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// DetectedFields invokes detectedFields operation.
+//
+// Get detected fields.
+//
+// GET /loki/api/v1/detected_fields
+func (c *Client) DetectedFields(ctx context.Context, params DetectedFieldsParams) (*DetectedFields, error) {
+	res, err := c.sendDetectedFields(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendDetectedFields(ctx context.Context, params DetectedFieldsParams) (res *DetectedFields, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("detectedFields"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/loki/api/v1/detected_fields"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DetectedFieldsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/loki/api/v1/detected_fields"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "query" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "query",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Query.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "start" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "start",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Start.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "end" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "end",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.End.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "since" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "since",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Since.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	defer resp.Body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeDetectedFieldsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
 }
 
 // DetectedLabels invokes detectedLabels operation.
@@ -816,6 +1162,178 @@ func (c *Client) sendLabels(ctx context.Context, params LabelsParams) (res *Labe
 	return result, nil
 }
 
+// Patterns invokes patterns operation.
+//
+// Endpoint can be used to query loki for patterns detected in the logs.
+// This helps understand the structure of the logs Loki has ingested.
+//
+// GET /loki/api/v1/patterns
+func (c *Client) Patterns(ctx context.Context, params PatternsParams) (*Patterns, error) {
+	res, err := c.sendPatterns(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendPatterns(ctx context.Context, params PatternsParams) (res *Patterns, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("patterns"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/loki/api/v1/patterns"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, PatternsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/loki/api/v1/patterns"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "start" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "start",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Start.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "end" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "end",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.End.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "since" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "since",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Since.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "query" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "query",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.Query))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "step" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "step",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Step.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	defer resp.Body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodePatternsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // Push invokes push operation.
 //
 // Push data.
@@ -1304,7 +1822,10 @@ func (c *Client) sendQueryVolume(ctx context.Context, params QueryVolumeParams) 
 		}
 
 		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			return e.EncodeValue(conv.StringToString(params.Query))
+			if val, ok := params.Query.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
 		}); err != nil {
 			return res, errors.Wrap(err, "encode query")
 		}
@@ -1318,8 +1839,11 @@ func (c *Client) sendQueryVolume(ctx context.Context, params QueryVolumeParams) 
 		}
 
 		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if unwrapped := string(params.Start); true {
-				return e.EncodeValue(conv.StringToString(unwrapped))
+			if val, ok := params.Start.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
 			}
 			return nil
 		}); err != nil {
@@ -1335,8 +1859,31 @@ func (c *Client) sendQueryVolume(ctx context.Context, params QueryVolumeParams) 
 		}
 
 		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if unwrapped := string(params.End); true {
-				return e.EncodeValue(conv.StringToString(unwrapped))
+			if val, ok := params.End.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "since" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "since",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Since.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
 			}
 			return nil
 		}); err != nil {
@@ -1480,7 +2027,10 @@ func (c *Client) sendQueryVolumeRange(ctx context.Context, params QueryVolumeRan
 		}
 
 		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			return e.EncodeValue(conv.StringToString(params.Query))
+			if val, ok := params.Query.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
 		}); err != nil {
 			return res, errors.Wrap(err, "encode query")
 		}
@@ -1494,8 +2044,11 @@ func (c *Client) sendQueryVolumeRange(ctx context.Context, params QueryVolumeRan
 		}
 
 		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if unwrapped := string(params.Start); true {
-				return e.EncodeValue(conv.StringToString(unwrapped))
+			if val, ok := params.Start.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
 			}
 			return nil
 		}); err != nil {
@@ -1511,8 +2064,11 @@ func (c *Client) sendQueryVolumeRange(ctx context.Context, params QueryVolumeRan
 		}
 
 		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if unwrapped := string(params.End); true {
-				return e.EncodeValue(conv.StringToString(unwrapped))
+			if val, ok := params.End.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
 			}
 			return nil
 		}); err != nil {
@@ -1520,16 +2076,19 @@ func (c *Client) sendQueryVolumeRange(ctx context.Context, params QueryVolumeRan
 		}
 	}
 	{
-		// Encode "limit" parameter.
+		// Encode "since" parameter.
 		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "limit",
+			Name:    "since",
 			Style:   uri.QueryStyleForm,
 			Explode: true,
 		}
 
 		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.Limit.Get(); ok {
-				return e.EncodeValue(conv.IntToString(val))
+			if val, ok := params.Since.Get(); ok {
+				if unwrapped := string(val); true {
+					return e.EncodeValue(conv.StringToString(unwrapped))
+				}
+				return nil
 			}
 			return nil
 		}); err != nil {
@@ -1550,6 +2109,23 @@ func (c *Client) sendQueryVolumeRange(ctx context.Context, params QueryVolumeRan
 					return e.EncodeValue(conv.StringToString(unwrapped))
 				}
 				return nil
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "limit" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "limit",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Limit.Get(); ok {
+				return e.EncodeValue(conv.IntToString(val))
 			}
 			return nil
 		}); err != nil {

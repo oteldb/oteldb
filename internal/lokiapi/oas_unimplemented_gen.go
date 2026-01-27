@@ -13,6 +13,24 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// DetectedFieldValues implements detectedFieldValues operation.
+//
+// Get detected field values.
+//
+// GET /loki/api/v1/detected_field/{field}/values
+func (UnimplementedHandler) DetectedFieldValues(ctx context.Context, params DetectedFieldValuesParams) (r *DetectedFieldValues, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// DetectedFields implements detectedFields operation.
+//
+// Get detected fields.
+//
+// GET /loki/api/v1/detected_fields
+func (UnimplementedHandler) DetectedFields(ctx context.Context, params DetectedFieldsParams) (r *DetectedFields, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // DetectedLabels implements detectedLabels operation.
 //
 // Get detected labels.
@@ -58,6 +76,16 @@ func (UnimplementedHandler) LabelValues(ctx context.Context, params LabelValuesP
 //
 // GET /loki/api/v1/labels
 func (UnimplementedHandler) Labels(ctx context.Context, params LabelsParams) (r *Labels, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// Patterns implements patterns operation.
+//
+// Endpoint can be used to query loki for patterns detected in the logs.
+// This helps understand the structure of the logs Loki has ingested.
+//
+// GET /loki/api/v1/patterns
+func (UnimplementedHandler) Patterns(ctx context.Context, params PatternsParams) (r *Patterns, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

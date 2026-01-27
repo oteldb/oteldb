@@ -73,24 +73,117 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 				switch elem[0] {
-				case 'e': // Prefix: "etected_labels"
+				case 'e': // Prefix: "etected_"
 
-					if l := len("etected_labels"); len(elem) >= l && elem[0:l] == "etected_labels" {
+					if l := len("etected_"); len(elem) >= l && elem[0:l] == "etected_" {
 						elem = elem[l:]
 					} else {
 						break
 					}
 
 					if len(elem) == 0 {
-						// Leaf node.
-						switch r.Method {
-						case "GET":
-							s.handleDetectedLabelsRequest([0]string{}, elemIsEscaped, w, r)
-						default:
-							s.notAllowed(w, r, "GET")
+						break
+					}
+					switch elem[0] {
+					case 'f': // Prefix: "field"
+
+						if l := len("field"); len(elem) >= l && elem[0:l] == "field" {
+							elem = elem[l:]
+						} else {
+							break
 						}
 
-						return
+						if len(elem) == 0 {
+							break
+						}
+						switch elem[0] {
+						case '/': // Prefix: "/"
+
+							if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							// Param: "field"
+							// Match until "/"
+							idx := strings.IndexByte(elem, '/')
+							if idx < 0 {
+								idx = len(elem)
+							}
+							args[0] = elem[:idx]
+							elem = elem[idx:]
+
+							if len(elem) == 0 {
+								break
+							}
+							switch elem[0] {
+							case '/': // Prefix: "/values"
+
+								if l := len("/values"); len(elem) >= l && elem[0:l] == "/values" {
+									elem = elem[l:]
+								} else {
+									break
+								}
+
+								if len(elem) == 0 {
+									// Leaf node.
+									switch r.Method {
+									case "GET":
+										s.handleDetectedFieldValuesRequest([1]string{
+											args[0],
+										}, elemIsEscaped, w, r)
+									default:
+										s.notAllowed(w, r, "GET")
+									}
+
+									return
+								}
+
+							}
+
+						case 's': // Prefix: "s"
+
+							if l := len("s"); len(elem) >= l && elem[0:l] == "s" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch r.Method {
+								case "GET":
+									s.handleDetectedFieldsRequest([0]string{}, elemIsEscaped, w, r)
+								default:
+									s.notAllowed(w, r, "GET")
+								}
+
+								return
+							}
+
+						}
+
+					case 'l': // Prefix: "labels"
+
+						if l := len("labels"); len(elem) >= l && elem[0:l] == "labels" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "GET":
+								s.handleDetectedLabelsRequest([0]string{}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, "GET")
+							}
+
+							return
+						}
+
 					}
 
 				case 'r': // Prefix: "rilldown-limits"
@@ -269,24 +362,58 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 				}
 
-			case 'p': // Prefix: "push"
+			case 'p': // Prefix: "p"
 
-				if l := len("push"); len(elem) >= l && elem[0:l] == "push" {
+				if l := len("p"); len(elem) >= l && elem[0:l] == "p" {
 					elem = elem[l:]
 				} else {
 					break
 				}
 
 				if len(elem) == 0 {
-					// Leaf node.
-					switch r.Method {
-					case "POST":
-						s.handlePushRequest([0]string{}, elemIsEscaped, w, r)
-					default:
-						s.notAllowed(w, r, "POST")
+					break
+				}
+				switch elem[0] {
+				case 'a': // Prefix: "atterns"
+
+					if l := len("atterns"); len(elem) >= l && elem[0:l] == "atterns" {
+						elem = elem[l:]
+					} else {
+						break
 					}
 
-					return
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "GET":
+							s.handlePatternsRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, "GET")
+						}
+
+						return
+					}
+
+				case 'u': // Prefix: "ush"
+
+					if l := len("ush"); len(elem) >= l && elem[0:l] == "ush" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "POST":
+							s.handlePushRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, "POST")
+						}
+
+						return
+					}
+
 				}
 
 			case 'q': // Prefix: "query"
@@ -462,29 +589,130 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					break
 				}
 				switch elem[0] {
-				case 'e': // Prefix: "etected_labels"
+				case 'e': // Prefix: "etected_"
 
-					if l := len("etected_labels"); len(elem) >= l && elem[0:l] == "etected_labels" {
+					if l := len("etected_"); len(elem) >= l && elem[0:l] == "etected_" {
 						elem = elem[l:]
 					} else {
 						break
 					}
 
 					if len(elem) == 0 {
-						// Leaf node.
-						switch method {
-						case "GET":
-							r.name = DetectedLabelsOperation
-							r.summary = ""
-							r.operationID = "detectedLabels"
-							r.operationGroup = ""
-							r.pathPattern = "/loki/api/v1/detected_labels"
-							r.args = args
-							r.count = 0
-							return r, true
-						default:
-							return
+						break
+					}
+					switch elem[0] {
+					case 'f': // Prefix: "field"
+
+						if l := len("field"); len(elem) >= l && elem[0:l] == "field" {
+							elem = elem[l:]
+						} else {
+							break
 						}
+
+						if len(elem) == 0 {
+							break
+						}
+						switch elem[0] {
+						case '/': // Prefix: "/"
+
+							if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							// Param: "field"
+							// Match until "/"
+							idx := strings.IndexByte(elem, '/')
+							if idx < 0 {
+								idx = len(elem)
+							}
+							args[0] = elem[:idx]
+							elem = elem[idx:]
+
+							if len(elem) == 0 {
+								break
+							}
+							switch elem[0] {
+							case '/': // Prefix: "/values"
+
+								if l := len("/values"); len(elem) >= l && elem[0:l] == "/values" {
+									elem = elem[l:]
+								} else {
+									break
+								}
+
+								if len(elem) == 0 {
+									// Leaf node.
+									switch method {
+									case "GET":
+										r.name = DetectedFieldValuesOperation
+										r.summary = ""
+										r.operationID = "detectedFieldValues"
+										r.operationGroup = ""
+										r.pathPattern = "/loki/api/v1/detected_field/{field}/values"
+										r.args = args
+										r.count = 1
+										return r, true
+									default:
+										return
+									}
+								}
+
+							}
+
+						case 's': // Prefix: "s"
+
+							if l := len("s"); len(elem) >= l && elem[0:l] == "s" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch method {
+								case "GET":
+									r.name = DetectedFieldsOperation
+									r.summary = ""
+									r.operationID = "detectedFields"
+									r.operationGroup = ""
+									r.pathPattern = "/loki/api/v1/detected_fields"
+									r.args = args
+									r.count = 0
+									return r, true
+								default:
+									return
+								}
+							}
+
+						}
+
+					case 'l': // Prefix: "labels"
+
+						if l := len("labels"); len(elem) >= l && elem[0:l] == "labels" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "GET":
+								r.name = DetectedLabelsOperation
+								r.summary = ""
+								r.operationID = "detectedLabels"
+								r.operationGroup = ""
+								r.pathPattern = "/loki/api/v1/detected_labels"
+								r.args = args
+								r.count = 0
+								return r, true
+							default:
+								return
+							}
+						}
+
 					}
 
 				case 'r': // Prefix: "rilldown-limits"
@@ -691,29 +919,68 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 
 				}
 
-			case 'p': // Prefix: "push"
+			case 'p': // Prefix: "p"
 
-				if l := len("push"); len(elem) >= l && elem[0:l] == "push" {
+				if l := len("p"); len(elem) >= l && elem[0:l] == "p" {
 					elem = elem[l:]
 				} else {
 					break
 				}
 
 				if len(elem) == 0 {
-					// Leaf node.
-					switch method {
-					case "POST":
-						r.name = PushOperation
-						r.summary = ""
-						r.operationID = "push"
-						r.operationGroup = ""
-						r.pathPattern = "/loki/api/v1/push"
-						r.args = args
-						r.count = 0
-						return r, true
-					default:
-						return
+					break
+				}
+				switch elem[0] {
+				case 'a': // Prefix: "atterns"
+
+					if l := len("atterns"); len(elem) >= l && elem[0:l] == "atterns" {
+						elem = elem[l:]
+					} else {
+						break
 					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "GET":
+							r.name = PatternsOperation
+							r.summary = ""
+							r.operationID = "patterns"
+							r.operationGroup = ""
+							r.pathPattern = "/loki/api/v1/patterns"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
+				case 'u': // Prefix: "ush"
+
+					if l := len("ush"); len(elem) >= l && elem[0:l] == "ush" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "POST":
+							r.name = PushOperation
+							r.summary = ""
+							r.operationID = "push"
+							r.operationGroup = ""
+							r.pathPattern = "/loki/api/v1/push"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
 				}
 
 			case 'q': // Prefix: "query"
