@@ -96,7 +96,12 @@ func (h *LokiAPI) DetectedLabels(ctx context.Context, params lokiapi.DetectedLab
 //
 // GET /loki/api/v1/drilldown-limits
 func (h *LokiAPI) DrilldownLimits(ctx context.Context) (*lokiapi.DrilldownLimits, error) {
-	return &lokiapi.DrilldownLimits{}, nil
+	return &lokiapi.DrilldownLimits{
+		Limits: lokiapi.DrilldownLimitsLimits{
+			VolumeEnabled: lokiapi.NewOptBool(true),
+		},
+		Version: "v3.6.0",
+	}, nil
 }
 
 // IndexStats implements indexStats operation.
@@ -292,7 +297,22 @@ func (h *LokiAPI) QueryRange(ctx context.Context, params lokiapi.QueryRangeParam
 //
 // GET /loki/api/v1/index/volume
 func (h *LokiAPI) QueryVolume(ctx context.Context, params lokiapi.QueryVolumeParams) (*lokiapi.QueryResponse, error) {
-	return nil, ht.ErrNotImplemented
+	t := time.Now()
+	return &lokiapi.QueryResponse{
+		Status: "success",
+		Data: lokiapi.NewMatrixResultQueryResponseData(lokiapi.MatrixResult{
+			Result: lokiapi.Matrix{
+				{
+					Metric: lokiapi.NewOptLabelSet(lokiapi.LabelSet{
+						"hello": "hello",
+					}),
+					Values: []lokiapi.FPoint{
+						{T: float64(t.UnixMilli()) / 1000, V: "1.0"},
+					},
+				},
+			},
+		}),
+	}, nil
 }
 
 // QueryVolumeRange implements queryVolumeRange operation.
@@ -301,7 +321,22 @@ func (h *LokiAPI) QueryVolume(ctx context.Context, params lokiapi.QueryVolumePar
 //
 // GET /loki/api/v1/index/volume_range
 func (h *LokiAPI) QueryVolumeRange(ctx context.Context, params lokiapi.QueryVolumeRangeParams) (*lokiapi.QueryResponse, error) {
-	return nil, ht.ErrNotImplemented
+	t := time.Now()
+	return &lokiapi.QueryResponse{
+		Status: "success",
+		Data: lokiapi.NewMatrixResultQueryResponseData(lokiapi.MatrixResult{
+			Result: lokiapi.Matrix{
+				{
+					Metric: lokiapi.NewOptLabelSet(lokiapi.LabelSet{
+						"hello": "hello",
+					}),
+					Values: []lokiapi.FPoint{
+						{T: float64(t.UnixMilli()) / 1000, V: "1.0"},
+					},
+				},
+			},
+		}),
+	}, nil
 }
 
 // Series implements series operation.
