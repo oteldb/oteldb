@@ -626,10 +626,13 @@ components:
           type: integer
     DrilldownLimits:
       type: object
-      required: [limit, pattern_ingester_enabled, version]
+      required: [limits, version]
       properties:
         limits:
           type: object
+          properties:
+            volume_enabled:
+              type: boolean
         pattern_ingester_enabled:
           type: boolean
         version:
