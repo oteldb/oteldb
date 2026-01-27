@@ -43,5 +43,11 @@ type Label struct {
 	Value string `json:"value"`
 }
 
+// DetectedLabel is a data structure for log label.
+type DetectedLabel struct {
+	Name        string `json:"name"`
+	Cardinality int    `json:"cardinality"`
+}
+
 // Series defines a list of series.
 type Series []map[string]string

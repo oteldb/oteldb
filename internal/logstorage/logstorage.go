@@ -17,6 +17,8 @@ type Querier interface {
 	LabelValues(ctx context.Context, labelName string, opts LabelsOptions) (iterators.Iterator[Label], error)
 	// Series returns all available log series.
 	Series(ctx context.Context, opts SeriesOptions) (Series, error)
+	// DetectedLabels returns cardinality of all detected labels.
+	DetectedLabels(ctx context.Context, opts LabelsOptions) ([]DetectedLabel, error)
 }
 
 // LabelsOptions defines options for [Querier.LabelNames] and [Querier.LabelValues] methods.

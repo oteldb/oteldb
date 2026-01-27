@@ -32,6 +32,8 @@ var _ lokiapi.Handler = (*LokiAPI)(nil)
 
 // NewLokiAPI creates new LokiAPI.
 func NewLokiAPI(q logstorage.Querier, engine *logqlengine.Engine, opts LokiAPIOptions) *LokiAPI {
+	opts.setDefaults()
+
 	return &LokiAPI{
 		q:      q,
 		engine: engine,
@@ -64,11 +66,27 @@ func (h *LokiAPI) DetectedLabels(ctx context.Context, params lokiapi.DetectedLab
 			return nil, validationErr(err, "parse query")
 		}
 	}
-	_ = sel
-	_ = start
-	_ = end
+	labels, err := h.q.DetectedLabels(ctx, logstorage.LabelsOptions{
+		Start: start,
+		End:   end,
+		Query: sel,
+		Limit: 100,
+	})
+	if err != nil {
+		return nil, executionErr(err, "get detected labels")
+	}
 
-	return &lokiapi.DetectedLabels{}, nil
+	result := make([]lokiapi.DetectedLabel, len(labels))
+	for i, v := range labels {
+		result[i] = lokiapi.DetectedLabel{
+			Label:       v.Name,
+			Cardinality: v.Cardinality,
+		}
+	}
+
+	return &lokiapi.DetectedLabels{
+		DetectedLabels: result,
+	}, nil
 }
 
 // DrilldownLimits implements drilldownLimits operation.
