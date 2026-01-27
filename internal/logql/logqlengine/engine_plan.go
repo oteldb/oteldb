@@ -22,7 +22,7 @@ type EvalParams struct {
 
 // IsInstant whether query is instant.
 func (p EvalParams) IsInstant() bool {
-	return p.Start.Equal(p.End) && p.Step == 0
+	return p.Start.Equal(p.End) || p.Step == 0
 }
 
 // Direction describe log ordering.
