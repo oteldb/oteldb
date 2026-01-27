@@ -31,7 +31,7 @@ require (
 	github.com/kr/logfmt v0.0.0-20210122060352-19f9bcb100e6
 	github.com/mattn/go-isatty v0.0.20
 	github.com/moby/moby/api v1.53.0
-	github.com/moby/moby/client v0.2.1
+	github.com/moby/moby/client v0.2.2
 	github.com/ogen-go/ogen v1.17.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector v0.144.0
