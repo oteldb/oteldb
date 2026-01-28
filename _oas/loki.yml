@@ -755,7 +755,6 @@ components:
           type: integer
     Patterns:
       type: object
-      required: [series]
       properties:
         series:
           type: array
@@ -824,10 +823,12 @@ components:
           type: integer
         parsers:
           type: array
+          nullable: true
           items:
             type: string
         jsonPath:
           type: array
+          nullable: true
           items:
             type: string
     DetectedFieldValues:

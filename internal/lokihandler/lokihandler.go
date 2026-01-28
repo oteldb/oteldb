@@ -9,11 +9,10 @@ import (
 	"strings"
 	"time"
 
-	ht "github.com/ogen-go/ogen/http"
-	"go.uber.org/zap"
-
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
+	ht "github.com/ogen-go/ogen/http"
+	"go.uber.org/zap"
 
 	"github.com/go-faster/oteldb/internal/iterators"
 	"github.com/go-faster/oteldb/internal/logql"
@@ -41,6 +40,24 @@ func NewLokiAPI(q logstorage.Querier, engine *logqlengine.Engine, opts LokiAPIOp
 		engine: engine,
 		opts:   opts,
 	}
+}
+
+// DetectedFieldValues implements detectedFieldValues operation.
+//
+// Get detected field values.
+//
+// GET /loki/api/v1/detected_field/{field}/values
+func (h *LokiAPI) DetectedFieldValues(ctx context.Context, params lokiapi.DetectedFieldValuesParams) (*lokiapi.DetectedFieldValues, error) {
+	return &lokiapi.DetectedFieldValues{}, nil
+}
+
+// DetectedFields implements detectedFields operation.
+//
+// Get detected fields.
+//
+// GET /loki/api/v1/detected_fields
+func (h *LokiAPI) DetectedFields(ctx context.Context, params lokiapi.DetectedFieldsParams) (*lokiapi.DetectedFields, error) {
+	return &lokiapi.DetectedFields{}, nil
 }
 
 // DetectedLabels implements detectedLabels operation.
@@ -205,15 +222,6 @@ func (h *LokiAPI) Labels(ctx context.Context, params lokiapi.LabelsParams) (*lok
 		Status: "success",
 		Data:   names,
 	}, nil
-}
-
-// Push implements push operation.
-//
-// Push data.
-//
-// POST /loki/api/v1/push
-func (h *LokiAPI) Push(context.Context, lokiapi.PushReq) error {
-	return ht.ErrNotImplemented
 }
 
 // Query implements query operation.
@@ -461,6 +469,25 @@ func (h *LokiAPI) Series(ctx context.Context, params lokiapi.SeriesParams) (*lok
 		Status: "success",
 		Data:   result,
 	}, nil
+}
+
+// Patterns implements patterns operation.
+//
+// Endpoint can be used to query loki for patterns detected in the logs.
+// This helps understand the structure of the logs Loki has ingested.
+//
+// GET /loki/api/v1/patterns
+func (h *LokiAPI) Patterns(ctx context.Context, params lokiapi.PatternsParams) (*lokiapi.Patterns, error) {
+	return &lokiapi.Patterns{}, nil
+}
+
+// Push implements push operation.
+//
+// Push data.
+//
+// POST /loki/api/v1/push
+func (h *LokiAPI) Push(context.Context, lokiapi.PushReq) error {
+	return ht.ErrNotImplemented
 }
 
 func (h *LokiAPI) eval(ctx context.Context, query string, params logqlengine.EvalParams) (r lokiapi.QueryResponseData, _ error) {
