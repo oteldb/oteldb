@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	ht "github.com/ogen-go/ogen/http"
@@ -297,21 +299,31 @@ func (h *LokiAPI) QueryRange(ctx context.Context, params lokiapi.QueryRangeParam
 //
 // GET /loki/api/v1/index/volume
 func (h *LokiAPI) QueryVolume(ctx context.Context, params lokiapi.QueryVolumeParams) (*lokiapi.QueryResponse, error) {
-	t := time.Now()
+	start, end, err := parseTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		h.opts.DefaultSince,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
+	data, err := h.evalVolumeQuery(ctx, params.Query.Or(""), params.TargetLabels.Or(""), logqlengine.EvalParams{
+		Start:     start,
+		End:       end,
+		Step:      0,
+		Direction: logqlengine.DirectionBackward,
+		Limit:     params.Limit.Or(100),
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return &lokiapi.QueryResponse{
 		Status: "success",
-		Data: lokiapi.NewMatrixResultQueryResponseData(lokiapi.MatrixResult{
-			Result: lokiapi.Matrix{
-				{
-					Metric: lokiapi.NewOptLabelSet(lokiapi.LabelSet{
-						"hello": "hello",
-					}),
-					Values: []lokiapi.FPoint{
-						{T: float64(t.UnixMilli()) / 1000, V: "1.0"},
-					},
-				},
-			},
-		}),
+		Data:   data,
 	}, nil
 }
 
@@ -321,22 +333,88 @@ func (h *LokiAPI) QueryVolume(ctx context.Context, params lokiapi.QueryVolumePar
 //
 // GET /loki/api/v1/index/volume_range
 func (h *LokiAPI) QueryVolumeRange(ctx context.Context, params lokiapi.QueryVolumeRangeParams) (*lokiapi.QueryResponse, error) {
-	t := time.Now()
+	start, end, err := parseTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		h.opts.DefaultSince,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
+	step, err := parseStep(params.Step, start, end)
+	if err != nil {
+		return nil, validationErr(err, "parse step")
+	}
+
+	data, err := h.evalVolumeQuery(ctx, params.Query.Or(""), params.TargetLabels.Or(""), logqlengine.EvalParams{
+		Start:     start,
+		End:       end,
+		Step:      step,
+		Direction: logqlengine.DirectionBackward,
+		Limit:     params.Limit.Or(100),
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return &lokiapi.QueryResponse{
 		Status: "success",
-		Data: lokiapi.NewMatrixResultQueryResponseData(lokiapi.MatrixResult{
-			Result: lokiapi.Matrix{
-				{
-					Metric: lokiapi.NewOptLabelSet(lokiapi.LabelSet{
-						"hello": "hello",
-					}),
-					Values: []lokiapi.FPoint{
-						{T: float64(t.UnixMilli()) / 1000, V: "1.0"},
-					},
-				},
-			},
-		}),
+		Data:   data,
 	}, nil
+}
+
+func (h *LokiAPI) evalVolumeQuery(ctx context.Context, query, targetLabels string, params logqlengine.EvalParams) (r lokiapi.QueryResponseData, _ error) {
+	var (
+		err error
+		sel logql.Selector
+	)
+	if query != "" {
+		sel, err = logql.ParseSelector(query, h.engine.ParseOptions())
+		if err != nil {
+			return r, validationErr(err, "parse query")
+		}
+	}
+	var agg []logql.Label
+	if targetLabels != "" {
+		agg = make([]logql.Label, 0, strings.Count(targetLabels, ",")+1)
+		for v := range strings.SplitSeq(targetLabels, ",") {
+			agg = append(agg, logql.Label(v))
+		}
+	} else {
+		agg = make([]logql.Label, len(sel.Matchers))
+		for _, m := range sel.Matchers {
+			agg = append(agg, m.Label)
+		}
+	}
+	slices.Sort(agg)
+	agg = slices.Compact(agg)
+	expr := &logql.VectorAggregationExpr{
+		Op: logql.VectorOpSum,
+		Expr: &logql.RangeAggregationExpr{
+			Op: logql.RangeOpCount,
+			Range: logql.LogRangeExpr{
+				Sel:   sel,
+				Range: time.Minute,
+			},
+		},
+		Grouping: &logql.Grouping{
+			Labels:  agg,
+			Without: false,
+		},
+	}
+
+	q, err := h.engine.NewQueryFromExpr(ctx, expr)
+	if err != nil {
+		return r, errors.Wrap(err, "compile query")
+	}
+	r, err = q.Eval(ctx, params)
+	if err != nil {
+		return r, err
+	}
+	return r, nil
 }
 
 // Series implements series operation.
