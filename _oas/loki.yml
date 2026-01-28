@@ -342,6 +342,95 @@ paths:
                 $ref: "#/components/schemas/DetectedLabels"
         default:
           $ref: "#/components/responses/Error"
+  /loki/api/v1/detected_fields:
+    get:
+      operationId: detectedFields
+      description: |
+        Get detected fields.
+      parameters:
+        - name: query
+          description: The LogQL matchers to check (that is, `{job="foo", env=~".+"}`).
+          in: query
+          schema:
+            type: string
+        - name: start
+          description: |
+            The start time for the query as a nanosecond Unix epoch.
+            Defaults to 6 hours ago.
+          in: query
+          schema:
+            $ref: "#/components/schemas/LokiTime"
+        - name: end
+          description: |
+            The end time for the query as a nanosecond Unix epoch.
+            Defaults to now.
+          in: query
+          schema:
+            $ref: "#/components/schemas/LokiTime"
+        - name: since
+          description: |
+            A `duration` used to calculate `start` relative to `end`.
+            If `end` is in the future, `start` is calculated as this duration before now.
+            Any value specified for start supersedes this parameter.
+          in: query
+          schema:
+            $ref: "#/components/schemas/PrometheusDuration"
+      responses:
+        "200":
+          description: Detected fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectedFields"
+        default:
+          $ref: "#/components/responses/Error"
+  /loki/api/v1/detected_field/{field}/values:
+    get:
+      operationId: detectedFieldValues
+      description: Get detected field values.
+      parameters:
+        - name: field
+          description: Field to query.
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: query
+          description: The LogQL matchers to check (that is, `{job="foo", env=~".+"}`).
+          in: query
+          schema:
+            type: string
+        - name: start
+          description: |
+            The start time for the query as a nanosecond Unix epoch.
+            Defaults to 6 hours ago.
+          in: query
+          schema:
+            $ref: "#/components/schemas/LokiTime"
+        - name: end
+          description: |
+            The end time for the query as a nanosecond Unix epoch.
+            Defaults to now.
+          in: query
+          schema:
+            $ref: "#/components/schemas/LokiTime"
+        - name: since
+          description: |
+            A `duration` used to calculate `start` relative to `end`.
+            If `end` is in the future, `start` is calculated as this duration before now.
+            Any value specified for start supersedes this parameter.
+          in: query
+          schema:
+            $ref: "#/components/schemas/PrometheusDuration"
+      responses:
+        "200":
+          description: Detected field values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectedFieldValues"
+        default:
+          $ref: "#/components/responses/Error"
   /loki/api/v1/index/volume_range:
     get:
       operationId: queryVolumeRange
@@ -624,6 +713,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DetectedLabel"
+        limit:
+          type: integer
+          format: uint64
     DetectedLabel:
       type: object
       required:
@@ -634,6 +726,44 @@ components:
           type: string
         cardinality:
           type: integer
+    DetectedFields:
+      type: object
+      properties:
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/DetectedField"
+        limit:
+          type: integer
+          format: uint64
+    DetectedField:
+      type: object
+      properties:
+        label:
+          type: string
+        type:
+          type: string
+        cardinality:
+          type: integer
+        parsers:
+          type: array
+          items:
+            type: string
+        jsonPath:
+          type: array
+          items:
+            type: string
+    DetectedFieldValues:
+      type: object
+      properties:
+        values:
+          type: array
+          nullable: true
+          items:
+            type: string
+        limit:
+          type: integer
+          format: uint64
     DrilldownLimits:
       type: object
       required: [limits, version]
