@@ -22,5 +22,5 @@ func TestDecodeRequest(t *testing.T) {
 	require.NoError(t, err)
 	dst := new(bytes.Buffer)
 	require.NoError(t, json.Indent(dst, jsonData, "", " "))
-	gold.Str(t, dst.String(), "series.json")
+	gold.Str(t, dst.String(), "request.json")
 }
