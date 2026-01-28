@@ -161,18 +161,11 @@ func (p *promQuerier) getMatchingLabelValues(ctx context.Context, labelName stri
 		Distinct(true)
 
 	for _, m := range matchers {
-		selectors := []chsql.Expr{
-			chsql.Ident("name"),
-		}
+		selector := chsql.Ident("name")
 		if name := m.Name; name != labels.MetricName {
-			selectors = []chsql.Expr{
-				attrSelector(colAttrs, name),
-				attrSelector(colScope, name),
-				attrSelector(colResource, name),
-			}
+			selector = firstAttrSelector(name)
 		}
-
-		expr, err := promQLLabelMatcher(selectors, m.Type, m.Value)
+		expr, err := promQLLabelMatcher([]chsql.Expr{selector}, m.Type, m.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -331,18 +324,11 @@ func (p *promQuerier) getMatchingLabelNames(ctx context.Context, matchers []*lab
 			Distinct(true)
 	)
 	for _, m := range matchers {
-		selectors := []chsql.Expr{
-			chsql.Ident("name"),
-		}
+		selector := chsql.Ident("name")
 		if name := m.Name; name != labels.MetricName {
-			selectors = []chsql.Expr{
-				attrSelector(colAttrs, name),
-				attrSelector(colScope, name),
-				attrSelector(colResource, name),
-			}
+			selector = firstAttrSelector(name)
 		}
-
-		expr, err := promQLLabelMatcher(selectors, m.Type, m.Value)
+		expr, err := promQLLabelMatcher([]chsql.Expr{selector}, m.Type, m.Value)
 		if err != nil {
 			return nil, err
 		}

@@ -178,22 +178,15 @@ func (q *timeseriesQuerier) queryTimeseries(ctx context.Context, parentSpan trac
 	for _, set := range matcherSets {
 		matchers := make([]chsql.Expr, 0, len(set))
 		for _, m := range set {
-			selectors := []chsql.Expr{
-				chsql.Ident("name"),
-			}
+			selector := chsql.Ident("name")
 			if name := m.Name; name != labels.MetricName {
-				selectors = []chsql.Expr{
-					attrSelector(colAttrs, name),
-					attrSelector(colScope, name),
-					attrSelector(colResource, name),
-				}
+				selector = firstAttrSelector(name)
 			}
-
-			matcher, err := promQLLabelMatcher(selectors, m.Type, m.Value)
+			expr, err := promQLLabelMatcher([]chsql.Expr{selector}, m.Type, m.Value)
 			if err != nil {
 				return nil, err
 			}
-			matchers = append(matchers, matcher)
+			matchers = append(matchers, expr)
 		}
 		sets = append(sets, chsql.JoinAnd(matchers...))
 	}

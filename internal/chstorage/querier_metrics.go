@@ -134,28 +134,26 @@ func DecodeUnicodeLabel(v string) string {
 }
 
 func promQLLabelMatcher(valueSel []chsql.Expr, typ labels.MatchType, value string) (e chsql.Expr, rerr error) {
-	defer func() {
-		if rerr == nil {
-			switch typ {
-			case labels.MatchNotEqual, labels.MatchNotRegexp:
-				e = chsql.Not(e)
-			}
-		}
-	}()
-
-	// Note: predicate negated above.
 	var (
 		valueExpr = chsql.String(value)
 		exprs     = make([]chsql.Expr, 0, len(valueSel))
 	)
 	switch typ {
-	case labels.MatchEqual, labels.MatchNotEqual:
+	case labels.MatchEqual:
 		for _, sel := range valueSel {
 			exprs = append(exprs, chsql.Eq(sel, valueExpr))
 		}
-	case labels.MatchRegexp, labels.MatchNotRegexp:
+	case labels.MatchNotEqual:
+		for _, sel := range valueSel {
+			exprs = append(exprs, chsql.NotEq(sel, valueExpr))
+		}
+	case labels.MatchRegexp:
 		for _, sel := range valueSel {
 			exprs = append(exprs, chsql.Match(sel, valueExpr))
+		}
+	case labels.MatchNotRegexp:
+		for _, sel := range valueSel {
+			exprs = append(exprs, chsql.Not(chsql.Match(sel, valueExpr)))
 		}
 	default:
 		return e, errors.Errorf("unexpected type %q", typ)

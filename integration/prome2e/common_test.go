@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -262,6 +263,7 @@ func runTest(
 				requirex.Sorted(t, got)
 			}
 		})
+		handlerLabels := maps.Keys(set.Labels["handler"])
 		for _, tt := range []struct {
 			name    string
 			params  promapi.GetLabelValuesParams
@@ -299,6 +301,39 @@ func runTest(
 					},
 				},
 				[]string{"/api/v1/series", "/api/v1/query"},
+				false,
+			},
+			{
+				"NegativeMatcher",
+				promapi.GetLabelValuesParams{
+					Label: "handler",
+					Match: []string{
+						`prometheus_http_requests_total{handler!="/api/v1/query"}`,
+					},
+				},
+				except(handlerLabels, "/api/v1/query"),
+				false,
+			},
+			{
+				"NegativeRegexMatcher",
+				promapi.GetLabelValuesParams{
+					Label: "handler",
+					Match: []string{
+						`prometheus_http_requests_total{handler!~"^/api/v1/query$"}`,
+					},
+				},
+				except(handlerLabels, "/api/v1/query"),
+				false,
+			},
+			{
+				"NegativeEmptyMatcher",
+				promapi.GetLabelValuesParams{
+					Label: "handler",
+					Match: []string{
+						`prometheus_http_requests_total{handler!=""}`,
+					},
+				},
+				handlerLabels,
 				false,
 			},
 			{
@@ -470,6 +505,63 @@ func runTest(
 				a.NotEqual("/api/v1/query_range", handler)
 			}
 		})
+		t.Run("NegativeMatcher", func(t *testing.T) {
+			a := require.New(t)
+
+			r, err := c.GetSeries(ctx, promapi.GetSeriesParams{
+				Start: promapi.NewOptPrometheusTimestamp(`1600000000.0`),
+				End:   promapi.NewOptPrometheusTimestamp(`1800000000.0`),
+				Match: []string{
+					`prometheus_http_requests_total{
+						handler!="/api/v1/query"
+					}`,
+				},
+			})
+			a.NoError(err)
+
+			a.NotEmpty(r.Data)
+			for _, labels := range r.Data {
+				a.NotContains([]string{"/api/v1/query"}, labels["handler"])
+			}
+		})
+		t.Run("NegativeRegexMatcher", func(t *testing.T) {
+			a := require.New(t)
+
+			r, err := c.GetSeries(ctx, promapi.GetSeriesParams{
+				Start: promapi.NewOptPrometheusTimestamp(`1600000000.0`),
+				End:   promapi.NewOptPrometheusTimestamp(`1800000000.0`),
+				Match: []string{
+					`prometheus_http_requests_total{
+						handler!~"^/api/v1/query$"
+					}`,
+				},
+			})
+			a.NoError(err)
+
+			a.NotEmpty(r.Data)
+			for _, labels := range r.Data {
+				a.NotContains([]string{"/api/v1/query"}, labels["handler"])
+			}
+		})
+		t.Run("NegativeEmptyMatcher", func(t *testing.T) {
+			a := require.New(t)
+
+			r, err := c.GetSeries(ctx, promapi.GetSeriesParams{
+				Start: promapi.NewOptPrometheusTimestamp(`1600000000.0`),
+				End:   promapi.NewOptPrometheusTimestamp(`1800000000.0`),
+				Match: []string{
+					`prometheus_http_requests_total{
+						handler!=""
+					}`,
+				},
+			})
+			a.NoError(err)
+
+			a.NotEmpty(r.Data)
+			for _, labels := range r.Data {
+				a.Contains(maps.Keys(set.Labels["handler"]), labels["handler"])
+			}
+		})
 		t.Run("MultipleMatchers", func(t *testing.T) {
 			a := require.New(t)
 
@@ -577,26 +669,56 @@ func runTest(
 	})
 	t.Run("QueryRange", func(t *testing.T) {
 		t.Run("Points", func(t *testing.T) {
-			a := require.New(t)
+			for _, tt := range []struct {
+				name  string
+				query string
+				count float64
+				empty bool
+			}{
+				{"All", `count(prometheus_http_requests_total{})`, 51, false},
+				{"AllRegexFilter", `count(prometheus_http_requests_total{handler=~".+"})`, 51, false},
+				{"AllNegativeFilter", `count(prometheus_http_requests_total{"handler"!="clearly-not-exist"})`, 51, false},
+				{"AllNegativeEmptyFilter", `count(prometheus_http_requests_total{"handler"!=""})`, 51, false},
+				{"AllNegativeRegexFilter", `count(prometheus_http_requests_total{"handler"!~"^$"})`, 51, false},
 
-			r, err := c.GetQueryRange(ctx, promapi.GetQueryRangeParams{
-				Query: `count(prometheus_http_requests_total{})`,
-				Start: getPromTS(set.Start),
-				End:   getPromTS(set.End),
-				Step:  promapi.NewOptString("5s"),
-			})
-			a.NoError(err)
+				{"SelectFilter", `count(prometheus_http_requests_total{"handler"="/api/v1/query"})`, 1, false},
+				{"SelectRegexFilter", `count(prometheus_http_requests_total{"handler"=~"^/api/v1/query$"})`, 1, false},
 
-			data := r.Data
-			a.Equal(promapi.MatrixData, data.Type)
+				{"ExcludeFilter", `count(prometheus_http_requests_total{"handler"!="/api/v1/query"})`, 50, false},
+				{"ExcludeRegexFilter", `count(prometheus_http_requests_total{"handler"!~"^/api/v1/query$"})`, 50, false},
 
-			mat := data.Matrix.Result
-			a.Len(mat, 1)
-			values := mat[0].Values
-			a.NotEmpty(values)
+				{"Empty", `count(prometheus_http_requests_total{"handler"="clearly-not-exist"})`, 0, true},
+			} {
+				tt := tt
+				t.Run(tt.name, func(t *testing.T) {
+					t.Parallel()
 
-			for _, point := range values {
-				a.Equal(float64(51), point.V)
+					a := require.New(t)
+
+					r, err := c.GetQueryRange(ctx, promapi.GetQueryRangeParams{
+						Query: tt.query,
+						Start: getPromTS(set.Start),
+						End:   getPromTS(set.End),
+						Step:  promapi.NewOptString("5s"),
+					})
+					a.NoError(err)
+
+					data := r.Data
+					a.Equal(promapi.MatrixData, data.Type)
+
+					mat := data.Matrix.Result
+					if tt.empty {
+						a.Empty(mat)
+					} else {
+						a.Len(mat, 1)
+						values := mat[0].Values
+						a.NotEmpty(values)
+
+						for _, point := range values {
+							a.Equal(tt.count, point.V)
+						}
+					}
+				})
 			}
 		})
 		t.Run("Histogram", func(t *testing.T) {
@@ -642,6 +764,16 @@ func runTest(
 			require.Equal(t, float64(51), v)
 		}
 	})
+}
+
+func except(s []string, not ...string) []string {
+	r := make([]string, 0, len(s))
+	for _, v := range s {
+		if !slices.Contains(not, v) {
+			r = append(r, v)
+		}
+	}
+	return r
 }
 
 func getPromTS(ts pcommon.Timestamp) promapi.PrometheusTimestamp {
