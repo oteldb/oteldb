@@ -299,6 +299,53 @@ paths:
                 $ref: "#/components/schemas/DrilldownLimits"
         default:
           $ref: "#/components/responses/Error"
+  /loki/api/v1/patterns:
+    get:
+      operationId: patterns
+      description: |
+        Endpoint can be used to query loki for patterns detected in the logs.
+        This helps understand the structure of the logs Loki has ingested.
+      parameters:
+        - name: start
+          in: query
+          schema:
+            $ref: "#/components/schemas/LokiTime"
+        - name: end
+          in: query
+          schema:
+            $ref: "#/components/schemas/LokiTime"
+        - name: since
+          description: |
+            A `duration` used to calculate `start` relative to `end`.
+            If `end` is in the future, `start` is calculated as this duration before now.
+            Any value specified for start supersedes this parameter.
+          in: query
+          schema:
+            $ref: "#/components/schemas/PrometheusDuration"
+        - name: query
+          description: The LogQL query to perform.
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: step
+          description: |
+            Query resolution step width in `duration` format or float number of seconds.
+            `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`.
+            For example, `5m` refers to a duration of 5 minutes.
+            Defaults to a dynamic value based on start and end.
+          in: query
+          schema:
+            $ref: "#/components/schemas/PrometheusDuration"
+      responses:
+        "200":
+          description: Detected logs patterns
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Patterns"
+        default:
+          $ref: "#/components/responses/Error"
   /loki/api/v1/detected_labels:
     get:
       operationId: detectedLabels
@@ -706,6 +753,36 @@ components:
           type: integer
         bytes:
           type: integer
+    Patterns:
+      type: object
+      required: [series]
+      properties:
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/PatternSeries"
+    PatternSeries:
+      type: object
+      required: [pattern, samples, level]
+      properties:
+        pattern:
+          type: string
+        samples:
+          type: array
+          items:
+            $ref: "#/components/schemas/PatternSample"
+        level:
+          type: string
+    PatternSample:
+      type: array
+      items:
+        - type: number
+          format: float64
+          description: floating point unix timestamp
+          x-ogen-name: T
+        - type: integer
+          description: value
+          x-ogen-name: V
     DetectedLabels:
       type: object
       properties:
