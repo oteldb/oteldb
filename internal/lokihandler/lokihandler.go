@@ -393,12 +393,13 @@ func (h *LokiAPI) evalVolumeQuery(ctx context.Context, query, targetLabels strin
 		}
 	} else {
 		agg = make([]logql.Label, len(sel.Matchers))
-		for _, m := range sel.Matchers {
-			agg = append(agg, m.Label)
+		for i, m := range sel.Matchers {
+			agg[i] = m.Label
 		}
 	}
 	slices.Sort(agg)
 	agg = slices.Compact(agg)
+
 	expr := &logql.VectorAggregationExpr{
 		Op: logql.VectorOpSum,
 		Expr: &logql.RangeAggregationExpr{
