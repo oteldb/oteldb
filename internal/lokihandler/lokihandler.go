@@ -5,13 +5,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
-
-	ht "github.com/ogen-go/ogen/http"
-	"go.uber.org/zap"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
+	ht "github.com/ogen-go/ogen/http"
+	"go.uber.org/zap"
 
 	"github.com/go-faster/oteldb/internal/iterators"
 	"github.com/go-faster/oteldb/internal/logql"
@@ -25,16 +26,105 @@ import (
 type LokiAPI struct {
 	q      logstorage.Querier
 	engine *logqlengine.Engine
+	opts   LokiAPIOptions
 }
 
 var _ lokiapi.Handler = (*LokiAPI)(nil)
 
 // NewLokiAPI creates new LokiAPI.
-func NewLokiAPI(q logstorage.Querier, engine *logqlengine.Engine) *LokiAPI {
+func NewLokiAPI(q logstorage.Querier, engine *logqlengine.Engine, opts LokiAPIOptions) *LokiAPI {
+	opts.setDefaults()
+
 	return &LokiAPI{
 		q:      q,
 		engine: engine,
+		opts:   opts,
 	}
+}
+
+// DetectedFieldValues implements detectedFieldValues operation.
+//
+// Get detected field values.
+//
+// GET /loki/api/v1/detected_field/{field}/values
+func (h *LokiAPI) DetectedFieldValues(ctx context.Context, params lokiapi.DetectedFieldValuesParams) (*lokiapi.DetectedFieldValues, error) {
+	return &lokiapi.DetectedFieldValues{}, nil
+}
+
+// DetectedFields implements detectedFields operation.
+//
+// Get detected fields.
+//
+// GET /loki/api/v1/detected_fields
+func (h *LokiAPI) DetectedFields(ctx context.Context, params lokiapi.DetectedFieldsParams) (*lokiapi.DetectedFields, error) {
+	return &lokiapi.DetectedFields{}, nil
+}
+
+// DetectedLabels implements detectedLabels operation.
+//
+// Get detected labels.
+// Used by Grafana to test Logs Drilldown availability.
+//
+// GET /loki/api/v1/detected_labels
+func (h *LokiAPI) DetectedLabels(ctx context.Context, params lokiapi.DetectedLabelsParams) (*lokiapi.DetectedLabels, error) {
+	if !h.opts.DrilldownEnabled {
+		return &lokiapi.DetectedLabels{}, nil
+	}
+
+	start, end, err := parseTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		h.opts.DefaultSince,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
+	var sel logql.Selector
+	if q := params.Query.Or(""); q != "" {
+		sel, err = logql.ParseSelector(q, h.engine.ParseOptions())
+		if err != nil {
+			return nil, validationErr(err, "parse query")
+		}
+	}
+	labels, err := h.q.DetectedLabels(ctx, logstorage.LabelsOptions{
+		Start: start,
+		End:   end,
+		Query: sel,
+		Limit: 100,
+	})
+	if err != nil {
+		return nil, executionErr(err, "get detected labels")
+	}
+
+	result := make([]lokiapi.DetectedLabel, len(labels))
+	for i, v := range labels {
+		result[i] = lokiapi.DetectedLabel{
+			Label:       v.Name,
+			Cardinality: v.Cardinality,
+		}
+	}
+
+	return &lokiapi.DetectedLabels{
+		DetectedLabels: result,
+	}, nil
+}
+
+// DrilldownLimits implements drilldownLimits operation.
+//
+// Get drilldown limits.
+// Used by Grafana to get limits from Loki.
+//
+// GET /loki/api/v1/drilldown-limits
+func (h *LokiAPI) DrilldownLimits(ctx context.Context) (*lokiapi.DrilldownLimits, error) {
+	return &lokiapi.DrilldownLimits{
+		Limits: lokiapi.DrilldownLimitsLimits{
+			VolumeEnabled: lokiapi.NewOptBool(h.opts.DrilldownEnabled),
+		},
+		Version: "v3.6.0",
+	}, nil
 }
 
 // IndexStats implements indexStats operation.
@@ -59,6 +149,7 @@ func (h *LokiAPI) LabelValues(ctx context.Context, params lokiapi.LabelValuesPar
 		params.Start,
 		params.End,
 		params.Since,
+		h.opts.DefaultSince,
 	)
 	if err != nil {
 		return nil, validationErr(err, "parse time range")
@@ -116,6 +207,7 @@ func (h *LokiAPI) Labels(ctx context.Context, params lokiapi.LabelsParams) (*lok
 		params.Start,
 		params.End,
 		params.Since,
+		h.opts.DefaultSince,
 	)
 	if err != nil {
 		return nil, validationErr(err, "parse time range")
@@ -134,15 +226,6 @@ func (h *LokiAPI) Labels(ctx context.Context, params lokiapi.LabelsParams) (*lok
 		Status: "success",
 		Data:   names,
 	}, nil
-}
-
-// Push implements push operation.
-//
-// Push data.
-//
-// POST /loki/api/v1/push
-func (h *LokiAPI) Push(context.Context, lokiapi.PushReq) error {
-	return ht.ErrNotImplemented
 }
 
 // Query implements query operation.
@@ -189,6 +272,7 @@ func (h *LokiAPI) QueryRange(ctx context.Context, params lokiapi.QueryRangeParam
 		params.Start,
 		params.End,
 		params.Since,
+		h.opts.DefaultSince,
 	)
 	if err != nil {
 		return nil, validationErr(err, "parse time range")
@@ -221,6 +305,155 @@ func (h *LokiAPI) QueryRange(ctx context.Context, params lokiapi.QueryRangeParam
 	}, nil
 }
 
+// QueryVolume implements queryVolume operation.
+//
+// Query the index for volume information about label and label-value combinations.
+//
+// GET /loki/api/v1/index/volume
+func (h *LokiAPI) QueryVolume(ctx context.Context, params lokiapi.QueryVolumeParams) (*lokiapi.QueryResponse, error) {
+	if !h.opts.DrilldownEnabled {
+		return &lokiapi.QueryResponse{
+			Status: "success",
+			Data: lokiapi.NewVectorResultQueryResponseData(lokiapi.VectorResult{
+				Result: lokiapi.Vector{},
+			}),
+		}, nil
+	}
+
+	start, end, err := parseTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		h.opts.DefaultSince,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
+	data, err := h.evalVolumeQuery(ctx, params.Query.Or(""), params.TargetLabels.Or(""), logqlengine.EvalParams{
+		Start:     start,
+		End:       end,
+		Step:      0,
+		Direction: logqlengine.DirectionBackward,
+		Limit:     params.Limit.Or(100),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &lokiapi.QueryResponse{
+		Status: "success",
+		Data:   data,
+	}, nil
+}
+
+// QueryVolumeRange implements queryVolumeRange operation.
+//
+// Query the index for volume information about label and label-value combinations.
+//
+// GET /loki/api/v1/index/volume_range
+func (h *LokiAPI) QueryVolumeRange(ctx context.Context, params lokiapi.QueryVolumeRangeParams) (*lokiapi.QueryResponse, error) {
+	if !h.opts.DrilldownEnabled {
+		return &lokiapi.QueryResponse{
+			Status: "success",
+			Data: lokiapi.NewVectorResultQueryResponseData(lokiapi.VectorResult{
+				Result: lokiapi.Vector{},
+			}),
+		}, nil
+	}
+
+	start, end, err := parseTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		h.opts.DefaultSince,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
+	step, err := parseStep(params.Step, start, end)
+	if err != nil {
+		return nil, validationErr(err, "parse step")
+	}
+
+	data, err := h.evalVolumeQuery(ctx, params.Query.Or(""), params.TargetLabels.Or(""), logqlengine.EvalParams{
+		Start:     start,
+		End:       end,
+		Step:      step,
+		Direction: logqlengine.DirectionBackward,
+		Limit:     params.Limit.Or(100),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &lokiapi.QueryResponse{
+		Status: "success",
+		Data:   data,
+	}, nil
+}
+
+func (h *LokiAPI) evalVolumeQuery(ctx context.Context, query, targetLabels string, params logqlengine.EvalParams) (r lokiapi.QueryResponseData, _ error) {
+	var (
+		err error
+		sel logql.Selector
+	)
+	if query != "" {
+		sel, err = logql.ParseSelector(query, h.engine.ParseOptions())
+		if err != nil {
+			return r, validationErr(err, "parse query")
+		}
+	}
+	var agg []logql.Label
+	if targetLabels != "" {
+		agg = make([]logql.Label, 0, strings.Count(targetLabels, ",")+1)
+		for v := range strings.SplitSeq(targetLabels, ",") {
+			agg = append(agg, logql.Label(v))
+		}
+	} else {
+		agg = make([]logql.Label, len(sel.Matchers))
+		for i, m := range sel.Matchers {
+			agg[i] = m.Label
+		}
+	}
+	slices.Sort(agg)
+	agg = slices.Compact(agg)
+
+	aggRange := params.End.Sub(params.Start).Truncate(time.Second)
+	if aggRange == 0 {
+		aggRange = time.Hour
+	}
+	expr := &logql.VectorAggregationExpr{
+		Op: logql.VectorOpSum,
+		Expr: &logql.RangeAggregationExpr{
+			Op: logql.RangeOpCount,
+			Range: logql.LogRangeExpr{
+				Sel:   sel,
+				Range: aggRange,
+			},
+		},
+		Grouping: &logql.Grouping{
+			Labels:  agg,
+			Without: false,
+		},
+	}
+	// We need an instant.
+	params.Start = params.End
+
+	q, err := h.engine.NewQueryFromExpr(ctx, expr)
+	if err != nil {
+		return r, errors.Wrap(err, "compile query")
+	}
+	r, err = q.Eval(ctx, params)
+	if err != nil {
+		return r, err
+	}
+	return r, nil
+}
+
 // Series implements series operation.
 //
 // Get series.
@@ -232,6 +465,7 @@ func (h *LokiAPI) Series(ctx context.Context, params lokiapi.SeriesParams) (*lok
 		params.Start,
 		params.End,
 		params.Since,
+		h.opts.DefaultSince,
 	)
 	if err != nil {
 		return nil, validationErr(err, "parse time range")
@@ -264,6 +498,25 @@ func (h *LokiAPI) Series(ctx context.Context, params lokiapi.SeriesParams) (*lok
 		Status: "success",
 		Data:   result,
 	}, nil
+}
+
+// Patterns implements patterns operation.
+//
+// Endpoint can be used to query loki for patterns detected in the logs.
+// This helps understand the structure of the logs Loki has ingested.
+//
+// GET /loki/api/v1/patterns
+func (h *LokiAPI) Patterns(ctx context.Context, params lokiapi.PatternsParams) (*lokiapi.Patterns, error) {
+	return &lokiapi.Patterns{}, nil
+}
+
+// Push implements push operation.
+//
+// Push data.
+//
+// POST /loki/api/v1/push
+func (h *LokiAPI) Push(context.Context, lokiapi.PushReq) error {
+	return ht.ErrNotImplemented
 }
 
 func (h *LokiAPI) eval(ctx context.Context, query string, params logqlengine.EvalParams) (r lokiapi.QueryResponseData, _ error) {

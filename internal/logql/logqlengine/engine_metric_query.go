@@ -85,8 +85,19 @@ func (q *MetricQuery) eval(ctx context.Context, params EvalParams) (data lokiapi
 	if err != nil {
 		return data, err
 	}
+
+	var count attribute.KeyValue
+	switch data.Type {
+	case lokiapi.MatrixResultQueryResponseData:
+		count = attribute.Int("logql.data.series", len(data.MatrixResult.Result))
+	case lokiapi.VectorResultQueryResponseData:
+		count = attribute.Int("logql.data.points", len(data.VectorResult.Result))
+	default:
+		count = attribute.Int("logql.data.points", 0)
+	}
 	span.AddEvent("return_result", trace.WithAttributes(
 		attribute.String("logql.data.type", string(data.Type)),
+		count,
 	))
 
 	return data, nil

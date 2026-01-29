@@ -508,37 +508,37 @@ func (q *Querier) logQLLabelMatcher(
 			}
 		}
 
-		exprs := make([]chsql.Expr, 0, 3)
-		keysExprs := make([]chsql.Expr, 0, cap(exprs))
+		// TODO: how to match integers, booleans, floats, arrays?
+		var (
+			selector = firstAttrSelector(labelName)
+			sub      chsql.Expr
+		)
+		switch m.Op {
+		case logql.OpEq, logql.OpNotEq:
+			sub = chsql.Eq(selector, chsql.String(m.Value))
+		case logql.OpRe, logql.OpNotRe:
+			sub = chsql.Match(selector, chsql.String(m.Value))
+		default:
+			panic(fmt.Sprintf("unexpected label matcher op %v", m.Op))
+		}
+
+		keysExprs := make([]chsql.Expr, 0, 3)
 		// Search in all attributes.
 		for _, column := range []string{
 			colAttrs,
 			colScope,
 			colResource,
 		} {
-			// TODO: how to match integers, booleans, floats, arrays?
-			var (
-				selector = attrSelector(column, labelName)
-				sub      chsql.Expr
-			)
-			switch m.Op {
-			case logql.OpEq, logql.OpNotEq:
-				sub = chsql.Eq(selector, chsql.String(m.Value))
-			case logql.OpRe, logql.OpNotRe:
-				sub = chsql.Match(selector, chsql.String(m.Value))
-			default:
-				panic(fmt.Sprintf("unexpected label matcher op %v", m.Op))
-			}
-			exprs = append(exprs, sub)
 			keysExprs = append(keysExprs, chsql.JSONExtractKeys(chsql.Ident(column)))
 		}
+
 		// Force Clickhouse to use index.
 		return chsql.And(
 			chsql.Has(
 				chsql.ArrayConcat(keysExprs...),
 				chsql.String(labelName),
 			),
-			chsql.JoinOr(exprs...),
+			sub,
 		)
 	}
 }
