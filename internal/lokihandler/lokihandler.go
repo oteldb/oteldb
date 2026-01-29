@@ -67,6 +67,10 @@ func (h *LokiAPI) DetectedFields(ctx context.Context, params lokiapi.DetectedFie
 //
 // GET /loki/api/v1/detected_labels
 func (h *LokiAPI) DetectedLabels(ctx context.Context, params lokiapi.DetectedLabelsParams) (*lokiapi.DetectedLabels, error) {
+	if !h.opts.DrilldownEnabled {
+		return &lokiapi.DetectedLabels{}, nil
+	}
+
 	start, end, err := parseTimeRange(
 		time.Now(),
 		params.Start,
@@ -117,7 +121,7 @@ func (h *LokiAPI) DetectedLabels(ctx context.Context, params lokiapi.DetectedLab
 func (h *LokiAPI) DrilldownLimits(ctx context.Context) (*lokiapi.DrilldownLimits, error) {
 	return &lokiapi.DrilldownLimits{
 		Limits: lokiapi.DrilldownLimitsLimits{
-			VolumeEnabled: lokiapi.NewOptBool(true),
+			VolumeEnabled: lokiapi.NewOptBool(h.opts.DrilldownEnabled),
 		},
 		Version: "v3.6.0",
 	}, nil
@@ -307,6 +311,15 @@ func (h *LokiAPI) QueryRange(ctx context.Context, params lokiapi.QueryRangeParam
 //
 // GET /loki/api/v1/index/volume
 func (h *LokiAPI) QueryVolume(ctx context.Context, params lokiapi.QueryVolumeParams) (*lokiapi.QueryResponse, error) {
+	if !h.opts.DrilldownEnabled {
+		return &lokiapi.QueryResponse{
+			Status: "success",
+			Data: lokiapi.NewVectorResultQueryResponseData(lokiapi.VectorResult{
+				Result: lokiapi.Vector{},
+			}),
+		}, nil
+	}
+
 	start, end, err := parseTimeRange(
 		time.Now(),
 		params.Start,
@@ -341,6 +354,15 @@ func (h *LokiAPI) QueryVolume(ctx context.Context, params lokiapi.QueryVolumePar
 //
 // GET /loki/api/v1/index/volume_range
 func (h *LokiAPI) QueryVolumeRange(ctx context.Context, params lokiapi.QueryVolumeRangeParams) (*lokiapi.QueryResponse, error) {
+	if !h.opts.DrilldownEnabled {
+		return &lokiapi.QueryResponse{
+			Status: "success",
+			Data: lokiapi.NewVectorResultQueryResponseData(lokiapi.VectorResult{
+				Result: lokiapi.Vector{},
+			}),
+		}, nil
+	}
+
 	start, end, err := parseTimeRange(
 		time.Now(),
 		params.Start,
