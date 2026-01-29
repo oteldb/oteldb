@@ -453,7 +453,7 @@ func (q *Querier) logQLLabelMatcher(
 	}
 
 	switch labelName {
-	case logstorage.LabelSeverity:
+	case logstorage.LabelSeverity, logstorage.LabelDetectedLevel:
 		switch m.Op {
 		case logql.OpEq, logql.OpNotEq:
 			// Direct comparison with severity number.

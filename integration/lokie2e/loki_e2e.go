@@ -49,6 +49,10 @@ func NewBatchSet() *BatchSet {
 			Name:  logstorage.LabelSeverity,
 			Value: i.String(),
 		})
+		s.addLabel(logstorage.Label{
+			Name:  logstorage.LabelDetectedLevel,
+			Value: i.String(),
+		})
 	}
 
 	return s

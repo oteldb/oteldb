@@ -16,6 +16,8 @@ const (
 	LabelServiceName       = "service_name"        // resource.service.name
 	LabelServiceNamespace  = "service_namespace"   // resource.service.namespace
 	LabelServiceInstanceID = "service_instance_id" // resource.service.instance.id
+
+	LabelDetectedLevel = "detected_level" // used by Loki/Grafana in many cases
 )
 
 // Record is a log record.
