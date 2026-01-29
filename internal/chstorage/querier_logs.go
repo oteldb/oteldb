@@ -58,7 +58,7 @@ func (q *Querier) LabelNames(ctx context.Context, opts logstorage.LabelsOptions)
 	if limit < 0 {
 		limit = 0
 	}
-	queryLabels := make([]string, 1+len(opts.Query.Matchers))
+	queryLabels := make([]string, 0, len(opts.Query.Matchers))
 	for _, m := range opts.Query.Matchers {
 		queryLabels = append(queryLabels, string(m.Label))
 	}
@@ -182,7 +182,7 @@ func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logsto
 		values = values[:min(len(values), limit)]
 		slices.Sort(values)
 	default:
-		queryLabels := make([]string, 1+len(opts.Query.Matchers))
+		queryLabels := make([]string, 0, 1+len(opts.Query.Matchers))
 		queryLabels = append(queryLabels, labelName)
 		for _, m := range opts.Query.Matchers {
 			queryLabels = append(queryLabels, string(m.Label))
@@ -270,7 +270,7 @@ func (q *Querier) DetectedLabels(ctx context.Context, opts logstorage.LabelsOpti
 	if limit < 0 {
 		limit = 0
 	}
-	queryLabels := make([]string, 1+len(opts.Query.Matchers))
+	queryLabels := make([]string, 0, len(opts.Query.Matchers))
 	for _, m := range opts.Query.Matchers {
 		queryLabels = append(queryLabels, string(m.Label))
 	}
