@@ -115,7 +115,25 @@ func (e *Engine) NewQuery(ctx context.Context, query string) (q Query, rerr erro
 	if err != nil {
 		return nil, errors.Wrap(err, "parse")
 	}
+	return e.newQuery(ctx, expr)
+}
 
+// NewQueryFromExpr creates new [Query] from parsed [logql.Expr].
+func (e *Engine) NewQueryFromExpr(ctx context.Context, expr logql.Expr) (q Query, rerr error) {
+	ctx, span := e.tracer.Start(ctx, "logql.Engine.NewQuery", trace.WithAttributes(
+		// TODO(tdakkota): make LogQL printer.
+		attribute.String("logql.query", "<query>"),
+	))
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+		}
+		span.End()
+	}()
+	return e.newQuery(ctx, expr)
+}
+
+func (e *Engine) newQuery(ctx context.Context, expr logql.Expr) (q Query, _ error) {
 	if _, explain := expr.(*logql.ExplainExpr); explain {
 		logs := new(explainLogs)
 		ctx = buildExplainQuery(ctx, logs)
@@ -128,6 +146,7 @@ func (e *Engine) NewQuery(ctx context.Context, query string) (q Query, rerr erro
 		}()
 	}
 
+	var err error
 	q, err = e.buildQuery(ctx, expr)
 	if err != nil {
 		return nil, err

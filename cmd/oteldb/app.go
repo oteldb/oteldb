@@ -269,7 +269,9 @@ func (app *App) trySetupLoki() error {
 	if err != nil {
 		return errors.Wrap(err, "create LogQL engine")
 	}
-	loki := lokihandler.NewLokiAPI(q, engine)
+	loki := lokihandler.NewLokiAPI(q, engine, lokihandler.LokiAPIOptions{
+		DrilldownEnabled: cfg.DrilldownEnabled,
+	})
 
 	s, err := lokiapi.NewServer(loki,
 		lokiapi.WithTracerProvider(app.telemetry.TracerProvider()),

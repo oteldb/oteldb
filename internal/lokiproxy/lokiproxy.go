@@ -24,6 +24,44 @@ type Server struct {
 	api *lokiapi.Client
 }
 
+// DetectedFieldValues implements detectedFieldValues operation.
+//
+// Get detected field values.
+//
+// GET /loki/api/v1/detected_field/{field}/values
+func (s *Server) DetectedFieldValues(ctx context.Context, params lokiapi.DetectedFieldValuesParams) (*lokiapi.DetectedFieldValues, error) {
+	return s.api.DetectedFieldValues(ctx, params)
+}
+
+// DetectedFields implements detectedFields operation.
+//
+// Get detected fields.
+//
+// GET /loki/api/v1/detected_fields
+func (s *Server) DetectedFields(ctx context.Context, params lokiapi.DetectedFieldsParams) (*lokiapi.DetectedFields, error) {
+	return s.api.DetectedFields(ctx, params)
+}
+
+// DetectedLabels implements detectedLabels operation.
+//
+// Get detected labels.
+// Used by Grafana to test Logs Drilldown availability.
+//
+// GET /loki/api/v1/detected_labels
+func (s *Server) DetectedLabels(ctx context.Context, params lokiapi.DetectedLabelsParams) (*lokiapi.DetectedLabels, error) {
+	return s.api.DetectedLabels(ctx, params)
+}
+
+// DrilldownLimits implements drilldownLimits operation.
+//
+// Get drilldown limits.
+// Used by Grafana to get limits from Loki.
+//
+// GET /loki/api/v1/drilldown-limits
+func (s *Server) DrilldownLimits(ctx context.Context) (*lokiapi.DrilldownLimits, error) {
+	return s.api.DrilldownLimits(ctx)
+}
+
 // IndexStats implements indexStats operation.
 //
 // Get index stats.
@@ -69,6 +107,24 @@ func (s *Server) QueryRange(ctx context.Context, params lokiapi.QueryRangeParams
 	return s.api.QueryRange(ctx, params)
 }
 
+// QueryVolume implements queryVolume operation.
+//
+// Query the index for volume information about label and label-value combinations.
+//
+// GET /loki/api/v1/index/volume
+func (s *Server) QueryVolume(ctx context.Context, params lokiapi.QueryVolumeParams) (*lokiapi.QueryResponse, error) {
+	return s.api.QueryVolume(ctx, params)
+}
+
+// QueryVolumeRange implements queryVolumeRange operation.
+//
+// Query the index for volume information about label and label-value combinations.
+//
+// GET /loki/api/v1/index/volume_range
+func (s *Server) QueryVolumeRange(ctx context.Context, params lokiapi.QueryVolumeRangeParams) (*lokiapi.QueryResponse, error) {
+	return s.api.QueryVolumeRange(ctx, params)
+}
+
 // Series implements series operation.
 //
 // Get series.
@@ -76,6 +132,16 @@ func (s *Server) QueryRange(ctx context.Context, params lokiapi.QueryRangeParams
 // GET /loki/api/v1/series
 func (s *Server) Series(ctx context.Context, params lokiapi.SeriesParams) (*lokiapi.Maps, error) {
 	return s.api.Series(ctx, params)
+}
+
+// Patterns implements patterns operation.
+//
+// Endpoint can be used to query loki for patterns detected in the logs.
+// This helps understand the structure of the logs Loki has ingested.
+//
+// GET /loki/api/v1/patterns
+func (s *Server) Patterns(ctx context.Context, params lokiapi.PatternsParams) (*lokiapi.Patterns, error) {
+	return s.api.Patterns(ctx, params)
 }
 
 // Push implements push operation.

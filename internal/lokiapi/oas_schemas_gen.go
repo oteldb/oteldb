@@ -13,6 +13,169 @@ func (s *ErrorStatusCode) Error() string {
 	return fmt.Sprintf("code %d: %+v", s.StatusCode, s.Response)
 }
 
+// Ref: #/components/schemas/DetectedField
+type DetectedField struct {
+	Label       OptString         `json:"label"`
+	Type        OptString         `json:"type"`
+	Cardinality OptInt            `json:"cardinality"`
+	Parsers     OptNilStringArray `json:"parsers"`
+	JsonPath    OptNilStringArray `json:"jsonPath"`
+}
+
+// GetLabel returns the value of Label.
+func (s *DetectedField) GetLabel() OptString {
+	return s.Label
+}
+
+// GetType returns the value of Type.
+func (s *DetectedField) GetType() OptString {
+	return s.Type
+}
+
+// GetCardinality returns the value of Cardinality.
+func (s *DetectedField) GetCardinality() OptInt {
+	return s.Cardinality
+}
+
+// GetParsers returns the value of Parsers.
+func (s *DetectedField) GetParsers() OptNilStringArray {
+	return s.Parsers
+}
+
+// GetJsonPath returns the value of JsonPath.
+func (s *DetectedField) GetJsonPath() OptNilStringArray {
+	return s.JsonPath
+}
+
+// SetLabel sets the value of Label.
+func (s *DetectedField) SetLabel(val OptString) {
+	s.Label = val
+}
+
+// SetType sets the value of Type.
+func (s *DetectedField) SetType(val OptString) {
+	s.Type = val
+}
+
+// SetCardinality sets the value of Cardinality.
+func (s *DetectedField) SetCardinality(val OptInt) {
+	s.Cardinality = val
+}
+
+// SetParsers sets the value of Parsers.
+func (s *DetectedField) SetParsers(val OptNilStringArray) {
+	s.Parsers = val
+}
+
+// SetJsonPath sets the value of JsonPath.
+func (s *DetectedField) SetJsonPath(val OptNilStringArray) {
+	s.JsonPath = val
+}
+
+// Ref: #/components/schemas/DetectedFieldValues
+type DetectedFieldValues struct {
+	Values OptNilStringArray `json:"values"`
+	Limit  OptUint64         `json:"limit"`
+}
+
+// GetValues returns the value of Values.
+func (s *DetectedFieldValues) GetValues() OptNilStringArray {
+	return s.Values
+}
+
+// GetLimit returns the value of Limit.
+func (s *DetectedFieldValues) GetLimit() OptUint64 {
+	return s.Limit
+}
+
+// SetValues sets the value of Values.
+func (s *DetectedFieldValues) SetValues(val OptNilStringArray) {
+	s.Values = val
+}
+
+// SetLimit sets the value of Limit.
+func (s *DetectedFieldValues) SetLimit(val OptUint64) {
+	s.Limit = val
+}
+
+// Ref: #/components/schemas/DetectedFields
+type DetectedFields struct {
+	Fields []DetectedField `json:"fields"`
+	Limit  OptUint64       `json:"limit"`
+}
+
+// GetFields returns the value of Fields.
+func (s *DetectedFields) GetFields() []DetectedField {
+	return s.Fields
+}
+
+// GetLimit returns the value of Limit.
+func (s *DetectedFields) GetLimit() OptUint64 {
+	return s.Limit
+}
+
+// SetFields sets the value of Fields.
+func (s *DetectedFields) SetFields(val []DetectedField) {
+	s.Fields = val
+}
+
+// SetLimit sets the value of Limit.
+func (s *DetectedFields) SetLimit(val OptUint64) {
+	s.Limit = val
+}
+
+// Ref: #/components/schemas/DetectedLabel
+type DetectedLabel struct {
+	Label       string `json:"label"`
+	Cardinality int    `json:"cardinality"`
+}
+
+// GetLabel returns the value of Label.
+func (s *DetectedLabel) GetLabel() string {
+	return s.Label
+}
+
+// GetCardinality returns the value of Cardinality.
+func (s *DetectedLabel) GetCardinality() int {
+	return s.Cardinality
+}
+
+// SetLabel sets the value of Label.
+func (s *DetectedLabel) SetLabel(val string) {
+	s.Label = val
+}
+
+// SetCardinality sets the value of Cardinality.
+func (s *DetectedLabel) SetCardinality(val int) {
+	s.Cardinality = val
+}
+
+// Ref: #/components/schemas/DetectedLabels
+type DetectedLabels struct {
+	DetectedLabels []DetectedLabel `json:"detectedLabels"`
+	Limit          OptUint64       `json:"limit"`
+}
+
+// GetDetectedLabels returns the value of DetectedLabels.
+func (s *DetectedLabels) GetDetectedLabels() []DetectedLabel {
+	return s.DetectedLabels
+}
+
+// GetLimit returns the value of Limit.
+func (s *DetectedLabels) GetLimit() OptUint64 {
+	return s.Limit
+}
+
+// SetDetectedLabels sets the value of DetectedLabels.
+func (s *DetectedLabels) SetDetectedLabels(val []DetectedLabel) {
+	s.DetectedLabels = val
+}
+
+// SetLimit sets the value of Limit.
+func (s *DetectedLabels) SetLimit(val OptUint64) {
+	s.Limit = val
+}
+
 // Ref: #/components/schemas/Direction
 type Direction string
 
@@ -53,6 +216,57 @@ func (s *Direction) UnmarshalText(data []byte) error {
 	default:
 		return errors.Errorf("invalid value: %q", data)
 	}
+}
+
+// Ref: #/components/schemas/DrilldownLimits
+type DrilldownLimits struct {
+	Limits                 DrilldownLimitsLimits `json:"limits"`
+	PatternIngesterEnabled OptBool               `json:"pattern_ingester_enabled"`
+	Version                string                `json:"version"`
+}
+
+// GetLimits returns the value of Limits.
+func (s *DrilldownLimits) GetLimits() DrilldownLimitsLimits {
+	return s.Limits
+}
+
+// GetPatternIngesterEnabled returns the value of PatternIngesterEnabled.
+func (s *DrilldownLimits) GetPatternIngesterEnabled() OptBool {
+	return s.PatternIngesterEnabled
+}
+
+// GetVersion returns the value of Version.
+func (s *DrilldownLimits) GetVersion() string {
+	return s.Version
+}
+
+// SetLimits sets the value of Limits.
+func (s *DrilldownLimits) SetLimits(val DrilldownLimitsLimits) {
+	s.Limits = val
+}
+
+// SetPatternIngesterEnabled sets the value of PatternIngesterEnabled.
+func (s *DrilldownLimits) SetPatternIngesterEnabled(val OptBool) {
+	s.PatternIngesterEnabled = val
+}
+
+// SetVersion sets the value of Version.
+func (s *DrilldownLimits) SetVersion(val string) {
+	s.Version = val
+}
+
+type DrilldownLimitsLimits struct {
+	VolumeEnabled OptBool `json:"volume_enabled"`
+}
+
+// GetVolumeEnabled returns the value of VolumeEnabled.
+func (s *DrilldownLimitsLimits) GetVolumeEnabled() OptBool {
+	return s.VolumeEnabled
+}
+
+// SetVolumeEnabled sets the value of VolumeEnabled.
+func (s *DrilldownLimitsLimits) SetVolumeEnabled(val OptBool) {
+	s.VolumeEnabled = val
 }
 
 type Error string
@@ -290,6 +504,52 @@ func (s *MatrixResult) SetStats(val *Stats) {
 	s.Stats = val
 }
 
+// NewOptBool returns new OptBool with value set to v.
+func NewOptBool(v bool) OptBool {
+	return OptBool{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptBool is optional bool.
+type OptBool struct {
+	Value bool
+	Set   bool
+}
+
+// IsSet returns true if OptBool was set.
+func (o OptBool) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptBool) Reset() {
+	var v bool
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptBool) SetTo(v bool) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptBool) Get() (v bool, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptBool) Or(d bool) bool {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptDirection returns new OptDirection with value set to v.
 func NewOptDirection(v Direction) OptDirection {
 	return OptDirection{
@@ -474,6 +734,69 @@ func (o OptLokiTime) Or(d LokiTime) LokiTime {
 	return d
 }
 
+// NewOptNilStringArray returns new OptNilStringArray with value set to v.
+func NewOptNilStringArray(v []string) OptNilStringArray {
+	return OptNilStringArray{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilStringArray is optional nullable []string.
+type OptNilStringArray struct {
+	Value []string
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilStringArray was set.
+func (o OptNilStringArray) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilStringArray) Reset() {
+	var v []string
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilStringArray) SetTo(v []string) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilStringArray) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilStringArray) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v []string
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilStringArray) Get() (v []string, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilStringArray) Or(d []string) []string {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptPrometheusDuration returns new OptPrometheusDuration with value set to v.
 func NewOptPrometheusDuration(v PrometheusDuration) OptPrometheusDuration {
 	return OptPrometheusDuration{
@@ -564,6 +887,130 @@ func (o OptString) Or(d string) string {
 		return v
 	}
 	return d
+}
+
+// NewOptUint64 returns new OptUint64 with value set to v.
+func NewOptUint64(v uint64) OptUint64 {
+	return OptUint64{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptUint64 is optional uint64.
+type OptUint64 struct {
+	Value uint64
+	Set   bool
+}
+
+// IsSet returns true if OptUint64 was set.
+func (o OptUint64) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptUint64) Reset() {
+	var v uint64
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptUint64) SetTo(v uint64) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptUint64) Get() (v uint64, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptUint64) Or(d uint64) uint64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// Ref: #/components/schemas/PatternSample
+type PatternSample struct {
+	T float64
+	V int
+}
+
+// GetT returns the value of T.
+func (s *PatternSample) GetT() float64 {
+	return s.T
+}
+
+// GetV returns the value of V.
+func (s *PatternSample) GetV() int {
+	return s.V
+}
+
+// SetT sets the value of T.
+func (s *PatternSample) SetT(val float64) {
+	s.T = val
+}
+
+// SetV sets the value of V.
+func (s *PatternSample) SetV(val int) {
+	s.V = val
+}
+
+// Ref: #/components/schemas/PatternSeries
+type PatternSeries struct {
+	Pattern string          `json:"pattern"`
+	Samples []PatternSample `json:"samples"`
+	Level   string          `json:"level"`
+}
+
+// GetPattern returns the value of Pattern.
+func (s *PatternSeries) GetPattern() string {
+	return s.Pattern
+}
+
+// GetSamples returns the value of Samples.
+func (s *PatternSeries) GetSamples() []PatternSample {
+	return s.Samples
+}
+
+// GetLevel returns the value of Level.
+func (s *PatternSeries) GetLevel() string {
+	return s.Level
+}
+
+// SetPattern sets the value of Pattern.
+func (s *PatternSeries) SetPattern(val string) {
+	s.Pattern = val
+}
+
+// SetSamples sets the value of Samples.
+func (s *PatternSeries) SetSamples(val []PatternSample) {
+	s.Samples = val
+}
+
+// SetLevel sets the value of Level.
+func (s *PatternSeries) SetLevel(val string) {
+	s.Level = val
+}
+
+// Ref: #/components/schemas/Patterns
+type Patterns struct {
+	Series []PatternSeries `json:"series"`
+}
+
+// GetSeries returns the value of Series.
+func (s *Patterns) GetSeries() []PatternSeries {
+	return s.Series
+}
+
+// SetSeries sets the value of Series.
+func (s *Patterns) SetSeries(val []PatternSeries) {
+	s.Series = val
 }
 
 type PrometheusDuration string

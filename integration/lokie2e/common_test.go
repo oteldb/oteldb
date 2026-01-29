@@ -55,7 +55,7 @@ func setupDB(
 	})
 	require.NoError(t, err)
 
-	api := lokihandler.NewLokiAPI(querier, engine)
+	api := lokihandler.NewLokiAPI(querier, engine, lokihandler.LokiAPIOptions{})
 	lokih, err := lokiapi.NewServer(api,
 		lokiapi.WithTracerProvider(provider),
 	)

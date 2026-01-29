@@ -156,8 +156,9 @@ func (cfg *PrometheusConfig) setDefaults() {
 
 // LokiConfig is Loki API config.
 type LokiConfig struct {
-	Bind string       `json:"bind" yaml:"bind"`
-	Auth []AuthConfig `json:"auth" yaml:"auth"`
+	Bind             string       `json:"bind" yaml:"bind"`
+	Auth             []AuthConfig `json:"auth" yaml:"auth"`
+	DrilldownEnabled bool         `json:"drilldown_enabled" yaml:"drilldown_enabled"`
 
 	LookbackDelta time.Duration `json:"lookback_delta" yaml:"lookback_delta"`
 }

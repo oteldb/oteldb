@@ -17,7 +17,7 @@ import (
 //
 // Default values:
 //
-//   - since = 6 * time.Hour
+//   - since = 1 * time.Hour
 //   - end == now
 //   - start = end.Add(-since) if not end.After(now)
 func parseTimeRange(
@@ -25,8 +25,9 @@ func parseTimeRange(
 	startParam lokiapi.OptLokiTime,
 	endParam lokiapi.OptLokiTime,
 	sinceParam lokiapi.OptPrometheusDuration,
+	defaultSince time.Duration,
 ) (start, end time.Time, err error) {
-	since := 6 * time.Hour
+	since := defaultSince
 	if v, ok := sinceParam.Get(); ok {
 		d, err := model.ParseDuration(string(v))
 		if err != nil {
