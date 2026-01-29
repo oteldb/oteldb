@@ -422,13 +422,17 @@ func (h *LokiAPI) evalVolumeQuery(ctx context.Context, query, targetLabels strin
 	slices.Sort(agg)
 	agg = slices.Compact(agg)
 
+	aggRange := params.End.Sub(params.Start).Truncate(time.Second)
+	if aggRange == 0 {
+		aggRange = time.Hour
+	}
 	expr := &logql.VectorAggregationExpr{
 		Op: logql.VectorOpSum,
 		Expr: &logql.RangeAggregationExpr{
 			Op: logql.RangeOpCount,
 			Range: logql.LogRangeExpr{
 				Sel:   sel,
-				Range: time.Minute,
+				Range: aggRange,
 			},
 		},
 		Grouping: &logql.Grouping{
@@ -436,6 +440,8 @@ func (h *LokiAPI) evalVolumeQuery(ctx context.Context, query, targetLabels strin
 			Without: false,
 		},
 	}
+	// We need an instant.
+	params.Start = params.End
 
 	q, err := h.engine.NewQueryFromExpr(ctx, expr)
 	if err != nil {
