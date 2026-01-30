@@ -102,7 +102,9 @@ func (l *LabelSet) SetFromRecord(record logstorage.Record) {
 		l.Set(logstorage.LabelSpanID, pcommon.NewValueStr(spanID.Hex()))
 	}
 	if severity := record.SeverityNumber; severity != plog.SeverityNumberUnspecified {
-		l.Set(logstorage.LabelSeverity, pcommon.NewValueStr(severity.String()))
+		s := pcommon.NewValueStr(severity.String())
+		l.Set(logstorage.LabelSeverity, s)
+		l.Set(logstorage.LabelDetectedLevel, s)
 	}
 	l.SetAttrs(record.Attrs, record.ScopeAttrs, record.ResourceAttrs)
 }

@@ -65,28 +65,40 @@ func (e *LogfmtExtractor) extractSome(line string, set logqlabels.LabelSet) erro
 	// TODO(tdakkota): re-use decoder somehow.
 	d := logfmt.NewDecoder(strings.NewReader(line))
 
+	parsed := map[logql.Label]string{}
 	for d.ScanRecord() {
 		for d.ScanKeyval() {
 			if label, ok := e.labels[string(d.Key())]; ok {
 				// TODO(tdakkota): try string interning
-				set.Set(label, pcommon.NewValueStr(string(d.Value())))
+				parsed[label] = string(d.Value())
 			}
 		}
 	}
-
-	return d.Err()
+	if err := d.Err(); err != nil {
+		return err
+	}
+	for label, val := range parsed {
+		set.Set(label, pcommon.NewValueStr(val))
+	}
+	return nil
 }
 
 func (e *LogfmtExtractor) extractAll(line string, set logqlabels.LabelSet) error {
 	// TODO(tdakkota): re-use decoder somehow.
 	d := logfmt.NewDecoder(strings.NewReader(line))
 
+	parsed := map[logql.Label]string{}
 	for d.ScanRecord() {
 		for d.ScanKeyval() {
 			// TODO(tdakkota): try string interning
-			set.Set(logql.Label(d.Key()), pcommon.NewValueStr(string(d.Value())))
+			parsed[logql.Label(d.Key())] = string(d.Value())
 		}
 	}
-
-	return d.Err()
+	if err := d.Err(); err != nil {
+		return err
+	}
+	for label, val := range parsed {
+		set.Set(label, pcommon.NewValueStr(val))
+	}
+	return nil
 }

@@ -77,6 +77,7 @@ func (q *Querier) LabelNames(ctx context.Context, opts logstorage.LabelsOptions)
 			logstorage.LabelTraceID:           {},
 			logstorage.LabelSpanID:            {},
 			logstorage.LabelSeverity:          {},
+			logstorage.LabelDetectedLevel:     {},
 			logstorage.LabelBody:              {},
 			logstorage.LabelServiceName:       {},
 			logstorage.LabelServiceInstanceID: {},
@@ -168,7 +169,7 @@ func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logsto
 	var values []string
 	switch labelName {
 	case logstorage.LabelBody, logstorage.LabelSpanID, logstorage.LabelTraceID:
-	case logstorage.LabelSeverity:
+	case logstorage.LabelSeverity, logstorage.LabelDetectedLevel:
 		// FIXME(tdakkota): do a proper query with filtering
 		values = []string{
 			plog.SeverityNumberUnspecified.String(),
@@ -415,6 +416,7 @@ func (q *Querier) getLabelMapping(ctx context.Context, labels []string) (_ map[s
 func (q *Querier) getMaterializedLabelNames() []string {
 	return []string{
 		logstorage.LabelSeverity,
+		logstorage.LabelDetectedLevel,
 		logstorage.LabelServiceName,
 		logstorage.LabelServiceInstanceID,
 		logstorage.LabelServiceNamespace,
@@ -439,7 +441,7 @@ func (q *Querier) getMaterializedLabelColumn(labelName string) (column chsql.Exp
 		return chsql.Hex(chsql.Ident("trace_id")), true
 	case logstorage.LabelSpanID:
 		return chsql.Hex(chsql.Ident("span_id")), true
-	case logstorage.LabelSeverity:
+	case logstorage.LabelSeverity, logstorage.LabelDetectedLevel:
 		return chsql.Ident("severity_text"), true
 	case logstorage.LabelBody:
 		return chsql.Ident("body"), true
