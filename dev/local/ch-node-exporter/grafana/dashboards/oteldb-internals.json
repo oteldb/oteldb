@@ -1425,7 +1425,7 @@
           },
           "disableTextWrap": false,
           "editorMode": "builder",
-          "expr": "max({\"chstorage.logs.total_signals\", \"chstorage.signal\"=\"$signal\"})",
+          "expr": "max({\"chstorage.total_signals\", \"chstorage.signal\"=\"$signal\"})",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "legendFormat": "__auto",
@@ -1699,7 +1699,7 @@
           },
           "disableTextWrap": false,
           "editorMode": "builder",
-          "expr": "max({\"chstorage.logs.total_signals\", \"chstorage.signal\"=\"$signal\"})",
+          "expr": "max({\"chstorage.total_signals\", \"chstorage.signal\"=\"$signal\"})",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "legendFormat": "__auto",
@@ -1995,7 +1995,7 @@
           "type": "prometheus",
           "uid": "${ds}"
         },
-        "definition": "label_values({\"chstorage.logs.total_signals\"},chstorage.signal)",
+        "definition": "label_values({\"chstorage.total_signals\"},chstorage.signal)",
         "description": "Telemetry signal type.",
         "includeAll": true,
         "label": "signal",
@@ -2004,7 +2004,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values({\"chstorage.logs.total_signals\"},chstorage.signal)",
+          "query": "label_values({\"chstorage.total_signals\"},chstorage.signal)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,

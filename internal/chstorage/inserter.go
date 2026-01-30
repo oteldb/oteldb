@@ -95,11 +95,12 @@ func NewInserter(c ClickHouseClient, opts InserterOptions) (*Inserter, error) {
 		return nil, errors.Wrap(err, "init stats")
 	}
 
-	totalSignals, err := meter.Int64ObservableGauge("chstorage.logs.total_signals",
-		metric.WithDescription("Total number of inserted log records"),
+	totalSignals, err := meter.Int64ObservableGauge("chstorage.total_signals",
+		metric.WithDescription("Total number of inserted signals"),
+		metric.WithUnit("{signals}"),
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "create total inserted log records counter")
+		return nil, errors.Wrap(err, "create total inserted siganls counter")
 	}
 
 	_, err = meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
