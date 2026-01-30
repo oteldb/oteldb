@@ -378,6 +378,16 @@ func runTest(
 			{`{http.method=~".*GET.*"}`, 21},
 			{`{http.method=~"^GET$"}`, 21},
 			{`{http.method!~"(HEAD|POST|DELETE|PUT|PATCH|TRACE|OPTIONS)"}`, 21},
+			// Prometheus-like unicode label name (oteldb extension).
+			{`{"http_method"="GET"}`, 21},
+			{`{"http_method"=~".*GET.*"}`, 21},
+			{`{"http_method"=~"^GET$"}`, 21},
+			{`{"http_method"!~"(HEAD|POST|DELETE|PUT|PATCH|TRACE|OPTIONS)"}`, 21},
+			// Same with dots.
+			{`{"http.method"="GET"}`, 21},
+			{`{"http.method"=~".*GET.*"}`, 21},
+			{`{"http.method"=~"^GET$"}`, 21},
+			{`{"http.method"!~"(HEAD|POST|DELETE|PUT|PATCH|TRACE|OPTIONS)"}`, 21},
 			// Try other methods.
 			{`{http_method="DELETE"}`, 20},
 			{`{http_method="GET"}`, 21},

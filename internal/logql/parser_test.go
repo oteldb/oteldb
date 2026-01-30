@@ -58,6 +58,28 @@ var tests = []TestCase{
 		false,
 	},
 	{
+		`{"foo.bar" = "bar"}`,
+		&LogExpr{
+			Sel: Selector{
+				Matchers: []LabelMatcher{
+					{"foo.bar", OpEq, "bar", nil},
+				},
+			},
+		},
+		false,
+	},
+	{
+		"{`foo.bar` = `bar`}",
+		&LogExpr{
+			Sel: Selector{
+				Matchers: []LabelMatcher{
+					{"foo.bar", OpEq, "bar", nil},
+				},
+			},
+		},
+		false,
+	},
+	{
 		`{foo!="bar"}`,
 		&LogExpr{
 			Sel: Selector{
@@ -1164,8 +1186,11 @@ var tests = []TestCase{
 	{"{foo}", nil, true},
 	{"{foo =}", nil, true},
 	{`{foo == "bar"}`, nil, true},
+	{`{foo = "bar\"}`, nil, true},
 	{`{foo = bar}`, nil, true},
 	{`{foo = "bar"} | addr == ip(`, nil, true},
+	{`{"foo\"}`, nil, true},
+	{"{`foo`}", nil, true},
 	{`label_replace`, nil, true},
 	{`label_replace(`, nil, true},
 	{`vector`, nil, true},

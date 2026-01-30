@@ -56,9 +56,20 @@ func (p *parser) parseSelector() (s Selector, err error) {
 }
 
 func (p *parser) parseLabelMatcher() (m LabelMatcher, err error) {
-	m.Label, err = p.parseIdent()
-	if err != nil {
-		return m, err
+	t := p.peek()
+
+	switch t.Type {
+	case lexer.Ident:
+		m.Label, err = p.parseIdent()
+		if err != nil {
+			return m, err
+		}
+	case lexer.String:
+		v, err := p.parseString()
+		if err != nil {
+			return m, err
+		}
+		m.Label = Label(v)
 	}
 
 	switch t := p.next(); t.Type {
