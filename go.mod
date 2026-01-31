@@ -18,7 +18,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/go-faster/errors v0.7.1
 	github.com/go-faster/jx v1.2.0
-	github.com/go-faster/sdk v0.32.0
+	github.com/go-faster/sdk v0.32.1
 	github.com/go-faster/yaml v0.4.6
 	github.com/go-logfmt/logfmt v0.6.1
 	github.com/gogo/protobuf v1.3.2
