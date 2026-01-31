@@ -14,10 +14,10 @@ jobs:
     with:
       enable-386: false
       enable-arm64: false
-      submodules: true
+      # submodules: true
       go: stable
   lint:
     uses: go-faster/x/.github/workflows/lint.yml@main
     with:
-      submodules: true
+      # submodules: true
       go: stable
