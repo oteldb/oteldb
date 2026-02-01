@@ -313,6 +313,117 @@ func (s *ErrorStatusCode) SetResponse(val Error) {
 	s.Response = val
 }
 
+// Ref: #/components/schemas/Exemplar
+type Exemplar struct {
+	Labels      Attributes `json:"labels"`
+	TimestampMs OptInt     `json:"timestamp_ms"`
+	Value       OptFloat64 `json:"value"`
+}
+
+// GetLabels returns the value of Labels.
+func (s *Exemplar) GetLabels() Attributes {
+	return s.Labels
+}
+
+// GetTimestampMs returns the value of TimestampMs.
+func (s *Exemplar) GetTimestampMs() OptInt {
+	return s.TimestampMs
+}
+
+// GetValue returns the value of Value.
+func (s *Exemplar) GetValue() OptFloat64 {
+	return s.Value
+}
+
+// SetLabels sets the value of Labels.
+func (s *Exemplar) SetLabels(val Attributes) {
+	s.Labels = val
+}
+
+// SetTimestampMs sets the value of TimestampMs.
+func (s *Exemplar) SetTimestampMs(val OptInt) {
+	s.TimestampMs = val
+}
+
+// SetValue sets the value of Value.
+func (s *Exemplar) SetValue(val OptFloat64) {
+	s.Value = val
+}
+
+// Ref: #/components/schemas/InstantMetrics
+type InstantMetrics struct {
+	Series  []InstantSeries  `json:"series"`
+	Metrics *QueryStats      `json:"metrics"`
+	Status  OptPartialStatus `json:"status"`
+	Message OptString        `json:"message"`
+}
+
+// GetSeries returns the value of Series.
+func (s *InstantMetrics) GetSeries() []InstantSeries {
+	return s.Series
+}
+
+// GetMetrics returns the value of Metrics.
+func (s *InstantMetrics) GetMetrics() *QueryStats {
+	return s.Metrics
+}
+
+// GetStatus returns the value of Status.
+func (s *InstantMetrics) GetStatus() OptPartialStatus {
+	return s.Status
+}
+
+// GetMessage returns the value of Message.
+func (s *InstantMetrics) GetMessage() OptString {
+	return s.Message
+}
+
+// SetSeries sets the value of Series.
+func (s *InstantMetrics) SetSeries(val []InstantSeries) {
+	s.Series = val
+}
+
+// SetMetrics sets the value of Metrics.
+func (s *InstantMetrics) SetMetrics(val *QueryStats) {
+	s.Metrics = val
+}
+
+// SetStatus sets the value of Status.
+func (s *InstantMetrics) SetStatus(val OptPartialStatus) {
+	s.Status = val
+}
+
+// SetMessage sets the value of Message.
+func (s *InstantMetrics) SetMessage(val OptString) {
+	s.Message = val
+}
+
+// Ref: #/components/schemas/InstantSeries
+type InstantSeries struct {
+	Labels Attributes `json:"labels"`
+	Value  OptFloat64 `json:"value"`
+}
+
+// GetLabels returns the value of Labels.
+func (s *InstantSeries) GetLabels() Attributes {
+	return s.Labels
+}
+
+// GetValue returns the value of Value.
+func (s *InstantSeries) GetValue() OptFloat64 {
+	return s.Value
+}
+
+// SetLabels sets the value of Labels.
+func (s *InstantSeries) SetLabels(val Attributes) {
+	s.Labels = val
+}
+
+// SetValue sets the value of Value.
+func (s *InstantSeries) SetValue(val OptFloat64) {
+	s.Value = val
+}
+
 // Ref: #/components/schemas/IntValue
 type IntValue struct {
 	IntValue int64 `json:"intValue"`
@@ -415,6 +526,52 @@ func (o OptDuration) Or(d time.Duration) time.Duration {
 	return d
 }
 
+// NewOptFloat64 returns new OptFloat64 with value set to v.
+func NewOptFloat64(v float64) OptFloat64 {
+	return OptFloat64{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptFloat64 is optional float64.
+type OptFloat64 struct {
+	Value float64
+	Set   bool
+}
+
+// IsSet returns true if OptFloat64 was set.
+func (o OptFloat64) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptFloat64) Reset() {
+	var v float64
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptFloat64) SetTo(v float64) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptFloat64) Get() (v float64, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptFloat64) Or(d float64) float64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptInt returns new OptInt with value set to v.
 func NewOptInt(v int) OptInt {
 	return OptInt{
@@ -455,6 +612,98 @@ func (o OptInt) Get() (v int, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptInt) Or(d int) int {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptPartialStatus returns new OptPartialStatus with value set to v.
+func NewOptPartialStatus(v PartialStatus) OptPartialStatus {
+	return OptPartialStatus{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptPartialStatus is optional PartialStatus.
+type OptPartialStatus struct {
+	Value PartialStatus
+	Set   bool
+}
+
+// IsSet returns true if OptPartialStatus was set.
+func (o OptPartialStatus) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptPartialStatus) Reset() {
+	var v PartialStatus
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptPartialStatus) SetTo(v PartialStatus) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptPartialStatus) Get() (v PartialStatus, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptPartialStatus) Or(d PartialStatus) PartialStatus {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptPrometheusDuration returns new OptPrometheusDuration with value set to v.
+func NewOptPrometheusDuration(v PrometheusDuration) OptPrometheusDuration {
+	return OptPrometheusDuration{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptPrometheusDuration is optional PrometheusDuration.
+type OptPrometheusDuration struct {
+	Value PrometheusDuration
+	Set   bool
+}
+
+// IsSet returns true if OptPrometheusDuration was set.
+func (o OptPrometheusDuration) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptPrometheusDuration) Reset() {
+	var v PrometheusDuration
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptPrometheusDuration) SetTo(v PrometheusDuration) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptPrometheusDuration) Get() (v PrometheusDuration, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptPrometheusDuration) Or(d PrometheusDuration) PrometheusDuration {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -599,38 +848,38 @@ func (o OptTempoSpanSet) Or(d TempoSpanSet) TempoSpanSet {
 	return d
 }
 
-// NewOptUnixSeconds returns new OptUnixSeconds with value set to v.
-func NewOptUnixSeconds(v time.Time) OptUnixSeconds {
-	return OptUnixSeconds{
+// NewOptTempoTime returns new OptTempoTime with value set to v.
+func NewOptTempoTime(v TempoTime) OptTempoTime {
+	return OptTempoTime{
 		Value: v,
 		Set:   true,
 	}
 }
 
-// OptUnixSeconds is optional time.Time.
-type OptUnixSeconds struct {
-	Value time.Time
+// OptTempoTime is optional TempoTime.
+type OptTempoTime struct {
+	Value TempoTime
 	Set   bool
 }
 
-// IsSet returns true if OptUnixSeconds was set.
-func (o OptUnixSeconds) IsSet() bool { return o.Set }
+// IsSet returns true if OptTempoTime was set.
+func (o OptTempoTime) IsSet() bool { return o.Set }
 
 // Reset unsets value.
-func (o *OptUnixSeconds) Reset() {
-	var v time.Time
+func (o *OptTempoTime) Reset() {
+	var v TempoTime
 	o.Value = v
 	o.Set = false
 }
 
 // SetTo sets value to v.
-func (o *OptUnixSeconds) SetTo(v time.Time) {
+func (o *OptTempoTime) SetTo(v TempoTime) {
 	o.Set = true
 	o.Value = v
 }
 
 // Get returns value and boolean that denotes whether value was set.
-func (o OptUnixSeconds) Get() (v time.Time, ok bool) {
+func (o OptTempoTime) Get() (v TempoTime, ok bool) {
 	if !o.Set {
 		return v, false
 	}
@@ -638,12 +887,16 @@ func (o OptUnixSeconds) Get() (v time.Time, ok bool) {
 }
 
 // Or returns value if set, or given parameter if does not.
-func (o OptUnixSeconds) Or(d time.Time) time.Time {
+func (o OptTempoTime) Or(d TempoTime) TempoTime {
 	if v, ok := o.Get(); ok {
 		return v
 	}
 	return d
 }
+
+type PartialStatus int
+
+type PrometheusDuration string
 
 // Ref: #/components/schemas/PrometheusVersion
 type PrometheusVersion struct {
@@ -713,6 +966,83 @@ func (s *PrometheusVersion) SetBuildDate(val string) {
 // SetGoVersion sets the value of GoVersion.
 func (s *PrometheusVersion) SetGoVersion(val string) {
 	s.GoVersion = val
+}
+
+// Ref: #/components/schemas/QueryStats
+type QueryStats struct{}
+
+// Ref: #/components/schemas/RangeMetrics
+type RangeMetrics struct {
+	Series  []TimeSeries     `json:"series"`
+	Metrics *QueryStats      `json:"metrics"`
+	Status  OptPartialStatus `json:"status"`
+	Message OptString        `json:"message"`
+}
+
+// GetSeries returns the value of Series.
+func (s *RangeMetrics) GetSeries() []TimeSeries {
+	return s.Series
+}
+
+// GetMetrics returns the value of Metrics.
+func (s *RangeMetrics) GetMetrics() *QueryStats {
+	return s.Metrics
+}
+
+// GetStatus returns the value of Status.
+func (s *RangeMetrics) GetStatus() OptPartialStatus {
+	return s.Status
+}
+
+// GetMessage returns the value of Message.
+func (s *RangeMetrics) GetMessage() OptString {
+	return s.Message
+}
+
+// SetSeries sets the value of Series.
+func (s *RangeMetrics) SetSeries(val []TimeSeries) {
+	s.Series = val
+}
+
+// SetMetrics sets the value of Metrics.
+func (s *RangeMetrics) SetMetrics(val *QueryStats) {
+	s.Metrics = val
+}
+
+// SetStatus sets the value of Status.
+func (s *RangeMetrics) SetStatus(val OptPartialStatus) {
+	s.Status = val
+}
+
+// SetMessage sets the value of Message.
+func (s *RangeMetrics) SetMessage(val OptString) {
+	s.Message = val
+}
+
+// Ref: #/components/schemas/Sample
+type Sample struct {
+	TimestampMs OptInt     `json:"timestamp_ms"`
+	Value       OptFloat64 `json:"value"`
+}
+
+// GetTimestampMs returns the value of TimestampMs.
+func (s *Sample) GetTimestampMs() OptInt {
+	return s.TimestampMs
+}
+
+// GetValue returns the value of Value.
+func (s *Sample) GetValue() OptFloat64 {
+	return s.Value
+}
+
+// SetTimestampMs sets the value of TimestampMs.
+func (s *Sample) SetTimestampMs(val OptInt) {
+	s.TimestampMs = val
+}
+
+// SetValue sets the value of Value.
+func (s *Sample) SetValue(val OptFloat64) {
+	s.Value = val
 }
 
 // Ref: #/components/schemas/ScopeTags
@@ -790,32 +1120,48 @@ func (s *TagNamesV2) SetScopes(val []ScopeTags) {
 type TagScope string
 
 const (
-	TagScopeSpan      TagScope = "span"
-	TagScopeResource  TagScope = "resource"
-	TagScopeIntrinsic TagScope = "intrinsic"
-	TagScopeNone      TagScope = "none"
+	TagScopeNone            TagScope = "none"
+	TagScopeAll             TagScope = "all"
+	TagScopeInstrumentation TagScope = "instrumentation"
+	TagScopeResource        TagScope = "resource"
+	TagScopeSpan            TagScope = "span"
+	TagScopeIntrinsic       TagScope = "intrinsic"
+	TagScopeEvent           TagScope = "event"
+	TagScopeLink            TagScope = "link"
 )
 
 // AllValues returns all TagScope values.
 func (TagScope) AllValues() []TagScope {
 	return []TagScope{
-		TagScopeSpan,
-		TagScopeResource,
-		TagScopeIntrinsic,
 		TagScopeNone,
+		TagScopeAll,
+		TagScopeInstrumentation,
+		TagScopeResource,
+		TagScopeSpan,
+		TagScopeIntrinsic,
+		TagScopeEvent,
+		TagScopeLink,
 	}
 }
 
 // MarshalText implements encoding.TextMarshaler.
 func (s TagScope) MarshalText() ([]byte, error) {
 	switch s {
-	case TagScopeSpan:
+	case TagScopeNone:
+		return []byte(s), nil
+	case TagScopeAll:
+		return []byte(s), nil
+	case TagScopeInstrumentation:
 		return []byte(s), nil
 	case TagScopeResource:
 		return []byte(s), nil
+	case TagScopeSpan:
+		return []byte(s), nil
 	case TagScopeIntrinsic:
 		return []byte(s), nil
-	case TagScopeNone:
+	case TagScopeEvent:
+		return []byte(s), nil
+	case TagScopeLink:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -825,17 +1171,29 @@ func (s TagScope) MarshalText() ([]byte, error) {
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (s *TagScope) UnmarshalText(data []byte) error {
 	switch TagScope(data) {
-	case TagScopeSpan:
-		*s = TagScopeSpan
+	case TagScopeNone:
+		*s = TagScopeNone
+		return nil
+	case TagScopeAll:
+		*s = TagScopeAll
+		return nil
+	case TagScopeInstrumentation:
+		*s = TagScopeInstrumentation
 		return nil
 	case TagScopeResource:
 		*s = TagScopeResource
 		return nil
+	case TagScopeSpan:
+		*s = TagScopeSpan
+		return nil
 	case TagScopeIntrinsic:
 		*s = TagScopeIntrinsic
 		return nil
-	case TagScopeNone:
-		*s = TagScopeNone
+	case TagScopeEvent:
+		*s = TagScopeEvent
+		return nil
+	case TagScopeLink:
+		*s = TagScopeLink
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -844,8 +1202,8 @@ func (s *TagScope) UnmarshalText(data []byte) error {
 
 // Ref: #/components/schemas/TagValue
 type TagValue struct {
-	Type  string `json:"type"`
-	Value string `json:"value"`
+	Type  string    `json:"type"`
+	Value OptString `json:"value"`
 }
 
 // GetType returns the value of Type.
@@ -854,7 +1212,7 @@ func (s *TagValue) GetType() string {
 }
 
 // GetValue returns the value of Value.
-func (s *TagValue) GetValue() string {
+func (s *TagValue) GetValue() OptString {
 	return s.Value
 }
 
@@ -864,7 +1222,7 @@ func (s *TagValue) SetType(val string) {
 }
 
 // SetValue sets the value of Value.
-func (s *TagValue) SetValue(val string) {
+func (s *TagValue) SetValue(val OptString) {
 	s.Value = val
 }
 
@@ -994,6 +1352,45 @@ func (s *TempoSpanSet) SetAttributes(val Attributes) {
 	s.Attributes = val
 }
 
+type TempoTime string
+
+// Ref: #/components/schemas/TimeSeries
+type TimeSeries struct {
+	Labels    Attributes `json:"labels"`
+	Samples   []Sample   `json:"samples"`
+	Exemplars []Exemplar `json:"exemplars"`
+}
+
+// GetLabels returns the value of Labels.
+func (s *TimeSeries) GetLabels() Attributes {
+	return s.Labels
+}
+
+// GetSamples returns the value of Samples.
+func (s *TimeSeries) GetSamples() []Sample {
+	return s.Samples
+}
+
+// GetExemplars returns the value of Exemplars.
+func (s *TimeSeries) GetExemplars() []Exemplar {
+	return s.Exemplars
+}
+
+// SetLabels sets the value of Labels.
+func (s *TimeSeries) SetLabels(val Attributes) {
+	s.Labels = val
+}
+
+// SetSamples sets the value of Samples.
+func (s *TimeSeries) SetSamples(val []Sample) {
+	s.Samples = val
+}
+
+// SetExemplars sets the value of Exemplars.
+func (s *TimeSeries) SetExemplars(val []Exemplar) {
+	s.Exemplars = val
+}
+
 type TraceByID struct {
 	Data io.Reader
 }
@@ -1014,6 +1411,27 @@ func (*TraceByID) traceByIDRes() {}
 type TraceByIDNotFound struct{}
 
 func (*TraceByIDNotFound) traceByIDRes() {}
+
+type TraceByIDV2 struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s TraceByIDV2) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+func (*TraceByIDV2) traceByIDv2Res() {}
+
+// Ref: #/components/responses/TraceByIDV2NotFound
+type TraceByIDV2NotFound struct{}
+
+func (*TraceByIDV2NotFound) traceByIDv2Res() {}
 
 // Ref: #/components/schemas/TraceSearchMetadata
 type TraceSearchMetadata struct {
