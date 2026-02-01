@@ -8,10 +8,13 @@ type OperationName = string
 const (
 	BuildInfoOperation         OperationName = "BuildInfo"
 	EchoOperation              OperationName = "Echo"
+	QueryOperation             OperationName = "Query"
+	QueryRangeOperation        OperationName = "QueryRange"
 	SearchOperation            OperationName = "Search"
 	SearchTagValuesOperation   OperationName = "SearchTagValues"
 	SearchTagValuesV2Operation OperationName = "SearchTagValuesV2"
 	SearchTagsOperation        OperationName = "SearchTags"
 	SearchTagsV2Operation      OperationName = "SearchTagsV2"
 	TraceByIDOperation         OperationName = "TraceByID"
+	TraceByIDv2Operation       OperationName = "TraceByIDv2"
 )
