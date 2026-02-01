@@ -87,6 +87,10 @@ func loadTestData(ctx context.Context, t *testing.T, inserter tracestorage.Inser
 	return set
 }
 
+func tempoTime(ts time.Time) tempoapi.OptTempoTime {
+	return tempoapi.NewOptTempoTime(tempoapi.TempoTime(ts.Format(time.RFC3339Nano)))
+}
+
 func runTest(
 	ctx context.Context,
 	t *testing.T,
@@ -114,8 +118,8 @@ func runTest(
 
 	c := setupDB(t, provider, querier, engineQuerier)
 	var (
-		start = tempoapi.NewOptUnixSeconds(set.Start.AsTime().Add(-time.Second))
-		end   = tempoapi.NewOptUnixSeconds(set.End.AsTime())
+		start = tempoTime(set.Start.AsTime().Add(-time.Second))
+		end   = tempoTime(set.End.AsTime())
 	)
 	t.Run("SearchTags", func(t *testing.T) {
 		for _, tt := range []struct {
@@ -494,7 +498,7 @@ func runTest(
 				var got []string
 				for _, v := range r.TagValues {
 					a.Equal(tt.wantType, v.Type)
-					got = append(got, v.Value)
+					got = append(got, v.Value.Or(""))
 				}
 				requirex.Unique(t, got)
 				a.ElementsMatch(tt.want, got)
