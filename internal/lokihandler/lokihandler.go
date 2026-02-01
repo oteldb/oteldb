@@ -20,6 +20,7 @@ import (
 	"github.com/go-faster/oteldb/internal/logql/logqlengine/logqlerrors"
 	"github.com/go-faster/oteldb/internal/logstorage"
 	"github.com/go-faster/oteldb/internal/lokiapi"
+	"github.com/go-faster/oteldb/internal/promhandler"
 )
 
 // LokiAPI implements lokiapi.Handler.
@@ -234,7 +235,7 @@ func (h *LokiAPI) Labels(ctx context.Context, params lokiapi.LabelsParams) (*lok
 //
 // GET /loki/api/v1/query
 func (h *LokiAPI) Query(ctx context.Context, params lokiapi.QueryParams) (*lokiapi.QueryResponse, error) {
-	ts, err := ParseTimestamp(params.Time.Value, time.Now())
+	ts, err := promhandler.ParseOptTimestamp(params.Time, time.Now())
 	if err != nil {
 		return nil, validationErr(err, "parse time")
 	}
