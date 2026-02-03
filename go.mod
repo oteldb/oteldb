@@ -7,7 +7,7 @@ require (
 	github.com/ClickHouse/ch-go v0.71.0
 	github.com/MakeNowJust/heredoc/v2 v2.0.1
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/VictoriaMetrics/VictoriaMetrics v1.134.0
+	github.com/VictoriaMetrics/VictoriaMetrics v1.135.0
 	github.com/VictoriaMetrics/easyproto v1.1.3
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -52,7 +52,7 @@ require (
 	github.com/oteldb/promql-engine v0.4.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.5
-	github.com/prometheus/prometheus v0.307.3
+	github.com/prometheus/prometheus v0.309.1
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
@@ -100,7 +100,7 @@ require (
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.1
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
-	golang.org/x/exp v0.0.0-20251002181428-27f1f14c8bb9
+	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
 	golang.org/x/perf v0.0.0-20241204221936-711ff2ab7231
 	golang.org/x/sync v0.19.0
 	golang.org/x/tools v0.41.0
@@ -130,7 +130,8 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
-	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
+	github.com/clipperhouse/stringish v0.1.1 // indirect
+	github.com/clipperhouse/uax29/v2 v2.3.1 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
@@ -227,7 +228,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/otlptranslator v1.0.0 // indirect
-	github.com/prometheus/procfs v0.17.0 // indirect
+	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/cors v1.11.1 // indirect
 	github.com/samber/lo v1.47.0 // indirect
@@ -299,7 +300,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.14.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.38.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.38.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.38.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.39.0 // indirect
 	go.opentelemetry.io/otel/exporters/prometheus v0.60.0 // indirect
 	go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.14.0 // indirect
 	go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v1.38.0 // indirect
