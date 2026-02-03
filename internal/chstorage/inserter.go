@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/go-faster/oteldb/internal/globalmetric"
 	"github.com/go-faster/oteldb/internal/semconv"
@@ -23,9 +24,10 @@ type Inserter struct {
 	ch     ClickHouseClient
 	tables Tables
 
-	stats   inserterStats
-	tracer  trace.Tracer
-	tracker globalmetric.Tracker
+	chLogLevel zapcore.LevelEnabler
+	stats      inserterStats
+	tracer     trace.Tracer
+	tracker    globalmetric.Tracker
 }
 
 type inserterStats struct {
@@ -55,6 +57,8 @@ func (s *inserterStats) Init(meter metric.Meter) error {
 type InserterOptions struct {
 	// Tables provides table paths to query.
 	Tables Tables
+	// CHLogLevel sets log level for ch-go.
+	CHLogLevel zapcore.LevelEnabler
 	// MeterProvider provides OpenTelemetry meter for this querier.
 	MeterProvider metric.MeterProvider
 	// TracerProvider provides OpenTelemetry tracer for this querier.
@@ -66,6 +70,9 @@ type InserterOptions struct {
 func (opts *InserterOptions) setDefaults() {
 	if opts.Tables == (Tables{}) {
 		opts.Tables = DefaultTables()
+	}
+	if opts.CHLogLevel == nil {
+		opts.CHLogLevel = zap.DebugLevel
 	}
 	if opts.MeterProvider == nil {
 		opts.MeterProvider = otel.GetMeterProvider()
@@ -84,10 +91,11 @@ func NewInserter(c ClickHouseClient, opts InserterOptions) (*Inserter, error) {
 	opts.setDefaults()
 
 	inserter := &Inserter{
-		ch:      c,
-		tables:  opts.Tables,
-		tracer:  opts.TracerProvider.Tracer("chstorage.Inserter"),
-		tracker: opts.Tracker,
+		ch:         c,
+		tables:     opts.Tables,
+		chLogLevel: opts.CHLogLevel,
+		tracer:     opts.TracerProvider.Tracer("chstorage.Inserter"),
+		tracker:    opts.Tracker,
 	}
 
 	meter := opts.MeterProvider.Meter("chstorage.Inserter")

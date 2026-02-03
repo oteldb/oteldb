@@ -11,6 +11,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 	noopmeter "go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/go-faster/oteldb/internal/globalmetric"
 	"github.com/go-faster/oteldb/internal/otelbench"
@@ -42,7 +43,7 @@ func Benchmark_metricsBatch(b *testing.B) {
 	var stats inserterStats
 	require.NoError(b, stats.Init(meterProvider.Meter("test")))
 
-	batch := newMetricBatch(stats, globalmetric.NewNoopTracker())
+	batch := newMetricBatch(zapcore.PanicLevel, stats, globalmetric.NewNoopTracker())
 	b.SetBytes(int64(len(raw)))
 	b.ResetTimer()
 	for b.Loop() {

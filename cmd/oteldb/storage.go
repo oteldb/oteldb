@@ -45,7 +45,7 @@ func setupCH(
 	c, err := chstorage.Dial(ctx, dsn, chstorage.DialOptions{
 		MeterProvider:  m.MeterProvider(),
 		TracerProvider: m.TracerProvider(),
-		Logger:         lg,
+		Logger:         lg.WithOptions(zap.IncreaseLevel(cfg.CHLogLevel)),
 	})
 	if err != nil {
 		return store, errors.Wrap(err, "dial clickhouse")
@@ -61,8 +61,12 @@ func setupCH(
 		zctx.From(ctx).Warn("Using default macro for cluster name", zap.String("cluster", tables.Cluster))
 	}
 
-	if err := tables.Create(ctx, c); err != nil {
-		return store, errors.Wrap(err, "create tables")
+	{
+		mlg := zctx.From(ctx).Named("migrator").WithOptions(zap.IncreaseLevel(cfg.CHLogLevel))
+		mctx := zctx.Base(ctx, mlg)
+		if err := tables.Create(mctx, c); err != nil {
+			return store, errors.Wrap(err, "create tables")
+		}
 	}
 
 	zctx.From(ctx).Info("Tables are ready")
@@ -76,6 +80,7 @@ func setupCH(
 
 	querier, err := chstorage.NewQuerier(c, chstorage.QuerierOptions{
 		Tables:            tables,
+		CHLogLevel:        cfg.CHLogLevel,
 		MeterProvider:     m.MeterProvider(),
 		TracerProvider:    m.TracerProvider(),
 		Tracker:           tracker,

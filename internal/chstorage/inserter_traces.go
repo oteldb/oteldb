@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/go-faster/oteldb/internal/globalmetric"
@@ -85,13 +86,14 @@ func (i *Inserter) submitTraces(
 	))
 	defer track.End()
 
+	lg := zctx.From(ctx).Named("ch").WithOptions(zap.IncreaseLevel(i.chLogLevel))
 	grp, grpCtx := errgroup.WithContext(ctx)
 	grp.Go(func() error {
 		ctx := grpCtx
 
 		table := i.tables.Spans
 		if err := i.ch.Do(ctx, ch.Query{
-			Logger:          zctx.From(ctx).Named("ch"),
+			Logger:          lg,
 			Body:            spans.Body(table),
 			Input:           spans.Input(),
 			OnProfileEvents: track.OnProfiles,
@@ -111,7 +113,7 @@ func (i *Inserter) submitTraces(
 
 		table := i.tables.Tags
 		if err := i.ch.Do(ctx, ch.Query{
-			Logger: zctx.From(ctx).Named("ch"),
+			Logger: lg,
 			Body:   attrs.Body(table),
 			Input:  attrs.Input(),
 		}); err != nil {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-faster/yaml"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/go-faster/oteldb/internal/httpmiddleware"
 )
@@ -43,6 +44,7 @@ type Config struct {
 	TTL        time.Duration `json:"ttl" yaml:"ttl"`
 	Cluster    string        `json:"cluster" yaml:"cluster"`
 	Replicated bool          `json:"replicated" yaml:"replicated"`
+	CHLogLevel zapcore.Level `json:"ch_log_level" yaml:"ch_log_level"`
 
 	Tempo       TempoConfig       `json:"tempo" yaml:"tempo"`
 	Prometheus  PrometheusConfig  `json:"prometheus" yaml:"prometheus"`

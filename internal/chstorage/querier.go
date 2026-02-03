@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/go-faster/oteldb/internal/chstorage/chsql"
 	"github.com/go-faster/oteldb/internal/globalmetric"
@@ -34,6 +35,7 @@ type Querier struct {
 	timeseries *timeseriesQuerier
 	metricsSg  *singleflight.Group[xxh3.Uint128, metricSelectResult]
 
+	chLogLevel                 zapcore.LevelEnabler
 	clickhouseRequestHistogram metric.Float64Histogram
 	tracer                     trace.Tracer
 	tracker                    globalmetric.Tracker
@@ -47,6 +49,8 @@ type QuerierOptions struct {
 	LabelLimit int
 	// MetricSeriesLimit defines limit for total number of series requested by the query.
 	MetricSeriesLimit int
+	// CHLogLevel sets log level for ch-go.
+	CHLogLevel zapcore.LevelEnabler
 	// MeterProvider provides OpenTelemetry meter for this querier.
 	MeterProvider metric.MeterProvider
 	// TracerProvider provides OpenTelemetry tracer for this querier.
@@ -64,6 +68,9 @@ func (opts *QuerierOptions) setDefaults() {
 	}
 	if opts.MetricSeriesLimit == 0 {
 		opts.MetricSeriesLimit = 1_000_000
+	}
+	if opts.CHLogLevel == nil {
+		opts.CHLogLevel = zap.DebugLevel
 	}
 	if opts.MeterProvider == nil {
 		opts.MeterProvider = otel.GetMeterProvider()
@@ -95,6 +102,7 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 		timeseriesLimit: opts.MetricSeriesLimit,
 		metricsSg:       new(singleflight.Group[xxh3.Uint128, metricSelectResult]),
 
+		chLogLevel:                 opts.CHLogLevel,
 		tracer:                     opts.TracerProvider.Tracer("chstorage.Querier"),
 		tracker:                    opts.Tracker,
 		clickhouseRequestHistogram: clickhouseRequestHistogram,
@@ -132,7 +140,7 @@ func (q *Querier) do(ctx context.Context, s selectQuery) error {
 	}
 	query.ExternalData = s.ExternalData
 	query.ExternalTable = s.ExternalTable
-	query.Logger = lg.Named("ch")
+	query.Logger = lg.Named("ch").WithOptions(zap.IncreaseLevel(q.chLogLevel))
 	query.OnProfileEvents = track.OnProfiles
 
 	if logqlengine.IsExplainQuery(ctx) {
