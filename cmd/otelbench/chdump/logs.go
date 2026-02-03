@@ -5,6 +5,8 @@ import (
 	"slices"
 
 	"github.com/ClickHouse/ch-go/proto"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
 
 	"github.com/go-faster/oteldb/internal/otelstorage"
 )
@@ -72,6 +74,81 @@ func (c *Logs) Result() proto.Results {
 func (c *Logs) Reset() {
 	for col := range c.columns() {
 		col.Data.Reset()
+	}
+}
+
+// ToOTLP appends data from [Logs] to given batch.
+func (c *Logs) ToOTLP(batch plog.Logs) {
+	resMap := map[otelstorage.Hash]plog.ResourceLogs{}
+	resLogs := batch.ResourceLogs()
+	for i := range resLogs.Len() {
+		resLog := resLogs.At(i)
+		attrs := otelstorage.Attrs(resLog.Resource().Attributes())
+		resMap[attrs.Hash()] = resLog
+	}
+
+	getResLog := func(resourceAttrs otelstorage.Attrs) plog.ResourceLogs {
+		hash := resourceAttrs.Hash()
+
+		resLog, ok := resMap[hash]
+		if !ok {
+			resLog = resLogs.AppendEmpty()
+			resource := resLog.Resource()
+			resourceAttrs.AsMap().CopyTo(resource.Attributes())
+
+			resMap[hash] = resLog
+		}
+		return resLog
+	}
+	getScopeLog := func(resLog plog.ResourceLogs, scopeAttrs otelstorage.Attrs, scopeName, scopeVersion string) plog.ScopeLogs {
+		scopeLogs := resLog.ScopeLogs()
+		scopeAttrsHash := scopeAttrs.Hash()
+
+		for i := range scopeLogs.Len() {
+			scopeLog := scopeLogs.At(i)
+			scope := scopeLog.Scope()
+			if scope.Name() == scopeName &&
+				scope.Version() == scopeVersion &&
+				otelstorage.Attrs(scope.Attributes()).Hash() == scopeAttrsHash {
+				return scopeLog
+			}
+		}
+		scopeLog := scopeLogs.AppendEmpty()
+
+		scope := scopeLog.Scope()
+		scope.SetName(scopeName)
+		scope.SetVersion(scopeVersion)
+		scopeAttrs.AsMap().CopyTo(scope.Attributes())
+
+		return scopeLog
+	}
+
+	for row := range c.Body.Rows() {
+		timestamp := c.Timestamp.Row(row)
+		severityText := c.SeverityText.Row(row)
+		severityNumber := c.SeverityNumber.Row(row)
+		traceFlags := c.TraceFlags.Row(row)
+		traceID := c.TraceID.Row(row)
+		spanID := c.SpanID.Row(row)
+		body := c.Body.Row(row)
+		attributes := c.Attributes.Row(row)
+		resource := c.Resource.Row(row)
+		scope := c.Scope.Row(row)
+		scopeName := c.ScopeName.Row(row)
+		scopeVersion := c.ScopeVersion.Row(row)
+
+		resLog := getResLog(resource)
+		scopeLog := getScopeLog(resLog, scope, scopeName, scopeVersion)
+		record := scopeLog.LogRecords().AppendEmpty()
+
+		record.SetTimestamp(otelstorage.NewTimestampFromTime(timestamp))
+		record.SetSeverityText(severityText)
+		record.SetSeverityNumber(plog.SeverityNumber(severityNumber))
+		record.SetFlags(plog.LogRecordFlags(traceFlags))
+		record.SetTraceID(pcommon.TraceID(traceID))
+		record.SetSpanID(pcommon.SpanID(spanID))
+		record.Body().SetStr(body)
+		attributes.CopyTo(record.Attributes())
 	}
 }
 
