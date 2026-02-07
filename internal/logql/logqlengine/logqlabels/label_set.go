@@ -91,6 +91,40 @@ func (l *LabelSet) String() string {
 	return string(l.AppendString(nil))
 }
 
+var severityStrings = func() (r map[plog.SeverityNumber]pcommon.Value) {
+	r = map[plog.SeverityNumber]pcommon.Value{}
+	for _, n := range []plog.SeverityNumber{
+		plog.SeverityNumberUnspecified,
+		plog.SeverityNumberTrace,
+		plog.SeverityNumberTrace2,
+		plog.SeverityNumberTrace3,
+		plog.SeverityNumberTrace4,
+		plog.SeverityNumberDebug,
+		plog.SeverityNumberDebug2,
+		plog.SeverityNumberDebug3,
+		plog.SeverityNumberDebug4,
+		plog.SeverityNumberInfo,
+		plog.SeverityNumberInfo2,
+		plog.SeverityNumberInfo3,
+		plog.SeverityNumberInfo4,
+		plog.SeverityNumberWarn,
+		plog.SeverityNumberWarn2,
+		plog.SeverityNumberWarn3,
+		plog.SeverityNumberWarn4,
+		plog.SeverityNumberError,
+		plog.SeverityNumberError2,
+		plog.SeverityNumberError3,
+		plog.SeverityNumberError4,
+		plog.SeverityNumberFatal,
+		plog.SeverityNumberFatal2,
+		plog.SeverityNumberFatal3,
+		plog.SeverityNumberFatal4,
+	} {
+		r[n] = pcommon.NewValueStr(n.String())
+	}
+	return r
+}()
+
 // SetFromRecord sets labels from given log record.
 func (l *LabelSet) SetFromRecord(record logstorage.Record) {
 	l.Reset()
@@ -102,7 +136,11 @@ func (l *LabelSet) SetFromRecord(record logstorage.Record) {
 		l.Set(logstorage.LabelSpanID, pcommon.NewValueStr(spanID.Hex()))
 	}
 	if severity := record.SeverityNumber; severity != plog.SeverityNumberUnspecified {
-		s := pcommon.NewValueStr(severity.String())
+		s := severityStrings[severity]
+		l.Set(logstorage.LabelSeverity, s)
+		l.Set(logstorage.LabelDetectedLevel, s)
+	} else if severityText := record.SeverityText; severityText != "" {
+		s := pcommon.NewValueStr(severityText)
 		l.Set(logstorage.LabelSeverity, s)
 		l.Set(logstorage.LabelDetectedLevel, s)
 	}
