@@ -99,7 +99,13 @@ func SetupCH(t *testing.T, opts SetupCHOptions) (testcontainers.Container, chsto
 			t.Fatal(err)
 		}
 		t.Logf("Test tables prefix: %s", opts.TablePrefix)
-		require.NoError(t, tables.Create(ctx, c))
+
+		m := chstorage.NewMigrator(c, chstorage.MigratorOptions{
+			Tables:     tables,
+			Cluster:    "{cluster}",
+			Replicated: false,
+		})
+		require.NoError(t, m.Create(ctx))
 	}
 
 	return chContainer, c, tables

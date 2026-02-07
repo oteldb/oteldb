@@ -70,12 +70,12 @@ func TestGenerate(t *testing.T) {
 		},
 	} {
 		t.Run(table.Name, func(t *testing.T) {
-			s, err := Generate(table)
+			s, err := CreateIfNotExists(table)
 			require.NoError(t, err)
 			gold.Str(t, s, "ddl."+table.Name+".sql")
 		})
 	}
-	s, err := Generate(Table{
+	s, err := CreateIfNotExists(Table{
 		Engine: Engine{
 			Type: "ReplacingMergeTree",
 			Args: []string{

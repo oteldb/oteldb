@@ -42,14 +42,14 @@ type Engine struct {
 // Replicated returns replicated version of the engine.
 //
 // If replication is not supported by the engine, returns false.
-func (e Engine) Replicated(tableName string) (Engine, bool) {
+func (e Engine) Replicated(prefix, tableName string) (Engine, bool) {
 	if !strings.Contains(e.Type, "MergeTree") {
 		return e, false
 	}
 	return Engine{
 		Type: "Replicated" + e.Type,
 		Args: append([]string{
-			fmt.Sprintf("'/clickhouse/tables/{shard}/%s'", tableName),
+			fmt.Sprintf("'%s/%s/{uuid}'", prefix, tableName),
 			"'{replica}'",
 		}, e.Args...),
 	}, true
@@ -107,10 +107,22 @@ func backticks(ss []string, columnNames map[string]struct{}) []string {
 	return out
 }
 
-// Generate DDL without CREATE TABLE statement.
-func Generate(t Table) (string, error) {
+// Create generates DDL query for table creation.
+func Create(t Table) (string, error) {
+	return create(t, false)
+}
+
+// CreateIfNotExists generates DDL query for table creation with IF NOT EXISTS clause.
+func CreateIfNotExists(t Table) (string, error) {
+	return create(t, true)
+}
+
+func create(t Table, ifNotExist bool) (string, error) {
 	var b strings.Builder
-	b.WriteString(`CREATE TABLE IF NOT EXISTS `)
+	b.WriteString("CREATE TABLE ")
+	if ifNotExist {
+		b.WriteString("IF NOT EXISTS ")
+	}
 	if t.Name == "" {
 		b.WriteString(Backtick("table"))
 	} else {
