@@ -2,6 +2,7 @@ package logstorage
 
 import (
 	"context"
+	"strings"
 
 	"github.com/go-faster/errors"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -107,10 +108,7 @@ func (c *Consumer) parseRecord(record Record) Record {
 		if line.Timestamp != 0 {
 			record.Timestamp = line.Timestamp
 		}
-		if line.SeverityNumber != 0 {
-			record.SeverityNumber = line.SeverityNumber
-			record.SeverityText = line.SeverityText
-		}
+		record.SeverityNumber, record.SeverityText = normalizeSeverity(line.SeverityNumber, line.SeverityText)
 		if !line.SpanID.IsEmpty() {
 			record.SpanID = line.SpanID
 		}
@@ -120,4 +118,48 @@ func (c *Consumer) parseRecord(record Record) Record {
 		break
 	}
 	return record
+}
+
+func normalizeSeverity(number plog.SeverityNumber, text string) (_ plog.SeverityNumber, _ string) {
+	switch {
+	case number != 0 && text != "":
+		return number, text
+	case number != 0:
+		text = number.String()
+		return number, text
+	case text != "":
+		number = parseSeverity(text)
+		return number, text
+	default:
+		return number, text
+	}
+}
+
+func parseSeverity(text string) plog.SeverityNumber {
+	normalized := false
+retry:
+	switch text {
+	case "":
+		return plog.SeverityNumberUnspecified
+	case "trace", "TRACE":
+		return plog.SeverityNumberTrace
+	case "debug", "DEBUG":
+		return plog.SeverityNumberDebug
+	case "info", "INFO":
+		return plog.SeverityNumberInfo
+	case "warn", "WARN", "warning", "WARNING":
+		return plog.SeverityNumberWarn
+	case "error", "ERROR":
+		return plog.SeverityNumberError
+	case "fatal", "FATAL":
+		return plog.SeverityNumberFatal
+	default:
+		if normalized {
+			return plog.SeverityNumberUnspecified
+		}
+		text = strings.TrimSpace(text)
+		text = strings.ToLower(text)
+		normalized = true
+		goto retry
+	}
 }
