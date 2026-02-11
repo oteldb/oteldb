@@ -23,6 +23,7 @@ secret.yaml
 /chotel
 /odbbackup
 /odbrestore
+/odbmigrate
 
 vmagent-remotewrite-data
 
