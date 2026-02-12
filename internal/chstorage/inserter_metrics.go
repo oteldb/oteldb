@@ -33,6 +33,7 @@ func (i *Inserter) insertBatch(ctx context.Context, b *metricsBatch) (rerr error
 		if rerr != nil {
 			span.RecordError(rerr)
 		} else {
+			i.stats.InsertedSeries.Add(ctx, int64(b.timeseries.name.Rows()))
 			i.stats.InsertedPoints.Add(ctx, int64(b.points.value.Rows()))
 			i.stats.InsertedHistograms.Add(ctx, int64(b.expHistograms.count.Rows()))
 			i.stats.InsertedExemplars.Add(ctx, int64(b.exemplars.value.Rows()))
