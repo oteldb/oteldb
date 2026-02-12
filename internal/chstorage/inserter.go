@@ -35,6 +35,7 @@ type inserterStats struct {
 	InsertedRecords   metric.Int64Counter `name:"logs.inserted_records" description:"Number of inserted log records"`
 	InsertedLogLabels metric.Int64Counter `name:"logs.inserted_log_labels" description:"Number of inserted log labels"`
 	// Metrics.
+	InsertedSeries       metric.Int64Counter `name:"metrics.inserted_series" description:"Number of inserted series"`
 	InsertedPoints       metric.Int64Counter `name:"metrics.inserted_points" description:"Number of inserted points"`
 	InsertedHistograms   metric.Int64Counter `name:"metrics.inserted_histograms" description:"Number of inserted exponential (native) histograms"`
 	InsertedExemplars    metric.Int64Counter `name:"metrics.inserted_exemplars" description:"Number of inserted exemplars"`
