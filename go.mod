@@ -18,7 +18,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/go-faster/errors v0.7.1
 	github.com/go-faster/jx v1.2.0
-	github.com/go-faster/sdk v0.32.1
+	github.com/go-faster/sdk v0.33.0
 	github.com/go-faster/yaml v0.4.6
 	github.com/go-logfmt/logfmt v0.6.1
 	github.com/gogo/protobuf v1.3.2
@@ -230,9 +230,9 @@ require (
 	github.com/prometheus/procfs v0.17.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/cors v1.11.1 // indirect
-	github.com/samber/lo v1.47.0 // indirect
-	github.com/samber/slog-common v0.18.1 // indirect
-	github.com/samber/slog-zap/v2 v2.6.2 // indirect
+	github.com/samber/lo v1.52.0 // indirect
+	github.com/samber/slog-common v0.20.0 // indirect
+	github.com/samber/slog-zap/v2 v2.6.3 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.25.12 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
@@ -287,7 +287,6 @@ require (
 	go.opentelemetry.io/collector/processor/xprocessor v0.145.0 // indirect
 	go.opentelemetry.io/collector/receiver/xreceiver v0.145.0 // indirect
 	go.opentelemetry.io/collector/service/hostcapabilities v0.145.0 // indirect
-	go.opentelemetry.io/contrib/bridges/otelzap v0.13.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.63.0 // indirect
 	go.opentelemetry.io/contrib/otelconf v0.18.0 // indirect
 	go.opentelemetry.io/contrib/propagators/autoprop v0.63.0 // indirect
