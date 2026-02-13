@@ -24,7 +24,7 @@ func newDropCmd() *cobra.Command {
 			}
 			migrator := chstorage.NewMigrator(client, opts)
 			if err := migrator.Drop(cmd.Context(), func(database, table string) {
-				fmt.Fprintf(cmd.OutOrStdout(), "dropping %q.%q\n", database, table)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "dropping %q.%q\n", database, table)
 			}); err != nil {
 				return fmt.Errorf("drop schema: %w", err)
 			}
