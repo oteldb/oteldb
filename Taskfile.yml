@@ -32,6 +32,7 @@ tasks:
       - go build -trimpath -buildvcs=false -v ./cmd/oteldb
       - go build -trimpath -buildvcs=false -v ./cmd/odbbackup
       - go build -trimpath -buildvcs=false -v ./cmd/odbrestore
+      - go build -trimpath -buildvcs=false -v ./cmd/odbmigrate
       - go build -trimpath -buildvcs=false -v ./cmd/otelproxy
       - go build -trimpath -buildvcs=false -v ./cmd/chotel
 
