@@ -130,6 +130,44 @@ func (c *sampleQueryColumns) Result() proto.Results {
 	}
 }
 
+var severityMapExpr = func() chsql.Expr {
+	var entries []chsql.Expr
+	for _, n := range []plog.SeverityNumber{
+		plog.SeverityNumberTrace,
+		plog.SeverityNumberTrace2,
+		plog.SeverityNumberTrace3,
+		plog.SeverityNumberTrace4,
+		plog.SeverityNumberDebug,
+		plog.SeverityNumberDebug2,
+		plog.SeverityNumberDebug3,
+		plog.SeverityNumberDebug4,
+		plog.SeverityNumberInfo,
+		plog.SeverityNumberInfo2,
+		plog.SeverityNumberInfo3,
+		plog.SeverityNumberInfo4,
+		plog.SeverityNumberWarn,
+		plog.SeverityNumberWarn2,
+		plog.SeverityNumberWarn3,
+		plog.SeverityNumberWarn4,
+		plog.SeverityNumberError,
+		plog.SeverityNumberError2,
+		plog.SeverityNumberError3,
+		plog.SeverityNumberError4,
+		plog.SeverityNumberFatal,
+		plog.SeverityNumberFatal2,
+		plog.SeverityNumberFatal3,
+		plog.SeverityNumberFatal4,
+	} {
+		entries = append(entries, chsql.Integer(int(n)), chsql.String(n.String()))
+	}
+	// Put unspecified as empty string.
+	entries = append(entries,
+		chsql.Integer(int(plog.SeverityNumberUnspecified)),
+		chsql.String(""),
+	)
+	return chsql.Map(entries...)
+}()
+
 // Execute executes the query using given querier.
 func (v *SampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlengine.SampleIterator, rerr error) {
 	table := q.tables.Logs
@@ -176,9 +214,19 @@ func (v *SampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlengine.Sa
 			label = key
 		}
 
-		labelExpr, ok := q.getMaterializedLabelColumn(label)
-		if !ok {
-			labelExpr = firstAttrSelector(label)
+		var labelExpr chsql.Expr
+		switch label {
+		case logstorage.LabelSeverity, logstorage.LabelDetectedLevel:
+			labelExpr = chsql.ArrayElement(
+				severityMapExpr,
+				chsql.Ident("severity_number"),
+			)
+		default:
+			var ok bool
+			labelExpr, ok = q.getMaterializedLabelColumn(label)
+			if !ok {
+				labelExpr = firstAttrSelector(label)
+			}
 		}
 
 		entries = append(entries,

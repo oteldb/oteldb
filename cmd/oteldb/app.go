@@ -145,7 +145,7 @@ func addOgen[
 			routeFinder = httpmiddleware.MakeRouteFinder(server)
 			middlewares = []httpmiddleware.Middleware{
 				httpmiddleware.InjectLogger(zctx.From(ctx)),
-				httpmiddleware.Instrument("oteldb."+name, routeFinder, app.telemetry),
+				httpmiddleware.Instrument(addr, name, routeFinder, app.telemetry),
 				httpmiddleware.LogRequests(routeFinder),
 			}
 		)
