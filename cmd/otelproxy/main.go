@@ -77,7 +77,7 @@ func (s service) Run(ctx context.Context, lg *zap.Logger, m *app.Telemetry) erro
 func ServiceMiddleware(s service, lg *zap.Logger, m *app.Telemetry) http.Handler {
 	return httpmiddleware.Wrap(s.handler,
 		httpmiddleware.InjectLogger(lg),
-		httpmiddleware.Instrument(s.name, s.findRoute, m),
+		httpmiddleware.Instrument(s.addr, s.name, s.findRoute, m),
 		httpmiddleware.LogRequests(s.findRoute),
 	)
 }
