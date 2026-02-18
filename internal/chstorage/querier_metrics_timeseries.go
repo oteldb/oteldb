@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,13 +18,15 @@ import (
 
 	"github.com/go-faster/oteldb/internal/chstorage/chsql"
 	"github.com/go-faster/oteldb/internal/metricstorage"
+	"github.com/go-faster/oteldb/internal/promapi"
 )
 
 type timeseriesQuerier struct {
 	tables Tables
 	do     func(ctx context.Context, s selectQuery) error
 
-	sg singleflight.Group[xxh3.Uint128, metricsTimeseries]
+	hashSg     singleflight.Group[xxh3.Uint128, metricsTimeseries]
+	metadataSg singleflight.Group[xxh3.Uint128, metricstorage.Metadata]
 
 	tracer trace.Tracer
 }
@@ -106,7 +109,7 @@ func (q *timeseriesQuerier) Query(ctx context.Context, matcherSets [][]*labels.M
 		parentLink   = trace.LinkFromContext(ctx)
 		matchersHash = q.hashMatchers(matcherSets)
 	)
-	resultCh := q.sg.DoChan(matchersHash, func() (metricsTimeseries, error) {
+	resultCh := q.hashSg.DoChan(matchersHash, func() (metricsTimeseries, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
@@ -243,6 +246,144 @@ func (q *timeseriesQuerier) queryTimeseries(ctx context.Context, parentSpan trac
 	}
 	span.AddEvent("timeseries_fetched", trace.WithAttributes(
 		attribute.Int("chstorage.total_series", len(set)),
+	))
+
+	return set, nil
+}
+
+func (q *timeseriesQuerier) hashMetadataOptions(opts metricstorage.MetadataParams) xxh3.Uint128 {
+	h := xxh3.New()
+	_, _ = h.WriteString(opts.MetricName)
+	_, _ = h.WriteString(";")
+	buf := make([]byte, 0, 32)
+	buf = strconv.AppendInt(buf[:0], int64(opts.Limit), 10)
+	_, _ = h.Write(buf)
+	return h.Sum128()
+}
+
+func (q *timeseriesQuerier) QueryMetadata(ctx context.Context, params metricstorage.MetadataParams) (_ metricstorage.Metadata, rerr error) {
+	ctx, span := q.tracer.Start(ctx, "chstorage.metrics.timeseries.QueryMetadata",
+		trace.WithAttributes(
+			attribute.String("chstorage.metric_name", params.MetricName),
+			attribute.Int("chstorage.limit", params.Limit),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+		}
+		span.End()
+	}()
+
+	var (
+		parentSpan = span
+		parentLink = trace.LinkFromContext(ctx)
+		hash       = q.hashMetadataOptions(params)
+	)
+	resultCh := q.metadataSg.DoChan(hash, func() (metricstorage.Metadata, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		return q.queryMetadata(ctx, parentSpan, parentLink, params)
+	})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case r := <-resultCh:
+		result, shared, err := r.Val, r.Shared, r.Err
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			// Query did not complete, probably stuck.
+			span.AddEvent("retry_query")
+			// Try again without singleflight.
+			result, err = q.queryMetadata(ctx, trace.Span(nil), trace.Link{}, params)
+			shared = false
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		span.AddEvent("metadata_fetched", trace.WithAttributes(
+			attribute.Int("chstorage.total_metrics", len(r.Val)),
+			attribute.Bool("chstorage.shared_result", shared),
+		))
+		return result, nil
+	}
+}
+
+func (q *timeseriesQuerier) queryMetadata(
+	ctx context.Context,
+	parentSpan trace.Span, parentLink trace.Link,
+	params metricstorage.MetadataParams,
+) (_ metricstorage.Metadata, rerr error) {
+	table := q.tables.Timeseries
+
+	ctx, span := q.tracer.Start(ctx, "chstorage.metrics.timeseries.queryMetadata",
+		trace.WithAttributes(
+			attribute.String("chstorage.metric_name", params.MetricName),
+			attribute.Int("chstorage.limit", params.Limit),
+			attribute.String("chstorage.table", table),
+		),
+		trace.WithLinks(parentLink),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+		}
+		span.End()
+	}()
+	if parentSpan != nil {
+		parentSpan.AddLink(trace.LinkFromContext(ctx))
+	}
+
+	var (
+		c           = newTimeseriesColumns()
+		selectExprs = Columns{
+			{Name: "name", Data: c.name},
+			{Name: "unit", Data: c.unit},
+			{Name: "description", Data: c.description},
+		}.ChsqlResult()
+	)
+	query := chsql.Select(table, selectExprs...)
+	if name := params.MetricName; name != "" {
+		query.Where(chsql.Eq(
+			chsql.Ident("name"),
+			chsql.String(name),
+		))
+	}
+	query.GroupBy(chsql.Ident("name"))
+	query.Order(chsql.Ident("name"), chsql.Asc)
+	if limit := params.Limit; limit > 0 {
+		query.Limit(limit)
+	}
+
+	set := metricstorage.Metadata{}
+	if err := q.do(ctx, selectQuery{
+		Query: query,
+		OnResult: func(ctx context.Context, block proto.Block) error {
+			for i := 0; i < c.name.Rows(); i++ {
+				var (
+					name        = c.name.Row(i)
+					unit        = c.unit.Row(i)
+					description = c.description.Row(i)
+				)
+				set[name] = metricstorage.MetricMetadata{
+					// TODO(tdakkota): save and return metric type
+					Type: promapi.MetricMetadataTypeCounter,
+					Unit: unit,
+					Help: description,
+				}
+			}
+			return nil
+		},
+
+		Type:   "QueryMetadata",
+		Signal: "metrics",
+		Table:  table,
+	}); err != nil {
+		return nil, err
+	}
+	span.AddEvent("metadata_fetched", trace.WithAttributes(
+		attribute.Int("chstorage.total_metrics", len(set)),
 	))
 
 	return set, nil

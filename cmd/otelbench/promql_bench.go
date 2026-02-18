@@ -77,7 +77,7 @@ func parseTime(s string) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, errors.Wrap(err, "parse int")
 	}
-	nanos, ok := logparser.DeductNanos(v)
+	nanos, ok := logparser.DeduceNanos(v)
 	if !ok {
 		return time.Time{}, errors.Errorf("invalid unix timestamp %d", v)
 	}

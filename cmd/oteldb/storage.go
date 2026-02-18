@@ -14,6 +14,7 @@ import (
 	"github.com/go-faster/oteldb/internal/globalmetric"
 	"github.com/go-faster/oteldb/internal/logql/logqlengine"
 	"github.com/go-faster/oteldb/internal/logstorage"
+	"github.com/go-faster/oteldb/internal/metricstorage"
 	"github.com/go-faster/oteldb/internal/promql"
 	"github.com/go-faster/oteldb/internal/traceql/traceqlengine"
 	"github.com/go-faster/oteldb/internal/tracestorage"
@@ -35,7 +36,10 @@ type traceQuerier interface {
 	traceqlengine.Querier
 }
 
-type metricQuerier = promql.Querier
+type metricQuerier interface {
+	promql.Querier
+	metricstorage.MetadataQuerier
+}
 
 func setupCH(
 	ctx context.Context,
