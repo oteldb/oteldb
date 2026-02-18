@@ -8,6 +8,8 @@ import (
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 
+	"github.com/go-faster/errors"
+
 	"github.com/go-faster/oteldb/internal/logstorage"
 	"github.com/go-faster/oteldb/internal/tracestorage"
 )
@@ -70,7 +72,14 @@ func createLogsExporter(
 	ecfg := cfg.(*Config)
 	inserter, err := ecfg.connect(ctx, settings)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "connect to ClickHouse")
 	}
-	return exporterhelper.NewLogs(ctx, settings, cfg, logstorage.NewConsumer(inserter).ConsumeLogs)
+	consumer, err := logstorage.NewConsumer(inserter, logstorage.ConsumerOptions{
+		MeterProvider:  settings.MeterProvider,
+		TracerProvider: settings.TracerProvider,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "create consumer")
+	}
+	return exporterhelper.NewLogs(ctx, settings, cfg, consumer.ConsumeLogs)
 }

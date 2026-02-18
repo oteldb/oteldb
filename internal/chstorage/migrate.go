@@ -512,7 +512,7 @@ func (m *Migrator) dropTable(ctx context.Context, database, name string, ifExist
 	}
 	sb.WriteString(name)
 	if cluster := m.opts.Cluster; cluster != "" && m.opts.Replicated {
-		sb.WriteString(fmt.Sprintf(" ON CLUSTER '%s' SYNC", cluster))
+		fmt.Fprintf(&sb, " ON CLUSTER '%s' SYNC", cluster)
 	}
 	lg := zctx.From(ctx)
 	q := ch.Query{

@@ -39,3 +39,18 @@ func (c *Config) connect(ctx context.Context, settings exporter.Settings) (*chst
 
 	return inserter, nil
 }
+
+// ProcessingConfig defines options for telemetry pre-processing.
+type ProcessingConfig struct {
+	// TriggerAttributes defines a list of attribute references to trigger format detection.
+	TriggerAttributes []string
+	// FormatAttributes defines a list of attribute references to choose format.
+	//
+	// Format attribute may define multple formats via comma.
+	// The first valid would be used to parse the record.
+	//
+	// If attribute value is absent, have an unknown or invalid value, the record would be passed as-is.
+	FormatAttributes []string
+	// DetectFormats defines list of formats to detect.
+	DetectFormats []string
+}

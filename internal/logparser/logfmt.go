@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/go-faster/jx"
 	"github.com/google/uuid"
@@ -16,6 +15,11 @@ import (
 
 // LogFmtParser parses logfmt lines.
 type LogFmtParser struct{}
+
+func init() {
+	p := &LogFmtParser{}
+	formatRegistry.Store(p.String(), p)
+}
 
 // Parse line.
 func (LogFmtParser) Parse(data []byte) (*Line, error) {
@@ -33,7 +37,7 @@ func (LogFmtParser) Parse(data []byte) (*Line, error) {
 				return nil
 			}
 			line.SeverityText = v
-			line.SeverityNumber = _severityMap[unicode.ToLower(rune(v[0]))]
+			line.SeverityNumber = DeduceSeverity(v)
 		case "span_id", "spanid", "spanID", "spanId":
 			raw, _ := hex.DecodeString(v)
 			if len(raw) != 8 {
@@ -71,7 +75,7 @@ func (LogFmtParser) Parse(data []byte) (*Line, error) {
 				attrs.PutStr(k, v)
 			}
 		default:
-			// Try to deduct a type.
+			// Try to deduce a type.
 			if v == "" {
 				attrs.PutBool(k, true)
 				return nil

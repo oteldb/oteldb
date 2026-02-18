@@ -83,11 +83,13 @@ func loadTestData(ctx context.Context, t *testing.T, inserter logstorage.Inserte
 	require.NotZero(t, set.End)
 	require.GreaterOrEqual(t, set.End, set.Start)
 
+	consumer, err := logstorage.NewConsumer(inserter, logstorage.ConsumerOptions{})
+	require.NoError(t, err)
+
 	var (
-		consumer   = logstorage.NewConsumer(inserter)
 		logEncoder = plog.JSONMarshaler{}
+		out        bytes.Buffer
 	)
-	var out bytes.Buffer
 	for i, b := range set.Batches {
 		if err := consumer.ConsumeLogs(ctx, b); err != nil {
 			t.Fatalf("Send batch %d: %+v", i, err)
