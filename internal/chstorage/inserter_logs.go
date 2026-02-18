@@ -3,16 +3,12 @@ package chstorage
 import (
 	"context"
 
-	"github.com/ClickHouse/ch-go"
 	"github.com/go-faster/errors"
-	"github.com/go-faster/sdk/zctx"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-faster/oteldb/internal/globalmetric"
 	"github.com/go-faster/oteldb/internal/logstorage"
 	"github.com/go-faster/oteldb/internal/semconv"
 	"github.com/go-faster/oteldb/internal/xsync"
@@ -71,38 +67,20 @@ func (i *Inserter) submitLogs(ctx context.Context, logs *logColumns, attrs *logA
 			span.RecordError(rerr)
 		} else {
 			i.stats.Inserts.Add(ctx, 1,
-				metric.WithAttributes(
-					semconv.Signal(semconv.SignalLogs),
-				),
+				metric.WithAttributes(semconv.Signal(semconv.SignalLogs)),
 			)
 		}
 		span.End()
 	}()
 
-	lg := zctx.From(ctx).Named("ch").WithOptions(zap.IncreaseLevel(i.chLogLevel))
 	grp, grpCtx := errgroup.WithContext(ctx)
 	grp.Go(func() error {
 		ctx := grpCtx
 
 		table := i.tables.Logs
-		ctx, track := i.tracker.Start(ctx, globalmetric.WithAttributes(
-			semconv.Signal(semconv.SignalLogs),
-			attribute.String("chstorage.table", table),
-		))
-		defer track.End()
-
-		if err := i.ch.Do(ctx, ch.Query{
-			Logger:          lg,
-			Body:            logs.Body(table),
-			Input:           logs.Input(),
-			OnProfileEvents: track.OnProfiles,
-		}); err != nil {
+		if err := i.do(ctx, semconv.SignalLogs, table, logs.Body(table), logs.Input()); err != nil {
 			return errors.Wrap(err, "insert records")
 		}
-		i.stats.BatchSize.Record(ctx, int64(logs.body.Rows()), metric.WithAttributes(
-			semconv.Signal(semconv.SignalLogs),
-			attribute.String("chstorage.table", table),
-		))
 		i.stats.InsertedRecords.Add(ctx, int64(logs.body.Rows()))
 
 		return nil
@@ -111,25 +89,10 @@ func (i *Inserter) submitLogs(ctx context.Context, logs *logColumns, attrs *logA
 		ctx := grpCtx
 
 		table := i.tables.LogAttrs
-		ctx, track := i.tracker.Start(ctx, globalmetric.WithAttributes(
-			semconv.Signal(semconv.SignalLogs),
-			attribute.String("chstorage.table", table),
-		))
-		defer track.End()
-
-		if err := i.ch.Do(ctx, ch.Query{
-			Logger:          lg,
-			Body:            attrs.Body(table),
-			Input:           attrs.Input(),
-			OnProfileEvents: track.OnProfiles,
-		}); err != nil {
-			return errors.Wrap(err, "insert labels")
+		if err := i.do(ctx, semconv.SignalLogs, table, attrs.Body(table), attrs.Input()); err != nil {
+			return errors.Wrap(err, "insert log labels")
 		}
-		i.stats.BatchSize.Record(ctx, int64(attrs.name.Rows()), metric.WithAttributes(
-			semconv.Signal(semconv.SignalLogs),
-			attribute.String("chstorage.table", table),
-		))
-		i.stats.InsertedLogLabels.Add(ctx, int64(attrs.name.Rows()), metric.WithAttributes())
+		i.stats.InsertedLogLabels.Add(ctx, int64(attrs.name.Rows()))
 
 		return nil
 	})

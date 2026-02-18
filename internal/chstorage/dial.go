@@ -94,6 +94,10 @@ func Dial(ctx context.Context, dsn string, opts DialOptions) (ClickHouseClient, 
 			if err := client.Ping(ctx); err != nil {
 				return nil, errors.Wrap(err, "ping")
 			}
+			meter := opts.MeterProvider.Meter("chstorage.pool")
+			if err := poolMetrics(meter, client); err != nil {
+				return nil, errors.Wrap(err, "setup pool metrics")
+			}
 			return client, nil
 		},
 		backoff.WithContext(connectBackoff, ctx),
@@ -104,4 +108,118 @@ func Dial(ctx context.Context, dsn string, opts DialOptions) (ClickHouseClient, 
 			)
 		},
 	)
+}
+
+func poolMetrics(meter metric.Meter, pool *chpool.Pool) error {
+	totalResources, err := meter.Int64ObservableGauge("chpool.total_resources",
+		metric.WithDescription("Total number of resources currently in the ClickHouse pool"),
+		metric.WithUnit("{resources}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	constructingResources, err := meter.Int64ObservableGauge("chpool.constructing_resources",
+		metric.WithDescription("Number of resources being constructed in the ClickHouse pool"),
+		metric.WithUnit("{resources}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	acquiredResources, err := meter.Int64ObservableGauge("chpool.acquired_resources",
+		metric.WithDescription("Number of currently acquired resources from the ClickHouse pool"),
+		metric.WithUnit("{resources}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	idleResources, err := meter.Int64ObservableGauge("chpool.idle_resources",
+		metric.WithDescription("Number of currently idle resources in the ClickHouse pool"),
+		metric.WithUnit("{resources}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	maxResources, err := meter.Int64ObservableGauge("chpool.max_resources",
+		metric.WithDescription("Maximum configured size of the ClickHouse pool"),
+		metric.WithUnit("{resources}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	acquireCount, err := meter.Int64ObservableGauge("chpool.acquire_count",
+		metric.WithDescription("Cumulative count of successful acquires from the ClickHouse pool"),
+		metric.WithUnit("{acquires}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	acquireDuration, err := meter.Int64ObservableGauge("chpool.acquire_duration_ns",
+		metric.WithDescription("Total duration of successful acquires from the ClickHouse pool in nanoseconds"),
+		metric.WithUnit("ns"),
+	)
+	if err != nil {
+		return err
+	}
+
+	emptyAcquireCount, err := meter.Int64ObservableGauge("chpool.empty_acquire_count",
+		metric.WithDescription("Cumulative count of acquires that waited because the pool was empty"),
+		metric.WithUnit("{acquires}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	emptyAcquireWaitTime, err := meter.Int64ObservableGauge("chpool.empty_acquire_wait_time_ns",
+		metric.WithDescription("Cumulative time waited for acquires that waited because the pool was empty, in nanoseconds"),
+		metric.WithUnit("ns"),
+	)
+	if err != nil {
+		return err
+	}
+
+	canceledAcquireCount, err := meter.Int64ObservableGauge("chpool.canceled_acquire_count",
+		metric.WithDescription("Cumulative count of acquires canceled by context"),
+		metric.WithUnit("{acquires}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
+		stat := pool.Stat()
+
+		o.ObserveInt64(totalResources, int64(stat.TotalResources()))
+		o.ObserveInt64(constructingResources, int64(stat.ConstructingResources()))
+		o.ObserveInt64(acquiredResources, int64(stat.AcquiredResources()))
+		o.ObserveInt64(idleResources, int64(stat.IdleResources()))
+		o.ObserveInt64(maxResources, int64(stat.MaxResources()))
+
+		o.ObserveInt64(acquireCount, stat.AcquireCount())
+		o.ObserveInt64(acquireDuration, stat.AcquireDuration().Nanoseconds())
+
+		o.ObserveInt64(emptyAcquireCount, stat.EmptyAcquireCount())
+		o.ObserveInt64(emptyAcquireWaitTime, stat.EmptyAcquireWaitTime().Nanoseconds())
+		o.ObserveInt64(canceledAcquireCount, stat.CanceledAcquireCount())
+
+		return nil
+	},
+		totalResources,
+		constructingResources,
+		acquiredResources,
+		idleResources,
+		maxResources,
+		acquireCount,
+		acquireDuration,
+		emptyAcquireCount,
+		emptyAcquireWaitTime,
+		canceledAcquireCount,
+	)
+
+	return err
 }
