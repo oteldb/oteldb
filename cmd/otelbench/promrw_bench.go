@@ -197,7 +197,7 @@ func (s *Bench) RunReporter(ctx context.Context) error {
 				lastHash = info.Hash
 			}
 			var b strings.Builder
-			b.WriteString(fmt.Sprintf("m=%s", fmtInt(info.Count*s.targetsCount)))
+			fmt.Fprintf(&b, "m=%s", fmtInt(info.Count*s.targetsCount))
 			if v := s.storageInfo.Load(); v != nil && s.clickhouseAddr != "" {
 				v.WriteInfo(&b, now)
 			}
@@ -526,15 +526,15 @@ func (s *Bench) RunQueryReporter(ctx context.Context) error {
 				continue
 			}
 			if stats.Count > 0 {
-				b.WriteString(fmt.Sprintf("cpu=%s", fmtInt(stats.Count)))
+				fmt.Fprintf(&b, "cpu=%s", fmtInt(stats.Count))
 			} else {
 				b.WriteString("cpu=N/A")
 			}
 			b.WriteString(" ")
-			b.WriteString(fmt.Sprintf("d=%s", stats.Duration.Round(time.Millisecond)))
+			fmt.Fprintf(&b, "d=%s", stats.Duration.Round(time.Millisecond))
 			if !stats.Latest.IsZero() {
 				b.WriteString(" ")
-				b.WriteString(fmt.Sprintf("lag=%s", time.Since(stats.Latest).Round(time.Millisecond)))
+				fmt.Fprintf(&b, "lag=%s", time.Since(stats.Latest).Round(time.Millisecond))
 			}
 			fmt.Println(b.String())
 		}

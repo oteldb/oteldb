@@ -71,7 +71,7 @@ type Index struct {
 func (i Index) string(nameFormat string) string {
 	var b strings.Builder
 	b.WriteString("INDEX ")
-	b.WriteString(fmt.Sprintf(nameFormat, Backtick(i.Name)))
+	fmt.Fprintf(&b, nameFormat, Backtick(i.Name))
 	b.WriteString(" ")
 	b.WriteString(i.Target)
 	b.WriteString(" TYPE ")
@@ -150,13 +150,13 @@ func Generate(t Table) (string, error) {
 			continue
 		}
 		nameFormat := "%-" + strconv.Itoa(maxColumnLen+2) + "s"
-		col.WriteString(fmt.Sprintf(nameFormat, Backtick(c.Name)))
+		fmt.Fprintf(&col, nameFormat, Backtick(c.Name))
 		col.WriteString(" ")
 		typeFormat := "%-" + strconv.Itoa(maxColumnTypeLen) + "s"
 		if c.Codec == "" && c.Comment == "" {
 			typeFormat = "%s"
 		}
-		col.WriteString(fmt.Sprintf(typeFormat, c.Type.String()))
+		fmt.Fprintf(&col, typeFormat, c.Type.String())
 		if c.Materialized != "" {
 			col.WriteString(" MATERIALIZED ")
 			col.WriteString(c.Materialized)
@@ -234,9 +234,8 @@ func Generate(t Table) (string, error) {
 		b.WriteString(")\n")
 	}
 	if t.TTL.Delta > 0 && t.TTL.Field != "" {
-		b.WriteString(fmt.Sprintf("TTL toDateTime(%s) + toIntervalSecond(%d)",
-			Backtick(t.TTL.Field), t.TTL.Delta/time.Second,
-		))
+		fmt.Fprintf(&b, "TTL toDateTime(%s) + toIntervalSecond(%d)",
+			Backtick(t.TTL.Field), t.TTL.Delta/time.Second)
 	}
 	return b.String(), nil
 }

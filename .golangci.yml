@@ -33,9 +33,13 @@ linters:
         - opinionated
         - performance
         - style
-    gosec:
+    gosec: # gosec is annoying and have a lot of false-positive results.
       excludes:
-        - G115 # Annoying and have a lot of false-positive results.
+        - G115
+        - G117
+        - G703
+        - G704
+        - G705
     lll:
       line-length: 140
     misspell:

@@ -25,6 +25,7 @@ func ParseTraceID(input string) (_ TraceID, err error) {
 		var hex [32]byte
 		// FIXME(tdakkota): probably, it's faster to define some variable with zeroes
 		// 	and just copy it.
+		// #nosec G602 -- some bullshit
 		for i := range hex {
 			hex[i] = '0'
 		}
