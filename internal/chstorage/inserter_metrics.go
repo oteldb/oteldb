@@ -14,7 +14,6 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
 	"github.com/google/uuid"
-	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/otel/attribute"
@@ -24,6 +23,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/go-faster/oteldb/internal/globalmetric"
+	"github.com/go-faster/oteldb/internal/metricstorage"
 	"github.com/go-faster/oteldb/internal/semconv"
 )
 
@@ -647,7 +647,7 @@ func (b *metricsBatch) addExemplar(p exemplarSeries, e pmetric.Exemplar, bucketK
 }
 
 func (b *metricsBatch) addName(name string) {
-	b.labels[[2]string{labels.MetricName, name}] |= 0
+	b.labels[[2]string{metricstorage.MetricName, name}] |= 0
 }
 
 func (b *metricsBatch) addLabels(scope labelScope, attrs lazyAttributes) {
