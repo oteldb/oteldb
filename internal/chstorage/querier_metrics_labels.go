@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-faster/oteldb/internal/chstorage/chsql"
+	"github.com/go-faster/oteldb/internal/metricstorage"
 	"github.com/go-faster/oteldb/internal/xattribute"
 )
 
@@ -145,7 +146,7 @@ func (p *promQuerier) getMatchingLabelValues(ctx context.Context, labelName stri
 		value      proto.ColumnOf[string]
 		columnExpr chsql.Expr
 	)
-	if labelName == labels.MetricName {
+	if labelName == metricstorage.MetricName {
 		columnExpr = chsql.Ident("name")
 		value = proto.NewLowCardinality(&proto.ColStr{})
 	} else {
@@ -162,7 +163,7 @@ func (p *promQuerier) getMatchingLabelValues(ctx context.Context, labelName stri
 
 	for _, m := range matchers {
 		selector := chsql.Ident("name")
-		if name := m.Name; name != labels.MetricName {
+		if name := m.Name; name != metricstorage.MetricName {
 			selector = firstAttrSelector(name)
 		}
 		expr, err := promQLLabelMatcher([]chsql.Expr{selector}, m.Type, m.Value)
@@ -325,7 +326,7 @@ func (p *promQuerier) getMatchingLabelNames(ctx context.Context, matchers []*lab
 	)
 	for _, m := range matchers {
 		selector := chsql.Ident("name")
-		if name := m.Name; name != labels.MetricName {
+		if name := m.Name; name != metricstorage.MetricName {
 			selector = firstAttrSelector(name)
 		}
 		expr, err := promQLLabelMatcher([]chsql.Expr{selector}, m.Type, m.Value)
@@ -365,7 +366,7 @@ func (p *promQuerier) getMatchingLabelNames(ctx context.Context, matchers []*lab
 
 	if len(result) > 0 {
 		// Add `__name__` only if there is any matching series.
-		result = append(result, labels.MetricName)
+		result = append(result, metricstorage.MetricName)
 	}
 
 	slices.Sort(result)

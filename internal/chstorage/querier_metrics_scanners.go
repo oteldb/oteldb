@@ -27,6 +27,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/go-faster/oteldb/internal/metricstorage"
 	"github.com/go-faster/oteldb/internal/promql"
 	"github.com/go-faster/oteldb/internal/xattribute"
 )
@@ -278,7 +279,7 @@ func (o *vectorSelector) Next(ctx context.Context, buf []model.StepVector) (int,
 	// Reset the current timestamp.
 	ts = o.currentStep
 	fromSeries := o.currentSeries
-	for ; o.currentSeries-fromSeries < o.seriesBatchSize && o.currentSeries < int64(totalSeries); o.currentSeries++ {
+	for ; o.currentSeries-fromSeries < o.seriesBatchSize && o.currentSeries < totalSeries; o.currentSeries++ {
 		if o.currentSeries < int64(len(o.pointSeries)) {
 			var (
 				series          = o.pointSeries[o.currentSeries]
@@ -427,7 +428,7 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 			// the reserved labels (__name__, __type__, __unit__)
 			b.Reset(s.labels)
 			if o.params.SelectTimestamp {
-				b.Del(labels.MetricName)
+				b.Del(metricstorage.MetricName)
 				b.Del(extlabels.MetricType)
 				b.Del(extlabels.MetricUnit)
 			}
@@ -445,7 +446,7 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 			// the reserved labels (__name__, __type__, __unit__)
 			b.Reset(s.labels)
 			if o.params.SelectTimestamp {
-				b.Del(labels.MetricName)
+				b.Del(metricstorage.MetricName)
 				b.Del(extlabels.MetricType)
 				b.Del(extlabels.MetricUnit)
 			}
