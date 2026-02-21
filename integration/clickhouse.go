@@ -106,6 +106,18 @@ func SetupCH(t *testing.T, opts SetupCHOptions) (testcontainers.Container, chsto
 			Replicated: false,
 		})
 		require.NoError(t, m.Create(ctx))
+
+		diff, err := m.Diff(ctx)
+		require.NoError(t, err)
+
+		var notOk bool
+		for _, d := range diff {
+			t.Logf("Table: %s, Status: %s", d.Table, d.Status.String())
+			notOk = notOk || d.Status != chstorage.MigrationOK
+		}
+		if notOk {
+			t.Fatalf("Table schema is wrong or changed after migration")
+		}
 	}
 
 	return chContainer, c, tables
