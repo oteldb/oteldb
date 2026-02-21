@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
 	"github.com/go-logfmt/logfmt"
+	ht "github.com/ogen-go/ogen/http"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 	"golang.org/x/exp/maps"
@@ -30,6 +30,7 @@ type TempoAPI struct {
 	q      tracestorage.Querier
 	engine *traceqlengine.Engine
 
+	defaultSince       time.Duration
 	enableAutocomplete bool
 }
 
@@ -46,6 +47,7 @@ func NewTempoAPI(
 	return &TempoAPI{
 		q:                  q,
 		engine:             engine,
+		defaultSince:       opts.DefaultSince,
 		enableAutocomplete: opts.EnableAutocompleteQuery,
 	}
 }
@@ -71,6 +73,25 @@ func (h *TempoAPI) BuildInfo(ctx context.Context) (*tempoapi.PrometheusVersion, 
 // GET /api/echo
 func (h *TempoAPI) Echo(_ context.Context) (tempoapi.EchoOK, error) {
 	return tempoapi.EchoOK{Data: strings.NewReader("echo")}, nil
+}
+
+// Query implements query operation.
+//
+// The instant version of the Metrics API is similar to the range version, but instead returns a
+// single value for the query.
+//
+// GET /api/metrics/query
+func (h *TempoAPI) Query(ctx context.Context, params tempoapi.QueryParams) (*tempoapi.InstantMetrics, error) {
+	return nil, ht.ErrNotImplemented
+}
+
+// QueryRange implements queryRange operation.
+//
+// This endpoint returns Prometheus-like time-series for a given metrics query.
+//
+// GET /api/metrics/query_range
+func (h *TempoAPI) QueryRange(ctx context.Context, params tempoapi.QueryRangeParams) (*tempoapi.RangeMetrics, error) {
+	return nil, ht.ErrNotImplemented
 }
 
 // Search implements search operation.
@@ -107,13 +128,28 @@ func (h *TempoAPI) searchTraceQL(ctx context.Context, query string, params tempo
 			Response:   "TraceQL engine is disabled",
 		}
 	}
-	return h.engine.Eval(ctx, query, traceqlengine.EvalParams{
+
+	start, end, err := parseSearchTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
+	resp, err = h.engine.Eval(ctx, query, traceqlengine.EvalParams{
 		MinDuration: params.MinDuration.Or(0),
 		MaxDuration: params.MinDuration.Or(0),
-		Start:       params.Start.Or(time.Time{}),
-		End:         params.End.Or(time.Time{}),
+		Start:       start,
+		End:         end,
 		Limit:       params.Limit.Or(20),
 	})
+	if err != nil {
+		return nil, executionErr(err, "eval")
+	}
+	return resp, nil
 }
 
 func (h *TempoAPI) searchTags(ctx context.Context, query string, params tempoapi.SearchParams) (resp *tempoapi.Traces, _ error) {
@@ -125,14 +161,24 @@ func (h *TempoAPI) searchTags(ctx context.Context, query string, params tempoapi
 		}
 	}
 
+	start, end, err := parseSearchTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
 	i, err := h.q.SearchTags(ctx, tags, tracestorage.SearchTagsOptions{
 		MinDuration: params.MinDuration.Or(0),
 		MaxDuration: params.MaxDuration.Or(0),
-		Start:       params.Start.Or(time.Time{}),
-		End:         params.End.Or(time.Time{}),
+		Start:       start,
+		End:         end,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "search tags")
+		return nil, executionErr(err, "search by tags")
 	}
 	defer func() {
 		_ = i.Close()
@@ -142,7 +188,7 @@ func (h *TempoAPI) searchTags(ctx context.Context, query string, params tempoapi
 		limit: params.Limit.Or(20),
 	}
 	if err := iterators.ForEach(i, c.AddSpan); err != nil {
-		return nil, errors.Wrap(err, "map spans")
+		return nil, executionErr(err, "map spans")
 	}
 
 	return &tempoapi.Traces{
@@ -173,6 +219,17 @@ func parseLogfmt(q string) (tags map[string]string, _ error) {
 func (h *TempoAPI) SearchTagValues(ctx context.Context, params tempoapi.SearchTagValuesParams) (resp *tempoapi.TagValues, _ error) {
 	lg := zctx.From(ctx)
 
+	start, end, err := parseTagsTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		h.defaultSince,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
 	var (
 		attr  = traceql.Attribute{Name: params.TagName}
 		query traceql.Autocomplete
@@ -183,11 +240,11 @@ func (h *TempoAPI) SearchTagValues(ctx context.Context, params tempoapi.SearchTa
 
 	iter, err := h.q.TagValues(ctx, attr, tracestorage.TagValuesOptions{
 		AutocompleteQuery: query,
-		Start:             params.Start.Or(time.Time{}),
-		End:               params.End.Or(time.Time{}),
+		Start:             start,
+		End:               end,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "get tag values")
+		return nil, executionErr(err, "get tag values")
 	}
 	defer func() {
 		_ = iter.Close()
@@ -198,7 +255,7 @@ func (h *TempoAPI) SearchTagValues(ctx context.Context, params tempoapi.SearchTa
 		values = append(values, tag.Value)
 		return nil
 	}); err != nil {
-		return nil, errors.Wrap(err, "map tags")
+		return nil, executionErr(err, "map tag values")
 	}
 	lg.Debug("Got tag values",
 		zap.String("tag_name", params.TagName),
@@ -220,6 +277,17 @@ func (h *TempoAPI) SearchTagValues(ctx context.Context, params tempoapi.SearchTa
 func (h *TempoAPI) SearchTagValuesV2(ctx context.Context, params tempoapi.SearchTagValuesV2Params) (resp *tempoapi.TagValuesV2, _ error) {
 	lg := zctx.From(ctx)
 
+	start, end, err := parseTagsTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		h.defaultSince,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
 	attr, err := traceql.ParseAttribute(params.AttributeSelector)
 	if err != nil {
 		return nil, err
@@ -231,11 +299,11 @@ func (h *TempoAPI) SearchTagValuesV2(ctx context.Context, params tempoapi.Search
 
 	iter, err := h.q.TagValues(ctx, attr, tracestorage.TagValuesOptions{
 		AutocompleteQuery: query,
-		Start:             params.Start.Or(time.Time{}),
-		End:               params.End.Or(time.Time{}),
+		Start:             start,
+		End:               end,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "get tag values")
+		return nil, executionErr(err, "get tag values")
 	}
 	defer func() {
 		_ = iter.Close()
@@ -274,11 +342,11 @@ func (h *TempoAPI) SearchTagValuesV2(ctx context.Context, params tempoapi.Search
 
 		values = append(values, tempoapi.TagValue{
 			Type:  typ,
-			Value: tag.Value,
+			Value: tempoapi.NewOptString(tag.Value),
 		})
 		return nil
 	}); err != nil {
-		return nil, errors.Wrap(err, "map tags")
+		return nil, executionErr(err, "map tag values")
 	}
 	lg.Debug("Got tag values",
 		zap.String("attribute_selector", params.AttributeSelector),
@@ -299,6 +367,17 @@ func (h *TempoAPI) SearchTagValuesV2(ctx context.Context, params tempoapi.Search
 func (h *TempoAPI) SearchTags(ctx context.Context, params tempoapi.SearchTagsParams) (resp *tempoapi.TagNames, _ error) {
 	lg := zctx.From(ctx)
 
+	start, end, err := parseTagsTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		h.defaultSince,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
 	var scope traceql.AttributeScope
 	switch params.Scope.Or(tempoapi.TagScopeNone) {
 	case tempoapi.TagScopeSpan:
@@ -317,11 +396,11 @@ func (h *TempoAPI) SearchTags(ctx context.Context, params tempoapi.SearchTagsPar
 	// NOTE: Tempo does not add intrinsics to SearchTags response.
 	tags, err := h.q.TagNames(ctx, tracestorage.TagNamesOptions{
 		Scope: scope,
-		Start: params.Start.Or(time.Time{}),
-		End:   params.End.Or(time.Time{}),
+		Start: start,
+		End:   end,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "get tag names")
+		return nil, executionErr(err, "get tag names")
 	}
 
 	names := make(map[string]struct{}, len(tags))
@@ -342,6 +421,17 @@ func (h *TempoAPI) SearchTags(ctx context.Context, params tempoapi.SearchTagsPar
 // GET /api/v2/search/tags
 func (h *TempoAPI) SearchTagsV2(ctx context.Context, params tempoapi.SearchTagsV2Params) (*tempoapi.TagNamesV2, error) {
 	lg := zctx.From(ctx)
+
+	start, end, err := parseTagsTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		h.defaultSince,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
 
 	var (
 		searchScope traceql.AttributeScope
@@ -366,11 +456,11 @@ func (h *TempoAPI) SearchTagsV2(ctx context.Context, params tempoapi.SearchTagsV
 
 	tags, err := h.q.TagNames(ctx, tracestorage.TagNamesOptions{
 		Scope: searchScope,
-		Start: params.Start.Or(time.Time{}),
-		End:   params.End.Or(time.Time{}),
+		Start: start,
+		End:   end,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "get tag names")
+		return nil, executionErr(err, "get tag names")
 	}
 
 	scopes := make(map[tempoapi.TagScope]tempoapi.ScopeTags, 4)
@@ -418,15 +508,25 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 
 	traceID, err := otelstorage.ParseTraceID(params.TraceID)
 	if err != nil {
-		return nil, errors.Wrapf(err, "invalid traceID %q", params.TraceID)
+		return nil, validationErr(err, fmt.Sprintf("invalid traceID %q", params.TraceID))
+	}
+
+	start, end, err := parseSearchTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
 	}
 
 	iter, err := h.q.TraceByID(ctx, traceID, tracestorage.TraceByIDOptions{
-		Start: params.Start.Or(time.Time{}),
-		End:   params.End.Or(time.Time{}),
+		Start: start,
+		End:   end,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "query traceID")
+		return nil, executionErr(err, "query trace by ID")
 	}
 	defer func() {
 		_ = iter.Close()
@@ -434,7 +534,7 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 
 	var c batchCollector
 	if err := iterators.ForEach(iter, c.AddSpan); err != nil {
-		return nil, errors.Wrap(err, "map spans")
+		return nil, executionErr(err, "map spans")
 	}
 
 	traces := c.Result()
@@ -448,9 +548,18 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 	m := ptrace.ProtoMarshaler{}
 	data, err := m.MarshalTraces(traces)
 	if err != nil {
-		return resp, errors.Wrap(err, "marshal traces")
+		return resp, executionErr(err, "marshal traces")
 	}
 	return &tempoapi.TraceByID{Data: bytes.NewReader(data)}, nil
+}
+
+// TraceByIDv2 implements traceByIDv2 operation.
+//
+// Querying traces by id.
+//
+// GET /api/v2/traces/{traceID}
+func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2Params) (tempoapi.TraceByIDv2Res, error) {
+	return nil, ht.ErrNotImplemented
 }
 
 // NewError creates *ErrorStatusCode from error returned by handler.

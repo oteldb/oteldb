@@ -42,6 +42,25 @@ func (s *Server) Echo(ctx context.Context) (tempoapi.EchoOK, error) {
 	return s.api.Echo(ctx)
 }
 
+// Query implements query operation.
+//
+// The instant version of the Metrics API is similar to the range version, but instead returns a
+// single value for the query.
+//
+// GET /api/metrics/query
+func (s *Server) Query(ctx context.Context, params tempoapi.QueryParams) (*tempoapi.InstantMetrics, error) {
+	return s.api.Query(ctx, params)
+}
+
+// QueryRange implements queryRange operation.
+//
+// This endpoint returns Prometheus-like time-series for a given metrics query.
+//
+// GET /api/metrics/query_range
+func (s *Server) QueryRange(ctx context.Context, params tempoapi.QueryRangeParams) (*tempoapi.RangeMetrics, error) {
+	return s.api.QueryRange(ctx, params)
+}
+
 // Search implements search operation.
 //
 // Execute TraceQL query.
@@ -95,6 +114,15 @@ func (s *Server) SearchTagsV2(ctx context.Context, params tempoapi.SearchTagsV2P
 // GET /api/traces/{traceID}
 func (s *Server) TraceByID(ctx context.Context, params tempoapi.TraceByIDParams) (tempoapi.TraceByIDRes, error) {
 	return s.api.TraceByID(ctx, params)
+}
+
+// TraceByIDv2 implements traceByIDv2 operation.
+//
+// Querying traces by id.
+//
+// GET /api/v2/traces/{traceID}
+func (s *Server) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2Params) (tempoapi.TraceByIDv2Res, error) {
+	return s.api.TraceByIDv2(ctx, params)
 }
 
 // NewError creates *ErrorStatusCode from error returned by handler.
