@@ -7,9 +7,11 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+	"go.uber.org/zap"
 
 	"github.com/go-faster/errors"
 
+	"github.com/go-faster/oteldb/internal/logparser"
 	"github.com/go-faster/oteldb/internal/logstorage"
 	"github.com/go-faster/oteldb/internal/tracestorage"
 )
@@ -70,16 +72,46 @@ func createLogsExporter(
 	cfg component.Config,
 ) (exporter.Logs, error) {
 	ecfg := cfg.(*Config)
+
+	procCfg := ecfg.Logs.Processing
+	triggerAttrs := parseAttributeRefs(procCfg.TriggerAttributes, "trigger_attributes", settings.Logger)
+	formatAttrs := parseAttributeRefs(procCfg.FormatAttributes, "format_attributes", settings.Logger)
+	formats := make([]logparser.Parser, 0, len(procCfg.DetectFormats))
+	for _, raw := range procCfg.DetectFormats {
+		p, ok := logparser.LookupFormat(raw)
+		if !ok {
+			settings.Logger.Warn("Unknown format", zap.String("format", raw))
+			continue
+		}
+		formats = append(formats, p)
+	}
+
 	inserter, err := ecfg.connect(ctx, settings)
 	if err != nil {
 		return nil, errors.Wrap(err, "connect to ClickHouse")
 	}
 	consumer, err := logstorage.NewConsumer(inserter, logstorage.ConsumerOptions{
-		MeterProvider:  settings.MeterProvider,
-		TracerProvider: settings.TracerProvider,
+		TriggerAttributes: triggerAttrs,
+		FormatAttributes:  formatAttrs,
+		DetectFormats:     formats,
+		MeterProvider:     settings.MeterProvider,
+		TracerProvider:    settings.TracerProvider,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "create consumer")
 	}
 	return exporterhelper.NewLogs(ctx, settings, cfg, consumer.ConsumeLogs)
+}
+
+func parseAttributeRefs(refs []string, field string, lg *zap.Logger) []logstorage.AttributeRef {
+	result := make([]logstorage.AttributeRef, 0, len(refs))
+	for _, raw := range refs {
+		ref, err := logstorage.ParseAttributeRef(raw)
+		if err != nil {
+			lg.Warn("Invalid attribute ref, ignoring", zap.String("field", field), zap.String("ref", raw))
+			continue
+		}
+		result = append(result, ref)
+	}
+	return result
 }

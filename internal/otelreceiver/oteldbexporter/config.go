@@ -15,6 +15,7 @@ import (
 type Config struct {
 	DSN        string        `mapstructure:"dsn"`
 	CHLogLevel zapcore.Level `mapstructure:"ch_log_level"`
+	Logs       LogsConfig    `mapstructure:"logs"`
 }
 
 func (c *Config) connect(ctx context.Context, settings exporter.Settings) (*chstorage.Inserter, error) {
@@ -40,17 +41,22 @@ func (c *Config) connect(ctx context.Context, settings exporter.Settings) (*chst
 	return inserter, nil
 }
 
-// ProcessingConfig defines options for telemetry pre-processing.
-type ProcessingConfig struct {
+// LogsConfig defines options for logs consumer.
+type LogsConfig struct {
+	Processing LogsProcessingConfig `mapstructure:"processing"`
+}
+
+// LogsProcessingConfig defines options for logs preprocessing.
+type LogsProcessingConfig struct {
 	// TriggerAttributes defines a list of attribute references to trigger format detection.
-	TriggerAttributes []string
+	TriggerAttributes []string `mapstructure:"trigger_attributes"`
 	// FormatAttributes defines a list of attribute references to choose format.
 	//
 	// Format attribute may define multple formats via comma.
 	// The first valid would be used to parse the record.
 	//
 	// If attribute value is absent, have an unknown or invalid value, the record would be passed as-is.
-	FormatAttributes []string
+	FormatAttributes []string `mapstructure:"format_attributes"`
 	// DetectFormats defines list of formats to detect.
-	DetectFormats []string
+	DetectFormats []string `mapstructure:"formats"`
 }

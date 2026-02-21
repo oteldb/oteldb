@@ -1,0 +1,9 @@
+dsn: "clickhouse://clickhouse:9000"
+logs:
+  processing:
+    trigger_attributes:
+      - "attributes.log.msg"
+    format_attributes:
+      - "resource.log.format"
+    formats:
+      - "generic-json"
