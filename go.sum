@@ -581,8 +581,8 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=
 github.com/opencontainers/image-spec v1.1.1/go.mod h1:qpqAh3Dmcf36wStyyWU+kCeDgrGnAve2nCC8+7h8Q0M=
-github.com/oteldb/promql-engine v0.5.0 h1:h006mM49Hn9k4P+Kzruu5N6mwym1y/6uNz+jJYyLUSg=
-github.com/oteldb/promql-engine v0.5.0/go.mod h1:vDRVj/4JO+dk38sAlgMqGtp+Ya0f9gy1obZ0lLCXn+U=
+github.com/oteldb/promql-engine v0.4.0 h1:Fjyr+auCuC9hnYAN5nrnSSLV7I6AtAwUb/0U3gJvVeM=
+github.com/oteldb/promql-engine v0.4.0/go.mod h1:4rGGhLSOScekQvp2/ycO+jKl5wKnEvKD0xF/kLyNU0M=
 github.com/pascaldekloe/goe v0.0.0-20180627143212-57f6aae5913c/go.mod h1:lzWF7FIEvWOWxwDKqyGYQf6ZUaNfKdP144TG7ZOy1lc=
 github.com/pascaldekloe/goe v0.1.0/go.mod h1:lzWF7FIEvWOWxwDKqyGYQf6ZUaNfKdP144TG7ZOy1lc=
 github.com/pascaldekloe/name v1.0.1 h1:9lnXOHeqeHHnWLbKfH6X98+4+ETVqFqxN09UXSjcMb0=

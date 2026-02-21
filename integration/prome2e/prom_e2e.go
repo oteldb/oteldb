@@ -10,8 +10,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
-
-	"github.com/go-faster/oteldb/internal/metricstorage"
 )
 
 // BatchSet is a set of batches.
@@ -204,10 +202,10 @@ func (s *BatchSet) addMetric(res, scope pcommon.Map, metric pmetric.Metric) erro
 }
 
 func (s *BatchSet) addSeries(name string, res, scope, attrs pcommon.Map) {
-	s.addLabel(metricstorage.MetricName, name)
+	s.addLabel(labels.MetricName, name)
 
 	lb := map[string]string{
-		metricstorage.MetricName: name,
+		labels.MetricName: name,
 	}
 	for _, m := range []pcommon.Map{
 		res,

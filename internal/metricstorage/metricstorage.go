@@ -10,9 +10,6 @@ import (
 	"github.com/go-faster/oteldb/internal/promapi"
 )
 
-// MetricName is a special label name that represent a metric name.
-const MetricName = "__name__"
-
 // OptimizedSeriesQuerier defines API for optimal series querying.
 type OptimizedSeriesQuerier interface {
 	OnlySeries(ctx context.Context, sortSeries bool, startMs, endMs int64, matcherSets ...[]*labels.Matcher) storage.SeriesSet

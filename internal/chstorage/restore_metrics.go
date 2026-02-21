@@ -12,10 +12,10 @@ import (
 	"github.com/ClickHouse/ch-go"
 	"github.com/ClickHouse/ch-go/proto"
 	"github.com/go-faster/errors"
+	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-faster/oteldb/internal/metricstorage"
 	"github.com/go-faster/oteldb/internal/otelstorage"
 )
 
@@ -454,10 +454,10 @@ func (r *metricsRestore) collectLabels(name string, m metricMapping, res, scope,
 	r.labelsMux.Lock()
 	defer r.labelsMux.Unlock()
 
-	r.labels[[2]string{metricstorage.MetricName, name}] |= 0
+	r.labels[[2]string{labels.MetricName, name}] |= 0
 	// NOTE: A summary may have not quantiles, but we still need to return the metric name as-is for label values request.
 	if originalName := strings.TrimSuffix(name, m.NameSuffix()); m.IsSummary() && originalName != name {
-		r.labels[[2]string{metricstorage.MetricName, originalName}] |= 0
+		r.labels[[2]string{labels.MetricName, originalName}] |= 0
 	}
 
 	collectAttrs := func(scope labelScope, attrs otelstorage.Attrs) {
