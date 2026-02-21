@@ -111,8 +111,11 @@ func (c *Consumer) trigger(body pcommon.Value, record Record) bool {
 	return false
 }
 
-func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record Record) Record {
+func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record Record) (result Record) {
 	c.stats.ProcessedRecords.Add(ctx, 1)
+	defer func() {
+		result.SeverityNumber, result.SeverityText = normalizeSeverity(result.SeverityNumber, result.SeverityText)
+	}()
 
 	// NOTE(tdakkota): otelcol filelog receiver sends entries
 	// 	with zero value timestamp
@@ -136,7 +139,7 @@ func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record
 		))
 		parser, ok := logparser.LookupFormat(format)
 		if ok {
-			parsed, err := c.parseRecord(parser, []byte(record.Body), record)
+			parsed, err := c.parseRecord(parser, []byte(record.Body), record, false)
 			if err == nil {
 				c.stats.ParseSuccessRecords.Add(ctx, 1, metric.WithAttributes(
 					attribute.String("logstorage.format", format),
@@ -169,7 +172,7 @@ func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record
 		if !p.Detect(record.Body) {
 			continue
 		}
-		parsed, err := c.parseRecord(p, data, record)
+		parsed, err := c.parseRecord(p, data, record, true)
 		if err == nil {
 			c.stats.ParseSuccessRecords.Add(ctx, 1, metric.WithAttributes(
 				attribute.String("logstorage.format", p.String()),
@@ -194,14 +197,16 @@ func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record
 	return record
 }
 
-func (c *Consumer) parseRecord(parser logparser.Parser, data []byte, record Record) (Record, error) {
+func (c *Consumer) parseRecord(parser logparser.Parser, data []byte, record Record, addType bool) (Record, error) {
 	attrs := record.Attrs.AsMap()
 	line, err := parser.Parse(data)
 	if err != nil {
 		return record, err
 	}
 
-	attrs.PutStr("logparser.type", parser.String())
+	if addType {
+		attrs.PutStr("logparser.type", parser.String())
+	}
 	if !line.Attrs.IsZero() {
 		line.Attrs.AsMap().Range(func(k string, v pcommon.Value) bool {
 			target := attrs.PutEmpty(k)
@@ -210,10 +215,10 @@ func (c *Consumer) parseRecord(parser logparser.Parser, data []byte, record Reco
 		})
 	}
 	record.Body = line.Body
+	record.SeverityNumber, record.SeverityText = normalizeSeverity(line.SeverityNumber, line.SeverityText)
 	if line.Timestamp != 0 {
 		record.Timestamp = line.Timestamp
 	}
-	record.SeverityNumber, record.SeverityText = normalizeSeverity(line.SeverityNumber, line.SeverityText)
 	if !line.SpanID.IsEmpty() {
 		record.SpanID = line.SpanID
 	}
