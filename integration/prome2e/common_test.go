@@ -749,6 +749,27 @@ func runTest(
 			a.NotEmpty(values)
 		})
 	})
+	t.Run("Metadata", func(t *testing.T) {
+		a := require.New(t)
+
+		resp, err := c.GetMetadata(ctx, promapi.GetMetadataParams{
+			Metric: promapi.NewOptString(`process_cpu_seconds`),
+		})
+		a.NoError(err)
+		a.Equal("success", resp.Status)
+
+		data := resp.Data
+		a.Contains(data, "process_cpu_seconds")
+		metadatas := data["process_cpu_seconds"]
+
+		a.Len(metadatas, 1)
+		metadata := metadatas[0]
+		a.Equal(promapi.MetricMetadata{
+			Type: promapi.NewOptMetricMetadataType(promapi.MetricMetadataTypeCounter),
+			Help: promapi.NewOptString("Total CPU user and system time in seconds"),
+			Unit: promapi.NewOptString("s"),
+		}, metadata)
+	})
 	t.Run("QueryFrom_vmalert", func(t *testing.T) {
 		client := datasource.NewPrometheusClient(serverURL, nil, false, http.DefaultClient)
 		client.ApplyParams(datasource.QuerierParams{
