@@ -337,11 +337,11 @@ func (q *timeseriesQuerier) queryMetadata(
 
 	var (
 		c           = newTimeseriesColumns()
-		selectExprs = Columns{
-			{Name: "name", Data: c.name},
-			{Name: "unit", Data: c.unit},
-			{Name: "description", Data: c.description},
-		}.ChsqlResult()
+		selectExprs = []chsql.ResultColumn{
+			{Name: "name", Data: c.name, Expr: chsql.Ident("name")},
+			{Name: "unit", Data: c.unit, Expr: chsql.Function("any", chsql.Ident("unit"))},
+			{Name: "description", Data: c.description, Expr: chsql.Function("any", chsql.Ident("description"))},
+		}
 	)
 	query := chsql.Select(table, selectExprs...)
 	if name := params.MetricName; name != "" {
