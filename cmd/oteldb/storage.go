@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"strings"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
@@ -12,6 +14,7 @@ import (
 	"github.com/go-faster/oteldb/internal/globalmetric"
 	"github.com/go-faster/oteldb/internal/logql/logqlengine"
 	"github.com/go-faster/oteldb/internal/logstorage"
+	"github.com/go-faster/oteldb/internal/metricstorage"
 	"github.com/go-faster/oteldb/internal/promql"
 	"github.com/go-faster/oteldb/internal/traceql/traceqlengine"
 	"github.com/go-faster/oteldb/internal/tracestorage"
@@ -33,7 +36,10 @@ type traceQuerier interface {
 	traceqlengine.Querier
 }
 
-type metricQuerier = promql.Querier
+type metricQuerier interface {
+	promql.Querier
+	metricstorage.MetadataQuerier
+}
 
 func setupCH(
 	ctx context.Context,
@@ -51,31 +57,15 @@ func setupCH(
 		return store, errors.Wrap(err, "dial clickhouse")
 	}
 
-	// FIXME(tdakkota): this is not a good place for migration
 	tables := chstorage.DefaultTables()
-	tables.TTL = cfg.TTL
-	tables.Cluster = cfg.Cluster
-	tables.Replicated = cfg.Replicated
-	if tables.Replicated && tables.Cluster == "" {
-		tables.Cluster = "{cluster}"
-		zctx.From(ctx).Warn("Using default macro for cluster name", zap.String("cluster", tables.Cluster))
+	if err := migrate(ctx, c, tables, cfg); err != nil {
+		return store, errors.Wrap(err, "migrate schema")
 	}
-
-	{
-		mlg := zctx.From(ctx).Named("migrator").WithOptions(zap.IncreaseLevel(cfg.CHLogLevel))
-		mctx := zctx.Base(ctx, mlg)
-		if err := tables.Create(mctx, c); err != nil {
-			return store, errors.Wrap(err, "create tables")
-		}
-	}
-
-	zctx.From(ctx).Info("Tables are ready")
 
 	tracker, err := globalmetric.NewTracker(m.MeterProvider(), m.TracerProvider())
 	if err != nil {
 		return store, errors.Wrap(err, "create global metric tracker")
 	}
-
 	globalmetric.SetTracker(tracker)
 
 	querier, err := chstorage.NewQuerier(c, chstorage.QuerierOptions{
@@ -95,4 +85,55 @@ func setupCH(
 		traceQuerier:   querier,
 		metricsQuerier: querier,
 	}, nil
+}
+
+func migrate(ctx context.Context, client chstorage.ClickHouseClient, tables chstorage.Tables, cfg Config) error {
+	lg := zctx.From(ctx).Named("migrator").WithOptions(zap.IncreaseLevel(cfg.CHLogLevel))
+	ctx = zctx.Base(ctx, lg)
+
+	migratorCfg := chstorage.MigratorOptions{
+		Tables:     tables,
+		Cluster:    cfg.Cluster,
+		Replicated: cfg.Replicated,
+		TTL:        cfg.TTL,
+	}
+	if migratorCfg.Replicated && migratorCfg.Cluster == "" {
+		migratorCfg.Cluster = "{cluster}"
+		lg.Warn("Using default macro for cluster name", zap.String("cluster", migratorCfg.Cluster))
+	}
+
+	migrator := chstorage.NewMigrator(client, migratorCfg)
+	switch mode := os.Getenv("OTELDB_MIGRATION_MODE"); strings.ToLower(mode) {
+	case "none":
+		// Do not perform any schema migration at all.
+		lg.Info("Migration is disabled, validating existing schema")
+		if err := migrator.Validate(ctx); err != nil {
+			return errors.Wrap(err, "validate existing schema")
+		}
+		lg.Info("Existing schema is compatible")
+		return nil
+	case "", "auto":
+		lg.Info("Performing automatic migration if needed")
+		// Best effort to migrate schema, but do fail if there is existing database with incompatible schema.
+		if err := migrator.Create(ctx); err != nil {
+			return errors.Wrap(err, "perform a migration")
+		}
+		lg.Info("Migration completed")
+		return nil
+	case "test", "debug":
+		// In test and debug modes, we want to recreate tables on each run to ensure that schema is up to date.
+		lg.Info("Recreating tables for test/debug mode")
+		if err := migrator.DropIfExists(ctx, func(database, table string) {
+			lg.Warn("DROPPING table", zap.String("database", database), zap.String("table", table))
+		}); err != nil {
+			return errors.Wrap(err, "drop existing schema")
+		}
+		if err := migrator.Create(ctx); err != nil {
+			return errors.Wrap(err, "create schema")
+		}
+		lg.Info("Migration completed")
+		return nil
+	default:
+		return errors.Errorf("unknown migration mode %q", mode)
+	}
 }

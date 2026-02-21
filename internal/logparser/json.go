@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
-	"go.opentelemetry.io/collector/pdata/plog"
 
 	"github.com/go-faster/oteldb/internal/otelstorage"
 )
@@ -19,13 +17,10 @@ import (
 // GenericJSONParser can parse generic json into [Line].
 type GenericJSONParser struct{}
 
-var _severityMap = map[rune]plog.SeverityNumber{
-	'i': plog.SeverityNumberInfo,
-	't': plog.SeverityNumberTrace,
-	'd': plog.SeverityNumberDebug,
-	'w': plog.SeverityNumberWarn,
-	'e': plog.SeverityNumberError,
-	'f': plog.SeverityNumberFatal,
+func init() {
+	p := &GenericJSONParser{}
+	formatRegistry.Store(p.String(), p)
+	formatRegistry.Store("json", p)
 }
 
 func encodeValue(v pcommon.Value, e *jx.Encoder) {
@@ -65,6 +60,7 @@ func encodeValue(v pcommon.Value, e *jx.Encoder) {
 func setJSONValue(v pcommon.Value, d *jx.Decoder) error {
 	switch d.Next() {
 	case jx.String:
+
 		s, err := d.Str()
 		if err != nil {
 			return errors.Wrap(err, "string")
@@ -200,8 +196,9 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 	line := &Line{}
 	attrs := pcommon.NewMap()
 	if err := dec.ObjBytes(func(d *jx.Decoder, k []byte) error {
-		switch string(k) {
-		case "trace_id", "traceid", "traceID", "traceId":
+		ftyp, _ := deduceFieldType(k)
+		switch ftyp {
+		case traceIDField:
 			if d.Next() != jx.String {
 				return addJSONMapKey(attrs, string(k), d)
 			}
@@ -220,7 +217,7 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 				traceID = otelstorage.TraceID(id)
 			}
 			line.TraceID = traceID
-		case "span_id", "spanid", "spanID", "spanId":
+		case spanIDField:
 			if d.Next() != jx.String {
 				// TODO: handle integers
 				return addJSONMapKey(attrs, string(k), d)
@@ -237,7 +234,7 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 			var spanID otelstorage.SpanID
 			copy(spanID[:], raw)
 			line.SpanID = spanID
-		case "level", "lvl", "levelStr", "severity_text", "severity", "levelname":
+		case levelField:
 			if d.Next() != jx.String {
 				return addJSONMapKey(attrs, string(k), d)
 			}
@@ -250,17 +247,8 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 				return nil
 			}
 			line.SeverityText = v
-			line.SeverityNumber = _severityMap[unicode.ToLower(rune(v[0]))]
-		case msgField:
-			if d.Next() != jx.String {
-				return addJSONMapKey(attrs, string(k), d)
-			}
-			v, err := d.Str()
-			if err != nil {
-				return errors.Wrap(err, "msg")
-			}
-			line.Body = v
-		case "ts", "time", "@timestamp", "timestamp":
+			line.SeverityNumber = DeduceSeverity(v)
+		case timestampField:
 			if d.Next() == jx.String {
 				v, err := d.Str()
 				if err != nil {
@@ -272,7 +260,7 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 					if err != nil {
 						return errors.Wrap(err, "int time")
 					}
-					if n, ok := DeductNanos(ts); ok {
+					if n, ok := DeduceNanos(ts); ok {
 						line.Timestamp = otelstorage.Timestamp(n)
 						return nil
 					}
@@ -305,7 +293,7 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 				if err != nil {
 					return errors.Wrap(err, "ts")
 				}
-				if n, ok := DeductNanos(ts); ok {
+				if n, ok := DeduceNanos(ts); ok {
 					line.Timestamp = otelstorage.Timestamp(n)
 					return nil
 				}
@@ -322,9 +310,20 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 			if err != nil {
 				return errors.Wrap(err, "ts parse")
 			}
-			// TODO: Also deduct f.
+			// TODO: Also deduce f.
 			line.Timestamp = otelstorage.Timestamp(f * float64(time.Second))
 		default:
+			if string(k) == msgField {
+				if d.Next() != jx.String {
+					return addJSONMapKey(attrs, string(k), d)
+				}
+				v, err := d.Str()
+				if err != nil {
+					return errors.Wrap(err, "msg")
+				}
+				line.Body = v
+				return nil
+			}
 			return addJSONMapKey(attrs, string(k), d)
 		}
 		return nil

@@ -37,6 +37,7 @@ type PromAPI struct {
 	eng       Engine
 	store     storage.Queryable
 	exemplars storage.ExemplarQueryable
+	metadata  metricstorage.MetadataQuerier
 
 	lookbackDelta time.Duration
 	defaultStep   time.Duration
@@ -49,6 +50,7 @@ func NewPromAPI(
 	eng Engine,
 	store storage.Queryable,
 	exemplars storage.ExemplarQueryable,
+	metadata metricstorage.MetadataQuerier,
 	opts PromAPIOptions,
 ) *PromAPI {
 	opts.setDefaults()
@@ -56,6 +58,7 @@ func NewPromAPI(
 		eng:           eng,
 		store:         store,
 		exemplars:     exemplars,
+		metadata:      metadata,
 		lookbackDelta: opts.LookbackDelta,
 		defaultStep:   opts.DefaultStep,
 	}
@@ -460,8 +463,34 @@ func (h *PromAPI) PostQueryExemplars(ctx context.Context, params *promapi.Exempl
 // GetMetadata implements getMetadata operation.
 //
 // GET /api/v1/metadata
-func (h *PromAPI) GetMetadata(context.Context, promapi.GetMetadataParams) (*promapi.MetadataResponse, error) {
-	return nil, ht.ErrNotImplemented
+func (h *PromAPI) GetMetadata(ctx context.Context, params promapi.GetMetadataParams) (*promapi.MetadataResponse, error) {
+	if h.metadata == nil {
+		return nil, ht.ErrNotImplemented
+	}
+
+	resp, err := h.metadata.MetricMetadata(ctx, metricstorage.MetadataParams{
+		MetricName: params.Metric.Or(""),
+		Limit:      params.Limit.Or(-1),
+	})
+	if err != nil {
+		return nil, executionErr("get metadata", err)
+	}
+
+	data := make(promapi.Metadata, len(resp))
+	for name, meta := range resp {
+		data[name] = []promapi.MetricMetadata{
+			{
+				Type: promapi.NewOptMetricMetadataType(meta.Type),
+				Help: promapi.NewOptString(meta.Help),
+				Unit: promapi.NewOptString(meta.Unit),
+			},
+		}
+	}
+
+	return &promapi.MetadataResponse{
+		Status: "success",
+		Data:   data,
+	}, nil
 }
 
 // GetRules implements getRules operation.

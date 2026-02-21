@@ -1,0 +1,24 @@
+{
+  "severity": {
+    "str": "Info",
+    "number": 9,
+    "text": "info"
+  },
+  "body": "Response received from loki",
+  "timestamp": "2026-02-21T21:45:58.39217982Z",
+  "trace_id": "91817a32ebeb6433d6602538b6478642",
+  "attrs": {
+    "logger": "tsdb.loki",
+    "endpoint": "callResource",
+    "pluginId": "loki",
+    "dsName": "LogQL",
+    "dsUID": "loki-oteldb",
+    "uname": true,
+    "status": "ok",
+    "statusCode": 200,
+    "contentLength": 681,
+    "duration": "10.045939ms",
+    "contentEncoding": true,
+    "stage": "databaseRequest"
+  }
+}

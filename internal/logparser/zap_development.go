@@ -19,6 +19,11 @@ import (
 // ZapDevelopmentParser parses zap's development mode lines.
 type ZapDevelopmentParser struct{}
 
+func init() {
+	p := &ZapDevelopmentParser{}
+	formatRegistry.Store(p.String(), p)
+}
+
 // Parse line.
 func (ZapDevelopmentParser) Parse(data []byte) (*Line, error) {
 	var (

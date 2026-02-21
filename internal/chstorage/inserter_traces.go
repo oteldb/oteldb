@@ -3,13 +3,10 @@ package chstorage
 import (
 	"context"
 
-	"github.com/ClickHouse/ch-go"
 	"github.com/go-faster/errors"
-	"github.com/go-faster/sdk/zctx"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/go-faster/oteldb/internal/globalmetric"
@@ -86,24 +83,14 @@ func (i *Inserter) submitTraces(
 	))
 	defer track.End()
 
-	lg := zctx.From(ctx).Named("ch").WithOptions(zap.IncreaseLevel(i.chLogLevel))
 	grp, grpCtx := errgroup.WithContext(ctx)
 	grp.Go(func() error {
 		ctx := grpCtx
 
 		table := i.tables.Spans
-		if err := i.ch.Do(ctx, ch.Query{
-			Logger:          lg,
-			Body:            spans.Body(table),
-			Input:           spans.Input(),
-			OnProfileEvents: track.OnProfiles,
-		}); err != nil {
+		if err := i.do(ctx, semconv.SignalTraces, table, spans.Body(table), spans.Input()); err != nil {
 			return errors.Wrap(err, "insert spans")
 		}
-		i.stats.BatchSize.Record(ctx, int64(spans.spanID.Rows()), metric.WithAttributes(
-			semconv.Signal(semconv.SignalTraces),
-			attribute.String("chstorage.table", table),
-		))
 		i.stats.InsertedSpans.Add(ctx, int64(spans.spanID.Rows()))
 
 		return nil
@@ -112,17 +99,9 @@ func (i *Inserter) submitTraces(
 		ctx := grpCtx
 
 		table := i.tables.Tags
-		if err := i.ch.Do(ctx, ch.Query{
-			Logger: lg,
-			Body:   attrs.Body(table),
-			Input:  attrs.Input(),
-		}); err != nil {
+		if err := i.do(ctx, semconv.SignalTraces, table, attrs.Body(table), attrs.Input()); err != nil {
 			return errors.Wrap(err, "insert tags")
 		}
-		i.stats.BatchSize.Record(ctx, int64(attrs.name.Rows()), metric.WithAttributes(
-			semconv.Signal(semconv.SignalTraces),
-			attribute.String("chstorage.table", table),
-		))
 		i.stats.InsertedTags.Add(ctx, int64(attrs.name.Rows()))
 
 		return nil

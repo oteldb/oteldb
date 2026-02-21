@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLogFmtParser_Parse(t *testing.T) {
+func TestLogFmtParser(t *testing.T) {
 	const name = "logfmt"
 	files, err := os.ReadDir(filepath.Join("_testdata", name))
 	require.NoError(t, err, "read testdata")
@@ -36,12 +36,18 @@ func TestLogFmtParser_Parse(t *testing.T) {
 				i++
 				t.Run(fmt.Sprintf("Line%02d", i), func(t *testing.T) {
 					t.Logf("%s", s)
-					line, err := parser.Parse([]byte(s))
-					require.NoError(t, err, "parse")
-					fileName := fmt.Sprintf("%s_%s_%02d.json",
-						name, strings.TrimSuffix(file.Name(), filepath.Ext(file.Name())), i,
-					)
-					gold.Str(t, line.String(), fileName)
+					t.Run("Detect", func(t *testing.T) {
+						detected := parser.Detect(s)
+						require.True(t, detected)
+					})
+					t.Run("Parse", func(t *testing.T) {
+						line, err := parser.Parse([]byte(s))
+						require.NoError(t, err, "parse")
+						fileName := fmt.Sprintf("%s_%s_%02d.json",
+							name, strings.TrimSuffix(file.Name(), filepath.Ext(file.Name())), i,
+						)
+						gold.Str(t, line.String(), fileName)
+					})
 				})
 			}
 		})

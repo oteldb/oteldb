@@ -34,7 +34,8 @@ func BenchmarkInserterLogs(b *testing.B) {
 		TracerProvider: tracenoop.NewTracerProvider(),
 	})
 	require.NoError(b, err)
-	c := logstorage.NewConsumer(i)
+	c, err := logstorage.NewConsumer(i, logstorage.ConsumerOptions{})
+	require.NoError(b, err)
 
 	b.ReportAllocs()
 	b.ResetTimer()

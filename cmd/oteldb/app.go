@@ -145,7 +145,7 @@ func addOgen[
 			routeFinder = httpmiddleware.MakeRouteFinder(server)
 			middlewares = []httpmiddleware.Middleware{
 				httpmiddleware.InjectLogger(zctx.From(ctx)),
-				httpmiddleware.Instrument("oteldb."+name, routeFinder, app.telemetry),
+				httpmiddleware.Instrument(addr, name, routeFinder, app.telemetry),
 				httpmiddleware.LogRequests(routeFinder),
 			}
 		)
@@ -322,7 +322,7 @@ func (app *App) trySetupProm() error {
 	if err != nil {
 		return errors.Wrap(err, "create PromQL engine")
 	}
-	prom := promhandler.NewPromAPI(engine, q, q, promhandler.PromAPIOptions{})
+	prom := promhandler.NewPromAPI(engine, q, q, q, promhandler.PromAPIOptions{})
 
 	s, err := promapi.NewServer(prom,
 		promapi.WithTracerProvider(app.telemetry.TracerProvider()),

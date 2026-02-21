@@ -12,7 +12,10 @@ import (
 
 func TestGenerateDDL(t *testing.T) {
 	tables := DefaultTables()
-	tables.TTL = time.Hour * 72
+	m := NewMigrator(nil, MigratorOptions{
+		Tables: tables,
+		TTL:    72 * time.Hour,
+	})
 
 	for _, tt := range []struct {
 		name string
@@ -30,10 +33,7 @@ func TestGenerateDDL(t *testing.T) {
 		{tables.Migration, newMigrationColumns().DDL()},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			out, err := tables.generateQuery(generateOptions{
-				Name: tt.name,
-				DDL:  tt.ddl,
-			})
+			out, err := m.generateQuery(tt.name, tt.ddl, true)
 			require.NoError(t, err)
 			gold.Str(t, out, "schema."+tt.name+".sql")
 		})

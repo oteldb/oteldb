@@ -1,14 +1,16 @@
 package logparser
 
 import (
+	"fmt"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-func TestDeductNanos(t *testing.T) {
+func TestDeduceNanos(t *testing.T) {
 	var (
 		start = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 		end   = time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -19,7 +21,7 @@ func TestDeductNanos(t *testing.T) {
 	}
 	assert := func(a, b int64, msgAndArgs ...interface{}) {
 		t.Helper()
-		v, ok := DeductNanos(a)
+		v, ok := DeduceNanos(a)
 		require.True(t, ok, msgAndArgs...)
 		require.Equal(t, b, v, msgAndArgs...)
 	}
@@ -29,5 +31,33 @@ func TestDeductNanos(t *testing.T) {
 		assert(v.UnixMilli(), truncate(expected, 6), "v=%v", v)
 		assert(v.UnixMicro(), truncate(expected, 3), "v=%v", v)
 		assert(v.UnixNano(), expected, "v=%v", v)
+	}
+}
+
+func TestDeduceSeverity(t *testing.T) {
+	tests := []struct {
+		text string
+		want plog.SeverityNumber
+	}{
+		{text: "", want: plog.SeverityNumberUnspecified},
+		{text: "i", want: plog.SeverityNumberInfo},
+		{text: "d", want: plog.SeverityNumberDebug},
+		{text: "TRACE", want: plog.SeverityNumberTrace},
+		{text: "trace", want: plog.SeverityNumberTrace},
+		{text: "info", want: plog.SeverityNumberInfo},
+		{text: "warn", want: plog.SeverityNumberWarn},
+		{text: "warning", want: plog.SeverityNumberWarn},
+		{text: "error", want: plog.SeverityNumberError},
+		{text: "fatal", want: plog.SeverityNumberFatal},
+		{text: "CRITICAL", want: plog.SeverityNumberFatal},
+		{text: "deBug", want: plog.SeverityNumberDebug},
+		{text: " deBug ", want: plog.SeverityNumberDebug},
+
+		{text: "my-custom-log-level", want: plog.SeverityNumberUnspecified},
+	}
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+			require.Equal(t, tt.want, DeduceSeverity(tt.text))
+		})
 	}
 }

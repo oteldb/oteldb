@@ -21,6 +21,7 @@ import (
 	"github.com/go-faster/oteldb/integration/prome2e"
 	"github.com/go-faster/oteldb/integration/requirex"
 	"github.com/go-faster/oteldb/internal/httpmiddleware"
+	"github.com/go-faster/oteldb/internal/metricstorage"
 	"github.com/go-faster/oteldb/internal/promapi"
 	"github.com/go-faster/oteldb/internal/promhandler"
 	"github.com/go-faster/oteldb/internal/promql"
@@ -113,10 +114,15 @@ findLoop:
 	attrs.PutInt("code", 10)
 }
 
+type metricQuerier interface {
+	promql.Querier
+	metricstorage.MetadataQuerier
+}
+
 func setupDB(
 	t *testing.T,
 	provider trace.TracerProvider,
-	querier promql.Querier,
+	querier metricQuerier,
 ) (string, *promapi.Client) {
 	engine, err := promql.New(querier, promql.EngineOpts{
 		Timeout:              time.Minute,
@@ -124,7 +130,7 @@ func setupDB(
 		EnableNegativeOffset: true,
 	})
 	require.NoError(t, err)
-	api := promhandler.NewPromAPI(engine, querier, querier, promhandler.PromAPIOptions{})
+	api := promhandler.NewPromAPI(engine, querier, querier, querier, promhandler.PromAPIOptions{})
 	promh, err := promapi.NewServer(api,
 		promapi.WithTracerProvider(provider),
 	)
@@ -161,7 +167,7 @@ func runTest(
 	t *testing.T,
 	provider trace.TracerProvider,
 	set prome2e.BatchSet,
-	querier promql.Querier,
+	querier metricQuerier,
 ) {
 	serverURL, c := setupDB(t, provider, querier)
 
