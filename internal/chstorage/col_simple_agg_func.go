@@ -81,11 +81,11 @@ func (a *colSimpleAggregateFunction[T]) Infer(t proto.ColumnType) error {
 
 	raw, ok := strings.CutPrefix(raw, "SimpleAggregateFunction(")
 	if !ok {
-		return errors.Errorf("unexpected type %q", t)
+		return errors.Errorf(`expected "SimpleAggregateFunction", got %q`, t)
 	}
 	_, typ, ok := strings.Cut(raw, ",")
 	if !ok {
-		return errors.Errorf("expected function and type, got: %q", raw)
+		return errors.Errorf("expected aggregate function and type, got: %q", raw)
 	}
 	t = proto.ColumnType(strings.TrimSuffix(typ, ")"))
 

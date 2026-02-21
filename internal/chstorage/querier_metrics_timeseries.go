@@ -339,7 +339,7 @@ func (q *timeseriesQuerier) queryMetadata(
 		c           = newTimeseriesColumns()
 		selectExprs = []chsql.ResultColumn{
 			{Name: "name", Data: c.name, Expr: chsql.Ident("name")},
-			{Name: "unit", Data: c.unit, Expr: chsql.Function("any", chsql.Ident("unit"))},
+			{Name: "unit", Data: c.unit.Data, Expr: chsql.ToLowCardinality(chsql.Function("any", chsql.Ident("unit")))},
 			{Name: "description", Data: c.description, Expr: chsql.Function("any", chsql.Ident("description"))},
 		}
 	)

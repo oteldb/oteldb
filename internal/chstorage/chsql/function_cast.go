@@ -5,6 +5,11 @@ func Cast(x Expr, typ string) Expr {
 	return Function("CAST", x, String(typ))
 }
 
+// ToLowCardinality returns `ToLowCardinality(<arg>)` function call expression.
+func ToLowCardinality(arg Expr) Expr {
+	return Function("toLowCardinality", arg)
+}
+
 // ToString returns `toString(<arg>)` function call expression.
 func ToString(arg Expr) Expr {
 	return Function("toString", arg)
