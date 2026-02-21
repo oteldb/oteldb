@@ -2,6 +2,7 @@ package logparser
 
 import (
 	"encoding/hex"
+	"math/bits"
 	"strings"
 	"time"
 
@@ -26,55 +27,64 @@ func (LogFmtParser) Parse(data []byte) (*Line, error) {
 	line := &Line{}
 	attrs := pcommon.NewMap()
 	hf := logfmt.HandlerFunc(func(key, val []byte) error {
-		k := string(key)
-		v := string(val)
-		switch k {
-		case "msg":
-			line.Body = v
-		case "level", "lvl", "levelStr", "severity_text", "severity", "levelname":
-			if v == "" {
-				attrs.PutStr(k, v)
+		ftyp, _ := deduceFieldType(key)
+		switch ftyp {
+		case messageField:
+			line.Body = string(val)
+		case levelField:
+			if len(val) == 0 {
+				attrs.PutStr(string(key), string(val))
 				return nil
 			}
-			line.SeverityText = v
-			line.SeverityNumber = DeduceSeverity(v)
-		case "span_id", "spanid", "spanID", "spanId":
-			raw, _ := hex.DecodeString(v)
-			if len(raw) != 8 {
-				attrs.PutStr(k, v)
+			line.SeverityText = string(val)
+			line.SeverityNumber = DeduceSeverity(line.SeverityText)
+		case spanIDField:
+			// TODO(tdakkota): move parser into separate function.
+			decodedLen := hex.DecodedLen(len(val))
+			if decodedLen != 8 {
+				attrs.PutStr(string(key), string(val))
 				return nil
 			}
+
 			var spanID otelstorage.SpanID
-			copy(spanID[:], raw)
+			_, err := hex.Decode(spanID[:], val)
+			if err != nil {
+				attrs.PutStr(string(key), string(val))
+				return nil
+			}
 			line.SpanID = spanID
-		case "trace_id", "traceid", "traceID", "traceId":
-			traceID, err := otelstorage.ParseTraceID(strings.ToLower(v))
+		case traceIDField:
+			val := string(val)
+			// TODO(tdakkota): improve acceptance of ParseTraceID.
+			traceID, err := otelstorage.ParseTraceID(strings.ToLower(val))
 			if err != nil {
 				// Trying to parse as UUID.
-				id, err := uuid.Parse(v)
+				id, err := uuid.Parse(val)
 				if err != nil {
-					attrs.PutStr(k, v)
+					attrs.PutStr(string(key), val)
 					return nil
 				}
 				traceID = otelstorage.TraceID(id)
 			}
 			line.TraceID = traceID
-		case "t", "ts", "time", "@timestamp", "timestamp":
+		case timestampField:
+			val := string(val)
 			for _, layout := range []string{
 				time.RFC3339Nano,
 				time.RFC3339,
 				ISO8601Millis,
 			} {
-				ts, err := time.Parse(layout, v)
+				ts, err := time.Parse(layout, val)
 				if err != nil {
 					continue
 				}
 				line.Timestamp = otelstorage.Timestamp(ts.UnixNano())
 			}
 			if line.Timestamp == 0 {
-				attrs.PutStr(k, v)
+				attrs.PutStr(string(key), val)
 			}
 		default:
+			k, v := string(key), string(val)
 			// Try to deduce a type.
 			if v == "" {
 				attrs.PutBool(k, true)
@@ -130,8 +140,21 @@ func (LogFmtParser) Detect(line string) bool {
 	if line[0] == '{' {
 		return false
 	}
-	noop := logfmt.HandlerFunc(func(_, _ []byte) error {
+
+	// Collect a bitset of detected field types.
+	var detectedFields uint64
+	noop := logfmt.HandlerFunc(func(k, _ []byte) error {
+		ftyp, ok := deduceFieldType(k)
+		if ok {
+			detectedFields |= uint64(ftyp)
+		}
 		return nil
 	})
-	return logfmt.Unmarshal([]byte(line), noop) == nil
+	if err := logfmt.Unmarshal([]byte(line), noop); err != nil {
+		return false
+	}
+
+	// A bit of bit magic: ensure we met at least two of useful fields.
+	detectedFields &= uint64(levelField | timestampField | messageField)
+	return bits.OnesCount64(detectedFields) >= 2
 }

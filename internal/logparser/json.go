@@ -20,6 +20,7 @@ type GenericJSONParser struct{}
 func init() {
 	p := &GenericJSONParser{}
 	formatRegistry.Store(p.String(), p)
+	formatRegistry.Store("json", p)
 }
 
 func encodeValue(v pcommon.Value, e *jx.Encoder) {
@@ -195,8 +196,9 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 	line := &Line{}
 	attrs := pcommon.NewMap()
 	if err := dec.ObjBytes(func(d *jx.Decoder, k []byte) error {
-		switch string(k) {
-		case "trace_id", "traceid", "traceID", "traceId":
+		ftyp, _ := deduceFieldType(k)
+		switch ftyp {
+		case traceIDField:
 			if d.Next() != jx.String {
 				return addJSONMapKey(attrs, string(k), d)
 			}
@@ -215,7 +217,7 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 				traceID = otelstorage.TraceID(id)
 			}
 			line.TraceID = traceID
-		case "span_id", "spanid", "spanID", "spanId":
+		case spanIDField:
 			if d.Next() != jx.String {
 				// TODO: handle integers
 				return addJSONMapKey(attrs, string(k), d)
@@ -232,7 +234,7 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 			var spanID otelstorage.SpanID
 			copy(spanID[:], raw)
 			line.SpanID = spanID
-		case "level", "lvl", "levelStr", "severity_text", "severity", "levelname":
+		case levelField:
 			if d.Next() != jx.String {
 				return addJSONMapKey(attrs, string(k), d)
 			}
@@ -246,16 +248,7 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 			}
 			line.SeverityText = v
 			line.SeverityNumber = DeduceSeverity(v)
-		case msgField:
-			if d.Next() != jx.String {
-				return addJSONMapKey(attrs, string(k), d)
-			}
-			v, err := d.Str()
-			if err != nil {
-				return errors.Wrap(err, "msg")
-			}
-			line.Body = v
-		case "ts", "time", "@timestamp", "timestamp":
+		case timestampField:
 			if d.Next() == jx.String {
 				v, err := d.Str()
 				if err != nil {
@@ -320,6 +313,17 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 			// TODO: Also deduce f.
 			line.Timestamp = otelstorage.Timestamp(f * float64(time.Second))
 		default:
+			if string(k) == msgField {
+				if d.Next() != jx.String {
+					return addJSONMapKey(attrs, string(k), d)
+				}
+				v, err := d.Str()
+				if err != nil {
+					return errors.Wrap(err, "msg")
+				}
+				line.Body = v
+				return nil
+			}
 			return addJSONMapKey(attrs, string(k), d)
 		}
 		return nil

@@ -79,3 +79,27 @@ retry:
 		goto retry
 	}
 }
+
+type fieldKind uint8
+
+const (
+	unknownField = fieldKind(iota + 1)
+	levelField
+	timestampField
+	messageField
+	traceIDField
+	spanIDField
+)
+
+var wellKnownFieldNames = map[string]fieldKind{
+	"level": levelField, "lvl": levelField, "levelStr": levelField, "severity_text": levelField, "severity": levelField, "levelname": levelField,
+	"t": timestampField, "ts": timestampField, "time": timestampField, "@timestamp": timestampField, "timestamp": timestampField,
+	"message": messageField, "msg": messageField,
+	"trace_id": traceIDField, "traceid": traceIDField, "traceID": traceIDField, "traceId": traceIDField,
+	"span_id": spanIDField, "spanid": spanIDField, "spanID": spanIDField, "spanId": spanIDField,
+}
+
+func deduceFieldType[S ~string | ~[]byte](name S) (fieldKind, bool) {
+	v, ok := wellKnownFieldNames[string(name)]
+	return v, ok
+}
