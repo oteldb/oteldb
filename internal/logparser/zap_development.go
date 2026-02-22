@@ -39,7 +39,7 @@ func (ZapDevelopmentParser) Parse(data string) (*Line, error) {
 	if !ok {
 		return nil, errors.New("expected a timestamp")
 	}
-	ts, err := time.Parse(ISO8601Millis, string(rawTimestamp))
+	ts, err := time.Parse(ISO8601Millis, rawTimestamp)
 	if err != nil {
 		return nil, errors.Wrap(err, "parse timestamp")
 	}
@@ -54,7 +54,7 @@ func (ZapDevelopmentParser) Parse(data string) (*Line, error) {
 	if err := zapLevel.Set(rawLevel); err != nil {
 		return nil, errors.Wrap(err, "parse level")
 	}
-	line.SeverityText = string(rawLevel)
+	line.SeverityText = rawLevel
 	switch zapLevel {
 	case zapcore.DebugLevel:
 		line.SeverityNumber = plog.SeverityNumberDebug
@@ -80,10 +80,10 @@ func (ZapDevelopmentParser) Parse(data string) (*Line, error) {
 		return nil, errors.New("expected filename or logger name")
 	}
 	if strings.Contains(name, ".go:") {
-		attrs.PutStr("filename", string(name))
+		attrs.PutStr("filename", name)
 	} else {
 		// That's a logger name.
-		attrs.PutStr("logger", string(name))
+		attrs.PutStr("logger", name)
 
 		// Cut filename now.
 		var filename string
@@ -91,12 +91,12 @@ func (ZapDevelopmentParser) Parse(data string) (*Line, error) {
 		if !ok {
 			return nil, errors.New("expected filename")
 		}
-		attrs.PutStr("filename", string(filename))
+		attrs.PutStr("filename", filename)
 	}
 
 	// Cut message.
 	msg, data, ok := strings.Cut(data, consoleSep)
-	line.Body = string(msg)
+	line.Body = msg
 	if ok {
 		if err := jx.DecodeStr(data).ObjBytes(func(d *jx.Decoder, k []byte) error {
 			switch string(k) {

@@ -32,23 +32,23 @@ func (LogFmtParser) Parse(data string) (*Line, error) {
 	return line, nil
 }
 
-func (line *Line) HandleLogfmt(key, val []byte) error {
-	if line.Attrs.IsZero() {
-		line.Attrs = otelstorage.NewAttrs()
+func (l *Line) HandleLogfmt(key, val []byte) error {
+	if l.Attrs.IsZero() {
+		l.Attrs = otelstorage.NewAttrs()
 	}
-	attrs := line.Attrs.AsMap()
+	attrs := l.Attrs.AsMap()
 
 	ftyp, _ := deduceFieldType(key)
 	switch ftyp {
 	case messageField:
-		line.Body = string(val)
+		l.Body = string(val)
 	case levelField:
 		if len(val) == 0 {
 			attrs.PutStr(string(key), string(val))
 			return nil
 		}
-		line.SeverityText = string(val)
-		line.SeverityNumber = DeduceSeverity(line.SeverityText)
+		l.SeverityText = string(val)
+		l.SeverityNumber = DeduceSeverity(l.SeverityText)
 	case spanIDField:
 		// TODO(tdakkota): move parser into separate function.
 		decodedLen := hex.DecodedLen(len(val))
@@ -63,7 +63,7 @@ func (line *Line) HandleLogfmt(key, val []byte) error {
 			attrs.PutStr(string(key), string(val))
 			return nil
 		}
-		line.SpanID = spanID
+		l.SpanID = spanID
 	case traceIDField:
 		val := string(val)
 		// TODO(tdakkota): improve acceptance of ParseTraceID.
@@ -77,7 +77,7 @@ func (line *Line) HandleLogfmt(key, val []byte) error {
 			}
 			traceID = otelstorage.TraceID(id)
 		}
-		line.TraceID = traceID
+		l.TraceID = traceID
 	case timestampField:
 		val := string(val)
 		for _, layout := range []string{
@@ -89,9 +89,9 @@ func (line *Line) HandleLogfmt(key, val []byte) error {
 			if err != nil {
 				continue
 			}
-			line.Timestamp = otelstorage.Timestamp(ts.UnixNano())
+			l.Timestamp = otelstorage.Timestamp(ts.UnixNano())
 		}
-		if line.Timestamp == 0 {
+		if l.Timestamp == 0 {
 			attrs.PutStr(string(key), val)
 		}
 	default:
