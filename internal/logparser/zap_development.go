@@ -1,7 +1,6 @@
 package logparser
 
 import (
-	"bytes"
 	"encoding/hex"
 	"strings"
 	"time"
@@ -19,22 +18,24 @@ import (
 // ZapDevelopmentParser parses zap's development mode lines.
 type ZapDevelopmentParser struct{}
 
+var _ Parser = (*ZapDevelopmentParser)(nil)
+
 func init() {
 	p := &ZapDevelopmentParser{}
 	formatRegistry.Store(p.String(), p)
 }
 
 // Parse line.
-func (ZapDevelopmentParser) Parse(data []byte) (*Line, error) {
+func (ZapDevelopmentParser) Parse(data string) (*Line, error) {
 	var (
 		line  = &Line{}
 		attrs = pcommon.NewMap()
 
-		consoleSep = []byte("\t")
+		consoleSep = "\t"
 	)
 
 	// Cut timestamp.
-	rawTimestamp, data, ok := bytes.Cut(data, consoleSep)
+	rawTimestamp, data, ok := strings.Cut(data, consoleSep)
 	if !ok {
 		return nil, errors.New("expected a timestamp")
 	}
@@ -45,12 +46,12 @@ func (ZapDevelopmentParser) Parse(data []byte) (*Line, error) {
 	line.Timestamp = otelstorage.NewTimestampFromTime(ts)
 
 	// Cut level.
-	rawLevel, data, ok := bytes.Cut(data, consoleSep)
+	rawLevel, data, ok := strings.Cut(data, consoleSep)
 	if !ok {
 		return nil, errors.New("expected level")
 	}
 	var zapLevel zapcore.Level
-	if err := zapLevel.UnmarshalText(rawLevel); err != nil {
+	if err := zapLevel.Set(rawLevel); err != nil {
 		return nil, errors.Wrap(err, "parse level")
 	}
 	line.SeverityText = string(rawLevel)
@@ -74,19 +75,19 @@ func (ZapDevelopmentParser) Parse(data []byte) (*Line, error) {
 	}
 
 	// Next might be a logger name or filename.
-	name, data, ok := bytes.Cut(data, consoleSep)
+	name, data, ok := strings.Cut(data, consoleSep)
 	if !ok {
 		return nil, errors.New("expected filename or logger name")
 	}
-	if bytes.Contains(name, []byte(".go:")) {
+	if strings.Contains(name, ".go:") {
 		attrs.PutStr("filename", string(name))
 	} else {
 		// That's a logger name.
 		attrs.PutStr("logger", string(name))
 
 		// Cut filename now.
-		var filename []byte
-		filename, data, ok = bytes.Cut(data, consoleSep)
+		var filename string
+		filename, data, ok = strings.Cut(data, consoleSep)
 		if !ok {
 			return nil, errors.New("expected filename")
 		}
@@ -94,10 +95,10 @@ func (ZapDevelopmentParser) Parse(data []byte) (*Line, error) {
 	}
 
 	// Cut message.
-	msg, data, ok := bytes.Cut(data, consoleSep)
+	msg, data, ok := strings.Cut(data, consoleSep)
 	line.Body = string(msg)
 	if ok {
-		if err := jx.DecodeBytes(data).ObjBytes(func(d *jx.Decoder, k []byte) error {
+		if err := jx.DecodeStr(data).ObjBytes(func(d *jx.Decoder, k []byte) error {
 			switch string(k) {
 			case "trace_id", "traceid", "traceID", "traceId":
 				if d.Next() != jx.String {

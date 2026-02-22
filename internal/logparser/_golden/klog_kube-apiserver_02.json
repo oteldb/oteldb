@@ -1,0 +1,13 @@
+{
+  "severity": {
+    "str": "Info",
+    "number": 9
+  },
+  "body": "cacher (middlewaretcps.traefik.io): 1 objects queued in incoming channel.",
+  "timestamp": "2026-02-22T17:40:27.405177Z",
+  "attrs": {
+    "code.file.path": "cacher.go",
+    "code.line.number": 855,
+    "thread.id": 903
+  }
+}

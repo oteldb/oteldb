@@ -143,7 +143,7 @@ func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record
 		))
 		parser, ok := logparser.LookupFormat(format)
 		if ok {
-			parsed, err := c.parseRecord(parser, []byte(record.Body), record, false)
+			parsed, err := c.parseRecord(parser, record.Body, record, false)
 			if err == nil {
 				c.stats.ParseSuccessRecords.Add(ctx, 1, metric.WithAttributes(
 					attribute.String("logstorage.format", format),
@@ -171,12 +171,11 @@ func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record
 	c.stats.TotalDeducedRecords.Add(ctx, 1)
 
 	// Try to deduce the format.
-	data := []byte(record.Body)
 	for _, p := range c.opts.DetectFormats {
 		if !p.Detect(record.Body) {
 			continue
 		}
-		parsed, err := c.parseRecord(p, data, record, true)
+		parsed, err := c.parseRecord(p, record.Body, record, true)
 		if err == nil {
 			c.stats.ParseSuccessRecords.Add(ctx, 1, metric.WithAttributes(
 				attribute.String("logstorage.format", p.String()),
@@ -201,7 +200,7 @@ func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record
 	return record
 }
 
-func (c *Consumer) parseRecord(parser logparser.Parser, data []byte, record Record, addType bool) (Record, error) {
+func (c *Consumer) parseRecord(parser logparser.Parser, data string, record Record, addType bool) (Record, error) {
 	attrs := record.Attrs.AsMap()
 	line, err := parser.Parse(data)
 	if err != nil {

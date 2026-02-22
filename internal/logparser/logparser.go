@@ -24,7 +24,7 @@ type Parser interface {
 	// Parse parses data and returns a line.
 	//
 	// TODO: refactor to `Parse(data []byte, target *logstorage.Record) error`
-	Parse(data []byte) (*Line, error)
+	Parse(data string) (*Line, error)
 	// Detect whether data is parsable.
 	//
 	// TODO: refactor to `Detect(data []byte) bool`

@@ -1,0 +1,15 @@
+{
+  "severity": {
+    "str": "Error",
+    "number": 17
+  },
+  "body": "Startup probe already exists for container",
+  "timestamp": "2026-02-23T01:22:17.141045Z",
+  "attrs": {
+    "code.file.path": "prober_manager.go",
+    "code.line.number": 197,
+    "thread.id": 1386,
+    "pod": "kube-system/cilium-envoy-vxgzg",
+    "containerName": "cilium-envoy"
+  }
+}

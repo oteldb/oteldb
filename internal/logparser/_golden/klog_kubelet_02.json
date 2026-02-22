@@ -1,0 +1,15 @@
+{
+  "severity": {
+    "str": "Error",
+    "number": 17
+  },
+  "body": "ContainerStatus from runtime service failed",
+  "timestamp": "2026-02-22T12:52:43.002962Z",
+  "attrs": {
+    "code.file.path": "log.go",
+    "code.line.number": 32,
+    "thread.id": 1601,
+    "err": "rpc error: code = NotFound desc = an error occurred when try to find container \"0ec4b2cd1c67f69d739264d0e67cf16c3a60959012097b1f11cff05b3a9daa96\": not found",
+    "containerID": "0ec4b2cd1c67f69d739264d0e67cf16c3a60959012097b1f11cff05b3a9daa96"
+  }
+}

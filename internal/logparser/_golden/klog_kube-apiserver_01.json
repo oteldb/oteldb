@@ -1,0 +1,13 @@
+{
+  "severity": {
+    "str": "Info",
+    "number": 9
+  },
+  "body": "updated ClusterIP allocator for Service CIDR 10.96.0.0/12",
+  "timestamp": "2026-02-23T01:11:35.888571Z",
+  "attrs": {
+    "code.file.path": "cidrallocator.go",
+    "code.line.number": 278,
+    "thread.id": 903
+  }
+}

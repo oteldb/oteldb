@@ -17,6 +17,8 @@ import (
 // GenericJSONParser can parse generic json into [Line].
 type GenericJSONParser struct{}
 
+var _ Parser = (*GenericJSONParser)(nil)
+
 func init() {
 	p := &GenericJSONParser{}
 	formatRegistry.Store(p.String(), p)
@@ -162,8 +164,8 @@ func addJSONMapKey(m pcommon.Map, key string, d *jx.Decoder) error {
 }
 
 // Parse generic json into [Line].
-func (GenericJSONParser) Parse(data []byte) (*Line, error) {
-	dec := jx.DecodeBytes(data)
+func (GenericJSONParser) Parse(data string) (*Line, error) {
+	dec := jx.DecodeStr(data)
 	const (
 		fieldMessage = "message"
 		fieldMsg     = "msg"
@@ -192,7 +194,7 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 		msgField = fieldMessage
 	}
 
-	dec.ResetBytes(data)
+	dec = jx.DecodeStr(data)
 	line := &Line{}
 	attrs := pcommon.NewMap()
 	if err := dec.ObjBytes(func(d *jx.Decoder, k []byte) error {
