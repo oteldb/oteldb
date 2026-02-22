@@ -168,6 +168,7 @@ func runTest(
 	provider trace.TracerProvider,
 	set prome2e.BatchSet,
 	querier metricQuerier,
+	oldBide bool,
 ) {
 	serverURL, c := setupDB(t, provider, querier)
 
@@ -750,6 +751,10 @@ func runTest(
 		})
 	})
 	t.Run("Metadata", func(t *testing.T) {
+		if oldBide {
+			t.Skip("Metadata endpoint was not supported at the moment")
+			return
+		}
 		a := require.New(t)
 
 		resp, err := c.GetMetadata(ctx, promapi.GetMetadataParams{
