@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/go-faster/oteldb/internal/logparser"
+	"github.com/go-faster/oteldb/internal/otelstorage"
 )
 
 // Consumer consumes given logs and inserts them using given Inserter.
@@ -127,8 +128,11 @@ func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record
 	}
 	record.Timestamp = ts
 
-	if record.Attrs.IsZero() || record.ResourceAttrs.IsZero() {
-		return record
+	if record.Attrs.IsZero() {
+		record.Attrs = otelstorage.NewAttrs()
+	}
+	if record.ResourceAttrs.IsZero() {
+		record.ResourceAttrs = otelstorage.NewAttrs()
 	}
 
 	// Try to parse with specified format, if any.

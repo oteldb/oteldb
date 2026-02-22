@@ -83,6 +83,11 @@ func isAlpha(r rune) bool {
 // Attrs wraps attributes.
 type Attrs pcommon.Map
 
+// NewAttrs creates new [Attrs].
+func NewAttrs() Attrs {
+	return Attrs(pcommon.NewMap())
+}
+
 // AsMap returns Attrs as [pcommon.Map].
 func (m Attrs) AsMap() pcommon.Map {
 	return pcommon.Map(m)

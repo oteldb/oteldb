@@ -73,18 +73,24 @@ func createLogsExporter(
 ) (exporter.Logs, error) {
 	ecfg := cfg.(*Config)
 
+	lg := settings.Logger
 	procCfg := ecfg.Logs.Processing
-	triggerAttrs := parseAttributeRefs(procCfg.TriggerAttributes, "trigger_attributes", settings.Logger)
-	formatAttrs := parseAttributeRefs(procCfg.FormatAttributes, "format_attributes", settings.Logger)
+	triggerAttrs := parseAttributeRefs(procCfg.TriggerAttributes, "trigger_attributes", lg)
+	formatAttrs := parseAttributeRefs(procCfg.FormatAttributes, "format_attributes", lg)
 	formats := make([]logparser.Parser, 0, len(procCfg.DetectFormats))
 	for _, raw := range procCfg.DetectFormats {
 		p, ok := logparser.LookupFormat(raw)
 		if !ok {
-			settings.Logger.Warn("Unknown format", zap.String("format", raw))
+			lg.Warn("Unknown format", zap.String("format", raw))
 			continue
 		}
 		formats = append(formats, p)
 	}
+	lg.Info("Creating logs consumer",
+		zap.Int("trigger_attributes", len(triggerAttrs)),
+		zap.Int("format_attributes", len(triggerAttrs)),
+		zap.Stringers("format", formats),
+	)
 
 	inserter, err := ecfg.connect(ctx, settings)
 	if err != nil {
