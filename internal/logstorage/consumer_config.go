@@ -9,6 +9,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/go-faster/errors"
+
 	"github.com/go-faster/oteldb/internal/logparser"
 )
 
@@ -57,6 +59,10 @@ type AttributeRef struct {
 
 // ParseAttributeRef parses [AttributeRef] from given string.
 func ParseAttributeRef(ref string) (AttributeRef, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return AttributeRef{}, errors.New("attribute ref is empty")
+	}
 	for loc, prefix := range locations {
 		if name, ok := strings.CutPrefix(ref, prefix); ok {
 			return AttributeRef{Name: name, Location: loc}, nil
@@ -132,8 +138,8 @@ func (l AttributeLocation) String() string {
 }
 
 var locations = map[AttributeLocation]string{
-	BodyLocation:       "body",
-	AttributesLocation: "attributes",
-	ScopeLocation:      "scope",
-	ResourceLocation:   "resource",
+	BodyLocation:       "body.",
+	AttributesLocation: "attributes.",
+	ScopeLocation:      "scope.",
+	ResourceLocation:   "resource.",
 }
