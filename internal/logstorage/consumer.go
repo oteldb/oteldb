@@ -2,6 +2,8 @@ package logstorage
 
 import (
 	"context"
+	"iter"
+	"strings"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/autometric"
@@ -94,13 +96,25 @@ func (c *Consumer) ConsumeLogs(ctx context.Context, logs plog.Logs) error {
 	return nil
 }
 
-func (c *Consumer) formatName(body pcommon.Value, record Record) (string, bool) {
-	for _, attr := range c.opts.FormatAttributes {
-		if v, ok := attr.Evaluate(body, record); ok {
-			return v.AsString(), true
+func (c *Consumer) formatName(body pcommon.Value, record Record) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		seen := map[string]struct{}{}
+		for _, attr := range c.opts.FormatAttributes {
+			v, ok := attr.Evaluate(body, record)
+			if !ok {
+				continue
+			}
+			for name := range strings.SplitSeq(v.AsString(), ",") {
+				if _, ok := seen[name]; ok {
+					continue
+				}
+				seen[name] = struct{}{}
+				if !yield(name) {
+					return
+				}
+			}
 		}
 	}
-	return "", false
 }
 
 func (c *Consumer) trigger(body pcommon.Value, record Record) bool {
@@ -136,14 +150,14 @@ func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record
 	}
 
 	// Try to parse with specified format, if any.
-	format, ok := c.formatName(body, record)
-	if ok {
+	var parseFailed bool
+	for format := range c.formatName(body, record) {
 		c.stats.ExplicitFormatRecords.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("logstorage.format", format),
 		))
 		parser, ok := logparser.LookupFormat(format)
 		if ok {
-			parsed, err := c.parseRecord(parser, record.Body, record, false)
+			parsed, err := c.parseRecord(parser, record.Body, record)
 			if err == nil {
 				c.stats.ParseSuccessRecords.Add(ctx, 1, metric.WithAttributes(
 					attribute.String("logstorage.format", format),
@@ -151,17 +165,18 @@ func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record
 				))
 				return parsed
 			}
+			parseFailed = true
 			c.stats.ParseFailedRecords.Add(ctx, 1, metric.WithAttributes(
 				attribute.String("logstorage.format", format),
 				attribute.Bool("logstorage.deduced", false),
 			))
-			return record
 		}
-
-		// If format is unknown, try to deduce it.
 		c.stats.UnknownFormatRecords.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("logstorage.format", format),
 		))
+	}
+	if parseFailed {
+		return record
 	}
 
 	// But only if there are attributes triggering inference.
@@ -175,7 +190,7 @@ func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record
 		if !p.Detect(record.Body) {
 			continue
 		}
-		parsed, err := c.parseRecord(p, record.Body, record, true)
+		parsed, err := c.parseRecord(p, record.Body, record)
 		if err == nil {
 			c.stats.ParseSuccessRecords.Add(ctx, 1, metric.WithAttributes(
 				attribute.String("logstorage.format", p.String()),
@@ -200,15 +215,13 @@ func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record
 	return record
 }
 
-func (c *Consumer) parseRecord(parser logparser.Parser, data string, record Record, addType bool) (Record, error) {
+func (c *Consumer) parseRecord(parser logparser.Parser, data string, record Record) (Record, error) {
 	attrs := record.Attrs.AsMap()
 	if err := parser.Parse(data, &record); err != nil {
 		return record, err
 	}
 
-	if addType {
-		attrs.PutStr("logparser.type", parser.String())
-	}
+	attrs.PutStr("logparser.type", parser.String())
 	record.SeverityNumber, record.SeverityText = normalizeSeverity(record.SeverityNumber, record.SeverityText)
 	return record, nil
 }

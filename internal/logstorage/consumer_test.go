@@ -109,6 +109,18 @@ func TestConsumeLogs(t *testing.T) {
 		record.Body().SetStr(`well cooked OTEL record`)
 		record.Attributes().PutStr("method", "GET")
 	}
+	{
+		record := records.AppendEmpty()
+		record.SetTimestamp(7)
+		record.Body().SetStr(`{"msg": "multi-format-message-1", "level": "INFO"}`)
+		record.Attributes().PutStr("log.format", "zap-development,zap-development,json")
+	}
+	{
+		record := records.AppendEmpty()
+		record.SetTimestamp(8)
+		record.Body().SetStr(`{"msg": "multi-format-message-2", "level": "INFO"}`)
+		record.Attributes().PutStr("log.format", "json,logfmt")
+	}
 
 	err = c.ConsumeLogs(ctx, logs)
 	require.NoError(t, err)
@@ -117,7 +129,7 @@ func TestConsumeLogs(t *testing.T) {
 		{
 			Timestamp: 1, Body: "json-message",
 			SeverityText: "INFO", SeverityNumber: plog.SeverityNumberInfo,
-			Attrs:         attrMap("log.format", "json"),
+			Attrs:         attrMap("log.format", "json", "logparser.type", "generic-json"),
 			ScopeAttrs:    otelstorage.NewAttrs(),
 			ResourceAttrs: otelstorage.NewAttrs(),
 		},
@@ -150,6 +162,20 @@ func TestConsumeLogs(t *testing.T) {
 			Timestamp: 6, Body: "well cooked OTEL record",
 			SeverityText: "Debug", SeverityNumber: plog.SeverityNumberDebug,
 			Attrs:         attrMap("method", "GET"),
+			ScopeAttrs:    otelstorage.NewAttrs(),
+			ResourceAttrs: otelstorage.NewAttrs(),
+		},
+		{
+			Timestamp: 7, Body: "multi-format-message-1",
+			SeverityText: "INFO", SeverityNumber: plog.SeverityNumberInfo,
+			Attrs:         attrMap("log.format", "zap-development,zap-development,json", "logparser.type", "generic-json"),
+			ScopeAttrs:    otelstorage.NewAttrs(),
+			ResourceAttrs: otelstorage.NewAttrs(),
+		},
+		{
+			Timestamp: 8, Body: "multi-format-message-2",
+			SeverityText: "INFO", SeverityNumber: plog.SeverityNumberInfo,
+			Attrs:         attrMap("log.format", "json,logfmt", "logparser.type", "generic-json"),
 			ScopeAttrs:    otelstorage.NewAttrs(),
 			ResourceAttrs: otelstorage.NewAttrs(),
 		},
