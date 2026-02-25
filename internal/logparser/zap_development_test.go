@@ -15,6 +15,10 @@ func TestZapDevelopmentParser_Parse(t *testing.T) {
 	testParser("zap-development")(t)
 }
 
+func FuzzZapDevelopmentParser(f *testing.F) {
+	fuzzParser(f, "zap-development")
+}
+
 func BenchmarkZapDevelopmentParser_Parse(b *testing.B) {
 	b.ReportAllocs()
 	data, err := os.ReadFile(filepath.Join("_testdata", "zap-development", "zapdev.txt"))
