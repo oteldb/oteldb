@@ -1,3 +1,4 @@
 {"level":"info","ts":1701681119.1613183,"logger":"poll","caller":"gh-archived/main.go:197","msg":"Events","duration":0.437301455,"integers":[1, 2, 3],"new_count":100,"remaining":1040,"used":3960,"reset":660.838704106,"reset_human":"in 12 minutes","sleep":0.198120375,"target_rate":0.63542183}
 {"level":"info","ts":"\"","msg":"BadTimestamp"}
 {"level":"info","ts":"-","msg":"BadTimestamp"}
+{"level":"debug","ts":1771928456.760888,"caller":"chstorage/querier.go:157","msg":"Query Clickhouse","span_id":"e352a71a3fb216c1","trace_id":"7d0d9ae2c3ac80af0028eb043d4da92d","query_type":"getLabelMapping","table":"logs_attrs","signal":"logs","took":0.002126417}

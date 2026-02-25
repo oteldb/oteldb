@@ -61,3 +61,54 @@ func TestDeduceSeverity(t *testing.T) {
 		})
 	}
 }
+
+var parseSourceTests = []struct {
+	input   string
+	want    Source
+	wantErr string
+}{
+	{`hello.go:1:2`, Source{Filename: "hello.go", Line: 1, Column: 2}, ``},
+	{`  hello.go:1:2` + "\n", Source{Filename: "hello.go", Line: 1, Column: 2}, ``},
+	{`chstorage/querier.go:157`, Source{Filename: "chstorage/querier.go", Line: 157, Column: 0}, ``},
+	{`chstorage/querier.go:157:10`, Source{Filename: "chstorage/querier.go", Line: 157, Column: 10}, ``},
+
+	{`hello.go:10:a`, Source{}, `parse column number: strconv.Atoi: parsing "a": invalid syntax`},
+	{`hello.go:a`, Source{}, `parse line number: strconv.Atoi: parsing "a": invalid syntax`},
+
+	{`:1:2`, Source{}, `filename is empty`},
+	{`:1`, Source{}, `filename is empty`},
+	{`:`, Source{}, `filename is empty`},
+	{``, Source{}, `a ':' expected`},
+}
+
+func TestParseSource(t *testing.T) {
+	for i, tt := range parseSourceTests {
+		tt := tt
+		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+			t.Logf("Input: %#q", tt.input)
+
+			got, gotErr := ParseSource(tt.input)
+			if tt.wantErr != "" {
+				require.EqualError(t, gotErr, tt.wantErr)
+				return
+			}
+			require.NoError(t, gotErr)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func FuzzParseSource(f *testing.F) {
+	for _, tt := range parseSourceTests {
+		f.Add(tt.input)
+	}
+	f.Fuzz(func(t *testing.T, input string) {
+		s, err := ParseSource(input)
+		if err != nil {
+			return
+		}
+		if s.Filename == "" {
+			t.Fatal("filename must not be empty")
+		}
+	})
+}

@@ -29,12 +29,14 @@ func BenchmarkGenericJSONParser_Parse(b *testing.B) {
 	for scanner.Scan() {
 		i++
 		b.Run(fmt.Sprintf("Line%02d", i), func(b *testing.B) {
+			var target Record
 			b.ReportAllocs()
 			b.SetBytes(int64(len(scanner.Bytes())))
+			b.ResetTimer()
 
 			for j := 0; j < b.N; j++ {
-				_, err := parser.Parse(scanner.Text())
-				if err != nil {
+				target.Reset()
+				if err := parser.Parse(scanner.Text(), &target); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -64,16 +66,13 @@ func FuzzGenericJSONParser(f *testing.F) {
 		if !parser.Detect(string(input)) {
 			t.Error("Should detect")
 		}
-		line, err := parser.Parse(string(input))
-		if err != nil {
-			return
-		}
-		if line == nil {
-			t.Fatal("line is nil")
+
+		var target Record
+		if err := parser.Parse(string(input), &target); err != nil {
 			return
 		}
 		e := &jx.Encoder{}
-		line.Encode(e)
+		target.Encode(e)
 		if !jx.Valid(e.Bytes()) {
 			t.Fatal("invalid encoded line")
 		}

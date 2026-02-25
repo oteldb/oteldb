@@ -25,31 +25,36 @@ func init() {
 }
 
 // Parse klog line into [Line].
-func (KLogParser) Parse(data string) (*Line, error) {
-	rest, h, ok := parseKLogHeader(time.Now(), data)
-	if !ok {
-		return nil, errors.New("invalid klog header")
+func (KLogParser) Parse(data string, target *Record) error {
+	if target.Attrs.IsZero() {
+		target.Attrs = otelstorage.NewAttrs()
 	}
-	var (
-		line = &Line{
-			Timestamp:      pcommon.NewTimestampFromTime(h.Timestamp),
-			SeverityNumber: h.Level,
-			Body:           rest,
-			Attrs:          otelstorage.NewAttrs(),
+	m := target.Attrs.AsMap()
+
+	t := target.ObservedTimestamp.AsTime()
+	if target.ObservedTimestamp == 0 {
+		t = target.Timestamp.AsTime()
+		if target.Timestamp == 0 {
+			t = time.Now()
 		}
-		m = line.Attrs.AsMap()
-	)
-	if h.Filename != "" {
-		m.PutStr("code.file.path", h.Filename)
-		m.PutInt("code.line.number", int64(h.LineNumber))
 	}
+
+	rest, h, ok := parseKLogHeader(t, data)
+	if !ok {
+		return errors.New("invalid klog header")
+	}
+	target.Timestamp = pcommon.NewTimestampFromTime(h.Timestamp)
+	target.SeverityNumber = h.Level
+	target.Body = rest
+	h.Source.Add(m)
 	if h.ThreadID != 0 {
 		m.PutInt("thread.id", h.ThreadID)
 	}
-	if err := parseKLogMessage(rest, line); err != nil {
-		return nil, errors.Wrap(err, "parse message")
+
+	if err := parseKLogMessage(rest, target); err != nil {
+		return errors.Wrap(err, "parse message")
 	}
-	return line, nil
+	return nil
 }
 
 // Detect if line is parsable by this parser.
@@ -63,11 +68,10 @@ func (KLogParser) String() string {
 }
 
 type klogHeader struct {
-	Level      plog.SeverityNumber
-	Timestamp  time.Time
-	ThreadID   int64
-	Filename   string
-	LineNumber int
+	Level     plog.SeverityNumber
+	Timestamp time.Time
+	ThreadID  int64
+	Source    Source
 }
 
 func parseKLogHeader(year time.Time, s string) (rest string, h klogHeader, _ bool) {
@@ -115,7 +119,7 @@ func parseKLogHeader(year time.Time, s string) (rest string, h klogHeader, _ boo
 	if v := strings.TrimSpace(additional); v != "" {
 		rawThreadID, source, ok := strings.Cut(v, " ")
 		if ok {
-			h.Filename, h.LineNumber = parseSource(source)
+			h.Source, _ = ParseSource(source)
 			h.ThreadID, _ = strconv.ParseInt(rawThreadID, 10, 64)
 		}
 	}
@@ -123,14 +127,14 @@ func parseKLogHeader(year time.Time, s string) (rest string, h klogHeader, _ boo
 	return rest, h, true
 }
 
-func parseKLogMessage(s string, l *Line) error {
+func parseKLogMessage(s string, target *Record) error {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return errors.New("message is empty")
 	}
 	if s[0] != '"' {
 		// The rest of the line is just message as-is.
-		l.Body = s
+		target.Body = s
 		return nil
 	}
 
@@ -138,7 +142,7 @@ func parseKLogMessage(s string, l *Line) error {
 	if err != nil {
 		return errors.Wrap(err, "get message")
 	}
-	l.Body, err = strconv.Unquote(message)
+	target.Body, err = strconv.Unquote(message)
 	if err != nil {
 		return errors.Wrap(err, "parse message")
 	}
@@ -146,20 +150,5 @@ func parseKLogMessage(s string, l *Line) error {
 	s = s[len(message):]
 
 	// Parse labels.
-	return logfmt.Unmarshal([]byte(s), l)
-}
-
-func parseSource(s string) (filename string, line int) {
-	idx := strings.LastIndex(s, ":")
-	if idx < 0 {
-		return "", 0
-	}
-	filename = s[:idx]
-
-	var err error
-	line, err = strconv.Atoi(s[idx+1:])
-	if err != nil {
-		return "", 0
-	}
-	return filename, line
+	return logfmt.Unmarshal([]byte(s), target)
 }

@@ -8,12 +8,18 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-faster/sdk/gold"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
 func testParser(name string) func(*testing.T) {
+	var (
+		observedDate      = time.Date(2026, time.January, 20, 1, 2, 3, 4, time.UTC)
+		observedTimestamp = pcommon.NewTimestampFromTime(observedDate)
+	)
 	return func(t *testing.T) {
 		files, err := os.ReadDir(filepath.Join("_testdata", name))
 		require.NoError(t, err, "read testdata")
@@ -45,12 +51,15 @@ func testParser(name string) func(*testing.T) {
 							require.True(t, detected)
 						})
 						t.Run("Parse", func(t *testing.T) {
-							line, err := parser.Parse(s)
+							target := Record{
+								ObservedTimestamp: observedTimestamp,
+							}
+							err := parser.Parse(s, &target)
 							require.NoError(t, err, "parse")
 							fileName := fmt.Sprintf("%s_%s_%02d.json",
 								name, strings.TrimSuffix(file.Name(), filepath.Ext(file.Name())), i,
 							)
-							gold.Str(t, line.String(), fileName)
+							gold.Str(t, target.String(), fileName)
 						})
 					})
 				}

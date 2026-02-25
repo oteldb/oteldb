@@ -1,12 +1,21 @@
 package logparser
 
 import (
+	"encoding/hex"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+
+	"github.com/google/uuid"
+
+	"github.com/go-faster/errors"
+
+	"github.com/go-faster/oteldb/internal/otelstorage"
 )
 
 // ISO8601Millis time format with millisecond precision.
@@ -78,6 +87,97 @@ retry:
 		normalized = true
 		goto retry
 	}
+}
+
+// ParseTraceID tries its best to parse trace ID.
+func ParseTraceID(s string) (otelstorage.TraceID, bool) {
+	traceID, err := otelstorage.ParseTraceID(s)
+	if err != nil {
+		// Trying to parse as UUID.
+		id, err := uuid.Parse(strings.ToLower(s))
+		if err != nil {
+			return traceID, false
+		}
+		traceID = otelstorage.TraceID(id)
+	}
+	return traceID, true
+}
+
+// ParseSpanID tries its best to parse trace ID.
+func ParseSpanID[S ~string | ~[]byte](s S) (spanID otelstorage.SpanID, _ bool) {
+	decodedLen := hex.DecodedLen(len(s))
+	if decodedLen != 8 {
+		return spanID, false
+	}
+
+	var buf [32]byte
+	n := copy(buf[:], s)
+	_, err := hex.Decode(spanID[:], buf[:n])
+	if err != nil {
+		return spanID, false
+	}
+	return spanID, true
+}
+
+// Source locates source code produced the log record.
+type Source struct {
+	Filename string
+	Line     int
+	Column   int
+}
+
+// ParseSource parses source location.
+func ParseSource(s string) (src Source, _ error) {
+	s = strings.TrimSpace(s)
+	idx := strings.LastIndex(s, ":")
+	if idx < 0 {
+		return Source{}, errors.New("a ':' expected")
+	}
+	var (
+		rawLineNumber   = s[idx+1:]
+		rawColumnNumber = ""
+	)
+	s = s[:idx]
+	src.Filename = s
+
+	idx = strings.LastIndex(s, ":")
+	if idx >= 0 {
+		rawColumnNumber = rawLineNumber
+		rawLineNumber = s[idx+1:]
+		s = s[:idx]
+		src.Filename = s
+	}
+	if src.Filename == "" {
+		return Source{}, errors.New("filename is empty")
+	}
+
+	var err error
+	src.Line, err = strconv.Atoi(rawLineNumber)
+	if err != nil {
+		return Source{}, errors.Wrap(err, "parse line number")
+	}
+	if rawColumnNumber != "" {
+		src.Column, err = strconv.Atoi(rawColumnNumber)
+		if err != nil {
+			return Source{}, errors.Wrap(err, "parse column number")
+		}
+	}
+	return src, nil
+}
+
+// Add adds fields as attributes to given set.
+func (s *Source) Add(m pcommon.Map) bool {
+	if s.Filename == "" {
+		return false
+	}
+	m.PutStr("code.file.path", s.Filename)
+	if s.Line != 0 {
+		m.PutInt("code.line.number", int64(s.Line))
+	}
+	if s.Column != 0 {
+		m.PutInt("code.column.number", int64(s.Column))
+	}
+	return true
 }
 
 type fieldKind uint8

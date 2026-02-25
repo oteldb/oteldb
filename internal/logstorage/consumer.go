@@ -202,32 +202,14 @@ func (c *Consumer) processRecord(ctx context.Context, body pcommon.Value, record
 
 func (c *Consumer) parseRecord(parser logparser.Parser, data string, record Record, addType bool) (Record, error) {
 	attrs := record.Attrs.AsMap()
-	line, err := parser.Parse(data)
-	if err != nil {
+	if err := parser.Parse(data, &record); err != nil {
 		return record, err
 	}
 
 	if addType {
 		attrs.PutStr("logparser.type", parser.String())
 	}
-	if !line.Attrs.IsZero() {
-		line.Attrs.AsMap().Range(func(k string, v pcommon.Value) bool {
-			target := attrs.PutEmpty(k)
-			v.CopyTo(target)
-			return true
-		})
-	}
-	record.Body = line.Body
-	record.SeverityNumber, record.SeverityText = normalizeSeverity(line.SeverityNumber, line.SeverityText)
-	if line.Timestamp != 0 {
-		record.Timestamp = line.Timestamp
-	}
-	if !line.SpanID.IsEmpty() {
-		record.SpanID = line.SpanID
-	}
-	if !line.TraceID.IsEmpty() {
-		record.TraceID = line.TraceID
-	}
+	record.SeverityNumber, record.SeverityText = normalizeSeverity(record.SeverityNumber, record.SeverityText)
 	return record, nil
 }
 

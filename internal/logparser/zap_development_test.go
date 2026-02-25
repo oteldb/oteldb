@@ -28,12 +28,14 @@ func BenchmarkZapDevelopmentParser_Parse(b *testing.B) {
 	for scanner.Scan() {
 		i++
 		b.Run(fmt.Sprintf("Line%02d", i), func(b *testing.B) {
+			var target Record
 			b.ReportAllocs()
 			b.SetBytes(int64(len(scanner.Bytes())))
+			b.ResetTimer()
 
 			for j := 0; j < b.N; j++ {
-				_, err := parser.Parse(scanner.Text())
-				if err != nil {
+				target.Reset()
+				if err := parser.Parse(scanner.Text(), &target); err != nil {
 					b.Fatal(err)
 				}
 			}

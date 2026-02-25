@@ -1,14 +1,11 @@
 package logparser
 
 import (
-	"encoding/hex"
 	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
-	"github.com/google/uuid"
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap/zapcore"
 
@@ -26,61 +23,69 @@ func init() {
 }
 
 // Parse line.
-func (ZapDevelopmentParser) Parse(data string) (*Line, error) {
+func (ZapDevelopmentParser) Parse(data string, target *Record) error {
+	if target.Attrs.IsZero() {
+		target.Attrs = otelstorage.NewAttrs()
+	}
 	var (
-		line  = &Line{}
-		attrs = pcommon.NewMap()
-
+		attrs      = target.Attrs.AsMap()
 		consoleSep = "\t"
 	)
 
 	// Cut timestamp.
 	rawTimestamp, data, ok := strings.Cut(data, consoleSep)
 	if !ok {
-		return nil, errors.New("expected a timestamp")
+		return errors.New("expected a timestamp")
 	}
 	ts, err := time.Parse(ISO8601Millis, rawTimestamp)
 	if err != nil {
-		return nil, errors.Wrap(err, "parse timestamp")
+		return errors.Wrap(err, "parse timestamp")
 	}
-	line.Timestamp = otelstorage.NewTimestampFromTime(ts)
 
 	// Cut level.
 	rawLevel, data, ok := strings.Cut(data, consoleSep)
 	if !ok {
-		return nil, errors.New("expected level")
+		return errors.New("expected level")
 	}
 	var zapLevel zapcore.Level
 	if err := zapLevel.Set(rawLevel); err != nil {
-		return nil, errors.Wrap(err, "parse level")
+		return errors.Wrap(err, "parse level")
 	}
-	line.SeverityText = rawLevel
+
+	target.Timestamp = otelstorage.NewTimestampFromTime(ts)
+	target.SeverityText = rawLevel
 	switch zapLevel {
 	case zapcore.DebugLevel:
-		line.SeverityNumber = plog.SeverityNumberDebug
+		target.SeverityNumber = plog.SeverityNumberDebug
 	case zapcore.InfoLevel:
-		line.SeverityNumber = plog.SeverityNumberInfo
+		target.SeverityNumber = plog.SeverityNumberInfo
 	case zapcore.WarnLevel:
-		line.SeverityNumber = plog.SeverityNumberWarn
+		target.SeverityNumber = plog.SeverityNumberWarn
 	case zapcore.ErrorLevel:
-		line.SeverityNumber = plog.SeverityNumberError
+		target.SeverityNumber = plog.SeverityNumberError
 	case zapcore.DPanicLevel:
-		line.SeverityNumber = plog.SeverityNumberFatal
+		target.SeverityNumber = plog.SeverityNumberFatal
 	case zapcore.PanicLevel:
-		line.SeverityNumber = plog.SeverityNumberFatal
+		target.SeverityNumber = plog.SeverityNumberFatal
 	case zapcore.FatalLevel:
-		line.SeverityNumber = plog.SeverityNumberFatal
+		target.SeverityNumber = plog.SeverityNumberFatal
 	default:
-		return nil, errors.Errorf("unexpected level %v", zapLevel)
+		return errors.Errorf("unexpected level %v", zapLevel)
 	}
 
 	// Next might be a logger name or filename.
 	name, data, ok := strings.Cut(data, consoleSep)
 	if !ok {
-		return nil, errors.New("expected filename or logger name")
+		return errors.New("expected filename or logger name")
 	}
 	if strings.Contains(name, ".go:") {
-		attrs.PutStr("filename", name)
+		// Gracefully handle invalid source.
+		src, err := ParseSource(name)
+		if err == nil {
+			src.Add(attrs)
+		} else {
+			attrs.PutStr("code.file.path", name)
+		}
 	} else {
 		// That's a logger name.
 		attrs.PutStr("logger", name)
@@ -89,18 +94,26 @@ func (ZapDevelopmentParser) Parse(data string) (*Line, error) {
 		var filename string
 		filename, data, ok = strings.Cut(data, consoleSep)
 		if !ok {
-			return nil, errors.New("expected filename")
+			return errors.New("expected filename")
 		}
-		attrs.PutStr("filename", filename)
+
+		// Gracefully handle invalid source.
+		src, err := ParseSource(filename)
+		if err == nil {
+			src.Add(attrs)
+		} else {
+			attrs.PutStr("code.file.path", filename)
+		}
 	}
 
 	// Cut message.
 	msg, data, ok := strings.Cut(data, consoleSep)
-	line.Body = msg
+	target.Body = msg
 	if ok {
 		if err := jx.DecodeStr(data).ObjBytes(func(d *jx.Decoder, k []byte) error {
-			switch string(k) {
-			case "trace_id", "traceid", "traceID", "traceId":
+			ftyp, _ := deduceFieldType(k)
+			switch ftyp {
+			case traceIDField:
 				if d.Next() != jx.String {
 					return addJSONMapKey(attrs, string(k), d)
 				}
@@ -108,45 +121,36 @@ func (ZapDevelopmentParser) Parse(data string) (*Line, error) {
 				if err != nil {
 					return err
 				}
-				traceID, err := otelstorage.ParseTraceID(strings.ToLower(v))
-				if err != nil {
-					// Trying to parse as UUID.
-					id, err := uuid.Parse(v)
-					if err != nil {
-						attrs.PutStr(string(k), v)
-						return nil
-					}
-					traceID = otelstorage.TraceID(id)
+				traceID, ok := ParseTraceID(v)
+				if !ok {
+					attrs.PutStr(string(k), v)
+					return nil
 				}
-				line.TraceID = traceID
-			case "span_id", "spanid", "spanID", "spanId":
+				target.TraceID = traceID
+			case spanIDField:
 				if d.Next() != jx.String {
 					// TODO: handle integers
 					return addJSONMapKey(attrs, string(k), d)
 				}
-				v, err := d.Str()
+				v, err := d.StrBytes()
 				if err != nil {
 					return err
 				}
-				raw, _ := hex.DecodeString(v)
-				if len(raw) != 8 {
-					attrs.PutStr(string(k), v)
+				spanID, ok := ParseSpanID(v)
+				if !ok {
+					attrs.PutStr(string(k), string(v))
 					return nil
 				}
-				var spanID otelstorage.SpanID
-				copy(spanID[:], raw)
-				line.SpanID = spanID
+				target.SpanID = spanID
 			default:
 				return addJSONMapKey(attrs, string(k), d)
 			}
 			return nil
 		}); err != nil {
-			return nil, errors.Wrap(err, "read object")
+			return errors.Wrap(err, "read object")
 		}
 	}
-
-	line.Attrs = otelstorage.Attrs(attrs)
-	return line, nil
+	return nil
 }
 
 func (ZapDevelopmentParser) String() string {

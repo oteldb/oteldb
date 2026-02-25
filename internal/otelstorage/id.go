@@ -3,6 +3,7 @@ package otelstorage
 import (
 	"encoding/binary"
 	"strings"
+	"unicode"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -36,6 +37,11 @@ func ParseTraceID(input string) (_ TraceID, err error) {
 		//  00b78e08df6f20dc3ad29d3915beab75 <- copy(hex[32-30:], input)
 		//
 		copy(hex[len(hex)-len(input):], input)
+		for i, r := range hex {
+			if r <= unicode.MaxASCII && ('A' <= r && r <= 'Z') {
+				hex[i] += 'a' - 'A' // #nosec G602 -- some bullshit
+			}
+		}
 		id, err = uuid.ParseBytes(hex[:])
 	}
 	return TraceID(id), err
