@@ -2,7 +2,6 @@ package logparser
 
 import (
 	"math/bits"
-	"time"
 
 	"github.com/go-faster/jx"
 	"github.com/kr/logfmt"
@@ -58,21 +57,12 @@ func (r *Record) HandleLogfmt(key, val []byte) error {
 		}
 		r.TraceID = traceID
 	case timestampField:
-		val := string(val)
-		for _, layout := range []string{
-			time.RFC3339Nano,
-			time.RFC3339,
-			ISO8601Millis,
-		} {
-			ts, err := time.Parse(layout, val)
-			if err != nil {
-				continue
-			}
-			r.Timestamp = otelstorage.Timestamp(ts.UnixNano())
+		ts, ok := ParseTimestamp(val)
+		if ok {
+			r.Timestamp = ts
+			return nil
 		}
-		if r.Timestamp == 0 {
-			attrs.PutStr(string(key), val)
-		}
+		attrs.PutStr(string(key), string(val))
 	default:
 		k, v := string(key), string(val)
 		// Try to deduce a type.

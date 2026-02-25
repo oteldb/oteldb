@@ -2,7 +2,6 @@ package logparser
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
@@ -243,34 +242,16 @@ func (GenericJSONParser) Parse(data string, target *Record) error {
 			target.SeverityNumber = DeduceSeverity(v)
 		case timestampField:
 			if d.Next() == jx.String {
-				v, err := d.Str()
+				v, err := d.StrBytes()
 				if err != nil {
 					return errors.Wrap(err, "ts")
 				}
-				if num, err := jx.DecodeStr(v).Num(); err == nil && num.IsInt() {
-					// Quoted integer.
-					ts, err := num.Int64()
-					if err != nil {
-						return errors.Wrap(err, "int time")
-					}
-					if n, ok := DeduceNanos(ts); ok {
-						target.Timestamp = otelstorage.Timestamp(n)
-						return nil
-					}
-				}
-				for _, layout := range []string{
-					time.RFC3339Nano,
-					time.RFC3339,
-					ISO8601Millis,
-				} {
-					ts, err := time.Parse(layout, v)
-					if err != nil {
-						continue
-					}
-					target.Timestamp = otelstorage.Timestamp(ts.UnixNano())
+				ts, ok := ParseTimestamp(v)
+				if ok {
+					target.Timestamp = ts
 					return nil
 				}
-				attrs.PutStr(string(k), v)
+				attrs.PutStr(string(k), string(v))
 				return nil
 			} else if d.Next() != jx.Number {
 				// Fallback to generic value.
@@ -280,31 +261,12 @@ func (GenericJSONParser) Parse(data string, target *Record) error {
 			if err != nil {
 				return errors.Wrap(err, "ts")
 			}
-			if v.IsInt() {
-				// Parsing time as integer.
-				ts, err := v.Int64()
-				if err != nil {
-					return errors.Wrap(err, "ts")
-				}
-				if n, ok := DeduceNanos(ts); ok {
-					target.Timestamp = otelstorage.Timestamp(n)
-					return nil
-				}
-
-				// Fallback.
-				attrs.PutInt(string(k), ts)
+			ts, ok := ParseTimestamp(v)
+			if ok {
+				target.Timestamp = ts
 				return nil
 			}
-
-			// Parsing 1318229038.000654 as time.
-			// Default is "epoch time, i.e. unix seconds float64".
-			// See zapcore.EpochTimeEncoder.
-			f, err := v.Float64()
-			if err != nil {
-				return errors.Wrap(err, "ts parse")
-			}
-			// TODO: Also deduce f.
-			target.Timestamp = otelstorage.Timestamp(f * float64(time.Second))
+			return addJSONMapKey(attrs, string(k), d)
 		default:
 			if string(k) == msgField {
 				if d.Next() != jx.String {

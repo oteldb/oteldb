@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/plog"
+
+	"github.com/go-faster/oteldb/internal/otelstorage"
 )
 
 func TestDeduceNanos(t *testing.T) {
@@ -58,6 +60,110 @@ func TestDeduceSeverity(t *testing.T) {
 	for i, tt := range tests {
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			require.Equal(t, tt.want, DeduceSeverity(tt.text))
+		})
+	}
+}
+
+func TestParseTimestamp(t *testing.T) {
+	d := func(year int, month time.Month, day, hour, minute, sec, nsec int, loc *time.Location) otelstorage.Timestamp {
+		ts := time.Date(year, month, day, hour, minute, sec, nsec, loc)
+		return otelstorage.NewTimestampFromTime(ts)
+	}
+	for i, tt := range []struct {
+		input   string
+		epsilon float64
+		want    otelstorage.Timestamp
+		wantOk  bool
+	}{
+		{
+			`2026-01-20T01:02:03.000000004Z`,
+			0,
+			d(2026, time.January, 20, 1, 2, 3, 4, time.UTC),
+			true,
+		},
+		{
+			`2026-01-20T01:02:03.00000004Z`,
+			0,
+			d(2026, time.January, 20, 1, 2, 3, 40, time.UTC),
+			true,
+		},
+		{
+			`2026-01-20T01:02:03Z`,
+			0,
+			d(2026, time.January, 20, 1, 2, 3, 0, time.UTC),
+			true,
+		},
+		{
+			`1772058997`,
+			0,
+			otelstorage.NewTimestampFromTime(time.Unix(1772058997, 0)),
+			true,
+		},
+		{
+			`1772058997123`,
+			0,
+			otelstorage.NewTimestampFromTime(time.UnixMilli(1772058997_123)),
+			true,
+		},
+		{
+			`1772058997123456`,
+			0,
+			otelstorage.NewTimestampFromTime(time.UnixMicro(1772058997_123456)),
+			true,
+		},
+		{
+			`1772058997123456789`,
+			0,
+			otelstorage.NewTimestampFromTime(time.Unix(0, 1772058997_123456789)),
+			true,
+		},
+
+		// Floating point.
+		{
+			`1772058997.123`,
+			0.00001,
+			otelstorage.NewTimestampFromTime(time.UnixMilli(1772058997_123)),
+			true,
+		},
+		{
+			`1701681119.1613183`,
+			0.00001,
+			otelstorage.NewTimestampFromTime(time.Unix(0, 1701681119_161318300)),
+			true,
+		},
+		{
+			`1772058997123.0`,
+			0,
+			otelstorage.NewTimestampFromTime(time.UnixMilli(1772058997_123)),
+			true,
+		},
+		{
+			`1772058997.123456`,
+			0.00001,
+			otelstorage.NewTimestampFromTime(time.UnixMicro(1772058997_123456)),
+			true,
+		},
+		{
+			`1772058997123456789.0`,
+			0,
+			otelstorage.NewTimestampFromTime(time.Unix(0, 1772058997_123456789)),
+			true,
+		},
+
+		{` `, 0, 0, false},
+		{``, 0, 0, false},
+	} {
+		tt := tt
+		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+			t.Logf("Input: %#q", tt.input)
+
+			got, gotOk := ParseTimestamp([]byte(tt.input))
+			if !tt.wantOk {
+				require.False(t, gotOk)
+				return
+			}
+			require.True(t, gotOk)
+			require.InEpsilon(t, tt.want.AsTime().UnixNano(), got.AsTime().UnixNano(), tt.epsilon)
 		})
 	}
 }

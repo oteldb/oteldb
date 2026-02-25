@@ -1,7 +1,9 @@
 package logparser
 
 import (
+	"bytes"
 	"encoding/hex"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -24,21 +26,71 @@ const ISO8601Millis = "2006-01-02T15:04:05.000Z0700"
 // we are not expecting logs from past.
 var deduceStart = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 
-// DeduceNanos returns unix nano from arbitrary time integer, deducing resolution by range.
-func DeduceNanos(n int64) (int64, bool) {
+// UnixTimestampKind determines kind of unix timestamp.
+type UnixTimestampKind int64
+
+// DeduceUnixTimestampKind deduces Unix timestamp kind.
+func DeduceUnixTimestampKind(n int64) (UnixTimestampKind, bool) {
 	if n > deduceStart.UnixNano() {
-		return n, true
+		return UnixNano, true
 	}
 	if n > deduceStart.UnixMicro() {
-		return n * 1e3, true
+		return UnixMicro, true
 	}
 	if n > deduceStart.UnixMilli() {
-		return n * 1e6, true
+		return UnixMilli, true
 	}
 	if n > deduceStart.Unix() {
-		return n * 1e9, true
+		return Unix, true
 	}
-	return 0, false
+	return UnixUnknown, false
+}
+
+const (
+	UnixUnknown = UnixTimestampKind(0)
+	UnixNano    = UnixTimestampKind(time.Nanosecond)
+	UnixMicro   = UnixTimestampKind(time.Microsecond)
+	UnixMilli   = UnixTimestampKind(time.Millisecond)
+	Unix        = UnixTimestampKind(time.Second)
+)
+
+// FloatNanos converts floating point timestamp of kind k to nanosecond timestamp.
+func (k UnixTimestampKind) FloatNanos(integer, frac float64) (int64, bool) {
+	v, ok := mulInt64(int64(integer), int64(k))
+	if !ok {
+		return 0, false
+	}
+	// Can't get more precision.
+	if k <= UnixNano {
+		return v, true
+	}
+	fracNanos := frac * float64(k)
+	return v + int64(fracNanos), true
+}
+
+// Nanos converts timestamp of kind k to nanosecond timestamp.
+func (k UnixTimestampKind) Nanos(ts int64) (int64, bool) {
+	return mulInt64(ts, int64(k))
+}
+
+// mulInt64 performs a overflow-safe multiplication.
+//
+// returns false, if overflow occurred.
+func mulInt64(a, b int64) (int64, bool) {
+	c := a * b
+	if a != 0 && c/a != b {
+		return c, false
+	}
+	return c, true
+}
+
+// DeduceNanos returns unix nano from arbitrary time integer, deducing resolution by range.
+func DeduceNanos(n int64) (int64, bool) {
+	kind, ok := DeduceUnixTimestampKind(n)
+	if !ok {
+		return 0, false
+	}
+	return kind.Nanos(n)
 }
 
 // DeduceSeverity deduces severity from given level.
@@ -89,6 +141,56 @@ retry:
 	}
 }
 
+// ParseTimestamp tries its best to parse a timestamp.
+func ParseTimestamp(s []byte) (otelstorage.Timestamp, bool) {
+	s = bytes.TrimSpace(s)
+	var notNumber bool
+	for _, c := range s {
+		if c == '.' || (c >= '0' && c <= '9') {
+			continue
+		}
+		notNumber = true
+		break
+	}
+	if notNumber {
+		for _, layout := range []string{
+			time.RFC3339Nano,
+			time.RFC3339,
+			ISO8601Millis,
+		} {
+			ts, err := time.Parse(layout, string(s))
+			if err != nil {
+				continue
+			}
+			return otelstorage.NewTimestampFromTime(ts), true
+		}
+		return 0, false
+	}
+
+	if n, err := strconv.ParseInt(string(s), 10, 64); err == nil {
+		ts, ok := DeduceNanos(n)
+		if ok {
+			return otelstorage.NewTimestampFromTime(time.Unix(0, ts)), true
+		}
+	}
+
+	f, err := strconv.ParseFloat(string(s), 64)
+	if err != nil {
+		return 0, false
+	}
+	n, frac := math.Modf(f)
+
+	kind, ok := DeduceUnixTimestampKind(int64(n))
+	if !ok {
+		return 0, false
+	}
+	ts, ok := kind.FloatNanos(n, frac)
+	if !ok {
+		return 0, false
+	}
+	return otelstorage.NewTimestampFromTime(time.Unix(0, ts)), true
+}
+
 // ParseTraceID tries its best to parse trace ID.
 func ParseTraceID(s string) (otelstorage.TraceID, bool) {
 	traceID, err := otelstorage.ParseTraceID(s)
@@ -103,7 +205,7 @@ func ParseTraceID(s string) (otelstorage.TraceID, bool) {
 	return traceID, true
 }
 
-// ParseSpanID tries its best to parse trace ID.
+// ParseSpanID tries its best to parse span ID.
 func ParseSpanID[S ~string | ~[]byte](s S) (spanID otelstorage.SpanID, _ bool) {
 	decodedLen := hex.DecodedLen(len(s))
 	if decodedLen != 8 {
