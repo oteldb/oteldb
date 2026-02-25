@@ -5,6 +5,7 @@
   },
   "body": "cacher (middlewaretcps.traefik.io): 1 objects queued in incoming channel.",
   "timestamp": "2026-02-22T17:40:27.405177Z",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "code.file.path": "cacher.go",
     "code.line.number": 855,

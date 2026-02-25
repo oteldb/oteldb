@@ -6,6 +6,7 @@
   },
   "body": "A group of walrus emerges from the ocean",
   "timestamp": "2023-12-04T10:54:23Z",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "animal": "walrus",
     "size": 10

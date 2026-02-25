@@ -4,5 +4,9 @@
     "number": 9,
     "text": "INFO"
   },
-  "body": "No time"
+  "body": "No time",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
+  "attrs": {
+    
+  }
 }

@@ -6,6 +6,7 @@
   },
   "body": "\"sentry\" frontend logging provider is deprecated and will be removed in the next major version. Use \"grafana\" provider instead.",
   "timestamp": "2023-12-19T06:56:47.296531181Z",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "logger": "settings"
   }

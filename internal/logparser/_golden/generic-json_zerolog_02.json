@@ -5,6 +5,7 @@
     "text": "debug"
   },
   "timestamp": "2023-12-04T10:59:00Z",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "Name": "Tom"
   }

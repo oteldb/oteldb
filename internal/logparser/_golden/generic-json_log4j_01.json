@@ -5,6 +5,7 @@
     "text": "DEBUG"
   },
   "body": "Debug message",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "instant": {
       "epochSecond": 1696419692,

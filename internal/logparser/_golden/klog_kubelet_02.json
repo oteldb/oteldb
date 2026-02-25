@@ -5,6 +5,7 @@
   },
   "body": "ContainerStatus from runtime service failed",
   "timestamp": "2026-02-22T12:52:43.002962Z",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "code.file.path": "log.go",
     "code.line.number": 32,

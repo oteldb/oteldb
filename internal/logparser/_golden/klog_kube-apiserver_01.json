@@ -5,6 +5,7 @@
   },
   "body": "updated ClusterIP allocator for Service CIDR 10.96.0.0/12",
   "timestamp": "2026-02-23T01:11:35.888571Z",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "code.file.path": "cidrallocator.go",
     "code.line.number": 278,

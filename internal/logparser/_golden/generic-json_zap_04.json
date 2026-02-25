@@ -1,0 +1,19 @@
+{
+  "severity": {
+    "str": "Debug",
+    "number": 5,
+    "text": "debug"
+  },
+  "body": "Query Clickhouse",
+  "timestamp": "2026-02-24T10:20:56.760888064Z",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
+  "trace_id": "7d0d9ae2c3ac80af0028eb043d4da92d",
+  "span_id": "e352a71a3fb216c1",
+  "attrs": {
+    "caller": "chstorage/querier.go:157",
+    "query_type": "getLabelMapping",
+    "table": "logs_attrs",
+    "signal": "logs",
+    "took": 0.002126417
+  }
+}

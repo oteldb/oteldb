@@ -5,6 +5,7 @@
     "text": "info"
   },
   "body": "BadTimestamp",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "ts": "\""
   }

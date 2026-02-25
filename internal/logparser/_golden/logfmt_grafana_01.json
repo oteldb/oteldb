@@ -6,6 +6,7 @@
   },
   "body": "OpenTelemetry handler returned an error",
   "timestamp": "2023-12-19T06:57:42.301691427Z",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "logger": "tracing",
     "err": "traces export: context deadline exceeded: rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing dial tcp: lookup otelcol on 127.0.0.11:53: no such host\""
