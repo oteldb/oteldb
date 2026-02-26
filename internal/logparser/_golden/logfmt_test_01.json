@@ -5,6 +5,7 @@
     "text": "debug"
   },
   "timestamp": "2015-03-26T05:27:38Z",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "foo": "bar",
     "a": 14,

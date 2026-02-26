@@ -1,14 +1,10 @@
 package logparser
 
 import (
-	"encoding/hex"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 
 	"github.com/go-faster/oteldb/internal/otelstorage"
@@ -16,6 +12,8 @@ import (
 
 // GenericJSONParser can parse generic json into [Line].
 type GenericJSONParser struct{}
+
+var _ Parser = (*GenericJSONParser)(nil)
 
 func init() {
 	p := &GenericJSONParser{}
@@ -162,8 +160,12 @@ func addJSONMapKey(m pcommon.Map, key string, d *jx.Decoder) error {
 }
 
 // Parse generic json into [Line].
-func (GenericJSONParser) Parse(data []byte) (*Line, error) {
-	dec := jx.DecodeBytes(data)
+func (GenericJSONParser) Parse(data string, target *Record) error {
+	if target.Attrs.IsZero() {
+		target.Attrs = otelstorage.NewAttrs()
+	}
+	attrs := target.Attrs.AsMap()
+
 	const (
 		fieldMessage = "message"
 		fieldMsg     = "msg"
@@ -172,7 +174,7 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 		fieldMessage: false,
 		fieldMsg:     false,
 	}
-	if err := dec.ObjBytes(func(d *jx.Decoder, key []byte) error {
+	if err := jx.DecodeStr(data).ObjBytes(func(d *jx.Decoder, key []byte) error {
 		switch string(key) {
 		case fieldMessage:
 			hasMsgFields[fieldMessage] = true
@@ -181,7 +183,7 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 		}
 		return d.Skip()
 	}); err != nil {
-		return nil, errors.Wrap(err, "read object")
+		return errors.Wrap(err, "read object")
 	}
 
 	// Default to "msg".
@@ -192,10 +194,7 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 		msgField = fieldMessage
 	}
 
-	dec.ResetBytes(data)
-	line := &Line{}
-	attrs := pcommon.NewMap()
-	if err := dec.ObjBytes(func(d *jx.Decoder, k []byte) error {
+	if err := jx.DecodeStr(data).ObjBytes(func(d *jx.Decoder, k []byte) error {
 		ftyp, _ := deduceFieldType(k)
 		switch ftyp {
 		case traceIDField:
@@ -206,34 +205,27 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 			if err != nil {
 				return err
 			}
-			traceID, err := otelstorage.ParseTraceID(strings.ToLower(v))
-			if err != nil {
-				// Trying to parse as UUID.
-				id, err := uuid.Parse(v)
-				if err != nil {
-					attrs.PutStr(string(k), v)
-					return nil
-				}
-				traceID = otelstorage.TraceID(id)
+			traceID, ok := ParseTraceID(v)
+			if !ok {
+				attrs.PutStr(string(k), v)
+				return nil
 			}
-			line.TraceID = traceID
+			target.TraceID = traceID
 		case spanIDField:
 			if d.Next() != jx.String {
 				// TODO: handle integers
 				return addJSONMapKey(attrs, string(k), d)
 			}
-			v, err := d.Str()
+			v, err := d.StrBytes()
 			if err != nil {
 				return err
 			}
-			raw, _ := hex.DecodeString(v)
-			if len(raw) != 8 {
-				attrs.PutStr(string(k), v)
+			spanID, ok := ParseSpanID(v)
+			if !ok {
+				attrs.PutStr(string(k), string(v))
 				return nil
 			}
-			var spanID otelstorage.SpanID
-			copy(spanID[:], raw)
-			line.SpanID = spanID
+			target.SpanID = spanID
 		case levelField:
 			if d.Next() != jx.String {
 				return addJSONMapKey(attrs, string(k), d)
@@ -246,38 +238,20 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 				attrs.PutStr(string(k), v)
 				return nil
 			}
-			line.SeverityText = v
-			line.SeverityNumber = DeduceSeverity(v)
+			target.SeverityText = v
+			target.SeverityNumber = DeduceSeverity(v)
 		case timestampField:
 			if d.Next() == jx.String {
-				v, err := d.Str()
+				v, err := d.StrBytes()
 				if err != nil {
 					return errors.Wrap(err, "ts")
 				}
-				if num, err := jx.DecodeStr(v).Num(); err == nil && num.IsInt() {
-					// Quoted integer.
-					ts, err := num.Int64()
-					if err != nil {
-						return errors.Wrap(err, "int time")
-					}
-					if n, ok := DeduceNanos(ts); ok {
-						line.Timestamp = otelstorage.Timestamp(n)
-						return nil
-					}
-				}
-				for _, layout := range []string{
-					time.RFC3339Nano,
-					time.RFC3339,
-					ISO8601Millis,
-				} {
-					ts, err := time.Parse(layout, v)
-					if err != nil {
-						continue
-					}
-					line.Timestamp = otelstorage.Timestamp(ts.UnixNano())
+				ts, ok := ParseTimestamp(v)
+				if ok {
+					target.Timestamp = ts
 					return nil
 				}
-				attrs.PutStr(string(k), v)
+				attrs.PutStr(string(k), string(v))
 				return nil
 			} else if d.Next() != jx.Number {
 				// Fallback to generic value.
@@ -287,31 +261,12 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 			if err != nil {
 				return errors.Wrap(err, "ts")
 			}
-			if v.IsInt() {
-				// Parsing time as integer.
-				ts, err := v.Int64()
-				if err != nil {
-					return errors.Wrap(err, "ts")
-				}
-				if n, ok := DeduceNanos(ts); ok {
-					line.Timestamp = otelstorage.Timestamp(n)
-					return nil
-				}
-
-				// Fallback.
-				attrs.PutInt(string(k), ts)
+			ts, ok := ParseTimestamp(v)
+			if ok {
+				target.Timestamp = ts
 				return nil
 			}
-
-			// Parsing 1318229038.000654 as time.
-			// Default is "epoch time, i.e. unix seconds float64".
-			// See zapcore.EpochTimeEncoder.
-			f, err := v.Float64()
-			if err != nil {
-				return errors.Wrap(err, "ts parse")
-			}
-			// TODO: Also deduce f.
-			line.Timestamp = otelstorage.Timestamp(f * float64(time.Second))
+			return addJSONMapKey(attrs, string(k), d)
 		default:
 			if string(k) == msgField {
 				if d.Next() != jx.String {
@@ -321,19 +276,19 @@ func (GenericJSONParser) Parse(data []byte) (*Line, error) {
 				if err != nil {
 					return errors.Wrap(err, "msg")
 				}
-				line.Body = v
+				target.Body = v
 				return nil
 			}
 			return addJSONMapKey(attrs, string(k), d)
 		}
 		return nil
 	}); err != nil {
-		return nil, errors.Wrap(err, "read object")
+		return errors.Wrap(err, "read object")
 	}
 	if attrs.Len() > 0 {
-		line.Attrs = otelstorage.Attrs(attrs)
+		target.Attrs = otelstorage.Attrs(attrs)
 	}
-	return line, nil
+	return nil
 }
 
 // Detect if line is parsable by this parser.

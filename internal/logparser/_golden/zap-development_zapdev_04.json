@@ -6,8 +6,10 @@
   },
   "body": "Intruder alert",
   "timestamp": "2023-12-12T12:49:36.355Z",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "logger": "named",
-    "filename": "logparser/zap_development_test.go:136"
+    "code.file.path": "logparser/zap_development_test.go",
+    "code.line.number": 136
   }
 }

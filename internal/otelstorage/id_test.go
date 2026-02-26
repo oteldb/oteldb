@@ -1,7 +1,6 @@
 package otelstorage
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -29,20 +28,27 @@ func TestSpanID_Hex(t *testing.T) {
 
 func TestParseTraceID(t *testing.T) {
 	tests := []struct {
+		name    string
 		input   string
 		wantHex string
 		wantErr bool
 	}{
-		{"0ab78e08df6f20dc3ad29d3915beab75", "0ab78e08df6f20dc3ad29d3915beab75", false},
-		{"ab78e08df6f20dc3ad29d3915beab75", "0ab78e08df6f20dc3ad29d3915beab75", false},
-		{"78e08df6f20dc3ad29d3915beab75", "00078e08df6f20dc3ad29d3915beab75", false},
+		{"LowerCase", "0ab78e08df6f20dc3ad29d3915beab75", "0ab78e08df6f20dc3ad29d3915beab75", false},
+		{"UpperCase", "0AB78E08DF6F20DC3AD29D3915BEAB75", "0ab78e08df6f20dc3ad29d3915beab75", false},
+		{"MixedCase", "0ab78E08DF6F20DC3AD29D3915BEAB75", "0ab78e08df6f20dc3ad29d3915beab75", false},
+		// Pad for 1 byte.
+		{"1BytePad", "ab78e08df6f20dc3ad29d3915beab75", "0ab78e08df6f20dc3ad29d3915beab75", false},
 
-		{"l", "", true},
-		{"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", "", true},
+		{"3BytePad_LowerCase", "78e08df6f20dc3ad29d3915beab75", "00078e08df6f20dc3ad29d3915beab75", false},
+		{"3BytePad_UpperCase", "78E08DF6F20DC3AD29D3915BEAB75", "00078e08df6f20dc3ad29d3915beab75", false},
+		{"3BytePad_MixedCase", "78e08df6F20DC3AD29D3915BEAB75", "00078e08df6f20dc3ad29d3915beab75", false},
+
+		{"TooShort", "l", "", true},
+		{"InvalidCharacter", "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", "", true},
 	}
-	for i, tt := range tests {
+	for _, tt := range tests {
 		tt := tt
-		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			a := require.New(t)
 
 			got, err := ParseTraceID(tt.input)

@@ -5,6 +5,7 @@
     "text": "INFO"
   },
   "body": "testing logging format",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "threadName": "MainThread",
     "name": "root",

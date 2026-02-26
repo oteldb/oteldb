@@ -5,7 +5,8 @@
     "text": "info"
   },
   "body": "Events",
-  "timestamp": "2023-12-04T09:11:59.1613184Z",
+  "timestamp": "2023-12-04T09:11:59.161318302Z",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "attrs": {
     "logger": "poll",
     "caller": "gh-archived/main.go:197",

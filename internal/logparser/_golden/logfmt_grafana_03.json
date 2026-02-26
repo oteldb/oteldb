@@ -6,6 +6,7 @@
   },
   "body": "Response received from loki",
   "timestamp": "2026-02-21T21:45:58.39217982Z",
+  "observed_timestamp": "2026-01-20T01:02:03.000000004Z",
   "trace_id": "91817a32ebeb6433d6602538b6478642",
   "attrs": {
     "logger": "tsdb.loki",

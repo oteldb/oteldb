@@ -2,7 +2,9 @@ package otelstorage
 
 import (
 	"encoding/binary"
+	"errors"
 	"strings"
+	"unicode"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -17,10 +19,13 @@ type TraceID [16]byte
 func ParseTraceID(input string) (_ TraceID, err error) {
 	var id uuid.UUID
 
-	if len(input) >= 32 {
-		// Normal UUID.
+	switch {
+	case input == "":
+		return TraceID{}, errors.New("empty traceID")
+	case len(input) >= 32:
 		id, err = uuid.Parse(input)
-	} else {
+		return TraceID(id), err
+	default:
 		// UUID without leading zeroes.
 		var hex [32]byte
 		// FIXME(tdakkota): probably, it's faster to define some variable with zeroes
@@ -36,9 +41,14 @@ func ParseTraceID(input string) (_ TraceID, err error) {
 		//  00b78e08df6f20dc3ad29d3915beab75 <- copy(hex[32-30:], input)
 		//
 		copy(hex[len(hex)-len(input):], input)
+		for i, r := range hex {
+			if r <= unicode.MaxASCII && ('A' <= r && r <= 'Z') {
+				hex[i] += 'a' - 'A' // #nosec G602 -- some bullshit
+			}
+		}
 		id, err = uuid.ParseBytes(hex[:])
+		return TraceID(id), err
 	}
-	return TraceID(id), err
 }
 
 // IsEmpty returns true if span ID is empty.
