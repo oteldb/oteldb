@@ -2,6 +2,7 @@ package otelstorage
 
 import (
 	"encoding/binary"
+	"errors"
 	"strings"
 	"unicode"
 
@@ -18,10 +19,13 @@ type TraceID [16]byte
 func ParseTraceID(input string) (_ TraceID, err error) {
 	var id uuid.UUID
 
-	if len(input) >= 32 {
-		// Normal UUID.
+	switch {
+	case input == "":
+		return TraceID{}, errors.New("empty traceID")
+	case len(input) >= 32:
 		id, err = uuid.Parse(input)
-	} else {
+		return TraceID(id), err
+	default:
 		// UUID without leading zeroes.
 		var hex [32]byte
 		// FIXME(tdakkota): probably, it's faster to define some variable with zeroes
@@ -43,8 +47,8 @@ func ParseTraceID(input string) (_ TraceID, err error) {
 			}
 		}
 		id, err = uuid.ParseBytes(hex[:])
+		return TraceID(id), err
 	}
-	return TraceID(id), err
 }
 
 // IsEmpty returns true if span ID is empty.

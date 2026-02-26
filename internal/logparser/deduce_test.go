@@ -3,6 +3,7 @@ package logparser
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,6 +101,12 @@ func TestParseTimestamp(t *testing.T) {
 			true,
 		},
 		{
+			`  1772058997` + "\n",
+			0,
+			otelstorage.NewTimestampFromTime(time.Unix(1772058997, 0)),
+			true,
+		},
+		{
 			`1772058997123`,
 			0,
 			otelstorage.NewTimestampFromTime(time.UnixMilli(1772058997_123)),
@@ -166,6 +173,167 @@ func TestParseTimestamp(t *testing.T) {
 			require.InEpsilon(t, tt.want.AsTime().UnixNano(), got.AsTime().UnixNano(), tt.epsilon)
 		})
 	}
+}
+
+func BenchmarkParseTimestamp(b *testing.B) {
+	bench := func(input string) func(b *testing.B) {
+		return func(b *testing.B) {
+			data := []byte(input)
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for b.Loop() {
+				_, ok := ParseTimestamp(data)
+				if !ok {
+					b.Fatal("Must be valid timestamp")
+				}
+			}
+		}
+	}
+
+	b.Run("RFC3339Nano", bench(`2026-01-20T01:02:03.000000004Z`))
+	b.Run("IntUnix", bench(`1772058997`))
+	b.Run("FloatUnix", bench(`1772058997.123`))
+}
+
+var parseTraceIDTests = []struct {
+	input  string
+	want   string
+	wantOk bool
+}{
+	{`0ab78e08df6f20dc3ad29d3915beab75`, `0ab78e08df6f20dc3ad29d3915beab75`, true},
+	{`0AB78E08DF6F20DC3AD29D3915BEAB75`, `0ab78e08df6f20dc3ad29d3915beab75`, true},
+	{`0ab78e08df6f20dc3AD29D3915BEAB75`, `0ab78e08df6f20dc3ad29d3915beab75`, true},
+
+	{`0ab78e08-df6f-20dc-3ad2-9d3915beab75`, `0ab78e08df6f20dc3ad29d3915beab75`, true},
+	{`0AB78e08-df6f-20dc-3ad2-9d3915beab75`, `0ab78e08df6f20dc3ad29d3915beab75`, true},
+
+	{``, ``, false},
+	{` `, ``, false},
+	{strings.Repeat("z", 32), ``, false},
+	{strings.Repeat("1", 33), ``, false},
+	{strings.Repeat("z", 36), ``, false},
+	{`zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz`, ``, false},
+}
+
+func TestParseTraceID(t *testing.T) {
+	for i, tt := range parseTraceIDTests {
+		tt := tt
+		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+			t.Logf("Input: %#q", tt.input)
+
+			got, gotOk := ParseTraceID(tt.input)
+			if !tt.wantOk {
+				require.False(t, gotOk)
+				return
+			}
+			require.True(t, gotOk)
+			require.Equal(t, tt.want, got.Hex())
+		})
+	}
+}
+
+func FuzzParseTraceID(f *testing.F) {
+	for _, tt := range parseTraceIDTests {
+		f.Add(tt.input)
+	}
+	f.Fuzz(func(t *testing.T, input string) {
+		s, ok := ParseTraceID(input)
+		if !ok {
+			return
+		}
+		got, ok := ParseTraceID(s.Hex())
+		require.True(t, ok)
+		require.Equal(t, s, got)
+	})
+}
+
+func BenchmarkParseTraceID(b *testing.B) {
+	bench := func(input string) func(b *testing.B) {
+		return func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for b.Loop() {
+				_, ok := ParseTraceID(input)
+				if !ok {
+					b.Fatal("Must be valid timestamp")
+				}
+			}
+		}
+	}
+
+	b.Run("LowerHex", bench(`0ab78e08df6f20dc3ad29d3915beab75`))
+	b.Run("UpperHex", bench(`0AB78E08DF6F20DC3AD29D3915BEAB75`))
+	b.Run("MixedHex", bench(`0ab78e08df6f20dc3AD29D3915BEAB75`))
+	b.Run("UUID", bench(`0ab78e08-df6f-20dc-3ad2-9d3915beab75`))
+}
+
+var parseSpanIDTests = []struct {
+	input  string
+	want   string
+	wantOk bool
+}{
+	{`0ab78e08df6f20dc`, `0ab78e08df6f20dc`, true},
+	{`0AB78E08DF6F20DC`, `0ab78e08df6f20dc`, true},
+	{`0ab78e08DF6f20DC`, `0ab78e08df6f20dc`, true},
+
+	{``, ``, false},
+	{` `, ``, false},
+	{strings.Repeat("z", 16), ``, false},
+	{strings.Repeat("1", 17), ``, false},
+}
+
+func TestParseSpanID(t *testing.T) {
+	for i, tt := range parseSpanIDTests {
+		tt := tt
+		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+			t.Logf("Input: %#q", tt.input)
+
+			got, gotOk := ParseSpanID(tt.input)
+			if !tt.wantOk {
+				require.False(t, gotOk)
+				return
+			}
+			require.True(t, gotOk)
+			require.Equal(t, tt.want, got.Hex())
+		})
+	}
+}
+
+func FuzzParseSpanID(f *testing.F) {
+	for _, tt := range parseSpanIDTests {
+		f.Add(tt.input)
+	}
+	f.Fuzz(func(t *testing.T, input string) {
+		s, ok := ParseSpanID(input)
+		if !ok {
+			return
+		}
+		got, ok := ParseSpanID(s.Hex())
+		require.True(t, ok)
+		require.Equal(t, s, got)
+	})
+}
+
+func BenchmarkParseSpanID(b *testing.B) {
+	bench := func(input string) func(b *testing.B) {
+		return func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for b.Loop() {
+				_, ok := ParseSpanID(input)
+				if !ok {
+					b.Fatal("Must be valid timestamp")
+				}
+			}
+		}
+	}
+
+	b.Run("LowerHex", bench(`0ab78e08df6f20dc`))
+	b.Run("UpperHex", bench(`0AB78E08DF6F20DC`))
+	b.Run("MixedHex", bench(`0ab78e08DF6f20DC`))
 }
 
 var parseSourceTests = []struct {
