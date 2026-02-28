@@ -16,7 +16,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -84,14 +84,6 @@ type Client struct {
 	serverURL *url.URL
 	baseClient
 }
-type errorHandler interface {
-	NewError(ctx context.Context, err error) *ErrorStatusCode
-}
-
-var _ Handler = struct {
-	errorHandler
-	*Client
-}{}
 
 // NewClient initializes new Client defined by OAS.
 func NewClient(serverURL string, opts ...ClientOption) (*Client, error) {
@@ -189,7 +181,8 @@ func (c *Client) sendBuildInfo(ctx context.Context) (res *PrometheusVersion, err
 	if err != nil {
 		return res, errors.Wrap(err, "do request")
 	}
-	defer resp.Body.Close()
+	body := resp.Body
+	defer body.Close()
 
 	stage = "DecodeResponse"
 	result, err := decodeBuildInfoResponse(resp)
@@ -262,7 +255,8 @@ func (c *Client) sendEcho(ctx context.Context) (res EchoOK, err error) {
 	if err != nil {
 		return res, errors.Wrap(err, "do request")
 	}
-	defer resp.Body.Close()
+	body := resp.Body
+	defer body.Close()
 
 	stage = "DecodeResponse"
 	result, err := decodeEchoResponse(resp)
@@ -475,7 +469,8 @@ func (c *Client) sendSearch(ctx context.Context, params SearchParams) (res *Trac
 	if err != nil {
 		return res, errors.Wrap(err, "do request")
 	}
-	defer resp.Body.Close()
+	body := resp.Body
+	defer body.Close()
 
 	stage = "DecodeResponse"
 	result, err := decodeSearchResponse(resp)
@@ -622,7 +617,8 @@ func (c *Client) sendSearchTagValues(ctx context.Context, params SearchTagValues
 	if err != nil {
 		return res, errors.Wrap(err, "do request")
 	}
-	defer resp.Body.Close()
+	body := resp.Body
+	defer body.Close()
 
 	stage = "DecodeResponse"
 	result, err := decodeSearchTagValuesResponse(resp)
@@ -770,7 +766,8 @@ func (c *Client) sendSearchTagValuesV2(ctx context.Context, params SearchTagValu
 	if err != nil {
 		return res, errors.Wrap(err, "do request")
 	}
-	defer resp.Body.Close()
+	body := resp.Body
+	defer body.Close()
 
 	stage = "DecodeResponse"
 	result, err := decodeSearchTagValuesV2Response(resp)
@@ -898,7 +895,8 @@ func (c *Client) sendSearchTags(ctx context.Context, params SearchTagsParams) (r
 	if err != nil {
 		return res, errors.Wrap(err, "do request")
 	}
-	defer resp.Body.Close()
+	body := resp.Body
+	defer body.Close()
 
 	stage = "DecodeResponse"
 	result, err := decodeSearchTagsResponse(resp)
@@ -1026,7 +1024,8 @@ func (c *Client) sendSearchTagsV2(ctx context.Context, params SearchTagsV2Params
 	if err != nil {
 		return res, errors.Wrap(err, "do request")
 	}
-	defer resp.Body.Close()
+	body := resp.Body
+	defer body.Close()
 
 	stage = "DecodeResponse"
 	result, err := decodeSearchTagsV2Response(resp)
@@ -1169,7 +1168,8 @@ func (c *Client) sendTraceByID(ctx context.Context, params TraceByIDParams) (res
 	if err != nil {
 		return res, errors.Wrap(err, "do request")
 	}
-	defer resp.Body.Close()
+	body := resp.Body
+	defer body.Close()
 
 	stage = "DecodeResponse"
 	result, err := decodeTraceByIDResponse(resp)
