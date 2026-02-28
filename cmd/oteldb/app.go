@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/provider/envprovider"
 	"go.opentelemetry.io/collector/otelcol"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/exp/maps"
@@ -235,6 +236,7 @@ func (app *App) trySetupTempo() error {
 	tempo := tempohandler.NewTempoAPI(q, engine, tempohandler.TempoAPIOptions{})
 
 	s, err := tempoapi.NewServer(tempo,
+		tempoapi.WithAttributes(attribute.String("oteldb.api", "tempo")),
 		tempoapi.WithTracerProvider(app.telemetry.TracerProvider()),
 		tempoapi.WithMeterProvider(app.telemetry.MeterProvider()),
 	)
@@ -274,6 +276,7 @@ func (app *App) trySetupLoki() error {
 	})
 
 	s, err := lokiapi.NewServer(loki,
+		lokiapi.WithAttributes(attribute.String("oteldb.api", "tempo")),
 		lokiapi.WithTracerProvider(app.telemetry.TracerProvider()),
 		lokiapi.WithMeterProvider(app.telemetry.MeterProvider()),
 		lokiapi.WithErrorHandler(func(ctx context.Context, w http.ResponseWriter, r *http.Request, err error) {
@@ -325,6 +328,7 @@ func (app *App) trySetupProm() error {
 	prom := promhandler.NewPromAPI(engine, q, q, q, promhandler.PromAPIOptions{})
 
 	s, err := promapi.NewServer(prom,
+		promapi.WithAttributes(attribute.String("oteldb.api", "prom")),
 		promapi.WithTracerProvider(app.telemetry.TracerProvider()),
 		promapi.WithMeterProvider(app.telemetry.MeterProvider()),
 		promapi.WithMiddleware(promhandler.TimeoutMiddleware()),
