@@ -32,7 +32,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/moby/moby/api v1.53.0
 	github.com/moby/moby/client v0.2.2
-	github.com/ogen-go/ogen v1.17.0
+	github.com/ogen-go/ogen v1.20.1-0.20260227210726-85e6805d114b
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector v0.146.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector v0.146.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/failoverconnector v0.146.0
@@ -312,7 +312,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/mod v0.33.0 // indirect
-	golang.org/x/net v0.50.0 // indirect
+	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/term v0.40.0 // indirect

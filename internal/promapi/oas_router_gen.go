@@ -10,6 +10,24 @@ import (
 	"github.com/ogen-go/ogen/uri"
 )
 
+var (
+	rn5AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn8AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn9AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn11AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn13AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+)
+
 func (s *Server) cutPrefix(path string) (string, bool) {
 	prefix := s.cfg.Prefix
 	if prefix == "" {
@@ -110,7 +128,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 									args[0],
 								}, elemIsEscaped, w, r)
 							default:
-								s.notAllowed(w, r, "GET")
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "GET",
+									allowedHeaders: nil,
+									acceptPost:     "",
+									acceptPatch:    "",
+								})
 							}
 
 							return
@@ -134,7 +157,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						case "POST":
 							s.handlePostLabelsRequest([0]string{}, elemIsEscaped, w, r)
 						default:
-							s.notAllowed(w, r, "GET,POST")
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "GET,POST",
+								allowedHeaders: rn5AllowedHeaders,
+								acceptPost:     "application/x-www-form-urlencoded",
+								acceptPatch:    "",
+							})
 						}
 
 						return
@@ -156,7 +184,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					case "GET":
 						s.handleGetMetadataRequest([0]string{}, elemIsEscaped, w, r)
 					default:
-						s.notAllowed(w, r, "GET")
+						s.notAllowed(w, r, notAllowedParams{
+							allowedMethods: "GET",
+							allowedHeaders: nil,
+							acceptPost:     "",
+							acceptPatch:    "",
+						})
 					}
 
 					return
@@ -177,7 +210,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					case "POST":
 						s.handlePostQueryRequest([0]string{}, elemIsEscaped, w, r)
 					default:
-						s.notAllowed(w, r, "GET,POST")
+						s.notAllowed(w, r, notAllowedParams{
+							allowedMethods: "GET,POST",
+							allowedHeaders: rn8AllowedHeaders,
+							acceptPost:     "application/x-www-form-urlencoded",
+							acceptPatch:    "",
+						})
 					}
 
 					return
@@ -211,7 +249,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							case "POST":
 								s.handlePostQueryExemplarsRequest([0]string{}, elemIsEscaped, w, r)
 							default:
-								s.notAllowed(w, r, "GET,POST")
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "GET,POST",
+									allowedHeaders: rn9AllowedHeaders,
+									acceptPost:     "application/x-www-form-urlencoded",
+									acceptPatch:    "",
+								})
 							}
 
 							return
@@ -233,7 +276,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							case "POST":
 								s.handlePostQueryRangeRequest([0]string{}, elemIsEscaped, w, r)
 							default:
-								s.notAllowed(w, r, "GET,POST")
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "GET,POST",
+									allowedHeaders: rn11AllowedHeaders,
+									acceptPost:     "application/x-www-form-urlencoded",
+									acceptPatch:    "",
+								})
 							}
 
 							return
@@ -257,7 +305,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					case "GET":
 						s.handleGetRulesRequest([0]string{}, elemIsEscaped, w, r)
 					default:
-						s.notAllowed(w, r, "GET")
+						s.notAllowed(w, r, notAllowedParams{
+							allowedMethods: "GET",
+							allowedHeaders: nil,
+							acceptPost:     "",
+							acceptPatch:    "",
+						})
 					}
 
 					return
@@ -279,7 +332,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					case "POST":
 						s.handlePostSeriesRequest([0]string{}, elemIsEscaped, w, r)
 					default:
-						s.notAllowed(w, r, "GET,POST")
+						s.notAllowed(w, r, notAllowedParams{
+							allowedMethods: "GET,POST",
+							allowedHeaders: rn13AllowedHeaders,
+							acceptPost:     "application/x-www-form-urlencoded",
+							acceptPatch:    "",
+						})
 					}
 
 					return

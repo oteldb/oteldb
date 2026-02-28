@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -46,6 +46,8 @@ func (s *Server) handleDetectedFieldValuesRequest(args [1]string, argsEscaped bo
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/detected_field/{field}/values"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), DetectedFieldValuesOperation,
@@ -214,6 +216,8 @@ func (s *Server) handleDetectedFieldsRequest(args [0]string, argsEscaped bool, w
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/detected_fields"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), DetectedFieldsOperation,
@@ -379,6 +383,8 @@ func (s *Server) handleDetectedLabelsRequest(args [0]string, argsEscaped bool, w
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/detected_labels"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), DetectedLabelsOperation,
@@ -544,6 +550,8 @@ func (s *Server) handleDrilldownLimitsRequest(args [0]string, argsEscaped bool, 
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/drilldown-limits"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), DrilldownLimitsOperation,
@@ -677,6 +685,8 @@ func (s *Server) handleIndexStatsRequest(args [0]string, argsEscaped bool, w htt
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/index/stats"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), IndexStatsOperation,
@@ -837,6 +847,8 @@ func (s *Server) handleLabelValuesRequest(args [1]string, argsEscaped bool, w ht
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/label/{name}/values"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), LabelValuesOperation,
@@ -1006,6 +1018,8 @@ func (s *Server) handleLabelsRequest(args [0]string, argsEscaped bool, w http.Re
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/labels"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), LabelsOperation,
@@ -1167,6 +1181,8 @@ func (s *Server) handlePatternsRequest(args [0]string, argsEscaped bool, w http.
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/patterns"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), PatternsOperation,
@@ -1335,6 +1351,8 @@ func (s *Server) handlePushRequest(args [0]string, argsEscaped bool, w http.Resp
 		semconv.HTTPRequestMethodKey.String("POST"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/push"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), PushOperation,
@@ -1487,6 +1505,8 @@ func (s *Server) handleQueryRequest(args [0]string, argsEscaped bool, w http.Res
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/query"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), QueryOperation,
@@ -1651,6 +1671,8 @@ func (s *Server) handleQueryRangeRequest(args [0]string, argsEscaped bool, w htt
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/query_range"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), QueryRangeOperation,
@@ -1827,6 +1849,8 @@ func (s *Server) handleQueryVolumeRequest(args [0]string, argsEscaped bool, w ht
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/index/volume"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), QueryVolumeOperation,
@@ -2003,6 +2027,8 @@ func (s *Server) handleQueryVolumeRangeRequest(args [0]string, argsEscaped bool,
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/index/volume_range"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), QueryVolumeRangeOperation,
@@ -2183,6 +2209,8 @@ func (s *Server) handleSeriesRequest(args [0]string, argsEscaped bool, w http.Re
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/loki/api/v1/series"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), SeriesOperation,
