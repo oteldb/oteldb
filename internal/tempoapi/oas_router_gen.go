@@ -92,6 +92,47 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
+			case 'm': // Prefix: "metrics/query"
+
+				if l := len("metrics/query"); len(elem) >= l && elem[0:l] == "metrics/query" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					switch r.Method {
+					case "GET":
+						s.handleQueryRequest([0]string{}, elemIsEscaped, w, r)
+					default:
+						s.notAllowed(w, r, "GET")
+					}
+
+					return
+				}
+				switch elem[0] {
+				case '_': // Prefix: "_range"
+
+					if l := len("_range"); len(elem) >= l && elem[0:l] == "_range" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "GET":
+							s.handleQueryRangeRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, "GET")
+						}
+
+						return
+					}
+
+				}
+
 			case 's': // Prefix: "s"
 
 				if l := len("s"); len(elem) >= l && elem[0:l] == "s" {
@@ -282,9 +323,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
-			case 'v': // Prefix: "v2/search/tag"
+			case 'v': // Prefix: "v2/"
 
-				if l := len("v2/search/tag"); len(elem) >= l && elem[0:l] == "v2/search/tag" {
+				if l := len("v2/"); len(elem) >= l && elem[0:l] == "v2/" {
 					elem = elem[l:]
 				} else {
 					break
@@ -294,30 +335,66 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 				switch elem[0] {
-				case '/': // Prefix: "/"
+				case 's': // Prefix: "search/tag"
 
-					if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+					if l := len("search/tag"); len(elem) >= l && elem[0:l] == "search/tag" {
 						elem = elem[l:]
 					} else {
 						break
 					}
 
-					// Param: "attribute_selector"
-					// Match until "/"
-					idx := strings.IndexByte(elem, '/')
-					if idx < 0 {
-						idx = len(elem)
-					}
-					args[0] = elem[:idx]
-					elem = elem[idx:]
-
 					if len(elem) == 0 {
 						break
 					}
 					switch elem[0] {
-					case '/': // Prefix: "/values"
+					case '/': // Prefix: "/"
 
-						if l := len("/values"); len(elem) >= l && elem[0:l] == "/values" {
+						if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						// Param: "attribute_selector"
+						// Match until "/"
+						idx := strings.IndexByte(elem, '/')
+						if idx < 0 {
+							idx = len(elem)
+						}
+						args[0] = elem[:idx]
+						elem = elem[idx:]
+
+						if len(elem) == 0 {
+							break
+						}
+						switch elem[0] {
+						case '/': // Prefix: "/values"
+
+							if l := len("/values"); len(elem) >= l && elem[0:l] == "/values" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch r.Method {
+								case "GET":
+									s.handleSearchTagValuesV2Request([1]string{
+										args[0],
+									}, elemIsEscaped, w, r)
+								default:
+									s.notAllowed(w, r, "GET")
+								}
+
+								return
+							}
+
+						}
+
+					case 's': // Prefix: "s"
+
+						if l := len("s"); len(elem) >= l && elem[0:l] == "s" {
 							elem = elem[l:]
 						} else {
 							break
@@ -327,9 +404,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							// Leaf node.
 							switch r.Method {
 							case "GET":
-								s.handleSearchTagValuesV2Request([1]string{
-									args[0],
-								}, elemIsEscaped, w, r)
+								s.handleSearchTagsV2Request([0]string{}, elemIsEscaped, w, r)
 							default:
 								s.notAllowed(w, r, notAllowedParams{
 									allowedMethods: "GET",
@@ -344,19 +419,30 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 					}
 
-				case 's': // Prefix: "s"
+				case 't': // Prefix: "traces/"
 
-					if l := len("s"); len(elem) >= l && elem[0:l] == "s" {
+					if l := len("traces/"); len(elem) >= l && elem[0:l] == "traces/" {
 						elem = elem[l:]
 					} else {
 						break
 					}
 
+					// Param: "traceID"
+					// Leaf parameter, slashes are prohibited
+					idx := strings.IndexByte(elem, '/')
+					if idx >= 0 {
+						break
+					}
+					args[0] = elem
+					elem = ""
+
 					if len(elem) == 0 {
 						// Leaf node.
 						switch r.Method {
 						case "GET":
-							s.handleSearchTagsV2Request([0]string{}, elemIsEscaped, w, r)
+							s.handleTraceByIDv2Request([1]string{
+								args[0],
+							}, elemIsEscaped, w, r)
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "GET",
@@ -494,6 +580,57 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					default:
 						return
 					}
+				}
+
+			case 'm': // Prefix: "metrics/query"
+
+				if l := len("metrics/query"); len(elem) >= l && elem[0:l] == "metrics/query" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					switch method {
+					case "GET":
+						r.name = QueryOperation
+						r.summary = ""
+						r.operationID = "query"
+						r.operationGroup = ""
+						r.pathPattern = "/api/metrics/query"
+						r.args = args
+						r.count = 0
+						return r, true
+					default:
+						return
+					}
+				}
+				switch elem[0] {
+				case '_': // Prefix: "_range"
+
+					if l := len("_range"); len(elem) >= l && elem[0:l] == "_range" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "GET":
+							r.name = QueryRangeOperation
+							r.summary = ""
+							r.operationID = "queryRange"
+							r.operationGroup = ""
+							r.pathPattern = "/api/metrics/query_range"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
 				}
 
 			case 's': // Prefix: "s"
@@ -682,9 +819,9 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					}
 				}
 
-			case 'v': // Prefix: "v2/search/tag"
+			case 'v': // Prefix: "v2/"
 
-				if l := len("v2/search/tag"); len(elem) >= l && elem[0:l] == "v2/search/tag" {
+				if l := len("v2/"); len(elem) >= l && elem[0:l] == "v2/" {
 					elem = elem[l:]
 				} else {
 					break
@@ -694,30 +831,69 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					break
 				}
 				switch elem[0] {
-				case '/': // Prefix: "/"
+				case 's': // Prefix: "search/tag"
 
-					if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+					if l := len("search/tag"); len(elem) >= l && elem[0:l] == "search/tag" {
 						elem = elem[l:]
 					} else {
 						break
 					}
 
-					// Param: "attribute_selector"
-					// Match until "/"
-					idx := strings.IndexByte(elem, '/')
-					if idx < 0 {
-						idx = len(elem)
-					}
-					args[0] = elem[:idx]
-					elem = elem[idx:]
-
 					if len(elem) == 0 {
 						break
 					}
 					switch elem[0] {
-					case '/': // Prefix: "/values"
+					case '/': // Prefix: "/"
 
-						if l := len("/values"); len(elem) >= l && elem[0:l] == "/values" {
+						if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						// Param: "attribute_selector"
+						// Match until "/"
+						idx := strings.IndexByte(elem, '/')
+						if idx < 0 {
+							idx = len(elem)
+						}
+						args[0] = elem[:idx]
+						elem = elem[idx:]
+
+						if len(elem) == 0 {
+							break
+						}
+						switch elem[0] {
+						case '/': // Prefix: "/values"
+
+							if l := len("/values"); len(elem) >= l && elem[0:l] == "/values" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch method {
+								case "GET":
+									r.name = SearchTagValuesV2Operation
+									r.summary = ""
+									r.operationID = "searchTagValuesV2"
+									r.operationGroup = ""
+									r.pathPattern = "/api/v2/search/tag/{attribute_selector}/values"
+									r.args = args
+									r.count = 1
+									return r, true
+								default:
+									return
+								}
+							}
+
+						}
+
+					case 's': // Prefix: "s"
+
+						if l := len("s"); len(elem) >= l && elem[0:l] == "s" {
 							elem = elem[l:]
 						} else {
 							break
@@ -727,13 +903,13 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							// Leaf node.
 							switch method {
 							case "GET":
-								r.name = SearchTagValuesV2Operation
+								r.name = SearchTagsV2Operation
 								r.summary = ""
-								r.operationID = "searchTagValuesV2"
+								r.operationID = "searchTagsV2"
 								r.operationGroup = ""
-								r.pathPattern = "/api/v2/search/tag/{attribute_selector}/values"
+								r.pathPattern = "/api/v2/search/tags"
 								r.args = args
-								r.count = 1
+								r.count = 0
 								return r, true
 							default:
 								return
@@ -742,25 +918,34 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 
 					}
 
-				case 's': // Prefix: "s"
+				case 't': // Prefix: "traces/"
 
-					if l := len("s"); len(elem) >= l && elem[0:l] == "s" {
+					if l := len("traces/"); len(elem) >= l && elem[0:l] == "traces/" {
 						elem = elem[l:]
 					} else {
 						break
 					}
 
+					// Param: "traceID"
+					// Leaf parameter, slashes are prohibited
+					idx := strings.IndexByte(elem, '/')
+					if idx >= 0 {
+						break
+					}
+					args[0] = elem
+					elem = ""
+
 					if len(elem) == 0 {
 						// Leaf node.
 						switch method {
 						case "GET":
-							r.name = SearchTagsV2Operation
+							r.name = TraceByIDv2Operation
 							r.summary = ""
-							r.operationID = "searchTagsV2"
+							r.operationID = "traceByIDv2"
 							r.operationGroup = ""
-							r.pathPattern = "/api/v2/search/tags"
+							r.pathPattern = "/api/v2/traces/{traceID}"
 							r.args = args
-							r.count = 0
+							r.count = 1
 							return r, true
 						default:
 							return

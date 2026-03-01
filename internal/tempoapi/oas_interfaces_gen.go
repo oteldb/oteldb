@@ -4,3 +4,7 @@ package tempoapi
 type TraceByIDRes interface {
 	traceByIDRes()
 }
+
+type TraceByIDv2Res interface {
+	traceByIDv2Res()
+}

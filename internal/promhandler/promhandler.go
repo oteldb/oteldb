@@ -69,11 +69,11 @@ var errResultTruncated = errors.New("results truncated due to limit")
 // GetLabelValues implements getLabelValues operation.
 // GET /api/v1/label/{label}/values
 func (h *PromAPI) GetLabelValues(ctx context.Context, params promapi.GetLabelValuesParams) (*promapi.LabelValuesResponse, error) {
-	mint, err := parseOptTimestamp(params.Start, promapi.MinTime)
+	mint, err := ParseOptTimestamp(params.Start, promapi.MinTime)
 	if err != nil {
 		return nil, validationErr("parse start", err)
 	}
-	maxt, err := parseOptTimestamp(params.End, promapi.MaxTime)
+	maxt, err := ParseOptTimestamp(params.End, promapi.MaxTime)
 	if err != nil {
 		return nil, validationErr("parse end", err)
 	}
@@ -169,11 +169,11 @@ func (h *PromAPI) GetLabelValues(ctx context.Context, params promapi.GetLabelVal
 //
 // GET /api/v1/labels
 func (h *PromAPI) GetLabels(ctx context.Context, params promapi.GetLabelsParams) (*promapi.LabelsResponse, error) {
-	mint, err := parseOptTimestamp(params.Start, promapi.MinTime)
+	mint, err := ParseOptTimestamp(params.Start, promapi.MinTime)
 	if err != nil {
 		return nil, validationErr("parse start", err)
 	}
-	maxt, err := parseOptTimestamp(params.End, promapi.MaxTime)
+	maxt, err := ParseOptTimestamp(params.End, promapi.MaxTime)
 	if err != nil {
 		return nil, validationErr("parse end", err)
 	}
@@ -282,7 +282,7 @@ func (h *PromAPI) PostLabels(ctx context.Context, req *promapi.LabelsForm) (*pro
 //
 // GET /api/v1/query
 func (h *PromAPI) GetQuery(ctx context.Context, params promapi.GetQueryParams) (*promapi.QueryResponse, error) {
-	t, err := parseOptTimestamp(params.Time, time.Now())
+	t, err := ParseOptTimestamp(params.Time, time.Now())
 	if err != nil {
 		return nil, validationErr("parse time", err)
 	}
@@ -329,11 +329,11 @@ func (h *PromAPI) PostQuery(ctx context.Context, req *promapi.QueryForm) (*proma
 //
 // GET /api/v1/query_range
 func (h *PromAPI) GetQueryRange(ctx context.Context, params promapi.GetQueryRangeParams) (*promapi.QueryResponse, error) {
-	start, err := parseTimestamp(params.Start)
+	start, err := ParseTimestamp(params.Start)
 	if err != nil {
 		return nil, validationErr("parse start", err)
 	}
-	end, err := parseTimestamp(params.End)
+	end, err := ParseTimestamp(params.End)
 	if err != nil {
 		return nil, validationErr("parse end", err)
 	}
@@ -396,11 +396,11 @@ func (h *PromAPI) GetQueryExemplars(ctx context.Context, params promapi.GetQuery
 	if h.exemplars == nil {
 		return nil, ht.ErrNotImplemented
 	}
-	start, err := parseTimestamp(params.Start)
+	start, err := ParseTimestamp(params.Start)
 	if err != nil {
 		return nil, validationErr("parse start", err)
 	}
-	end, err := parseTimestamp(params.End)
+	end, err := ParseTimestamp(params.End)
 	if err != nil {
 		return nil, validationErr("parse end", err)
 	}
@@ -506,11 +506,11 @@ func (h *PromAPI) GetRules(context.Context, promapi.GetRulesParams) (*promapi.Ru
 //
 // GET /api/v1/series
 func (h *PromAPI) GetSeries(ctx context.Context, params promapi.GetSeriesParams) (*promapi.SeriesResponse, error) {
-	mint, err := parseOptTimestamp(params.Start, promapi.MinTime)
+	mint, err := ParseOptTimestamp(params.Start, promapi.MinTime)
 	if err != nil {
 		return nil, validationErr("parse start", err)
 	}
-	maxt, err := parseOptTimestamp(params.End, promapi.MaxTime)
+	maxt, err := ParseOptTimestamp(params.End, promapi.MaxTime)
 	if err != nil {
 		return nil, validationErr("parse end", err)
 	}
@@ -685,7 +685,7 @@ func TimeoutMiddleware() promapi.Middleware {
 	return func(req middleware.Request, next middleware.Next) (middleware.Response, error) {
 		q := req.Raw.URL.Query()
 		if q.Has("timeout") {
-			timeout, err := parseDuration(q.Get("timeout"))
+			timeout, err := ParseDuration(q.Get("timeout"))
 			if err != nil {
 				return middleware.Response{}, validationErr("parse timeout", err)
 			}
