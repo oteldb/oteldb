@@ -7,7 +7,7 @@ require (
 	github.com/ClickHouse/ch-go v0.71.0
 	github.com/MakeNowJust/heredoc/v2 v2.0.1
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/VictoriaMetrics/VictoriaMetrics v1.134.0
+	github.com/VictoriaMetrics/VictoriaMetrics v1.136.0
 	github.com/VictoriaMetrics/easyproto v1.2.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -52,7 +52,7 @@ require (
 	github.com/oteldb/promql-engine v0.6.0-alpha.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.5
-	github.com/prometheus/prometheus v0.308.0
+	github.com/prometheus/prometheus v0.309.1
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/sergi/go-diff v1.4.0
 	github.com/spf13/cobra v1.10.2
