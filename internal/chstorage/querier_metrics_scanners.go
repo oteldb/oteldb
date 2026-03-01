@@ -27,6 +27,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/go-faster/oteldb/internal/metricstorage"
 	"github.com/go-faster/oteldb/internal/promql"
 	"github.com/go-faster/oteldb/internal/xattribute"
 )
@@ -61,7 +62,6 @@ func (s *promScanners) NewVectorSelector(
 	q := s.storage.metricsQuerier(hints.Start, hints.End)
 
 	op := newVectorSelector(
-		model.NewVectorPool(opts.StepsBatch),
 		q,
 		logicalNode.Filters,
 		opts,
@@ -145,7 +145,6 @@ func (s *promScanners) NewMatrixSelector(
 	}
 
 	op, err := promscanners.NewMatrixSelector(
-		model.NewVectorPool(opts.StepsBatch),
 		selector,
 		call.Func.Name,
 		arg,
@@ -171,10 +170,9 @@ func (s *promScanners) makeFilteredSelector(q storage.Querier, matchers, filters
 type vectorSelector struct {
 	telemetry telemetry.OperatorTelemetry
 
-	querier    *promQuerier
-	filter     promscanners.Filter
-	once       sync.Once
-	vectorPool *model.VectorPool
+	querier *promQuerier
+	filter  promscanners.Filter
+	once    sync.Once
 
 	series        []labels.Labels
 	pointSeries   []*series[pointData]
@@ -196,7 +194,6 @@ type vectorSelector struct {
 
 // newVectorSelector creates operator which selects vector of series.
 func newVectorSelector(
-	pool *model.VectorPool,
 	querier *promQuerier,
 	filters []*labels.Matcher,
 	queryOpts *query.Options,
@@ -205,9 +202,8 @@ func newVectorSelector(
 	batchSize int64,
 ) model.VectorOperator {
 	o := &vectorSelector{
-		querier:    querier,
-		filter:     promscanners.NewFilter(filters),
-		vectorPool: pool,
+		querier: querier,
+		filter:  promscanners.NewFilter(filters),
 
 		params: params,
 
@@ -217,7 +213,7 @@ func newVectorSelector(
 		currentStep:     queryOpts.Start.UnixMilli(),
 		lookbackDelta:   queryOpts.LookbackDelta.Milliseconds(),
 		offset:          offset.Milliseconds(),
-		numSteps:        queryOpts.NumSteps(),
+		numSteps:        queryOpts.NumStepsPerBatch(),
 		seriesBatchSize: batchSize,
 	}
 
@@ -247,29 +243,35 @@ func (o *vectorSelector) Series(ctx context.Context) ([]labels.Labels, error) {
 	return o.series, nil
 }
 
-func (o *vectorSelector) GetPool() *model.VectorPool {
-	return o.vectorPool
-}
-
-func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
+func (o *vectorSelector) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 	if o.currentStep > o.maxt {
-		return nil, nil
+		return 0, nil
 	}
 
 	if err := o.loadSeries(ctx); err != nil {
-		return nil, err
+		return 0, err
 	}
-	totalSeries := int64(len(o.pointSeries) + len(o.expHistSeries))
 
+	totalSeries := int64(len(o.pointSeries) + len(o.expHistSeries))
+	maxSteps := min(o.numSteps, len(buf))
+	// Calculate expected samples per step: the actual number of series we'll process this batch.
+	// This is min(seriesBatchSize, remaining series to process).
+	remainingSeries := int64(len(o.series)) - o.currentSeries
+	expectedSamples := int(min(o.seriesBatchSize, remainingSeries))
+	if expectedSamples <= 0 {
+		expectedSamples = len(o.series)
+	}
+
+	n := 0
 	ts := o.currentStep
-	vectors := o.vectorPool.GetVectorBatch()
-	for currStep := 0; currStep < o.numSteps && ts <= o.maxt; currStep++ {
-		vectors = append(vectors, o.vectorPool.GetStepVector(ts))
+	for currStep := 0; currStep < maxSteps && ts <= o.maxt; currStep++ {
+		buf[n].Reset(ts)
+		n++
 		ts += o.step
 	}
 
@@ -277,21 +279,21 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 	// Reset the current timestamp.
 	ts = o.currentStep
 	fromSeries := o.currentSeries
-
 	for ; o.currentSeries-fromSeries < o.seriesBatchSize && o.currentSeries < totalSeries; o.currentSeries++ {
 		if o.currentSeries < int64(len(o.pointSeries)) {
 			var (
 				series          = o.pointSeries[o.currentSeries]
 				seriesTimestamp = ts
 			)
-			for currStep := 0; currStep < o.numSteps && seriesTimestamp <= o.maxt; currStep++ {
+			for currStep := 0; currStep < n && seriesTimestamp <= o.maxt; currStep++ {
 				currStepSamples = 0
 				t, v, ok := o.selectPoint(series.ts, series.data.values, seriesTimestamp, o.lookbackDelta, o.offset)
 				if o.params.SelectTimestamp {
 					v = float64(t) / 1000
 				}
 				if ok {
-					vectors[currStep].AppendSample(o.vectorPool, uint64(o.currentSeries), v)
+					// Lazy pre-allocate sample slices with capacity hint
+					buf[currStep].AppendSampleWithSizeHint(uint64(o.currentSeries), v, expectedSamples)
 					currStepSamples++
 				}
 				o.telemetry.IncrementSamplesAtTimestamp(currStepSamples, seriesTimestamp)
@@ -299,20 +301,19 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			}
 		} else {
 			var (
-				seriesIdx       = o.currentSeries - int64(len(o.pointSeries))
-				series          = o.expHistSeries[seriesIdx]
+				series          = o.expHistSeries[o.currentSeries]
 				seriesTimestamp = ts
 			)
-			for currStep := 0; currStep < o.numSteps && seriesTimestamp <= o.maxt; currStep++ {
+			for currStep := 0; currStep < n && seriesTimestamp <= o.maxt; currStep++ {
 				currStepSamples = 0
 				_, h, ok, err := o.selectExpHistPoint(series.ts, series.data, seriesTimestamp, o.lookbackDelta, o.offset)
 				if err != nil {
-					return nil, err
+					return 0, err
 				}
 				fh := h.ToFloat(nil)
 
 				if ok {
-					vectors[currStep].AppendHistogram(o.vectorPool, uint64(o.currentSeries), fh)
+					buf[currStep].AppendHistogramWithSizeHint(uint64(o.currentSeries), fh, expectedSamples)
 					currStepSamples += telemetry.CalculateHistogramSampleCount(fh)
 				}
 				o.telemetry.IncrementSamplesAtTimestamp(currStepSamples, seriesTimestamp)
@@ -322,10 +323,10 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 	}
 
 	if o.currentSeries == totalSeries {
-		o.currentStep += o.step * int64(o.numSteps)
+		o.currentStep += o.step * int64(n)
 		o.currentSeries = 0
 	}
-	return vectors, nil
+	return n, nil
 }
 
 func (o *vectorSelector) selectPoint(tss []int64, samples []float64, ts, lookbackDelta, offset int64) (t int64, v float64, _ bool) {
@@ -427,7 +428,7 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 			// the reserved labels (__name__, __type__, __unit__)
 			b.Reset(s.labels)
 			if o.params.SelectTimestamp {
-				b.Del(labels.MetricName)
+				b.Del(metricstorage.MetricName)
 				b.Del(extlabels.MetricType)
 				b.Del(extlabels.MetricUnit)
 			}
@@ -445,7 +446,7 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 			// the reserved labels (__name__, __type__, __unit__)
 			b.Reset(s.labels)
 			if o.params.SelectTimestamp {
-				b.Del(labels.MetricName)
+				b.Del(metricstorage.MetricName)
 				b.Del(extlabels.MetricType)
 				b.Del(extlabels.MetricUnit)
 			}
@@ -456,7 +457,6 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 		if o.seriesBatchSize == 0 || numSeries < o.seriesBatchSize {
 			o.seriesBatchSize = numSeries
 		}
-		o.vectorPool.SetStepSize(int(o.seriesBatchSize))
 	})
 	return err
 }
