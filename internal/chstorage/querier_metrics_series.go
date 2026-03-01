@@ -149,7 +149,7 @@ func (p *promQuerier) buildSeriesQuery(
 		matchers := make([]chsql.Expr, 0, len(set))
 		for _, m := range set {
 			selector := chsql.Ident("name")
-			if name := m.Name; name != labels.MetricName {
+			if name := m.Name; name != metricstorage.MetricName {
 				selector = firstAttrSelector(name)
 			}
 			expr, err := promQLLabelMatcher([]chsql.Expr{selector}, m.Type, m.Value)
