@@ -28,6 +28,7 @@ func (q *Querier) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier,
 
 		tables:          q.tables,
 		timeseriesLimit: q.timeseriesLimit,
+		exemplarsLimit:  q.exemplarsLimit,
 		queryTimeseries: q.timeseries.Query,
 		do:              q.do,
 
@@ -40,6 +41,7 @@ type exemplarQuerier struct {
 
 	tables          Tables
 	timeseriesLimit int
+	exemplarsLimit  int
 	queryTimeseries queryMetricsTimeseriesFunc
 	do              func(ctx context.Context, s selectQuery) error
 
@@ -91,6 +93,9 @@ func (q *exemplarQuerier) Select(startMs, endMs int64, matcherSets ...[]*labels.
 
 		inputData proto.ColFixedStr16
 	)
+	if q.exemplarsLimit > 0 {
+		query.Limit(q.exemplarsLimit)
+	}
 	for hash := range timeseries {
 		inputData.Append(hash)
 	}

@@ -31,6 +31,7 @@ type Querier struct {
 	tables          Tables
 	labelLimit      int
 	timeseriesLimit int
+	exemplarsLimit  int
 
 	timeseries *timeseriesQuerier
 	metricsSg  *singleflight.Group[xxh3.Uint128, metricSelectResult]
@@ -49,6 +50,8 @@ type QuerierOptions struct {
 	LabelLimit int
 	// MetricSeriesLimit defines limit for total number of series requested by the query.
 	MetricSeriesLimit int
+	// MetricExemplarsLimit defines limit for total number of exemplars returned by a single query.
+	MetricExemplarsLimit int
 	// CHLogLevel sets log level for ch-go.
 	CHLogLevel zapcore.LevelEnabler
 	// MeterProvider provides OpenTelemetry meter for this querier.
@@ -68,6 +71,9 @@ func (opts *QuerierOptions) setDefaults() {
 	}
 	if opts.MetricSeriesLimit == 0 {
 		opts.MetricSeriesLimit = 1_000_000
+	}
+	if opts.MetricExemplarsLimit == 0 {
+		opts.MetricExemplarsLimit = 1_000
 	}
 	if opts.CHLogLevel == nil {
 		opts.CHLogLevel = zap.DebugLevel
@@ -100,6 +106,7 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 		tables:          opts.Tables,
 		labelLimit:      opts.LabelLimit,
 		timeseriesLimit: opts.MetricSeriesLimit,
+		exemplarsLimit:  opts.MetricExemplarsLimit,
 		metricsSg:       new(singleflight.Group[xxh3.Uint128, metricSelectResult]),
 
 		chLogLevel:                 opts.CHLogLevel,
