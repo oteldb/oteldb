@@ -29,7 +29,7 @@ jobs:
       - uses: anchore/sbom-action/download-syft@v0
       - run: sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Install Go
         uses: actions/setup-go@v6
