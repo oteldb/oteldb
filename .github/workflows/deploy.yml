@@ -72,7 +72,7 @@ jobs:
         run: task build-deploy
 
       - name: Base image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./dev/deploy/deploy.Dockerfile
@@ -82,7 +82,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Proxy image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./dev/deploy/deploy.proxy.Dockerfile
@@ -92,7 +92,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: ClickHouse OTEL Exporter Image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./dev/deploy/deploy.chotel.Dockerfile
