@@ -7,7 +7,7 @@ require (
 	github.com/ClickHouse/ch-go v0.71.0
 	github.com/MakeNowJust/heredoc/v2 v2.0.1
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/VictoriaMetrics/VictoriaMetrics v1.134.0
+	github.com/VictoriaMetrics/VictoriaMetrics v1.137.0
 	github.com/VictoriaMetrics/easyproto v1.2.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -52,7 +52,7 @@ require (
 	github.com/oteldb/promql-engine v0.6.0-alpha.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.5
-	github.com/prometheus/prometheus v0.308.0
+	github.com/prometheus/prometheus v0.309.1
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/sergi/go-diff v1.4.0
 	github.com/spf13/cobra v1.10.2
@@ -101,7 +101,7 @@ require (
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.1
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
-	golang.org/x/exp v0.0.0-20260209203927-2842357ff358
+	golang.org/x/exp v0.0.0-20260212183809-81e46e3db34a
 	golang.org/x/perf v0.0.0-20241204221936-711ff2ab7231
 	golang.org/x/sync v0.19.0
 	golang.org/x/tools v0.42.0
@@ -119,8 +119,8 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/VictoriaMetrics/metrics v1.40.2 // indirect
-	github.com/VictoriaMetrics/metricsql v0.84.10 // indirect
+	github.com/VictoriaMetrics/metrics v1.41.2 // indirect
+	github.com/VictoriaMetrics/metricsql v0.85.0 // indirect
 	github.com/VividCortex/ewma v1.2.0 // indirect
 	github.com/aclements/go-moremath v0.0.0-20210112150236-f10218a38794 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
@@ -131,7 +131,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
-	github.com/clipperhouse/uax29/v2 v2.6.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
@@ -194,7 +194,7 @@ require (
 	github.com/magefile/mage v1.15.0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-runewidth v0.0.19 // indirect
+	github.com/mattn/go-runewidth v0.0.20 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
@@ -244,7 +244,7 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/twmb/murmur3 v1.1.8 // indirect
 	github.com/ua-parser/uap-go v0.0.0-20240611065828-3a4781585db6 // indirect
-	github.com/valyala/fastjson v1.6.7 // indirect
+	github.com/valyala/fastjson v1.6.10 // indirect
 	github.com/valyala/fastrand v1.1.0 // indirect
 	github.com/valyala/histogram v1.2.0 // indirect
 	github.com/valyala/quicktemplate v1.8.0 // indirect
@@ -318,8 +318,8 @@ require (
 	golang.org/x/term v0.40.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260209200024-4cfbd4190f57 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260209200024-4cfbd4190f57 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260217215200-42d3e9bedb6d // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260217215200-42d3e9bedb6d // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
