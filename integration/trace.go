@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
@@ -41,6 +42,8 @@ func (gen *randomIDGenerator) NewIDs(context.Context) (tid trace.TraceID, sid tr
 // Provider is a helper for tests providing a TracerProvider and an
 // InMemoryExporter.
 type Provider struct {
+	*sdkmetric.MeterProvider
+	Reader *sdkmetric.ManualReader
 	*sdktrace.TracerProvider
 	Exporter *tracetest.InMemoryExporter
 }
@@ -52,6 +55,9 @@ func (p *Provider) Reset() {
 
 // Flush forces a flush of all finished spans.
 func (p *Provider) Flush() {
+	if err := p.MeterProvider.ForceFlush(context.Background()); err != nil {
+		panic(err)
+	}
 	if err := p.TracerProvider.ForceFlush(context.Background()); err != nil {
 		panic(err)
 	}
@@ -91,7 +97,12 @@ func TraceProvider(t *testing.T) trace.TracerProvider {
 
 // NewProvider initializes and returns a new Provider along with an exporter.
 func NewProvider() *Provider {
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+	)
 	exporter := tracetest.NewInMemoryExporter()
+
 	randSource := rand.NewSource(10)
 	tp := sdktrace.NewTracerProvider(
 		// Using deterministic random ids.
@@ -104,7 +115,9 @@ func NewProvider() *Provider {
 		),
 	)
 	return &Provider{
-		Exporter:       exporter,
+		MeterProvider:  mp,
+		Reader:         reader,
 		TracerProvider: tp,
+		Exporter:       exporter,
 	}
 }
