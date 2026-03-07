@@ -62,27 +62,39 @@ type Metrics interface {
 
 // Instrument setups otelhttp.
 func Instrument(endpoint, serviceName string, find RouteFinder, m Metrics) Middleware {
+	addLabeler := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			l, ok := otelhttp.LabelerFromContext(ctx)
+			if !ok {
+				ctx = otelhttp.ContextWithLabeler(ctx, l)
+			}
+			r = r.WithContext(ctx)
+
+			route, ok := find(r.Method, r.URL)
+			if !ok {
+				l.Add(
+					attribute.String("oas.operation.id", "<unknown>"),
+					attribute.String("oteldb.api", serviceName),
+				)
+			} else {
+				l.Add(
+					attribute.String("oas.route.name", route.Name()),
+					attribute.String("oas.operation.id", route.OperationID()),
+					attribute.String("oteldb.api", serviceName),
+				)
+			}
+
+			h.ServeHTTP(w, r)
+		})
+	}
 	return func(h http.Handler) http.Handler {
-		return otelhttp.NewHandler(h, "",
+		h = otelhttp.NewHandler(h, "",
 			otelhttp.WithPropagators(m.TextMapPropagator()),
 			otelhttp.WithTracerProvider(m.TracerProvider()),
 			otelhttp.WithMeterProvider(m.MeterProvider()),
 			otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
 			otelhttp.WithServerName(endpoint),
-			otelhttp.WithMetricAttributesFn(func(r *http.Request) []attribute.KeyValue {
-				route, ok := find(r.Method, r.URL)
-				if !ok {
-					return []attribute.KeyValue{
-						attribute.String("oas.operation.id", "<unknown>"),
-						attribute.String("oteldb.api", serviceName),
-					}
-				}
-				return []attribute.KeyValue{
-					attribute.String("oas.route.name", route.Name()),
-					attribute.String("oas.operation.id", route.OperationID()),
-					attribute.String("oteldb.api", serviceName),
-				}
-			}),
 			otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string {
 				op, ok := find(r.Method, r.URL)
 				if ok {
@@ -91,6 +103,7 @@ func Instrument(endpoint, serviceName string, find RouteFinder, m Metrics) Middl
 				return operation
 			}),
 		)
+		return addLabeler(h)
 	}
 }
 
