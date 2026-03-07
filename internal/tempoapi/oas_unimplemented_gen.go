@@ -32,6 +32,25 @@ func (UnimplementedHandler) Echo(ctx context.Context) (r EchoOK, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
+// Query implements query operation.
+//
+// The instant version of the Metrics API is similar to the range version, but instead returns a
+// single value for the query.
+//
+// GET /api/metrics/query
+func (UnimplementedHandler) Query(ctx context.Context, params QueryParams) (r *InstantMetrics, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// QueryRange implements queryRange operation.
+//
+// This endpoint returns Prometheus-like time-series for a given metrics query.
+//
+// GET /api/metrics/query_range
+func (UnimplementedHandler) QueryRange(ctx context.Context, params QueryRangeParams) (r *RangeMetrics, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // Search implements search operation.
 //
 // Execute TraceQL query.
@@ -84,6 +103,15 @@ func (UnimplementedHandler) SearchTagsV2(ctx context.Context, params SearchTagsV
 //
 // GET /api/traces/{traceID}
 func (UnimplementedHandler) TraceByID(ctx context.Context, params TraceByIDParams) (r TraceByIDRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// TraceByIDv2 implements traceByIDv2 operation.
+//
+// Querying traces by id.
+//
+// GET /api/v2/traces/{traceID}
+func (UnimplementedHandler) TraceByIDv2(ctx context.Context, params TraceByIDv2Params) (r TraceByIDv2Res, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
