@@ -155,7 +155,7 @@ func PatchForm(next http.Handler) http.Handler {
 		patched := req.Clone(req.Context())
 		noForm := patched.PostForm == nil
 		if noForm {
-			if err := patched.ParseForm(); err != nil {
+			if err := patched.ParseForm(); err != nil { // #nosec G120
 				// Let handler deal with invalid form.
 				next.ServeHTTP(w, patched)
 				return

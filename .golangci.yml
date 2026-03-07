@@ -37,6 +37,7 @@ linters:
       excludes:
         - G115
         - G117
+        - G118
         - G703
         - G704
         - G705
