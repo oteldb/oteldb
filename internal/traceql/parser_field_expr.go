@@ -248,6 +248,8 @@ func (p *parser) tryAttribute() (a Attribute, _ bool) {
 		a.Prop = SpanName
 	case lexer.Status:
 		a.Prop = SpanStatus
+	case lexer.StatusMessage:
+		a.Prop = SpanStatusMessage
 	case lexer.Kind:
 		a.Prop = SpanKind
 	case lexer.Parent:
@@ -258,6 +260,27 @@ func (p *parser) tryAttribute() (a Attribute, _ bool) {
 		a.Prop = RootServiceName
 	case lexer.TraceDuration:
 		a.Prop = TraceDuration
+	case lexer.NestedSetLeft:
+		a.Prop = NestedSetLeft
+	case lexer.NestedSetRight:
+		a.Prop = NestedSetRight
+	case lexer.NestedSetParent:
+		a.Prop = NestedSetParent
+	case lexer.TraceColon:
+		p.next()
+		return p.parseScopedTraceIntrinsic()
+	case lexer.SpanColon:
+		p.next()
+		return p.parseScopedSpanIntrinsic()
+	case lexer.EventColon:
+		p.next()
+		return p.parseScopedEventIntrinsic()
+	case lexer.LinkColon:
+		p.next()
+		return p.parseScopedLinkIntrinsic()
+	case lexer.InstrumentationColon:
+		p.next()
+		return p.parseScopedInstrumentationIntrinsic()
 	case lexer.Ident:
 		parseAttributeSelector(t.Text, &a)
 	default:
@@ -265,6 +288,92 @@ func (p *parser) tryAttribute() (a Attribute, _ bool) {
 	}
 	p.next()
 
+	return a, true
+}
+
+func (p *parser) parseScopedTraceIntrinsic() (a Attribute, _ bool) {
+	switch p.peek().Type {
+	case lexer.SpanDuration:
+		a.Prop = TraceDuration
+	case lexer.RootName:
+		a.Prop = RootSpanName
+	case lexer.RootServiceName, lexer.RootService:
+		a.Prop = RootServiceName
+	case lexer.ID:
+		a.Prop = TraceID
+	default:
+		p.unread() // unread trace:
+		return a, false
+	}
+	p.next()
+	return a, true
+}
+
+func (p *parser) parseScopedSpanIntrinsic() (a Attribute, _ bool) {
+	switch p.peek().Type {
+	case lexer.SpanDuration:
+		a.Prop = SpanDuration
+	case lexer.Name:
+		a.Prop = SpanName
+	case lexer.Kind:
+		a.Prop = SpanKind
+	case lexer.Status:
+		a.Prop = SpanStatus
+	case lexer.StatusMessage:
+		a.Prop = SpanStatusMessage
+	case lexer.ID:
+		a.Prop = SpanID
+	case lexer.ParentID:
+		a.Prop = ParentID
+	case lexer.ChildCount:
+		a.Prop = SpanChildCount
+	default:
+		p.unread() // unread span:
+		return a, false
+	}
+	p.next()
+	return a, true
+}
+
+func (p *parser) parseScopedEventIntrinsic() (a Attribute, _ bool) {
+	switch p.peek().Type {
+	case lexer.Name:
+		a.Prop = EventName
+	case lexer.TimeSinceStart:
+		a.Prop = EventTimeSinceStart
+	default:
+		p.unread() // unread event:
+		return a, false
+	}
+	p.next()
+	return a, true
+}
+
+func (p *parser) parseScopedLinkIntrinsic() (a Attribute, _ bool) {
+	switch p.peek().Type {
+	case lexer.TraceID:
+		a.Prop = LinkTraceID
+	case lexer.SpanID:
+		a.Prop = LinkSpanID
+	default:
+		p.unread() // unread link:
+		return a, false
+	}
+	p.next()
+	return a, true
+}
+
+func (p *parser) parseScopedInstrumentationIntrinsic() (a Attribute, _ bool) {
+	switch p.peek().Type {
+	case lexer.Name:
+		a.Prop = InstrumentationName
+	case lexer.Version:
+		a.Prop = InstrumentationVersion
+	default:
+		p.unread() // unread instrumentation:
+		return a, false
+	}
+	p.next()
 	return a, true
 }
 
@@ -285,6 +394,15 @@ func parseAttributeSelector(attr string, a *Attribute) {
 	case "span":
 		a.Name = attr
 		a.Scope = ScopeSpan
+	case "instrumentation":
+		a.Name = attr
+		a.Scope = ScopeInstrumentation
+	case "event":
+		a.Name = attr
+		a.Scope = ScopeEvent
+	case "link":
+		a.Name = attr
+		a.Scope = ScopeLink
 	case "":
 		a.Name = attr
 		a.Scope = ScopeNone

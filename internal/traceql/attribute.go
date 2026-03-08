@@ -51,6 +51,32 @@ func (s Attribute) String() string {
 		return "rootServiceName"
 	case TraceDuration:
 		return "traceDuration"
+	case SpanStatusMessage:
+		return "statusMessage"
+	case NestedSetLeft:
+		return "nestedSetLeft"
+	case NestedSetRight:
+		return "nestedSetRight"
+	case NestedSetParent:
+		return "nestedSetParent"
+	case SpanID:
+		return "span:id"
+	case ParentID:
+		return "span:parentId"
+	case TraceID:
+		return "trace:id"
+	case EventName:
+		return "event:name"
+	case EventTimeSinceStart:
+		return "event:timeSinceStart"
+	case LinkTraceID:
+		return "link:traceId"
+	case LinkSpanID:
+		return "link:spanId"
+	case InstrumentationName:
+		return "instrumentation:name"
+	case InstrumentationVersion:
+		return "instrumentation:version"
 	default:
 		// SpanAttribute.
 		var (
@@ -67,6 +93,15 @@ func (s Attribute) String() string {
 			needDot = true
 		case ScopeSpan:
 			sb.WriteString("span")
+			needDot = true
+		case ScopeInstrumentation:
+			sb.WriteString("instrumentation")
+			needDot = true
+		case ScopeEvent:
+			sb.WriteString("event")
+			needDot = true
+		case ScopeLink:
+			sb.WriteString("link")
 			needDot = true
 		}
 		if needDot {
@@ -88,6 +123,8 @@ func (s *Attribute) ValueType() StaticType {
 		return TypeString
 	case SpanStatus:
 		return TypeSpanStatus
+	case SpanStatusMessage:
+		return TypeString
 	case SpanKind:
 		return TypeSpanKind
 	case SpanParent:
@@ -98,6 +135,18 @@ func (s *Attribute) ValueType() StaticType {
 		return TypeString
 	case TraceDuration:
 		return TypeDuration
+	case NestedSetLeft, NestedSetRight, NestedSetParent:
+		return TypeInt
+	case SpanID, ParentID, TraceID:
+		return TypeString
+	case EventName:
+		return TypeString
+	case EventTimeSinceStart:
+		return TypeDuration
+	case LinkTraceID, LinkSpanID:
+		return TypeString
+	case InstrumentationName, InstrumentationVersion:
+		return TypeString
 	default:
 		// Type determined at execution time.
 		return TypeAttribute
@@ -118,6 +167,20 @@ const (
 	RootSpanName
 	RootServiceName
 	TraceDuration
+	// Scoped intrinsics added with TraceQL v2.
+	SpanStatusMessage
+	NestedSetLeft
+	NestedSetRight
+	NestedSetParent
+	SpanID
+	ParentID
+	TraceID
+	EventName
+	EventTimeSinceStart
+	LinkTraceID
+	LinkSpanID
+	InstrumentationName
+	InstrumentationVersion
 )
 
 var intrinsicNames = func() (r []string) {
@@ -141,6 +204,8 @@ const (
 	ScopeResource
 	ScopeSpan
 	ScopeInstrumentation
+	ScopeEvent
+	ScopeLink
 )
 
 // String implements [fmt.Stringer].
@@ -153,7 +218,11 @@ func (s AttributeScope) String() string {
 	case ScopeSpan:
 		return "span"
 	case ScopeInstrumentation:
-		return "<instrumentation>"
+		return "instrumentation"
+	case ScopeEvent:
+		return "event"
+	case ScopeLink:
+		return "link"
 	default:
 		return fmt.Sprintf("unknown scope %d", uint8(s))
 	}
