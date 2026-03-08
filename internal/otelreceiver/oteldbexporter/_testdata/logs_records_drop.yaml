@@ -1,0 +1,4 @@
+dsn: "clickhouse://clickhouse:9000"
+logs:
+  records:
+    drop: true

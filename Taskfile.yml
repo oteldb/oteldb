@@ -53,9 +53,9 @@ tasks:
       - go tool cover -html=coverage.txt
 
   fmt:
-    desc: gofumpt all code
+    desc: format all code
     cmds:
-      - gofumpt -w -l .
+      - golangci-lint fmt ./...
 
   lint:
     desc: Lint the code with golangci-lint
