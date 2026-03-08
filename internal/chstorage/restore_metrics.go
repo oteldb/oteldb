@@ -78,7 +78,7 @@ func (r *metricsRestore) restore(ctx context.Context, dir string) error {
 	grp.Go(func() error {
 		ctx := grpCtx
 		if err := r.restoreExemplars(ctx, dir); err != nil {
-			return errors.Wrap(err, "restore exp histograms")
+			return errors.Wrap(err, "restore exemplars")
 		}
 		return nil
 	})

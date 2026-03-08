@@ -129,13 +129,11 @@ func (r *restoreTable) Do(ctx context.Context, dir, table string, client ClickHo
 	decodeCh := make(chan proto.Input)
 	grp, grpCtx := errgroup.WithContext(ctx)
 	grp.Go(func() error {
-		ctx := grpCtx
 		defer close(decodeCh)
-		return r.batcher(ctx, dir, decodeCh)
+		return r.batcher(grpCtx, dir, decodeCh)
 	})
 	grp.Go(func() error {
-		ctx := grpCtx
-		return r.inserter(ctx, table, client, decodeCh)
+		return r.inserter(grpCtx, table, client, decodeCh)
 	})
 	return grp.Wait()
 }
@@ -178,8 +176,7 @@ func (r *restoreTable) batcher(ctx context.Context, dir string, decodeCh chan<- 
 			case decodeCh <- input:
 				input, columns, add, rows = r.NewColumns()
 			}
-		}
-		if total > r.BatchSize {
+		} else if total > r.BatchSize {
 			// Try to insert block, if inserter have no work.
 			// Otherwise, keep filling the buffer.
 			select {
