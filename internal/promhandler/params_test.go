@@ -14,16 +14,102 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/go-faster/oteldb/internal/lokiapi"
+	"github.com/go-faster/oteldb/internal/promapi"
 )
 
+func stringToOpt[
+	S ~string,
+	O interface {
+		SetTo(S)
+	},
+](
+	input string,
+	opt O,
+) {
+	if input != "" {
+		opt.SetTo(S(input))
+	}
+}
+
+var defaultTime = time.Date(2000, time.January, 1, 13, 0, 59, 0, time.UTC)
+
+func TestParseTimeRange(t *testing.T) {
+	someDate := defaultTime.Add(-time.Hour)
+
+	tests := []struct {
+		startParam string
+		endParam   string
+		sinceParam string
+
+		wantStart time.Time
+		wantEnd   time.Time
+		wantErr   bool
+	}{
+		{``, ``, ``, defaultTime.Add(-6 * time.Hour), defaultTime, false},
+		{``, ``, `5m`, defaultTime.Add(-5 * time.Minute), defaultTime, false},
+		{``, someDate.Format(time.RFC3339Nano), ``, someDate.Add(-6 * time.Hour), someDate, false},
+
+		// Invalid since.
+		{``, ``, `a`, time.Time{}, time.Time{}, true},
+		// Invalid end.
+		{``, `a`, ``, time.Time{}, time.Time{}, true},
+		// Invalid start.
+		{`a`, ``, ``, time.Time{}, time.Time{}, true},
+	}
+	for i, tt := range tests {
+		tt := tt
+		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+			var (
+				start, end lokiapi.OptLokiTime
+				since      lokiapi.OptPrometheusDuration
+			)
+			stringToOpt[lokiapi.LokiTime](tt.startParam, &start)
+			stringToOpt[lokiapi.LokiTime](tt.endParam, &end)
+			stringToOpt[lokiapi.PrometheusDuration](tt.sinceParam, &since)
+
+			gotStart, gotEnd, err := ParseTimeRange(
+				defaultTime,
+				start,
+				end,
+				since,
+				6*time.Hour,
+			)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.True(t, tt.wantStart.Equal(gotStart))
+			require.True(t, tt.wantEnd.Equal(gotEnd))
+		})
+	}
+}
+
 func TestParseTimestamp(t *testing.T) {
+	someDate := time.Date(2010, time.February, 4, 3, 2, 1, 0, time.UTC)
 	tests := []struct {
 		raw     string
 		want    time.Time
 		wantErr bool
 	}{
-		{`1600000000.123`, time.UnixMilli(1600000000123).UTC(), false},
+		// A Unix timestamp.
+		{`1688650387`, time.Unix(1688650387, 0), false},
+		// A Unix nano timestamp.
+		{`1688650387000000001`, time.Unix(1688650387, 1), false},
+		// A floating point timestamp with fractions of second.
+		//
+		// .001 (1/1000) of seconds is 1ms
+		{`1688650387.001`, time.Unix(1688650387, int64(time.Millisecond)), false},
+		// RFC3339.
+		{`2015-07-01T20:10:51Z`, time.Date(2015, 7, 1, 20, 10, 51, 0, time.UTC), false},
+		// RFC3339Nano.
+		{someDate.Format(time.RFC3339Nano), someDate, false},
 		{`2015-07-01T20:10:51.781Z`, time.Date(2015, 7, 1, 20, 10, 51, int(781*time.Millisecond), time.UTC), false},
+		// Min/Max time.
+		{minTimeFormatted, promapi.MinTime, false},
+		{maxTimeFormatted, promapi.MaxTime, false},
 
 		{`foo`, time.Time{}, true},
 		{``, time.Time{}, true},
@@ -31,7 +117,46 @@ func TestParseTimestamp(t *testing.T) {
 	for i, tt := range tests {
 		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
-			got, err := parseTimestamp(tt.raw)
+			got, err := ParseTimestamp(tt.raw)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, time.UTC, got.Location())
+			require.Equal(t, tt.want.UTC(), got)
+		})
+	}
+}
+
+func TestParseDuration(t *testing.T) {
+	tests := []struct {
+		raw     string
+		want    time.Duration
+		wantErr bool
+	}{
+		{`0`, 0, false},
+		{`0s`, 0, false},
+		{`10.256`, 10*time.Second + 256*time.Millisecond, false},
+		{`1s`, time.Second, false},
+		{`1h`, time.Hour, false},
+		{`1d`, 24 * time.Hour, false},
+		{`1y`, 365 * 24 * time.Hour, false},
+
+		{``, 0, true},
+		{`nan`, 0, true},
+		{`NaN`, 0, true},
+		{`inf`, 0, true},
+		{`-inf`, 0, true},
+		{`+inf`, 0, true},
+		{`-1`, 0, true},
+		{`-1.0`, 0, true},
+		{`-1s`, 0, true},
+	}
+	for i, tt := range tests {
+		tt := tt
+		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+			got, err := ParseDuration(tt.raw)
 			if tt.wantErr {
 				require.Error(t, err)
 				return

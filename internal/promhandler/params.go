@@ -35,41 +35,137 @@ var (
 	maxTimeFormatted = promapi.MaxTime.Format(time.RFC3339Nano)
 )
 
-func parseOptTimestamp(t promapi.OptPrometheusTimestamp, or time.Time) (time.Time, error) {
-	v, ok := t.Get()
-	if !ok {
-		return or, nil
+// ParseTimeRange parses query time range parameters.
+func ParseTimeRange[
+	OptTimestamp interface {
+		Or(TimestampType) TimestampType
+		Get() (TimestampType, bool)
+	},
+	TimestampType ~string,
+	OptDuration interface {
+		Or(DurationType) DurationType
+		Get() (DurationType, bool)
+	},
+	DurationType ~string,
+](
+	now time.Time,
+	startParam OptTimestamp,
+	endParam OptTimestamp,
+	sinceParam OptDuration,
+	defaultSince time.Duration,
+) (start, end time.Time, err error) {
+	since := defaultSince
+	if v, ok := sinceParam.Get(); ok {
+		d, err := ParseDuration(string(v))
+		if err != nil {
+			return start, end, errors.Wrap(err, "parse since")
+		}
+		if d < 0 {
+			return start, end, errors.Errorf(`since=%q could not be negative`, v)
+		}
+		since = d
 	}
-	return parseTimestamp(v)
+
+	end, err = ParseOptTimestamp(endParam, now)
+	if err != nil {
+		return start, end, errors.Wrapf(err, "parse end %q", endParam.Or(""))
+	}
+
+	endOrNow := end
+	if end.After(now) {
+		endOrNow = now
+	}
+
+	start, err = ParseOptTimestamp(startParam, endOrNow.Add(-since))
+	if err != nil {
+		return start, end, errors.Wrapf(err, "parse start %q", startParam.Or(""))
+	}
+	if end.Before(start) {
+		return start, end, errors.Errorf("end=%q is before start=%q", end, start)
+	}
+	return start, end, nil
 }
 
-func parseTimestamp[S ~string](raw S) (time.Time, error) {
-	// https://github.com/prometheus/prometheus/blob/e9b94515caa4c0d7a0e31f722a1534948ebad838/web/api/v1/api.go#L1790-L1811
-	s := string(raw)
-
-	if t, err := strconv.ParseFloat(s, 64); err == nil {
-		s, ns := math.Modf(t)
-		ns = math.Round(ns*1000) / 1000
-		return time.Unix(int64(s), int64(ns*float64(time.Second))).UTC(), nil
+// ParseOptTimestamp parses Prometheus-like timestamp from given optional.
+func ParseOptTimestamp[
+	OptType interface {
+		Get() (TimestampType, bool)
+	},
+	TimestampType ~string,
+](opt OptType, def time.Time) (time.Time, error) {
+	v, ok := opt.Get()
+	if !ok || len(v) == 0 {
+		return def, nil
 	}
-	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-		return t, nil
+	ts, err := ParseTimestamp(v)
+	if err != nil {
+		return ts, err
 	}
+	return ts, nil
+}
 
-	switch s {
+// ParseTimestamp parses Prometheus-like timestamp from given string.
+//
+// If string is empty, def is returned.
+func ParseTimestamp[S ~string](lt S) (r time.Time, rerr error) {
+	defer func() {
+		if rerr == nil {
+			r = r.UTC()
+		}
+	}()
+
+	value := string(lt)
+	switch value {
+	case "":
+		return time.Time{}, errors.New("timestamp is empty")
 	case minTimeFormatted:
 		return promapi.MinTime, nil
 	case maxTimeFormatted:
 		return promapi.MaxTime, nil
 	}
-	return time.Time{}, errors.Errorf("cannot parse %q to a valid timestamp", s)
+
+	if strings.Contains(value, ".") {
+		if t, err := strconv.ParseFloat(value, 64); err == nil {
+			s, ns := math.Modf(t)
+			ns = math.Round(ns*1000) / 1000
+			return time.Unix(int64(s), int64(ns*float64(time.Second))), nil
+		}
+	}
+	nanos, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return time.Parse(time.RFC3339Nano, value)
+	}
+	if len(value) <= 10 {
+		return time.Unix(nanos, 0), nil
+	}
+	return time.Unix(0, nanos), nil
+}
+
+// ParseDuration parses Prometheus duration from given string.
+func ParseDuration[S ~string](raw S) (d time.Duration, _ error) {
+	if seconds, parseErr := strconv.ParseFloat(string(raw), 64); parseErr == nil {
+		if math.IsNaN(seconds) || math.IsInf(seconds, 0) {
+			return d, errors.Errorf("invalid duration %q", raw)
+		}
+		d = time.Duration(seconds * float64(time.Second))
+	} else {
+		md, err := model.ParseDuration(string(raw))
+		if err != nil {
+			return d, errors.Errorf("invalid duration %q", raw)
+		}
+		d = time.Duration(md)
+	}
+	if d < 0 {
+		return 0, errors.New(`duration could must be non-negative`)
+	}
+	return d, nil
 }
 
 func parseStep[S ~string](raw S, defaultStep time.Duration) (time.Duration, error) {
 	if len(raw) == 0 {
 		return defaultStep, nil
 	}
-	d, err := parseDuration(raw)
+	d, err := ParseDuration(raw)
 	if err != nil {
 		return 0, err
 	}
@@ -79,23 +175,13 @@ func parseStep[S ~string](raw S, defaultStep time.Duration) (time.Duration, erro
 	return d, nil
 }
 
-func parseDuration[S ~string](raw S) (time.Duration, error) {
-	if seconds, err := strconv.ParseFloat(string(raw), 64); err == nil {
-		return time.Duration(seconds * float64(time.Second)), nil
-	}
-	if d, err := model.ParseDuration(string(raw)); err == nil {
-		return time.Duration(d), nil
-	}
-	return 0, errors.Errorf("invalid duration %q", raw)
-}
-
 func parseQueryOpts(
 	deltaParam, statsParam promapi.OptString,
 	defaultDelta time.Duration,
 ) (_ promql.QueryOpts, err error) {
 	delta := defaultDelta
 	if rawDelta, ok := deltaParam.Get(); ok {
-		delta, err = parseDuration(rawDelta)
+		delta, err = ParseDuration(rawDelta)
 		if err != nil {
 			return nil, validationErr("parse lookback delta", err)
 		}
