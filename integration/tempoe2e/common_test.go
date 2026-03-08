@@ -304,7 +304,7 @@ func runTest(
 				a.NoError(err)
 				a.Len(r.TagValues, len(tagValues))
 				for _, val := range r.TagValues {
-					a.Containsf(tagValues, val.Value, "check tag %q", tagName)
+					a.Containsf(tagValues, val.Value.Or(""), "check tag %q", tagName)
 				}
 			}
 		})
