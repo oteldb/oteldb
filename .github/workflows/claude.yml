@@ -28,10 +28,9 @@ jobs:
       )
     runs-on: ubuntu-latest
     permissions:
-      contents: write # needed to push branches
+      contents: read
       issues: write
       pull-requests: write
-      id-token: write
       actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
