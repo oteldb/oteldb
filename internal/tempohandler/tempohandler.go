@@ -82,6 +82,16 @@ func (h *TempoAPI) Echo(_ context.Context) (tempoapi.EchoOK, error) {
 //
 // GET /api/metrics/query
 func (h *TempoAPI) Query(ctx context.Context, params tempoapi.QueryParams) (*tempoapi.InstantMetrics, error) {
+	_, _, err := parseQueryTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		time.Hour,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
 	return nil, ht.ErrNotImplemented
 }
 
@@ -91,6 +101,16 @@ func (h *TempoAPI) Query(ctx context.Context, params tempoapi.QueryParams) (*tem
 //
 // GET /api/metrics/query_range
 func (h *TempoAPI) QueryRange(ctx context.Context, params tempoapi.QueryRangeParams) (*tempoapi.RangeMetrics, error) {
+	_, _, err := parseQueryTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		time.Hour,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
 	return nil, ht.ErrNotImplemented
 }
 
@@ -134,6 +154,7 @@ func (h *TempoAPI) searchTraceQL(ctx context.Context, query string, params tempo
 		params.Start,
 		params.End,
 		params.Since,
+		0,
 	)
 	if err != nil {
 		return nil, validationErr(err, "parse time range")
@@ -166,6 +187,7 @@ func (h *TempoAPI) searchTags(ctx context.Context, query string, params tempoapi
 		params.Start,
 		params.End,
 		params.Since,
+		0,
 	)
 	if err != nil {
 		return nil, validationErr(err, "parse time range")
@@ -516,6 +538,7 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 		params.Start,
 		params.End,
 		params.Since,
+		0,
 	)
 	if err != nil {
 		return nil, validationErr(err, "parse time range")

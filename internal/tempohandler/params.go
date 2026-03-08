@@ -17,7 +17,7 @@ func parseTagsTimeRange(
 	defaultSince time.Duration,
 ) (start, end time.Time, err error) {
 	// TODO(tdakkota): limit time range by default.
-	return parseSearchTimeRange(now, startParam, endParam, sinceParam)
+	return parseSearchTimeRange(now, startParam, endParam, sinceParam, defaultSince)
 }
 
 func parseQueryTimeRange(
@@ -28,7 +28,7 @@ func parseQueryTimeRange(
 	defaultSince time.Duration,
 ) (start, end time.Time, err error) {
 	// TODO(tdakkota): limit time range by default.
-	return parseSearchTimeRange(now, startParam, endParam, sinceParam)
+	return parseSearchTimeRange(now, startParam, endParam, sinceParam, defaultSince)
 }
 
 // parseSearchTimeRange parses search time range parameters.
@@ -37,13 +37,14 @@ func parseSearchTimeRange(
 	startParam tempoapi.OptTempoTime,
 	endParam tempoapi.OptTempoTime,
 	sinceParam tempoapi.OptPrometheusDuration,
+	defaultSince time.Duration,
 ) (start, end time.Time, err error) {
 	anySet := startParam.Set || endParam.Set || sinceParam.Set
 	if !anySet {
 		return time.Time{}, time.Time{}, nil
 	}
 
-	var since time.Duration
+	since := defaultSince
 	if v, ok := sinceParam.Get(); ok {
 		d, err := promhandler.ParseDuration(string(v))
 		if err != nil {
