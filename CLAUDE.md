@@ -124,8 +124,16 @@ When adding/modifying columns:
 2. Update `internal/chstorage/columns_*.go` (column mappings)
 3. Update `internal/chstorage/inserter_*.go` (write path)
 4. Update `internal/chstorage/querier_*.go` (read path)
-5. Run `go test ./internal/chstorage/...` to verify golden files
+5. Update `internal/chstorage/backup_*.go` (backup tool)
+6. Update `internal/chstorage/restore_*.go` (backup tool)
+7. Run `go test ./internal/chstorage/...` to verify golden files
 
 ### Golden file tests
 `internal/chstorage/gold_test.go` compares generated SQL against `_golden/*.sql`. If you change schema code, run these tests and update golden files as needed.
 
+
+### AI/Coding agent PR Guidelines
+
+- Never push directly to `main`, `master` or `develop`
+- Always create a new branch named `claude/<issue-number>-<short-description>`
+- Open a draft PR referencing the issue number
