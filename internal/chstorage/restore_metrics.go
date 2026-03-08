@@ -115,7 +115,7 @@ func (r *metricsRestore) restore(ctx context.Context, dir string) error {
 func (r *metricsRestore) restorePoints(ctx context.Context, dir string) error {
 	cfg := restoreTable{
 		File: "metrics_points",
-		NewColumns: func() (proto.Input, Columns, func(), func() int) {
+		NewColumns: func() ([]proto.Input, Columns, func(), func() int) {
 			var (
 				name        = new(proto.ColStr).LowCardinality()
 				unit        = new(proto.ColStr).LowCardinality()
@@ -180,17 +180,17 @@ func (r *metricsRestore) restorePoints(ctx context.Context, dir string) error {
 					return points.hash.Rows()
 				}
 			)
-			return points.Input(), columns, add, rows
+			return []proto.Input{points.Input()}, columns, add, rows
 		},
 		Logger: r.logger,
 	}
-	return cfg.Do(ctx, dir, r.tables.Points, r.client)
+	return cfg.Do(ctx, dir, []string{r.tables.Points}, r.client)
 }
 
 func (r *metricsRestore) restoreExpHistograms(ctx context.Context, dir string) error {
 	cfg := restoreTable{
 		File: "metrics_exp_histograms",
-		NewColumns: func() (proto.Input, Columns, func(), func() int) {
+		NewColumns: func() ([]proto.Input, Columns, func(), func() int) {
 			var (
 				name        = new(proto.ColStr).LowCardinality()
 				unit        = new(proto.ColStr).LowCardinality()
@@ -278,17 +278,17 @@ func (r *metricsRestore) restoreExpHistograms(ctx context.Context, dir string) e
 					return histograms.hash.Rows()
 				}
 			)
-			return histograms.Input(), columns, add, rows
+			return []proto.Input{histograms.Input()}, columns, add, rows
 		},
 		Logger: r.logger,
 	}
-	return cfg.Do(ctx, dir, r.tables.ExpHistograms, r.client)
+	return cfg.Do(ctx, dir, []string{r.tables.ExpHistograms}, r.client)
 }
 
 func (r *metricsRestore) restoreExemplars(ctx context.Context, dir string) error {
 	cfg := restoreTable{
 		File: "metrics_exemplars",
-		NewColumns: func() (proto.Input, Columns, func(), func() int) {
+		NewColumns: func() ([]proto.Input, Columns, func(), func() int) {
 			var (
 				name        = new(proto.ColStr).LowCardinality()
 				unit        = new(proto.ColStr).LowCardinality()
@@ -358,11 +358,11 @@ func (r *metricsRestore) restoreExemplars(ctx context.Context, dir string) error
 					return exemplars.hash.Rows()
 				}
 			)
-			return exemplars.Input(), columns, add, rows
+			return []proto.Input{exemplars.Input()}, columns, add, rows
 		},
 		Logger: r.logger,
 	}
-	return cfg.Do(ctx, dir, r.tables.Exemplars, r.client)
+	return cfg.Do(ctx, dir, []string{r.tables.Exemplars}, r.client)
 }
 
 func (r *metricsRestore) collectTimeseries(

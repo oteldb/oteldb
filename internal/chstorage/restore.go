@@ -104,7 +104,7 @@ func openBackupReader(dir, name string) (io.ReadCloser, error) {
 
 type restoreTable struct {
 	File       string
-	NewColumns func() (proto.Input, Columns, func(), func() int)
+	NewColumns func() ([]proto.Input, Columns, func(), func() int)
 
 	BatchSize  int
 	BatchLimit int
@@ -123,22 +123,22 @@ func (r *restoreTable) setDefaults() {
 	}
 }
 
-func (r *restoreTable) Do(ctx context.Context, dir, table string, client ClickHouseClient) error {
+func (r *restoreTable) Do(ctx context.Context, dir string, tables []string, client ClickHouseClient) error {
 	r.setDefaults()
 
-	decodeCh := make(chan proto.Input)
+	decodeCh := make(chan []proto.Input)
 	grp, grpCtx := errgroup.WithContext(ctx)
 	grp.Go(func() error {
 		defer close(decodeCh)
 		return r.batcher(grpCtx, dir, decodeCh)
 	})
 	grp.Go(func() error {
-		return r.inserter(grpCtx, table, client, decodeCh)
+		return r.inserter(grpCtx, tables, client, decodeCh)
 	})
 	return grp.Wait()
 }
 
-func (r *restoreTable) batcher(ctx context.Context, dir string, decodeCh chan<- proto.Input) error {
+func (r *restoreTable) batcher(ctx context.Context, dir string, decodeCh chan<- []proto.Input) error {
 	br, err := openBackupReader(dir, r.File)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -152,9 +152,9 @@ func (r *restoreTable) batcher(ctx context.Context, dir string, decodeCh chan<- 
 	}()
 
 	var (
-		block                     proto.Block
-		rd                        = proto.NewReader(br)
-		input, columns, add, rows = r.NewColumns()
+		block                      proto.Block
+		rd                         = proto.NewReader(br)
+		inputs, columns, add, rows = r.NewColumns()
 	)
 	for {
 		columns.Reset()
@@ -173,8 +173,8 @@ func (r *restoreTable) batcher(ctx context.Context, dir string, decodeCh chan<- 
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case decodeCh <- input:
-				input, columns, add, rows = r.NewColumns()
+			case decodeCh <- inputs:
+				inputs, columns, add, rows = r.NewColumns()
 			}
 		} else if total > r.BatchSize {
 			// Try to insert block, if inserter have no work.
@@ -182,8 +182,8 @@ func (r *restoreTable) batcher(ctx context.Context, dir string, decodeCh chan<- 
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case decodeCh <- input:
-				input, columns, add, rows = r.NewColumns()
+			case decodeCh <- inputs:
+				inputs, columns, add, rows = r.NewColumns()
 			default:
 			}
 		}
@@ -192,26 +192,37 @@ func (r *restoreTable) batcher(ctx context.Context, dir string, decodeCh chan<- 
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case decodeCh <- input:
+		case decodeCh <- inputs:
 		}
 	}
 	return nil
 }
 
-func (r *restoreTable) inserter(ctx context.Context, table string, client ClickHouseClient, decodeCh <-chan proto.Input) error {
+func (r *restoreTable) inserter(ctx context.Context, tables []string, client ClickHouseClient, decodeCh <-chan []proto.Input) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case input, ok := <-decodeCh:
+		case inputs, ok := <-decodeCh:
 			if !ok {
 				return nil
 			}
-			if err := client.Do(ctx, ch.Query{
-				Body:  input.Into(table),
-				Input: input,
-			}); err != nil {
-				return errors.Wrapf(err, "insert %s", table)
+			grp, grpCtx := errgroup.WithContext(ctx)
+			for i, input := range inputs {
+				input := input
+				table := tables[i]
+				grp.Go(func() error {
+					if err := client.Do(grpCtx, ch.Query{
+						Body:  input.Into(table),
+						Input: input,
+					}); err != nil {
+						return errors.Wrapf(err, "insert %s", table)
+					}
+					return nil
+				})
+			}
+			if err := grp.Wait(); err != nil {
+				return err
 			}
 		}
 	}
