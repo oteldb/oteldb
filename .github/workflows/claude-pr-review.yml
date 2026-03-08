@@ -69,6 +69,15 @@ jobs:
             If no significant issues are found, leave a brief summary comment.
             Do not flag style issues already enforced by linters and formatters.
 
+            Do not review or even load generated files in directories:
+            - `internal/lokiapi`
+            - `internal/otelbotapi`
+            - `internal/promapi`
+            - `internal/promproxy`
+            - `internal/pyroscopeapi`
+            - `internal/sentryapi`
+            - `internal/tempoapi`
+
           claude_args: |
             --max-turns 20
             --allowed-tools "Bash(golangci-lint run:*),Bash(golangci-lint fmt:*),Bash(go build:*),Bash(go test:*),Bash(go vet:*),Bash(gh pr:*),Bash(gh issue:*),Bash(git log:*),Bash(git diff:*),mcp__github_inline_comment__create_inline_comment"

@@ -8,6 +8,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Go module: `github.com/go-faster/oteldb`
 
+Do not load generated files in directories:
+
+ - `internal/lokiapi`
+ - `internal/otelbotapi`
+ - `internal/promapi`
+ - `internal/promproxy`
+ - `internal/pyroscopeapi`
+ - `internal/sentryapi`
+ - `internal/tempoapi`
+
 ## Commands
 
 ### MCP
