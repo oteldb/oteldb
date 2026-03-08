@@ -427,7 +427,8 @@ func (c *Client) sendQuery(ctx context.Context, params QueryParams) (res *Instan
 	if err != nil {
 		return res, errors.Wrap(err, "do request")
 	}
-	defer resp.Body.Close()
+	body := resp.Body
+	defer body.Close()
 
 	stage = "DecodeResponse"
 	result, err := decodeQueryResponse(resp)
@@ -615,7 +616,8 @@ func (c *Client) sendQueryRange(ctx context.Context, params QueryRangeParams) (r
 	if err != nil {
 		return res, errors.Wrap(err, "do request")
 	}
-	defer resp.Body.Close()
+	body := resp.Body
+	defer body.Close()
 
 	stage = "DecodeResponse"
 	result, err := decodeQueryRangeResponse(resp)
@@ -1887,7 +1889,8 @@ func (c *Client) sendTraceByIDv2(ctx context.Context, params TraceByIDv2Params) 
 	if err != nil {
 		return res, errors.Wrap(err, "do request")
 	}
-	defer resp.Body.Close()
+	body := resp.Body
+	defer body.Close()
 
 	stage = "DecodeResponse"
 	result, err := decodeTraceByIDv2Response(resp)

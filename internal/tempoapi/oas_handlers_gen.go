@@ -318,6 +318,8 @@ func (s *Server) handleQueryRequest(args [0]string, argsEscaped bool, w http.Res
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/api/metrics/query"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), QueryOperation,
@@ -482,6 +484,8 @@ func (s *Server) handleQueryRangeRequest(args [0]string, argsEscaped bool, w htt
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/api/metrics/query_range"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), QueryRangeOperation,
@@ -1691,6 +1695,8 @@ func (s *Server) handleTraceByIDv2Request(args [1]string, argsEscaped bool, w ht
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/api/v2/traces/{traceID}"),
 	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
 	ctx, span := s.cfg.Tracer.Start(r.Context(), TraceByIDv2Operation,
