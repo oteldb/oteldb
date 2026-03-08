@@ -7,6 +7,9 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/errors"
@@ -50,7 +53,21 @@ func createTracesExporter(
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewTraces(ctx, settings, cfg, tracestorage.NewConsumer(inserter).ConsumeTraces)
+
+	consumer := tracestorage.NewConsumer(inserter)
+	consume := consumer.ConsumeTraces
+	if ecfg.Traces.Spans.enabled() {
+		spansCfg := ecfg.Traces.Spans
+		settings.Logger.Info("Span sampling enabled",
+			zap.Bool("drop", spansCfg.Drop),
+			zap.Float64("rate", spansCfg.Rate),
+		)
+		consume = func(ctx context.Context, td ptrace.Traces) error {
+			sampleSpans(td, spansCfg)
+			return consumer.ConsumeTraces(ctx, td)
+		}
+	}
+	return exporterhelper.NewTraces(ctx, settings, cfg, consume)
 }
 
 func createMetricsExporter(
@@ -63,7 +80,20 @@ func createMetricsExporter(
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewMetrics(ctx, settings, cfg, inserter.ConsumeMetrics)
+
+	consume := inserter.ConsumeMetrics
+	if ecfg.Metrics.Exemplars.enabled() {
+		exemplarsCfg := ecfg.Metrics.Exemplars
+		settings.Logger.Info("Exemplar sampling enabled",
+			zap.Bool("drop", exemplarsCfg.Drop),
+			zap.Float64("rate", exemplarsCfg.Rate),
+		)
+		consume = func(ctx context.Context, md pmetric.Metrics) error {
+			sampleExemplars(md, exemplarsCfg)
+			return inserter.ConsumeMetrics(ctx, md)
+		}
+	}
+	return exporterhelper.NewMetrics(ctx, settings, cfg, consume)
 }
 
 func createLogsExporter(
@@ -106,7 +136,20 @@ func createLogsExporter(
 	if err != nil {
 		return nil, errors.Wrap(err, "create consumer")
 	}
-	return exporterhelper.NewLogs(ctx, settings, cfg, consumer.ConsumeLogs)
+
+	consume := consumer.ConsumeLogs
+	if ecfg.Logs.Records.enabled() {
+		recordsCfg := ecfg.Logs.Records
+		lg.Info("Log record sampling enabled",
+			zap.Bool("drop", recordsCfg.Drop),
+			zap.Float64("rate", recordsCfg.Rate),
+		)
+		consume = func(ctx context.Context, ld plog.Logs) error {
+			sampleLogRecords(ld, recordsCfg)
+			return consumer.ConsumeLogs(ctx, ld)
+		}
+	}
+	return exporterhelper.NewLogs(ctx, settings, cfg, consume)
 }
 
 func parseAttributeRefs(refs []string, field string, lg *zap.Logger) []logstorage.AttributeRef {
