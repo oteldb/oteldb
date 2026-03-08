@@ -10,6 +10,13 @@ on:
   pull_request_review:
     types: [submitted]
 
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+  actions: read # Required for Claude to read CI results on PRs
+  issues: write
+
 jobs:
   claude:
     if: |
@@ -27,11 +34,6 @@ jobs:
         )
       )
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
-      actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6

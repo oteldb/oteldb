@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
+  id-token: write
   contents: read
   pull-requests: write
   actions: read # lets Claude read CI results
