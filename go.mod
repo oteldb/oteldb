@@ -103,7 +103,7 @@ require (
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/exp v0.0.0-20260212183809-81e46e3db34a
 	golang.org/x/perf v0.0.0-20241204221936-711ff2ab7231
-	golang.org/x/sync v0.19.0
+	golang.org/x/sync v0.20.0
 	golang.org/x/tools v0.42.0
 	google.golang.org/grpc v1.79.2
 	gopkg.in/yaml.v2 v2.4.0
