@@ -320,6 +320,26 @@ func buildAttributeEvaluater(attr *traceql.Attribute) (Evaluater, error) {
 		return &RootServiceNameEvaluater{}, nil
 	case traceql.TraceDuration:
 		return &TraceDurationEvaluater{}, nil
+	case traceql.SpanStatusMessage:
+		return &SpanStatusMessageEvaluater{}, nil
+	case traceql.SpanID:
+		return &SpanIDEvaluater{}, nil
+	case traceql.ParentID:
+		return &ParentIDEvaluater{}, nil
+	case traceql.TraceID:
+		return &TraceIDEvaluater{}, nil
+	case traceql.InstrumentationName:
+		return &InstrumentationNameEvaluater{}, nil
+	case traceql.InstrumentationVersion:
+		return &InstrumentationVersionEvaluater{}, nil
+	case traceql.EventName:
+		return &EventNameEvaluater{}, nil
+	case traceql.EventTimeSinceStart:
+		return &EventTimeSinceStartEvaluater{}, nil
+	case traceql.LinkTraceID:
+		return &LinkTraceIDEvaluater{}, nil
+	case traceql.LinkSpanID:
+		return &LinkSpanIDEvaluater{}, nil
 	default:
 		// SpanAttribute.
 		if attr.Parent {
@@ -332,6 +352,12 @@ func buildAttributeEvaluater(attr *traceql.Attribute) (Evaluater, error) {
 			return &ResourceAttributeEvaluater{Name: attr.Name}, nil
 		case traceql.ScopeSpan:
 			return &SpanAttributeEvaluater{Name: attr.Name}, nil
+		case traceql.ScopeInstrumentation:
+			return &InstrumentationAttributeEvaluater{Name: attr.Name}, nil
+		case traceql.ScopeEvent:
+			return &EventAttributeEvaluater{Name: attr.Name}, nil
+		case traceql.ScopeLink:
+			return &LinkAttributeEvaluater{Name: attr.Name}, nil
 		default:
 			return &AttributeEvaluater{Name: attr.Name}, nil
 		}
@@ -466,6 +492,166 @@ func evaluateAttr(name string, attrs ...otelstorage.Attrs) (r traceql.Static) {
 			continue
 		}
 		if v, ok := m.AsMap().Get(name); ok && r.SetOTELValue(v) {
+			return r
+		}
+	}
+	r.SetNil()
+	return r
+}
+
+// SpanStatusMessageEvaluater evaluates `statusMessage` property.
+type SpanStatusMessageEvaluater struct{}
+
+// Eval implemenets [Evaluater].
+func (*SpanStatusMessageEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	r.SetString(span.StatusMessage)
+	return r
+}
+
+// SpanIDEvaluater evaluates `span:id` property.
+type SpanIDEvaluater struct{}
+
+// Eval implemenets [Evaluater].
+func (*SpanIDEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	r.SetString(span.SpanID.Hex())
+	return r
+}
+
+// ParentIDEvaluater evaluates `span:parentId` property.
+type ParentIDEvaluater struct{}
+
+// Eval implemenets [Evaluater].
+func (*ParentIDEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	if span.ParentSpanID.IsEmpty() {
+		r.SetNil()
+	} else {
+		r.SetString(span.ParentSpanID.Hex())
+	}
+	return r
+}
+
+// TraceIDEvaluater evaluates `trace:id` property.
+type TraceIDEvaluater struct{}
+
+// Eval implemenets [Evaluater].
+func (*TraceIDEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	r.SetString(span.TraceID.Hex())
+	return r
+}
+
+// InstrumentationNameEvaluater evaluates `instrumentation:name` property.
+type InstrumentationNameEvaluater struct{}
+
+// Eval implemenets [Evaluater].
+func (*InstrumentationNameEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	r.SetString(span.ScopeName)
+	return r
+}
+
+// InstrumentationVersionEvaluater evaluates `instrumentation:version` property.
+type InstrumentationVersionEvaluater struct{}
+
+// Eval implemenets [Evaluater].
+func (*InstrumentationVersionEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	r.SetString(span.ScopeVersion)
+	return r
+}
+
+// EventNameEvaluater evaluates `event:name` property.
+// Returns the name of the first span event, or nil if the span has no events.
+type EventNameEvaluater struct{}
+
+// Eval implemenets [Evaluater].
+func (*EventNameEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	if len(span.Events) == 0 {
+		r.SetNil()
+		return r
+	}
+	r.SetString(span.Events[0].Name)
+	return r
+}
+
+// EventTimeSinceStartEvaluater evaluates `event:timeSinceStart` property.
+// Returns the elapsed time from span start to the first event, or nil if the span has no events.
+type EventTimeSinceStartEvaluater struct{}
+
+// Eval implemenets [Evaluater].
+func (*EventTimeSinceStartEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	if len(span.Events) == 0 {
+		r.SetNil()
+		return r
+	}
+	start := span.Start.AsTime()
+	eventTime := span.Events[0].Timestamp.AsTime()
+	r.SetDuration(eventTime.Sub(start))
+	return r
+}
+
+// LinkTraceIDEvaluater evaluates `link:traceId` property.
+// Returns the trace ID of the first span link, or nil if the span has no links.
+type LinkTraceIDEvaluater struct{}
+
+// Eval implemenets [Evaluater].
+func (*LinkTraceIDEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	if len(span.Links) == 0 {
+		r.SetNil()
+		return r
+	}
+	r.SetString(span.Links[0].TraceID.Hex())
+	return r
+}
+
+// LinkSpanIDEvaluater evaluates `link:spanId` property.
+// Returns the span ID of the first span link, or nil if the span has no links.
+type LinkSpanIDEvaluater struct{}
+
+// Eval implemenets [Evaluater].
+func (*LinkSpanIDEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	if len(span.Links) == 0 {
+		r.SetNil()
+		return r
+	}
+	r.SetString(span.Links[0].SpanID.Hex())
+	return r
+}
+
+// InstrumentationAttributeEvaluater evaluates instrumentation scope attribute selector.
+type InstrumentationAttributeEvaluater struct {
+	Name string
+}
+
+// Eval implemenets [Evaluater].
+func (e *InstrumentationAttributeEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) traceql.Static {
+	return evaluateAttr(e.Name, span.ScopeAttrs)
+}
+
+// EventAttributeEvaluater evaluates event scope attribute selector.
+// Returns the attribute value from the first event that has it.
+type EventAttributeEvaluater struct {
+	Name string
+}
+
+// Eval implemenets [Evaluater].
+func (e *EventAttributeEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	for _, ev := range span.Events {
+		if r = evaluateAttr(e.Name, ev.Attrs); r.Type != traceql.TypeNil {
+			return r
+		}
+	}
+	r.SetNil()
+	return r
+}
+
+// LinkAttributeEvaluater evaluates link scope attribute selector.
+// Returns the attribute value from the first link that has it.
+type LinkAttributeEvaluater struct {
+	Name string
+}
+
+// Eval implemenets [Evaluater].
+func (e *LinkAttributeEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	for _, lnk := range span.Links {
+		if r = evaluateAttr(e.Name, lnk.Attrs); r.Type != traceql.TypeNil {
 			return r
 		}
 	}
