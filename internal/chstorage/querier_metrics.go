@@ -148,12 +148,17 @@ func promQLLabelMatcher(valueSel []chsql.Expr, typ labels.MatchType, value strin
 			exprs = append(exprs, chsql.NotEq(sel, valueExpr))
 		}
 	case labels.MatchRegexp:
+		// PromQL requires full-string match semantics, but ClickHouse's match()
+		// uses RE2 search semantics (matches anywhere). Anchor the pattern.
+		anchoredExpr := chsql.String("^(?:" + value + ")$")
 		for _, sel := range valueSel {
-			exprs = append(exprs, chsql.Match(sel, valueExpr))
+			exprs = append(exprs, chsql.Match(sel, anchoredExpr))
 		}
 	case labels.MatchNotRegexp:
+		// Same anchoring required for negative regex matchers.
+		anchoredExpr := chsql.String("^(?:" + value + ")$")
 		for _, sel := range valueSel {
-			exprs = append(exprs, chsql.Not(chsql.Match(sel, valueExpr)))
+			exprs = append(exprs, chsql.Not(chsql.Match(sel, anchoredExpr)))
 		}
 	default:
 		return e, errors.Errorf("unexpected type %q", typ)

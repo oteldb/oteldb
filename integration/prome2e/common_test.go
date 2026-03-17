@@ -690,9 +690,14 @@ func runTest(
 
 				{"SelectFilter", `count(prometheus_http_requests_total{"handler"="/api/v1/query"})`, 1, false},
 				{"SelectRegexFilter", `count(prometheus_http_requests_total{"handler"=~"^/api/v1/query$"})`, 1, false},
+				// Unanchored regex must still require full match per PromQL semantics:
+				// handler=~"/api/v1/query" must not match "/api/v1/query_range".
+				{"SelectRegexFilterFullMatch", `count(prometheus_http_requests_total{"handler"=~"/api/v1/query"})`, 1, false},
 
 				{"ExcludeFilter", `count(prometheus_http_requests_total{"handler"!="/api/v1/query"})`, 50, false},
 				{"ExcludeRegexFilter", `count(prometheus_http_requests_total{"handler"!~"^/api/v1/query$"})`, 50, false},
+				// Same for negative unanchored regex.
+				{"ExcludeRegexFilterFullMatch", `count(prometheus_http_requests_total{"handler"!~"/api/v1/query"})`, 50, false},
 
 				{"Empty", `count(prometheus_http_requests_total{"handler"="clearly-not-exist"})`, 0, true},
 			} {
