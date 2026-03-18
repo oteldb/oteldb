@@ -84,6 +84,7 @@ docker compose -f dev/local/ch/docker-compose.yml up -d
 ## Architecture
 
 ### Ingestion flow
+
 ```
 Telemetry (OTLP/Prometheus RW)
   → cmd/oteldb (wiring)
@@ -94,6 +95,7 @@ Telemetry (OTLP/Prometheus RW)
 ```
 
 ### Query flow
+
 ```
 API request (PromQL/LogQL/TraceQL)
   → internal/promapi | internal/logql | internal/traceql (parse & translate)
@@ -118,6 +120,7 @@ API request (PromQL/LogQL/TraceQL)
 | `internal/tracestorage` | Domain logic for traces on top of chstorage |
 | `internal/metricstorage` | Domain logic for metrics on top of chstorage |
 | `internal/ddl` | DDL generator: `Table`/`Column`/`Index` types → ClickHouse SQL |
+| `internal/chstorage/chsql` | Fluent ClickHouse SQL query builder: expression types, `SELECT` builder, ClickHouse-specific functions (JSON, string, time, aggregation, window, cast). Feel free to add new functions or tokens as needed. |
 
 ### ClickHouse schema
 
@@ -129,6 +132,7 @@ Three main tables (definitions in `internal/chstorage/_golden/*.sql`):
 All tables have a 3-day TTL (`259200` seconds).
 
 ### Schema change checklist
+
 When adding/modifying columns:
 1. Edit `internal/chstorage/_golden/*.sql` (source of truth)
 2. Update `internal/chstorage/columns_*.go` (column mappings)
@@ -139,8 +143,8 @@ When adding/modifying columns:
 7. Run `go test ./internal/chstorage/...` to verify golden files
 
 ### Golden file tests
-`internal/chstorage/gold_test.go` compares generated SQL against `_golden/*.sql`. If you change schema code, run these tests and update golden files as needed.
 
+`internal/chstorage/gold_test.go` compares generated SQL against `_golden/*.sql`. If you change schema code, run these tests and update golden files as needed.
 
 ### AI/Coding agent PR Guidelines
 
