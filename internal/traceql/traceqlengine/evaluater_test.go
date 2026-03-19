@@ -16,11 +16,11 @@ import (
 
 func TestEvaluater(t *testing.T) {
 	var (
-		testSpanID      = otelstorage.SpanID{1, 2, 3, 4, 5, 6, 7, 8}
+		testSpanID       = otelstorage.SpanID{1, 2, 3, 4, 5, 6, 7, 8}
 		testParentSpanID = otelstorage.SpanID{9, 10, 11, 12, 13, 14, 15, 16}
-		testTraceID     = otelstorage.TraceID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
-		testLinkTraceID = otelstorage.TraceID{17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}
-		testLinkSpanID  = otelstorage.SpanID{17, 18, 19, 20, 21, 22, 23, 24}
+		testTraceID      = otelstorage.TraceID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+		testLinkTraceID  = otelstorage.TraceID{17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}
+		testLinkSpanID   = otelstorage.SpanID{17, 18, 19, 20, 21, 22, 23, 24}
 	)
 
 	attrs := pcommon.NewMap()

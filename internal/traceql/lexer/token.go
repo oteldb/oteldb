@@ -88,17 +88,17 @@ const (
 	InstrumentationColon
 
 	// New intrinsic keywords.
-	StatusMessage  // statusMessage
-	RootService    // rootService
-	NestedSetLeft  // nestedSetLeft
-	NestedSetRight // nestedSetRight
+	StatusMessage   // statusMessage
+	RootService     // rootService
+	NestedSetLeft   // nestedSetLeft
+	NestedSetRight  // nestedSetRight
 	NestedSetParent // nestedSetParent
-	ID             // id
-	TraceID        // traceId
-	SpanID         // spanId
-	ParentID       // parentId
-	TimeSinceStart // timeSinceStart
-	Version        // version
+	ID              // id
+	TraceID         // traceId
+	SpanID          // spanId
+	ParentID        // parentId
+	TimeSinceStart  // timeSinceStart
+	Version         // version
 )
 
 var tokens = map[string]TokenType{
