@@ -48,7 +48,7 @@ jobs:
             promql-compliance-${{ runner.os }}-go-${{ env.goversion }}
 
       - name: Install Task
-        uses: go-task/setup-task@v1
+        uses: go-task/setup-task@v2
       - name: Build binaries
         run: task build-deploy
 
@@ -118,7 +118,7 @@ jobs:
             logql-compliance-${{ runner.os }}-go-${{ env.goversion }}
 
       - name: Install Task
-        uses: go-task/setup-task@v1
+        uses: go-task/setup-task@v2
       - name: Build binaries
         run: task build-deploy
 
