@@ -15,7 +15,7 @@ require (
 	github.com/dmarkham/enumer v1.6.3
 	github.com/docker/cli v29.3.0+incompatible
 	github.com/dustin/go-humanize v1.0.1
-	github.com/fatih/color v1.18.0
+	github.com/fatih/color v1.19.0
 	github.com/go-faster/errors v0.7.1
 	github.com/go-faster/jx v1.2.0
 	github.com/go-faster/sdk v0.34.0
