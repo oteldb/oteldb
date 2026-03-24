@@ -127,7 +127,7 @@ jobs:
           KUBE: ${{ secrets.KUBE }}
         run: .k8s/kubeconfig.sh
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
         id: install
