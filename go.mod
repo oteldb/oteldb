@@ -1,13 +1,13 @@
 module github.com/go-faster/oteldb
 
-go 1.26.0
+go 1.26.1
 
 require (
 	entgo.io/ent v0.14.6
 	github.com/ClickHouse/ch-go v0.71.0
 	github.com/MakeNowJust/heredoc/v2 v2.0.1
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/VictoriaMetrics/VictoriaMetrics v1.137.0
+	github.com/VictoriaMetrics/VictoriaMetrics v1.138.0
 	github.com/VictoriaMetrics/easyproto v1.2.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -119,7 +119,7 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/VictoriaMetrics/metrics v1.41.2 // indirect
+	github.com/VictoriaMetrics/metrics v1.42.0 // indirect
 	github.com/VictoriaMetrics/metricsql v0.85.0 // indirect
 	github.com/VividCortex/ewma v1.2.0 // indirect
 	github.com/aclements/go-moremath v0.0.0-20210112150236-f10218a38794 // indirect
