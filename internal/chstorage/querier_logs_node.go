@@ -2,10 +2,15 @@ package chstorage
 
 import (
 	"context"
+	"time"
 
+	"github.com/go-faster/errors"
+
+	"github.com/go-faster/oteldb/internal/iterators"
 	"github.com/go-faster/oteldb/internal/logql"
 	"github.com/go-faster/oteldb/internal/logql/logqlengine"
 	"github.com/go-faster/oteldb/internal/logql/logqlengine/logqlabels"
+	"github.com/go-faster/oteldb/internal/logql/logqlengine/logqlmetric"
 	"github.com/go-faster/oteldb/internal/logstorage"
 )
 
@@ -64,6 +69,69 @@ func entryMapper(r logstorage.Record) (logqlengine.Entry, error) {
 	}
 	set.SetFromRecord(r)
 	return e, nil
+}
+
+// HoppedSamplingNode is a [logqlengine.MetricNode] that offloads LogQL rate/bytes_rate
+// to ClickHouse using hop (sliding) windows.
+//
+// For steps < 1s or range widths < 1s it falls back to raw sampling combined with
+// client-side windowing via [logqlmetric.RangeAggregation].
+type HoppedSamplingNode struct {
+	Sel            LogsSelector
+	Sampling       SamplingOp
+	GroupingLabels []logql.Label
+	// Expr is the original range-aggregation expression, used both to derive the
+	// range width and as the fallback aggregator.
+	Expr *logql.RangeAggregationExpr
+
+	// fallback is used when the hop optimisation cannot be applied.
+	fallback *SamplingNode
+	q        *Querier
+}
+
+var _ logqlengine.MetricNode = (*HoppedSamplingNode)(nil)
+
+// Traverse implements [logqlengine.Node].
+func (n *HoppedSamplingNode) Traverse(cb logqlengine.NodeVisitor) error {
+	return cb(n)
+}
+
+// EvalMetric implements [logqlengine.MetricNode].
+func (n *HoppedSamplingNode) EvalMetric(ctx context.Context, params logqlengine.MetricParams) (logqlengine.StepIterator, error) {
+	rangeWidth := n.Expr.Range.Range
+	if params.Step < time.Second || rangeWidth < time.Second {
+		return n.evalFallback(ctx, params)
+	}
+
+	q := SampleHopQuery{
+		Start:          params.Start,
+		End:            params.End,
+		RangeWidth:     rangeWidth,
+		Step:           params.Step,
+		Sel:            n.Sel,
+		Sampling:       n.Sampling,
+		GroupingLabels: n.GroupingLabels,
+	}
+	steps, err := q.Execute(ctx, n.q)
+	if err != nil {
+		return nil, err
+	}
+	return iterators.Slice(steps), nil
+}
+
+func (n *HoppedSamplingNode) evalFallback(ctx context.Context, params logqlengine.MetricParams) (logqlengine.StepIterator, error) {
+	qrange := n.Expr.Range
+	iter, err := n.fallback.EvalSample(ctx, logqlengine.EvalParams{
+		Start:     params.Start.Add(-qrange.Range),
+		End:       params.End,
+		Step:      params.Step,
+		Direction: logqlengine.DirectionForward,
+		Limit:     -1,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "fallback sample eval")
+	}
+	return logqlmetric.RangeAggregation(iter, n.Expr, params.Start, params.End, params.Step)
 }
 
 // SamplingNode is a [logqlengine.SampleNode], which offloads sampling to Clickhouse

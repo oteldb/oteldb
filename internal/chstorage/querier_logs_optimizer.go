@@ -85,6 +85,14 @@ func (o *ClickhouseOptimizer) optimizeSampling(n logqlengine.MetricNode, lg *zap
 	}
 }
 
+// samplingResult holds the result of [getSamplingOp].
+type samplingResult struct {
+	op SamplingOp
+	// isHop indicates that the function is a per-second rate (rate/bytes_rate)
+	// and should be executed via ClickHouse hop windows instead of raw sampling.
+	isHop bool
+}
+
 func (o *ClickhouseOptimizer) buildRangeAggregationSampling(n *logqlengine.RangeAggregation, grouping []logql.Label, lg *zap.Logger) logqlengine.MetricNode {
 	if g := n.Expr.Grouping; g != nil {
 		return n
@@ -102,20 +110,44 @@ func (o *ClickhouseOptimizer) buildRangeAggregationSampling(n *logqlengine.Range
 		return n
 	}
 
-	samplingOp, ok := getSamplingOp(n.Expr)
+	result, ok := getSamplingOp(n.Expr)
 	if !ok {
 		return n
 	}
 
+	if result.isHop {
+		// rate/bytes_rate: offload windowed aggregation via hop windows.
+		if ce := lg.Check(zap.DebugLevel, "Hop sampling could be offloaded to Clickhouse"); ce != nil {
+			ce.Write(
+				zap.Stringer("sampling_op", result.op),
+				zap.Stringers("grouping_labels", grouping),
+			)
+		}
+		return &HoppedSamplingNode{
+			Sel:            pipelineNode.Sel,
+			Sampling:       result.op,
+			GroupingLabels: grouping,
+			Expr:           n.Expr,
+			fallback: &SamplingNode{
+				Sel:            pipelineNode.Sel,
+				Sampling:       result.op,
+				GroupingLabels: grouping,
+				q:              pipelineNode.q,
+			},
+			q: pipelineNode.q,
+		}
+	}
+
+	// count_over_time/bytes_over_time: use flat sampling, client does windowing.
 	if ce := lg.Check(zap.DebugLevel, "Sampling could be offloaded to Clickhouse"); ce != nil {
 		ce.Write(
-			zap.Stringer("sampling_op", samplingOp),
+			zap.Stringer("sampling_op", result.op),
 			zap.Stringers("grouping_labels", grouping),
 		)
 	}
 	n.Input = &SamplingNode{
 		Sel:            pipelineNode.Sel,
-		Sampling:       samplingOp,
+		Sampling:       result.op,
 		GroupingLabels: grouping,
 		q:              pipelineNode.q,
 	}
@@ -129,17 +161,21 @@ func getGroupByLabels(g *logql.Grouping) ([]logql.Label, bool) {
 	return g.Labels, true
 }
 
-func getSamplingOp(e *logql.RangeAggregationExpr) (op SamplingOp, _ bool) {
+func getSamplingOp(e *logql.RangeAggregationExpr) (samplingResult, bool) {
 	if er := e.Range; er.Unwrap != nil || er.Offset != nil {
-		return op, false
+		return samplingResult{}, false
 	}
 	switch e.Op {
 	case logql.RangeOpCount:
-		return CountSampling, true
+		return samplingResult{op: CountSampling}, true
 	case logql.RangeOpBytes:
-		return BytesSampling, true
+		return samplingResult{op: BytesSampling}, true
+	case logql.RangeOpRate:
+		return samplingResult{op: CountSampling, isHop: true}, true
+	case logql.RangeOpBytesRate:
+		return samplingResult{op: BytesSampling, isHop: true}, true
 	default:
-		return op, false
+		return samplingResult{}, false
 	}
 }
 
