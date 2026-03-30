@@ -22,40 +22,130 @@ func DateTime64(t time.Time, prec proto.Precision) Expr {
 	return ToDateTime64(String(s), prec)
 }
 
-// Interval converts duration d to ClickHouse Interval expression with given precision.
+// Interval converts duration d to ClickHouse Interval expression.
 func Interval(d time.Duration) Expr {
-	type unit struct {
-		dur  time.Duration
-		name string
-	}
+	return MakeIntervalLitFromDuration(d).Expr()
+}
 
-	units := []unit{
-		{365 * 24 * time.Hour, "toIntervalYear"},
-		{90 * 24 * time.Hour, "toIntervalQuarter"},
-		{30 * 24 * time.Hour, "toIntervalMonth"},
-		{7 * 24 * time.Hour, "toIntervalWeek"},
-		{24 * time.Hour, "toIntervalDay"},
-		{time.Hour, "toIntervalHour"},
-		{time.Minute, "toIntervalMinute"},
-		{time.Second, "toIntervalSecond"},
-		{time.Millisecond, "toIntervalMillisecond"},
-		{time.Microsecond, "toIntervalMicrosecond"},
-		{time.Nanosecond, "toIntervalNanosecond"},
-	}
+// IntervalLit defines an interval.
+type IntervalLit struct {
+	value int64
+	prec  IntervalPrecision
+}
 
-	var chosen unit
-	for _, u := range units {
-		if d%u.dur == 0 && d/u.dur != 0 {
-			chosen = u
-			break
+// MakeIntervalLit returns an [IntervalLit] with given precision.
+func MakeIntervalLit[I int | int8 | int16 | int32 | int64](val I, prec IntervalPrecision) IntervalLit {
+	return IntervalLit{value: int64(val), prec: prec}
+}
+
+// MakeIntervalLitFromDuration create an [IntervalLit] from given duration.
+func MakeIntervalLitFromDuration(d time.Duration) IntervalLit {
+	prec := GetIntervalPrecision(d)
+	return IntervalLit{
+		value: prec.Duration(d),
+		prec:  prec,
+	}
+}
+
+// Expr returns SQL literal for this duration.
+func (l IntervalLit) Expr() Expr {
+	return l.prec.Expr(l.value)
+}
+
+// IntervalPrecision sets interval precision.
+type IntervalPrecision uint8
+
+const (
+	IntervalYear = IntervalPrecision(iota + 1)
+	IntervalQuarter
+	IntervalMonth
+	IntervalWeek
+	IntervalDay
+	IntervalHour
+	IntervalMinute
+	IntervalSecond
+	IntervalMillisecond
+	IntervalMicrosecond
+	IntervalNanosecond
+)
+
+// Expr returns SQL literal for given duration.
+func (p IntervalPrecision) Expr(val int64) Expr {
+	return Function(p.convertFn(), Integer(val))
+}
+
+// Duration returns duration truncated to precision p.
+func (p IntervalPrecision) Duration(d time.Duration) int64 {
+	return int64(d / p.durationMul())
+}
+
+func (p IntervalPrecision) durationMul() time.Duration {
+	switch p {
+	case IntervalYear:
+		return 365 * 24 * time.Hour
+	case IntervalQuarter:
+		return 90 * 24 * time.Hour
+	case IntervalMonth:
+		return 30 * 24 * time.Hour
+	case IntervalWeek:
+		return 7 * 24 * time.Hour
+	case IntervalDay:
+		return 24 * time.Hour
+	case IntervalHour:
+		return time.Hour
+	case IntervalMinute:
+		return time.Minute
+	case IntervalSecond:
+		return time.Second
+	case IntervalMillisecond:
+		return time.Millisecond
+	case IntervalMicrosecond:
+		return time.Microsecond
+	case IntervalNanosecond:
+		return time.Nanosecond
+	default:
+		return 0
+	}
+}
+
+func (p IntervalPrecision) convertFn() string {
+	switch p {
+	case IntervalYear:
+		return "toIntervalYear"
+	case IntervalQuarter:
+		return "toIntervalQuarter"
+	case IntervalMonth:
+		return "toIntervalMonth"
+	case IntervalWeek:
+		return "toIntervalWeek"
+	case IntervalDay:
+		return "toIntervalDay"
+	case IntervalHour:
+		return "toIntervalHour"
+	case IntervalMinute:
+		return "toIntervalMinute"
+	case IntervalSecond:
+		return "toIntervalSecond"
+	case IntervalMillisecond:
+		return "toIntervalMillisecond"
+	case IntervalMicrosecond:
+		return "toIntervalMicrosecond"
+	case IntervalNanosecond:
+		return "toIntervalNanosecond"
+	default:
+		return ""
+	}
+}
+
+// GetIntervalPrecision returns minimal [IntervalPrecision] to represent given duration.
+func GetIntervalPrecision(d time.Duration) IntervalPrecision {
+	for p := IntervalYear; p <= IntervalNanosecond; p++ {
+		mul := p.durationMul()
+		if d%mul == 0 && d/mul != 0 {
+			return p
 		}
 	}
-	if chosen.name == "" {
-		chosen = units[len(units)-1]
-	}
-
-	n := int64(d / chosen.dur)
-	return Function(chosen.name, Integer(n))
+	return IntervalNanosecond
 }
 
 // InTimeRange returns boolean expression to filter by [start:end].

@@ -13,18 +13,18 @@ func LastValue(arg Expr) Expr {
 }
 
 // HopStart returns `hopStart(<time_attr>, <hop_interval>, <window_interval>)` function call expression.
-func HopStart(arg Expr, hopInterval, windowInterval time.Duration) Expr {
-	return Function("hopStart", arg, Interval(hopInterval), Interval(windowInterval))
+func HopStart(arg Expr, hopInterval, windowInterval IntervalLit) Expr {
+	return Function("hopStart", arg, hopInterval.Expr(), windowInterval.Expr())
 }
 
 // HopEnd returns `hopEnd(<time_attr>, <hop_interval>, <window_interval>)` function call expression.
-func HopEnd(arg Expr, hopInterval, windowInterval time.Duration) Expr {
-	return Function("hopEnd", arg, Interval(hopInterval), Interval(windowInterval))
+func HopEnd(arg Expr, hopInterval, windowInterval IntervalLit) Expr {
+	return Function("hopEnd", arg, hopInterval.Expr(), windowInterval.Expr())
 }
 
 // Hop returns `hop(<time_attr>, <hop_interval>, <window_interval>)` function call expression.
-func Hop(arg Expr, hopInterval, windowInterval time.Duration) Expr {
-	return Function("hop", arg, Interval(hopInterval), Interval(windowInterval))
+func Hop(arg Expr, hopInterval, windowInterval IntervalLit) Expr {
+	return Function("hop", arg, hopInterval.Expr(), windowInterval.Expr())
 }
 
 // TumbleStart returns `tumbleStart(<time_attr>, <hop_interval>)` function call expression.
