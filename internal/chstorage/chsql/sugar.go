@@ -38,7 +38,7 @@ func MakeIntervalLit[I int | int8 | int16 | int32 | int64](val I, prec IntervalP
 	return IntervalLit{value: int64(val), prec: prec}
 }
 
-// MakeIntervalLitFromDuration create an [IntervalLit] from given duration.
+// MakeIntervalLitFromDuration creates an [IntervalLit] from given duration.
 func MakeIntervalLitFromDuration(d time.Duration) IntervalLit {
 	prec := GetIntervalPrecision(d)
 	return IntervalLit{
@@ -101,10 +101,8 @@ func (p IntervalPrecision) durationMul() time.Duration {
 		return time.Millisecond
 	case IntervalMicrosecond:
 		return time.Microsecond
-	case IntervalNanosecond:
-		return time.Nanosecond
 	default:
-		return 0
+		return time.Nanosecond
 	}
 }
 
@@ -130,10 +128,8 @@ func (p IntervalPrecision) convertFn() string {
 		return "toIntervalMillisecond"
 	case IntervalMicrosecond:
 		return "toIntervalMicrosecond"
-	case IntervalNanosecond:
-		return "toIntervalNanosecond"
 	default:
-		return ""
+		return "toIntervalNanosecond"
 	}
 }
 

@@ -107,7 +107,6 @@ func (o *ClickhouseOptimizer) buildRangeAggregationSampling(n *logqlengine.Range
 		return n
 	}
 
-	// count_over_time/bytes_over_time: use flat sampling, client does windowing.
 	if ce := lg.Check(zap.DebugLevel, "Sampling could be offloaded to Clickhouse"); ce != nil {
 		ce.Write(
 			zap.Stringer("sampling_op", op),
