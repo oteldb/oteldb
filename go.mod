@@ -105,7 +105,7 @@ require (
 	golang.org/x/perf v0.0.0-20241204221936-711ff2ab7231
 	golang.org/x/sync v0.20.0
 	golang.org/x/tools v0.43.0
-	google.golang.org/grpc v1.79.3
+	google.golang.org/grpc v1.80.0
 	gopkg.in/yaml.v2 v2.4.0
 	sigs.k8s.io/yaml v1.6.0
 )
