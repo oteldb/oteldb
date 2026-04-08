@@ -894,10 +894,10 @@ go.opentelemetry.io/collector/service/telemetry/telemetrytest v0.149.0 h1:Ao4axv
 go.opentelemetry.io/collector/service/telemetry/telemetrytest v0.149.0/go.mod h1:+scbyWSHHiabLiZLLRpM80P0uhAR+NkwIhL9OGv5LZ4=
 go.opentelemetry.io/contrib/bridges/otelzap v0.17.0 h1:oCltVHJcblcth2z9B9dRTeZIZTe2Sf9Ad9h8bcc+s8M=
 go.opentelemetry.io/contrib/bridges/otelzap v0.17.0/go.mod h1:G/VE1A/hRn6mEWdfC8rMvSdQVGM64KUPi4XilLkwcQw=
-go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.67.0 h1:yI1/OhfEPy7J9eoa6Sj051C7n5dvpj0QX8g4sRchg04=
-go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.67.0/go.mod h1:NoUCKYWK+3ecatC4HjkRktREheMeEtrXoQxrqYFeHSc=
-go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.67.0 h1:OyrsyzuttWTSur2qN/Lm0m2a8yqyIjUVBZcxFPuXq2o=
-go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.67.0/go.mod h1:C2NGBr+kAB4bk3xtMXfZ94gqFDtg/GkI7e9zqGh5Beg=
+go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0 h1:0Qx7VGBacMm9ZENQ7TnNObTYI4ShC+lHI16seduaxZo=
+go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0/go.mod h1:Sje3i3MjSPKTSPvVWCaL8ugBzJwik3u4smCjUeuupqg=
+go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0 h1:CqXxU8VOmDefoh0+ztfGaymYbhdB/tT3zs79QaZTNGY=
+go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0/go.mod h1:BuhAPThV8PBHBvg8ZzZ/Ok3idOdhWIodywz2xEcRbJo=
 go.opentelemetry.io/contrib/instrumentation/runtime v0.65.0 h1:n8qdwrebNEHF/zHpueuZ4OacdJ8CdSaP7xef9WRZXTQ=
 go.opentelemetry.io/contrib/instrumentation/runtime v0.65.0/go.mod h1:Z1pjGxUL3nJ/IbDDfL6rBD0Xbz7ZOViRqrIUg4l1CYE=
 go.opentelemetry.io/contrib/otelconf v0.22.0 h1:+kpcfczGOFM85zDZyqQCzWefhovegfn24D0WwmQz0n4=
@@ -912,8 +912,8 @@ go.opentelemetry.io/contrib/propagators/jaeger v1.42.0 h1:jP8unWI6q5kcb3gpGLjKDG
 go.opentelemetry.io/contrib/propagators/jaeger v1.42.0/go.mod h1:xd89e/pUyPatUP1C4z1UknD9jHptESO99tWyvd4mWD4=
 go.opentelemetry.io/contrib/propagators/ot v1.42.0 h1:uQjD1NNqX1+DfcAoWParPt1egNg9vC9gH4xarJ9Khxo=
 go.opentelemetry.io/contrib/propagators/ot v1.42.0/go.mod h1:yw/c2TCmQLIv109HBOCn6NlJ8Dp7MNfjMcqQZRnAMmg=
-go.opentelemetry.io/contrib/zpages v0.67.0 h1:cIUwWSVDovuLEbDIKreptjdxMuIhGiqwq0uL8YNaq1c=
-go.opentelemetry.io/contrib/zpages v0.67.0/go.mod h1:vK8fsYHgPYg4Z/XDbFSEvItSGZDbjWTvjBOu8+AiDhc=
+go.opentelemetry.io/contrib/zpages v0.68.0 h1:H5yrUwxPrbvhzdBxjQD+VXMtPjIBfp8NWNVvQT8E30M=
+go.opentelemetry.io/contrib/zpages v0.68.0/go.mod h1:sZGctYYO4UOHItj9bx3F+t/s+u1Fv8CHCJ5s2eR2cjU=
 go.opentelemetry.io/otel v1.21.0/go.mod h1:QZzNPQPm1zLX4gZK4cMi+71eaorMSGT3A4znnUvNNEo=
 go.opentelemetry.io/otel v1.43.0 h1:mYIM03dnh5zfN7HautFE4ieIig9amkNANT+xcVxAj9I=
 go.opentelemetry.io/otel v1.43.0/go.mod h1:JuG+u74mvjvcm8vj8pI5XiHy1zDeoCS2LB1spIq7Ay0=
@@ -1181,8 +1181,8 @@ google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013/go.mod h1:NbSheEEY
 google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c/go.mod h1:UODoCrxHCcBojKKwX1terBiRUaqAsFqJiF615XL43r0=
 google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 h1:VPWxll4HlMw1Vs/qXtN7BvhZqsS9cdAittCNvVENElA=
 google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9/go.mod h1:7QBABkRtR8z+TEnmXTqIqwJLlzrZKVfAUm7tY3yGv0M=
-google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 h1:m8qni9SQFH0tJc1X0vmnpw/0t+AImlSvp30sEupozUg=
-google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9/go.mod h1:4Hqkh8ycfw05ld/3BWL7rJOSfebL2Q+DVDeRgYgxUU8=
+google.golang.org/genproto/googleapis/rpc v0.0.0-20260406210006-6f92a3bedf2d h1:wT2n40TBqFY6wiwazVK9/iTWbsQrgk5ZfCSVFLO9LQA=
+google.golang.org/genproto/googleapis/rpc v0.0.0-20260406210006-6f92a3bedf2d/go.mod h1:4Hqkh8ycfw05ld/3BWL7rJOSfebL2Q+DVDeRgYgxUU8=
 google.golang.org/grpc v1.14.0/go.mod h1:yo6s7OP7yaDglbqo1J04qKzAhqBH6lvTonzMVmEdcZw=
 google.golang.org/grpc v1.19.0/go.mod h1:mqu4LbDTu4XGKhr4mRzUsmM4RtVoemTSY81AxZiDr8c=
 google.golang.org/grpc v1.22.0/go.mod h1:Y5yQAOtifL1yxbo5wqy6BxZv8vAUGQwXBOALyacEbxg=
