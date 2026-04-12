@@ -1,0 +1,16 @@
+version: v2
+inputs:
+  - directory: .
+    paths:
+      - tempo.proto
+plugins:
+  - local:
+      - go
+      - tool
+      - protoc-gen-go
+    out: .
+    opt:
+      - paths=source_relative
+      - Mcommon/v1/common.proto=go.opentelemetry.io/proto/otlp/common/v1
+      - Mresource/v1/resource.proto=go.opentelemetry.io/proto/otlp/resource/v1
+      - Mtrace/v1/trace.proto=go.opentelemetry.io/proto/otlp/trace/v1

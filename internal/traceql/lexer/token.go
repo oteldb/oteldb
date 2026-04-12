@@ -12,7 +12,7 @@ type Token struct {
 // TokenType defines TraceQL token type.
 type TokenType int
 
-//go:generate go run golang.org/x/tools/cmd/stringer -type=TokenType
+//go:generate go tool stringer -type=TokenType
 
 const (
 	Invalid TokenType = iota

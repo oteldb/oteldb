@@ -12,7 +12,7 @@ type Token struct {
 // TokenType defines LogQL token type.
 type TokenType int
 
-//go:generate go run golang.org/x/tools/cmd/stringer -type=TokenType
+//go:generate go tool stringer -type=TokenType
 
 // IsFunction returns true if token is function name.
 func (tt TokenType) IsFunction() bool {
