@@ -88,7 +88,7 @@ func (b *Backup) Create(ctx context.Context, dir string) error {
 	return grp.Wait()
 }
 
-func openBackupWriter(dir, name string) (io.WriteCloser, error) {
+func openBackupWriter(dir, name string) (_ io.WriteCloser, rerr error) {
 	dumpPath := filepath.Join(dir, name+".native.zstd")
 
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -99,11 +99,21 @@ func openBackupWriter(dir, name string) (io.WriteCloser, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "create dump file")
 	}
+	defer func() {
+		if rerr != nil {
+			_ = f.Close()
+		}
+	}()
 
 	enc, err := zstd.NewWriter(f)
 	if err != nil {
 		return nil, errors.Wrap(err, "make zstd encoder")
 	}
+	defer func() {
+		if rerr != nil {
+			_ = enc.Close()
+		}
+	}()
 
 	wc := struct {
 		io.Writer

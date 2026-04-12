@@ -79,25 +79,38 @@ func (b *Restore) Restore(ctx context.Context, dir string) error {
 	return grp.Wait()
 }
 
-func openBackupReader(dir, name string) (io.ReadCloser, error) {
+func openBackupReader(dir, name string) (_ io.ReadCloser, rerr error) {
 	dumpPath := filepath.Join(dir, name+".native.zstd")
 
 	f, err := os.Open(filepath.Clean(dumpPath))
 	if err != nil {
 		return nil, errors.Wrap(err, "open dump file")
 	}
+	defer func() {
+		if rerr != nil {
+			_ = f.Close()
+		}
+	}()
 
 	dec, err := zstd.NewReader(f)
 	if err != nil {
 		return nil, errors.Wrap(err, "make zstd decoder")
 	}
+	defer func() {
+		if rerr != nil {
+			dec.Close()
+		}
+	}()
 
 	rc := struct {
 		io.Reader
 		io.Closer
 	}{
 		Reader: dec,
-		Closer: f,
+		Closer: closerFunc(func() error {
+			dec.Close()
+			return f.Close()
+		}),
 	}
 	return rc, nil
 }
