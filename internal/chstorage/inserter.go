@@ -47,10 +47,8 @@ type inserterStats struct {
 	InsertedSpans metric.Int64Counter `name:"traces.inserted_spans" description:"Number of inserted spans" unit:"{spans}"`
 	InsertedTags  metric.Int64Counter `name:"traces.inserted_tags" description:"Number of inserted trace attributes" unit:"{attributes}"`
 	// Common.
-	Inserts       metric.Int64Counter   `name:"inserts" description:"Number of insert invocations" unit:"{inserts}"`
-	InsertedBytes metric.Int64Counter   `name:"inserted_bytes" description:"Total number of inserted bytes by signal" unit:"By"`
-	InsertedRows  metric.Int64Counter   `name:"inserted_rows" description:"Total number of inserted rows by signal" unit:"{rows}"`
-	BatchSize     metric.Int64Histogram `name:"batch_size" description:"Histogram of the batch size" unit:"{items}"`
+	Inserts   metric.Int64Counter   `name:"inserts" description:"Number of insert invocations" unit:"{inserts}"`
+	BatchSize metric.Int64Histogram `name:"batch_size" description:"Histogram of the batch size" unit:"{items}"`
 }
 
 func (s *inserterStats) Init(meter metric.Meter) error {
@@ -172,19 +170,11 @@ func (i *Inserter) do(ctx context.Context, signal semconv.SignalType, table, que
 	ctx, track := i.tracker.Start(ctx, globalmetric.WithAttributes(set.ToSlice()...))
 	defer track.End()
 
-	var (
-		lg                    = zctx.From(ctx).Named("ch").WithOptions(zap.IncreaseLevel(i.chLogLevel))
-		totalBytes, totalRows uint64
-	)
+	lg := zctx.From(ctx).Named("ch").WithOptions(zap.IncreaseLevel(i.chLogLevel))
 	if err := i.ch.Do(ctx, ch.Query{
-		Logger: lg,
-		Body:   query,
-		Input:  input,
-		OnProgress: func(ctx context.Context, p proto.Progress) error {
-			totalBytes = p.WroteBytes
-			totalRows = p.WroteRows
-			return nil
-		},
+		Logger:          lg,
+		Body:            query,
+		Input:           input,
 		OnProfileEvents: track.OnProfiles,
 	}); err != nil {
 		return err
@@ -195,8 +185,6 @@ func (i *Inserter) do(ctx context.Context, signal semconv.SignalType, table, que
 		batchSize = input[0].Data.Rows()
 	}
 	i.stats.BatchSize.Record(ctx, int64(batchSize), metric.WithAttributeSet(set))
-	i.stats.InsertedBytes.Add(ctx, int64(totalBytes), metric.WithAttributeSet(set))
-	i.stats.InsertedRows.Add(ctx, int64(totalRows), metric.WithAttributeSet(set))
 
 	return nil
 }
