@@ -657,6 +657,12 @@ func runTest(
 			"http.method":      pcommon.NewValueStr("POST"),
 			"http.status_code": pcommon.NewValueInt(200),
 		})
+		var (
+			randomTraceID      = set.AnyTraceID()
+			randomSpanID       = set.AnySpanID()
+			randomParentSpanID = set.AnyParentSpanID()
+			randomEventName    = set.AnyEventName()
+		)
 		t.Run("Search", func(t *testing.T) {
 			queries := []struct {
 				query      string
@@ -737,6 +743,22 @@ func runTest(
 					`{ name = "list-articles" || name = "clearly-not-exist-name" }`,
 					selectSpans(set, byName("list-articles")),
 				},
+				{
+					fmt.Sprintf(`{ trace:id = %q }`, randomTraceID.String()),
+					selectSpans(set, byTraceID(randomTraceID)),
+				},
+				{
+					fmt.Sprintf(`{ span:id = %q }`, randomSpanID.String()),
+					selectSpans(set, bySpanID(randomSpanID)),
+				},
+				{
+					fmt.Sprintf(`{ span:parentId = %q }`, randomParentSpanID.String()),
+					selectSpans(set, byParentSpanID(randomParentSpanID)),
+				},
+				{
+					fmt.Sprintf(`{ event:name = %q }`, randomEventName),
+					selectSpans(set, byEventName(randomEventName)),
+				},
 				// Empty set.
 				{`{ resource.http.method = "POST" }`, nil},
 				{`{ duration > 10h }`, nil},
@@ -759,6 +781,9 @@ func runTest(
 				{`{ .service.namespace = "clearly-does-not-exist" }`, nil},
 				{`{ .service.name = "clearly-does-not-exist" }`, nil},
 				{`{ .service.instance.id = "clearly-does-not-exist" }`, nil},
+				{`{ trace:id = "clearly-does-not-exist" }`, nil},
+				{`{ span:id = "clearly-does-not-exist" }`, nil},
+				{`{ span:parentId = "clearly-does-not-exist" }`, nil},
 			}
 			for i, tt := range queries {
 				tt := tt
@@ -919,6 +944,35 @@ type byName string
 
 func (n byName) Select(span ptrace.Span) bool {
 	return span.Name() == string(n)
+}
+
+type byTraceID pcommon.TraceID
+
+func (id byTraceID) Select(span ptrace.Span) bool {
+	return span.TraceID() == pcommon.TraceID(id)
+}
+
+type bySpanID pcommon.SpanID
+
+func (id bySpanID) Select(span ptrace.Span) bool {
+	return span.SpanID() == pcommon.SpanID(id)
+}
+
+type byParentSpanID pcommon.SpanID
+
+func (id byParentSpanID) Select(span ptrace.Span) bool {
+	return span.ParentSpanID() == pcommon.SpanID(id)
+}
+
+type byEventName string
+
+func (n byEventName) Select(span ptrace.Span) bool {
+	for _, e := range span.Events().All() {
+		if e.Name() == string(n) {
+			return true
+		}
+	}
+	return false
 }
 
 func selectTraces(set tempoe2e.BatchSet, sel selector) (result selectedSpans) {
