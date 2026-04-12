@@ -55,7 +55,7 @@ func AggregatedLabelsFromMap(m map[string]string) AggregatedLabels {
 	for key, value := range m {
 		labels = append(labels, labelEntry{name: key, value: value})
 	}
-	sortLabelEntries(labels)
+	sortEntries(labels)
 
 	return &aggregatedLabels{
 		entries: labels,
@@ -70,19 +70,13 @@ func AggregatedLabelsFromSeq(s iter.Seq2[string, string]) AggregatedLabels {
 	for key, value := range s {
 		labels = append(labels, labelEntry{name: key, value: value})
 	}
-	sortLabelEntries(labels)
+	sortEntries(labels)
 
 	return &aggregatedLabels{
 		entries: labels,
 		without: nil,
 		by:      nil,
 	}
-}
-
-func sortLabelEntries(e []labelEntry) {
-	slices.SortFunc(e, func(a, b labelEntry) int {
-		return cmp.Compare(a.name, b.name)
-	})
 }
 
 // By returns new set of labels containing only given list of labels.

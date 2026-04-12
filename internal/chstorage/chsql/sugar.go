@@ -133,7 +133,7 @@ func (p IntervalPrecision) convertFn() string {
 	}
 }
 
-// GetIntervalPrecision returns minimal [IntervalPrecision] to represent given duration.
+// GetIntervalPrecision returns coarest [IntervalPrecision] to represent given duration.
 func GetIntervalPrecision(d time.Duration) IntervalPrecision {
 	for p := IntervalYear; p <= IntervalNanosecond; p++ {
 		mul := p.durationMul()
