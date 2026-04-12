@@ -15,13 +15,15 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"github.com/go-logfmt/logfmt"
 	ht "github.com/ogen-go/ogen/http"
-	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 	"golang.org/x/exp/maps"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/go-faster/oteldb/internal/iterators"
 	"github.com/go-faster/oteldb/internal/otelstorage"
 	"github.com/go-faster/oteldb/internal/tempoapi"
+	"github.com/go-faster/oteldb/internal/tempopb"
 	"github.com/go-faster/oteldb/internal/traceql"
 	"github.com/go-faster/oteldb/internal/traceql/traceqlengine"
 	"github.com/go-faster/oteldb/internal/tracestorage"
@@ -562,16 +564,14 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 		return nil, executionErr(err, "map spans")
 	}
 
-	traces := c.Result()
-	spanCount := traces.SpanCount()
+	spanCount := c.SpanCount()
 
 	lg.Debug("Got trace by ID", zap.Int("span_count", spanCount))
 	if spanCount < 1 {
 		return &tempoapi.TraceByIDNotFound{}, nil
 	}
 
-	m := ptrace.ProtoMarshaler{}
-	data, err := m.MarshalTraces(traces)
+	data, err := proto.Marshal(c.ResultExport())
 	if err != nil {
 		return resp, executionErr(err, "marshal traces")
 	}
@@ -613,7 +613,7 @@ func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2P
 	default:
 		return nil, &tempoapi.ErrorStatusCode{
 			StatusCode: http.StatusBadRequest,
-			Response:   tempoapi.Error(fmt.Sprintf("unsupported Accept header %q", params.Accept)),
+			Response:   tempoapi.Error(fmt.Sprintf("unknown or invalid Content-Type %q in Accept header", accept)),
 		}
 	}
 
@@ -648,15 +648,14 @@ func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2P
 	if err := iterators.ForEach(iter, c.AddSpan); err != nil {
 		return nil, executionErr(err, "map spans")
 	}
-	traces := c.Result()
-	spanCount := traces.SpanCount()
+	spanCount := c.SpanCount()
 
 	lg.Debug("Got trace by ID, v2", zap.Int("span_count", spanCount))
 	if spanCount < 1 {
 		return &tempoapi.TraceByIDV2NotFound{}, nil
 	}
 
-	data, err := encoder(traces)
+	data, err := encoder(c.ResultTempo())
 	if err != nil {
 		return nil, executionErr(err, "encode traces")
 	}
@@ -668,19 +667,17 @@ func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2P
 	}, nil
 }
 
-type encoderFunc func(td ptrace.Traces) ([]byte, error)
+type encoderFunc func(td *tempopb.TraceByIDResponse) ([]byte, error)
 
-func protoEncoder(td ptrace.Traces) ([]byte, error) {
-	m := ptrace.ProtoMarshaler{}
-	return m.MarshalTraces(td)
+func protoEncoder(td *tempopb.TraceByIDResponse) ([]byte, error) {
+	return proto.Marshal(td)
 }
 
-func jsonEncoder(td ptrace.Traces) ([]byte, error) {
-	m := ptrace.JSONMarshaler{}
-	return m.MarshalTraces(td)
+func jsonEncoder(td *tempopb.TraceByIDResponse) ([]byte, error) {
+	return protojson.Marshal(td)
 }
 
-func llmEncoder(ptrace.Traces) ([]byte, error) {
+func llmEncoder(*tempopb.TraceByIDResponse) ([]byte, error) {
 	return nil, errors.New("LLM encoder is not implemented yet")
 }
 

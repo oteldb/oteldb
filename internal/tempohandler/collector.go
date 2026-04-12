@@ -4,10 +4,14 @@ import (
 	"slices"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
+	resourcev1 "go.opentelemetry.io/proto/otlp/resource/v1"
+	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"github.com/go-faster/oteldb/internal/otelstorage"
 	"github.com/go-faster/oteldb/internal/tempoapi"
+	"github.com/go-faster/oteldb/internal/tempopb"
 	"github.com/go-faster/oteldb/internal/tracestorage"
 )
 
@@ -70,25 +74,21 @@ type spanKey struct {
 }
 
 type batchCollector struct {
-	traces     ptrace.Traces
-	resSpans   map[uuid.UUID]ptrace.ResourceSpans
-	scopeSpans map[spanKey]ptrace.SpanSlice
+	spanCount  int
+	resSpans   map[uuid.UUID]*tracev1.ResourceSpans
+	scopeSpans map[spanKey]*tracev1.ScopeSpans
 }
 
 func (b *batchCollector) init() {
-	var zeroTraces ptrace.Traces
-	if b.traces == zeroTraces {
-		b.traces = ptrace.NewTraces()
-	}
 	if b.resSpans == nil {
-		b.resSpans = make(map[uuid.UUID]ptrace.ResourceSpans)
+		b.resSpans = make(map[uuid.UUID]*tracev1.ResourceSpans)
 	}
 	if b.scopeSpans == nil {
-		b.scopeSpans = make(map[spanKey]ptrace.SpanSlice)
+		b.scopeSpans = make(map[spanKey]*tracev1.ScopeSpans)
 	}
 }
 
-func (b *batchCollector) getSpanSlice(s tracestorage.Span) ptrace.SpanSlice {
+func (b *batchCollector) getScopeSpans(s tracestorage.Span) *tracev1.ScopeSpans {
 	b.init()
 
 	k := spanKey{
@@ -96,41 +96,148 @@ func (b *batchCollector) getSpanSlice(s tracestorage.Span) ptrace.SpanSlice {
 		scopeName:    s.ScopeName,
 		scopeVersion: s.ScopeVersion,
 	}
-
-	ss, ok := b.scopeSpans[k]
-	if ok {
+	if ss, ok := b.scopeSpans[k]; ok {
 		return ss
 	}
 
 	resSpan, ok := b.resSpans[s.BatchID]
 	if !ok {
-		resSpan = b.traces.ResourceSpans().AppendEmpty()
+		resSpan = &tracev1.ResourceSpans{
+			Resource: &resourcev1.Resource{
+				Attributes: attrsToProto(s.ResourceAttrs),
+			},
+		}
 		b.resSpans[s.BatchID] = resSpan
 	}
-	res := resSpan.Resource()
-	s.ResourceAttrs.CopyTo(res.Attributes())
 
-	scopeSpan := resSpan.ScopeSpans().AppendEmpty()
-	scope := scopeSpan.Scope()
-	scope.SetName(s.ScopeName)
-	scope.SetVersion(s.ScopeVersion)
-	s.ScopeAttrs.CopyTo(scope.Attributes())
-
-	ss = scopeSpan.Spans()
-	b.scopeSpans[k] = ss
-	return ss
+	scopeSpan := &tracev1.ScopeSpans{
+		Scope: &commonv1.InstrumentationScope{
+			Name:       s.ScopeName,
+			Version:    s.ScopeVersion,
+			Attributes: attrsToProto(s.ScopeAttrs),
+		},
+	}
+	resSpan.ScopeSpans = append(resSpan.ScopeSpans, scopeSpan)
+	b.scopeSpans[k] = scopeSpan
+	return scopeSpan
 }
 
+// AddSpan adds the span to the batch.
 func (b *batchCollector) AddSpan(span tracestorage.Span) error {
-	s := b.getSpanSlice(span).AppendEmpty()
-	span.FillOTELSpan(s)
+	ss := b.getScopeSpans(span)
+	ss.Spans = append(ss.Spans, spanToProto(span))
+	b.spanCount++
 	return nil
 }
 
-func (b *batchCollector) Result() ptrace.Traces {
-	var zeroTraces ptrace.Traces
-	if b.traces == zeroTraces {
-		b.traces = ptrace.NewTraces()
+// SpanCount returns the total number of collected spans.
+func (b *batchCollector) SpanCount() int {
+	return b.spanCount
+}
+
+func (b *batchCollector) resourceSpans() []*tracev1.ResourceSpans {
+	result := make([]*tracev1.ResourceSpans, 0, len(b.resSpans))
+	for _, rs := range b.resSpans {
+		result = append(result, rs)
 	}
-	return b.traces
+	return result
+}
+
+// ResultExport returns an ExportTraceServiceRequest for the TraceByID (v1) endpoint.
+func (b *batchCollector) ResultExport() *tempopb.ExportTraceServiceRequest {
+	return &tempopb.ExportTraceServiceRequest{
+		ResourceSpans: b.resourceSpans(),
+	}
+}
+
+// ResultTempo returns a TraceByIDResponse for the TraceByIDv2 endpoint.
+func (b *batchCollector) ResultTempo() *tempopb.TraceByIDResponse {
+	return &tempopb.TraceByIDResponse{
+		Trace: &tempopb.Trace{
+			ResourceSpans: b.resourceSpans(),
+		},
+	}
+}
+
+func spanToProto(span tracestorage.Span) *tracev1.Span {
+	s := &tracev1.Span{
+		TraceId:           span.TraceID[:],
+		SpanId:            span.SpanID[:],
+		TraceState:        span.TraceState,
+		Name:              span.Name,
+		Kind:              tracev1.Span_SpanKind(span.Kind),
+		StartTimeUnixNano: uint64(span.Start),
+		EndTimeUnixNano:   uint64(span.End),
+		Attributes:        attrsToProto(span.Attrs),
+		Status: &tracev1.Status{
+			Code:    tracev1.Status_StatusCode(span.StatusCode),
+			Message: span.StatusMessage,
+		},
+	}
+	if p := span.ParentSpanID; !p.IsEmpty() {
+		s.ParentSpanId = p[:]
+	}
+	for _, event := range span.Events {
+		s.Events = append(s.Events, &tracev1.Span_Event{
+			TimeUnixNano: uint64(event.Timestamp),
+			Name:         event.Name,
+			Attributes:   attrsToProto(event.Attrs),
+		})
+	}
+	for _, link := range span.Links {
+		s.Links = append(s.Links, &tracev1.Span_Link{
+			TraceId:    link.TraceID[:],
+			SpanId:     link.SpanID[:],
+			TraceState: link.TraceState,
+			Attributes: attrsToProto(link.Attrs),
+		})
+	}
+	return s
+}
+
+func attrsToProto(attrs otelstorage.Attrs) []*commonv1.KeyValue {
+	m := attrs.AsMap()
+	if m.Len() == 0 {
+		return nil
+	}
+	result := make([]*commonv1.KeyValue, 0, m.Len())
+	m.Range(func(k string, v pcommon.Value) bool {
+		result = append(result, &commonv1.KeyValue{
+			Key:   k,
+			Value: valueToProto(v),
+		})
+		return true
+	})
+	return result
+}
+
+func valueToProto(v pcommon.Value) *commonv1.AnyValue {
+	switch v.Type() {
+	case pcommon.ValueTypeStr:
+		return &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: v.Str()}}
+	case pcommon.ValueTypeBool:
+		return &commonv1.AnyValue{Value: &commonv1.AnyValue_BoolValue{BoolValue: v.Bool()}}
+	case pcommon.ValueTypeInt:
+		return &commonv1.AnyValue{Value: &commonv1.AnyValue_IntValue{IntValue: v.Int()}}
+	case pcommon.ValueTypeDouble:
+		return &commonv1.AnyValue{Value: &commonv1.AnyValue_DoubleValue{DoubleValue: v.Double()}}
+	case pcommon.ValueTypeBytes:
+		return &commonv1.AnyValue{Value: &commonv1.AnyValue_BytesValue{BytesValue: v.Bytes().AsRaw()}}
+	case pcommon.ValueTypeSlice:
+		arr := v.Slice()
+		values := make([]*commonv1.AnyValue, arr.Len())
+		for i := range arr.Len() {
+			values[i] = valueToProto(arr.At(i))
+		}
+		return &commonv1.AnyValue{Value: &commonv1.AnyValue_ArrayValue{
+			ArrayValue: &commonv1.ArrayValue{Values: values},
+		}}
+	case pcommon.ValueTypeMap:
+		kvs := attrsToProto(otelstorage.Attrs(v.Map()))
+		return &commonv1.AnyValue{Value: &commonv1.AnyValue_KvlistValue{
+			KvlistValue: &commonv1.KeyValueList{Values: kvs},
+		}}
+	default:
+		return &commonv1.AnyValue{}
+	}
 }
