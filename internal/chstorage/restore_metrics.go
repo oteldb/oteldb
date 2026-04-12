@@ -2,7 +2,6 @@ package chstorage
 
 import (
 	"context"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,7 +78,7 @@ func (r *metricsRestore) restore(ctx context.Context, dir string) error {
 	grp.Go(func() error {
 		ctx := grpCtx
 		if err := r.restoreExemplars(ctx, dir); err != nil {
-			return errors.Wrap(err, "restore exp histograms")
+			return errors.Wrap(err, "restore exemplars")
 		}
 		return nil
 	})
@@ -114,309 +113,256 @@ func (r *metricsRestore) restore(ctx context.Context, dir string) error {
 }
 
 func (r *metricsRestore) restorePoints(ctx context.Context, dir string) error {
-	w, err := openBackupReader(dir, "metrics_points")
-	if err != nil {
-		if os.IsNotExist(err) {
-			r.logger.Info("No metrics points backup found", zap.String("dir", dir))
-			return nil
-		}
-		return err
-	}
-	defer func() {
-		_ = w.Close()
-	}()
-	var (
-		name        = new(proto.ColStr).LowCardinality()
-		unit        = new(proto.ColStr).LowCardinality()
-		description proto.ColStr
-
-		attributes = NewAttributes(colAttrs)
-		scope      = NewAttributes(colScope)
-		resource   = NewAttributes(colResource)
-
-		timestamp = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
-		value     proto.ColFloat64
-
-		mapping proto.ColEnum8
-		flags   proto.ColUInt8
-
-		columns = MergeColumns(
-			Columns{
-				{Name: "timestamp", Data: timestamp},
-				{Name: "value", Data: &value},
-
-				{Name: "mapping", Data: proto.Wrap(&mapping, metricMappingDDL)},
-				{Name: "flags", Data: &flags},
-			},
-			Columns{
-				{Name: "name", Data: name},
-				{Name: "unit", Data: unit},
-				{Name: "description", Data: &description},
-			},
-			attributes.Columns(),
-			scope.Columns(),
-			resource.Columns(),
-		)
-
-		block proto.Block
-		rd    = proto.NewReader(w)
-	)
-	for {
-		columns.Reset()
-		if err := block.DecodeRawBlock(rd, 54451, columns.Result()); err != nil {
-			if errors.Is(err, io.EOF) {
-				err = nil
-			}
-			return err
-		}
-
-		points := newPointColumns()
-		for i := 0; i < timestamp.Rows(); i++ {
+	cfg := restoreTable{
+		File: "metrics_points",
+		NewColumns: func() ([]proto.Input, Columns, func(), func() int) {
 			var (
-				timestamp   = timestamp.Row(i)
-				mapping     = metricMapping(mapping.Row(i))
-				name        = name.Row(i)
-				unit        = unit.Row(i)
-				description = description.Row(i)
-				resource    = resource.Row(i)
-				scope       = scope.Row(i)
-				attributes  = attributes.Row(i)
-			)
-			hash := r.collectTimeseries(
-				timestamp,
-				name, unit, description,
-				resource, scope, attributes,
-			)
-			r.collectLabels(name, mapping, resource, scope, attributes)
+				name        = new(proto.ColStr).LowCardinality()
+				unit        = new(proto.ColStr).LowCardinality()
+				description proto.ColStr
 
-			points.hash.Append(hash)
-		}
-		points.timestamp = timestamp
-		points.value = value
-		points.mapping = mapping
-		points.flags = flags
+				attributes = NewAttributes(colAttrs)
+				scope      = NewAttributes(colScope)
+				resource   = NewAttributes(colResource)
 
-		input := points.Input()
-		if err := r.client.Do(ctx, ch.Query{
-			Body:  input.Into(r.tables.Points),
-			Input: input,
-		}); err != nil {
-			return errors.Wrap(err, "insert points")
-		}
+				timestamp = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
+				value     proto.ColFloat64
+
+				mapping proto.ColEnum8
+				flags   proto.ColUInt8
+
+				columns = MergeColumns(
+					Columns{
+						{Name: "timestamp", Data: timestamp},
+						{Name: "value", Data: &value},
+
+						{Name: "mapping", Data: proto.Wrap(&mapping, metricMappingDDL)},
+						{Name: "flags", Data: &flags},
+					},
+					Columns{
+						{Name: "name", Data: name},
+						{Name: "unit", Data: unit},
+						{Name: "description", Data: &description},
+					},
+					attributes.Columns(),
+					scope.Columns(),
+					resource.Columns(),
+				)
+
+				points = newPointColumns()
+				add    = func() {
+					for i := 0; i < timestamp.Rows(); i++ {
+						var (
+							timestamp   = timestamp.Row(i)
+							mapping     = metricMapping(mapping.Row(i))
+							name        = name.Row(i)
+							unit        = unit.Row(i)
+							description = description.Row(i)
+							resource    = resource.Row(i)
+							scope       = scope.Row(i)
+							attributes  = attributes.Row(i)
+						)
+						hash := r.collectTimeseries(
+							timestamp,
+							name, unit, description,
+							resource, scope, attributes,
+						)
+						r.collectLabels(name, mapping, resource, scope, attributes)
+
+						points.timestamp.Append(timestamp)
+						points.hash.Append(hash)
+					}
+					points.value.AppendArr(value)
+					points.mapping.AppendArr(mapping)
+					points.flags.AppendArr(flags)
+				}
+				rows = func() int {
+					return points.hash.Rows()
+				}
+			)
+			return []proto.Input{points.Input()}, columns, add, rows
+		},
+		Logger: r.logger,
 	}
+	return cfg.Do(ctx, dir, []string{r.tables.Points}, r.client)
 }
 
 func (r *metricsRestore) restoreExpHistograms(ctx context.Context, dir string) error {
-	w, err := openBackupReader(dir, "metrics_exp_histograms")
-	if err != nil {
-		if os.IsNotExist(err) {
-			r.logger.Info("No metrics exp_histograms backup found", zap.String("dir", dir))
-			return nil
-		}
-		return err
-	}
-	defer func() {
-		_ = w.Close()
-	}()
-	var (
-		name        = new(proto.ColStr).LowCardinality()
-		unit        = new(proto.ColStr).LowCardinality()
-		description proto.ColStr
-
-		attributes = NewAttributes(colAttrs)
-		scope      = NewAttributes(colScope)
-		resource   = NewAttributes(colResource)
-
-		timestamp            = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
-		count                proto.ColUInt64
-		sum                  = new(proto.ColFloat64).Nullable()
-		cmin                 = new(proto.ColFloat64).Nullable()
-		cmax                 = new(proto.ColFloat64).Nullable()
-		scale                proto.ColInt32
-		zerocount            proto.ColUInt64
-		positiveOffset       proto.ColInt32
-		positiveBucketCounts = new(proto.ColUInt64).Array()
-		negativeOffset       proto.ColInt32
-		negativeBucketCounts = new(proto.ColUInt64).Array()
-
-		flags proto.ColUInt8
-
-		columns = MergeColumns(
-			Columns{
-				{Name: "timestamp", Data: timestamp},
-				{Name: "exp_histogram_count", Data: &count},
-				{Name: "exp_histogram_sum", Data: sum},
-				{Name: "exp_histogram_min", Data: cmin},
-				{Name: "exp_histogram_max", Data: cmax},
-				{Name: "exp_histogram_scale", Data: &scale},
-				{Name: "exp_histogram_zerocount", Data: &zerocount},
-				{Name: "exp_histogram_positive_offset", Data: &positiveOffset},
-				{Name: "exp_histogram_positive_bucket_counts", Data: positiveBucketCounts},
-				{Name: "exp_histogram_negative_offset", Data: &negativeOffset},
-				{Name: "exp_histogram_negative_bucket_counts", Data: negativeBucketCounts},
-
-				{Name: "flags", Data: &flags},
-			},
-			Columns{
-				{Name: "name", Data: name},
-				{Name: "unit", Data: unit},
-				{Name: "description", Data: &description},
-			},
-			attributes.Columns(),
-			scope.Columns(),
-			resource.Columns(),
-		)
-
-		block proto.Block
-		rd    = proto.NewReader(w)
-	)
-	for {
-		columns.Reset()
-		if err := block.DecodeRawBlock(rd, 54451, columns.Result()); err != nil {
-			if errors.Is(err, io.EOF) {
-				err = nil
-			}
-			return err
-		}
-
-		histograms := newExpHistogramColumns()
-		for i := 0; i < timestamp.Rows(); i++ {
+	cfg := restoreTable{
+		File: "metrics_exp_histograms",
+		NewColumns: func() ([]proto.Input, Columns, func(), func() int) {
 			var (
-				timestamp   = timestamp.Row(i)
-				name        = name.Row(i)
-				unit        = unit.Row(i)
-				description = description.Row(i)
-				resource    = resource.Row(i)
-				scope       = scope.Row(i)
-				attributes  = attributes.Row(i)
-			)
-			hash := r.collectTimeseries(
-				timestamp,
-				name, unit, description,
-				resource, scope, attributes,
-			)
-			r.collectLabels(name, noMapping, resource, scope, attributes)
+				name        = new(proto.ColStr).LowCardinality()
+				unit        = new(proto.ColStr).LowCardinality()
+				description proto.ColStr
 
-			histograms.hash.Append(hash)
-		}
-		histograms.timestamp = timestamp
-		histograms.count = count
-		histograms.sum = sum
-		histograms.min = cmin
-		histograms.max = cmax
-		histograms.scale = scale
-		histograms.zerocount = zerocount
-		histograms.positiveOffset = positiveOffset
-		histograms.positiveBucketCounts = positiveBucketCounts
-		histograms.negativeOffset = negativeOffset
-		histograms.negativeBucketCounts = negativeBucketCounts
-		histograms.flags = flags
+				attributes = NewAttributes(colAttrs)
+				scope      = NewAttributes(colScope)
+				resource   = NewAttributes(colResource)
 
-		input := histograms.Input()
-		if err := r.client.Do(ctx, ch.Query{
-			Body:  input.Into(r.tables.ExpHistograms),
-			Input: input,
-		}); err != nil {
-			return errors.Wrap(err, "insert exp histograms")
-		}
+				timestamp            = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
+				count                proto.ColUInt64
+				sum                  = new(proto.ColFloat64).Nullable()
+				cmin                 = new(proto.ColFloat64).Nullable()
+				cmax                 = new(proto.ColFloat64).Nullable()
+				scale                proto.ColInt32
+				zerocount            proto.ColUInt64
+				positiveOffset       proto.ColInt32
+				positiveBucketCounts = new(proto.ColUInt64).Array()
+				negativeOffset       proto.ColInt32
+				negativeBucketCounts = new(proto.ColUInt64).Array()
+
+				flags proto.ColUInt8
+
+				columns = MergeColumns(
+					Columns{
+						{Name: "timestamp", Data: timestamp},
+						{Name: "exp_histogram_count", Data: &count},
+						{Name: "exp_histogram_sum", Data: sum},
+						{Name: "exp_histogram_min", Data: cmin},
+						{Name: "exp_histogram_max", Data: cmax},
+						{Name: "exp_histogram_scale", Data: &scale},
+						{Name: "exp_histogram_zerocount", Data: &zerocount},
+						{Name: "exp_histogram_positive_offset", Data: &positiveOffset},
+						{Name: "exp_histogram_positive_bucket_counts", Data: positiveBucketCounts},
+						{Name: "exp_histogram_negative_offset", Data: &negativeOffset},
+						{Name: "exp_histogram_negative_bucket_counts", Data: negativeBucketCounts},
+
+						{Name: "flags", Data: &flags},
+					},
+					Columns{
+						{Name: "name", Data: name},
+						{Name: "unit", Data: unit},
+						{Name: "description", Data: &description},
+					},
+					attributes.Columns(),
+					scope.Columns(),
+					resource.Columns(),
+				)
+
+				histograms = newExpHistogramColumns()
+				add        = func() {
+					for i := 0; i < timestamp.Rows(); i++ {
+						var (
+							timestamp   = timestamp.Row(i)
+							name        = name.Row(i)
+							unit        = unit.Row(i)
+							description = description.Row(i)
+							resource    = resource.Row(i)
+							scope       = scope.Row(i)
+							attributes  = attributes.Row(i)
+						)
+						hash := r.collectTimeseries(
+							timestamp,
+							name, unit, description,
+							resource, scope, attributes,
+						)
+						r.collectLabels(name, noMapping, resource, scope, attributes)
+
+						histograms.hash.Append(hash)
+						histograms.timestamp.Append(timestamp)
+						histograms.sum.Append(sum.Row(i))
+						histograms.min.Append(cmin.Row(i))
+						histograms.max.Append(cmax.Row(i))
+						histograms.positiveBucketCounts.Append(positiveBucketCounts.Row(i))
+						histograms.negativeBucketCounts.Append(negativeBucketCounts.Row(i))
+					}
+					histograms.count.AppendArr(count)
+					histograms.scale.AppendArr(scale)
+					histograms.zerocount.AppendArr(zerocount)
+					histograms.positiveOffset.AppendArr(positiveOffset)
+					histograms.negativeOffset.AppendArr(negativeOffset)
+					histograms.flags.AppendArr(flags)
+				}
+				rows = func() int {
+					return histograms.hash.Rows()
+				}
+			)
+			return []proto.Input{histograms.Input()}, columns, add, rows
+		},
+		Logger: r.logger,
 	}
+	return cfg.Do(ctx, dir, []string{r.tables.ExpHistograms}, r.client)
 }
 
 func (r *metricsRestore) restoreExemplars(ctx context.Context, dir string) error {
-	w, err := openBackupReader(dir, "metrics_exemplars")
-	if err != nil {
-		if os.IsNotExist(err) {
-			r.logger.Info("No metrics exemplars backup found", zap.String("dir", dir))
-			return nil
-		}
-		return err
-	}
-	defer func() {
-		_ = w.Close()
-	}()
-	var (
-		name        = new(proto.ColStr).LowCardinality()
-		unit        = new(proto.ColStr).LowCardinality()
-		description proto.ColStr
-
-		attributes = NewAttributes(colAttrs)
-		scope      = NewAttributes(colScope)
-		resource   = NewAttributes(colResource)
-
-		timestamp          = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
-		filteredAttributes proto.ColBytes
-		exemplarTimestamp  = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
-		value              proto.ColFloat64
-		spanID             proto.ColFixedStr8
-		traceID            proto.ColFixedStr16
-
-		columns = MergeColumns(
-			Columns{
-				{Name: "timestamp", Data: timestamp},
-
-				{Name: "filtered_attributes", Data: &filteredAttributes},
-				{Name: "exemplar_timestamp", Data: exemplarTimestamp},
-				{Name: "value", Data: &value},
-				{Name: "span_id", Data: &spanID},
-				{Name: "trace_id", Data: &traceID},
-			},
-			Columns{
-				{Name: "name", Data: name},
-				{Name: "unit", Data: unit},
-				{Name: "description", Data: &description},
-			},
-			attributes.Columns(),
-			scope.Columns(),
-			resource.Columns(),
-		)
-
-		block proto.Block
-		rd    = proto.NewReader(w)
-	)
-	for {
-		columns.Reset()
-		if err := block.DecodeRawBlock(rd, 54451, columns.Result()); err != nil {
-			if errors.Is(err, io.EOF) {
-				err = nil
-			}
-			return err
-		}
-
-		exemplars := newExemplarColumns()
-		for i := 0; i < timestamp.Rows(); i++ {
+	cfg := restoreTable{
+		File: "metrics_exemplars",
+		NewColumns: func() ([]proto.Input, Columns, func(), func() int) {
 			var (
-				timestamp   = timestamp.Row(i)
-				name        = name.Row(i)
-				unit        = unit.Row(i)
-				description = description.Row(i)
-				resource    = resource.Row(i)
-				scope       = scope.Row(i)
-				attributes  = attributes.Row(i)
-			)
-			hash := r.collectTimeseries(
-				timestamp,
-				name, unit, description,
-				resource, scope, attributes,
-			)
-			r.collectLabels(name, noMapping, resource, scope, attributes)
+				name        = new(proto.ColStr).LowCardinality()
+				unit        = new(proto.ColStr).LowCardinality()
+				description proto.ColStr
 
-			exemplars.hash.Append(hash)
-		}
-		exemplars.timestamp = timestamp
-		exemplars.filteredAttributes = filteredAttributes
-		exemplars.exemplarTimestamp = exemplarTimestamp
-		exemplars.value = value
-		exemplars.spanID = spanID
-		exemplars.traceID = traceID
+				attributes = NewAttributes(colAttrs)
+				scope      = NewAttributes(colScope)
+				resource   = NewAttributes(colResource)
 
-		input := exemplars.Input()
-		if err := r.client.Do(ctx, ch.Query{
-			Body:  input.Into(r.tables.Exemplars),
-			Input: input,
-		}); err != nil {
-			return errors.Wrap(err, "insert exemplars")
-		}
+				timestamp          = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
+				filteredAttributes proto.ColBytes
+				exemplarTimestamp  = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
+				value              proto.ColFloat64
+				spanID             proto.ColFixedStr8
+				traceID            proto.ColFixedStr16
+
+				columns = MergeColumns(
+					Columns{
+						{Name: "timestamp", Data: timestamp},
+
+						{Name: "filtered_attributes", Data: &filteredAttributes},
+						{Name: "exemplar_timestamp", Data: exemplarTimestamp},
+						{Name: "value", Data: &value},
+						{Name: "span_id", Data: &spanID},
+						{Name: "trace_id", Data: &traceID},
+					},
+					Columns{
+						{Name: "name", Data: name},
+						{Name: "unit", Data: unit},
+						{Name: "description", Data: &description},
+					},
+					attributes.Columns(),
+					scope.Columns(),
+					resource.Columns(),
+				)
+
+				exemplars = newExemplarColumns()
+				add       = func() {
+					for i := 0; i < timestamp.Rows(); i++ {
+						var (
+							timestamp   = timestamp.Row(i)
+							name        = name.Row(i)
+							unit        = unit.Row(i)
+							description = description.Row(i)
+							resource    = resource.Row(i)
+							scope       = scope.Row(i)
+							attributes  = attributes.Row(i)
+						)
+						hash := r.collectTimeseries(
+							timestamp,
+							name, unit, description,
+							resource, scope, attributes,
+						)
+						r.collectLabels(name, noMapping, resource, scope, attributes)
+
+						exemplars.hash.Append(hash)
+						exemplars.timestamp.Append(timestamp)
+						exemplars.filteredAttributes.Append(filteredAttributes.Row(i))
+						exemplars.exemplarTimestamp.Append(exemplarTimestamp.Row(i))
+					}
+
+					exemplars.value.AppendArr(value)
+					exemplars.spanID.AppendArr(spanID)
+					exemplars.traceID.AppendArr(traceID)
+				}
+				rows = func() int {
+					return exemplars.hash.Rows()
+				}
+			)
+			return []proto.Input{exemplars.Input()}, columns, add, rows
+		},
+		Logger: r.logger,
 	}
+	return cfg.Do(ctx, dir, []string{r.tables.Exemplars}, r.client)
 }
 
 func (r *metricsRestore) collectTimeseries(
