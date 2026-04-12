@@ -115,20 +115,71 @@ func (l *lexer) nextToken(r rune, text string) (tok Token, _ bool) {
 		}
 		// "parent" followed by dot, it's attribute selector.
 		fallthrough
-	case ".", "resource", "span":
-		// Attribute selector.
-		var sb strings.Builder
-		sb.WriteString(text)
-
-		ch := peekCh
-		for isAttributeRune(ch) {
-			sb.WriteRune(l.scanner.Next())
-			ch = l.scanner.Peek()
-		}
-
+	case ".":
 		tok.Type = Ident
-		tok.Text = sb.String()
+		tok.Text = l.readAttributeSelector(text, peekCh)
 		return tok, true
+	case "resource":
+		if peekCh == '.' {
+			tok.Type = Ident
+			tok.Text = l.readAttributeSelector(text, peekCh)
+			return tok, true
+		}
+	case "span":
+		switch peekCh {
+		case '.':
+			tok.Type = Ident
+			tok.Text = l.readAttributeSelector(text, peekCh)
+			return tok, true
+		case ':':
+			l.scanner.Next()
+			tok.Type = SpanColon
+			tok.Text = "span:"
+			return tok, true
+		}
+	case "trace":
+		if peekCh == ':' {
+			l.scanner.Next()
+			tok.Type = TraceColon
+			tok.Text = "trace:"
+			return tok, true
+		}
+	case "event":
+		switch peekCh {
+		case '.':
+			tok.Type = Ident
+			tok.Text = l.readAttributeSelector(text, peekCh)
+			return tok, true
+		case ':':
+			l.scanner.Next()
+			tok.Type = EventColon
+			tok.Text = "event:"
+			return tok, true
+		}
+	case "link":
+		switch peekCh {
+		case '.':
+			tok.Type = Ident
+			tok.Text = l.readAttributeSelector(text, peekCh)
+			return tok, true
+		case ':':
+			l.scanner.Next()
+			tok.Type = LinkColon
+			tok.Text = "link:"
+			return tok, true
+		}
+	case "instrumentation":
+		switch peekCh {
+		case '.':
+			tok.Type = Ident
+			tok.Text = l.readAttributeSelector(text, peekCh)
+			return tok, true
+		case ':':
+			l.scanner.Next()
+			tok.Type = InstrumentationColon
+			tok.Text = "instrumentation:"
+			return tok, true
+		}
 	}
 	peeked := text + string(peekCh)
 
@@ -148,6 +199,17 @@ func (l *lexer) nextToken(r rune, text string) (tok Token, _ bool) {
 
 	tok.Type = Ident
 	return tok, true
+}
+
+func (l *lexer) readAttributeSelector(prefix string, peekCh rune) string {
+	var sb strings.Builder
+	sb.WriteString(prefix)
+	ch := peekCh
+	for isAttributeRune(ch) {
+		sb.WriteRune(l.scanner.Next())
+		ch = l.scanner.Peek()
+	}
+	return sb.String()
 }
 
 func isAttributeRune(r rune) bool {

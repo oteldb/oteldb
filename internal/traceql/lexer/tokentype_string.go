@@ -70,11 +70,27 @@ func _() {
 	_ = x[By-59]
 	_ = x[Coalesce-60]
 	_ = x[Select-61]
+	_ = x[TraceColon-62]
+	_ = x[SpanColon-63]
+	_ = x[EventColon-64]
+	_ = x[LinkColon-65]
+	_ = x[InstrumentationColon-66]
+	_ = x[StatusMessage-67]
+	_ = x[RootService-68]
+	_ = x[NestedSetLeft-69]
+	_ = x[NestedSetRight-70]
+	_ = x[NestedSetParent-71]
+	_ = x[ID-72]
+	_ = x[TraceID-73]
+	_ = x[SpanID-74]
+	_ = x[ParentID-75]
+	_ = x[TimeSinceStart-76]
+	_ = x[Version-77]
 }
 
-const _TokenType_name = "InvalidEOFIdentStringIntegerNumberDurationCommaDotOpenBraceCloseBraceOpenParenCloseParenEqNotEqReNotReGtGteLtLteAddSubDivModMulPowTrueFalseNilStatusOkStatusErrorStatusUnsetKindUnspecifiedKindInternalKindServerKindClientKindProducerKindConsumerAndOrNotPipeDescTildeSpanDurationChildCountNameStatusKindRootNameRootServiceNameTraceDurationParentCountAvgMaxMinSumByCoalesceSelect"
+const _TokenType_name = "InvalidEOFIdentStringIntegerNumberDurationCommaDotOpenBraceCloseBraceOpenParenCloseParenEqNotEqReNotReGtGteLtLteAddSubDivModMulPowTrueFalseNilStatusOkStatusErrorStatusUnsetKindUnspecifiedKindInternalKindServerKindClientKindProducerKindConsumerAndOrNotPipeDescTildeSpanDurationChildCountNameStatusKindRootNameRootServiceNameTraceDurationParentCountAvgMaxMinSumByCoalesceSelectTraceColonSpanColonEventColonLinkColonInstrumentationColonStatusMessageRootServiceNestedSetLeftNestedSetRightNestedSetParentIDTraceIDSpanIDParentIDTimeSinceStartVersion"
 
-var _TokenType_index = [...]uint16{0, 7, 10, 15, 21, 28, 34, 42, 47, 50, 59, 69, 78, 88, 90, 95, 97, 102, 104, 107, 109, 112, 115, 118, 121, 124, 127, 130, 134, 139, 142, 150, 161, 172, 187, 199, 209, 219, 231, 243, 246, 248, 251, 255, 259, 264, 276, 286, 290, 296, 300, 308, 323, 336, 342, 347, 350, 353, 356, 359, 361, 369, 375}
+var _TokenType_index = [...]uint16{0, 7, 10, 15, 21, 28, 34, 42, 47, 50, 59, 69, 78, 88, 90, 95, 97, 102, 104, 107, 109, 112, 115, 118, 121, 124, 127, 130, 134, 139, 142, 150, 161, 172, 187, 199, 209, 219, 231, 243, 246, 248, 251, 255, 259, 264, 276, 286, 290, 296, 300, 308, 323, 336, 342, 347, 350, 353, 356, 359, 361, 369, 375, 385, 394, 404, 413, 433, 446, 457, 470, 484, 499, 501, 508, 514, 522, 536, 543}
 
 func (i TokenType) String() string {
 	idx := int(i) - 0

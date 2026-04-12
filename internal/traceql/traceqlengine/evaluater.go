@@ -102,7 +102,7 @@ type BinaryEvaluater struct {
 	Right Evaluater
 }
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (e *BinaryEvaluater) Eval(span tracestorage.Span, ctx EvaluateCtx) traceql.Static {
 	left := e.Left.Eval(span, ctx)
 	right := e.Right.Eval(span, ctx)
@@ -259,7 +259,7 @@ type NegEvaluater struct {
 	Sub Evaluater
 }
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (e *NegEvaluater) Eval(span tracestorage.Span, ctx EvaluateCtx) (r traceql.Static) {
 	val := e.Sub.Eval(span, ctx)
 	if !val.Type.IsNumeric() {
@@ -275,7 +275,7 @@ type NotEvaluater struct {
 	Sub Evaluater
 }
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (e *NotEvaluater) Eval(span tracestorage.Span, ctx EvaluateCtx) (r traceql.Static) {
 	val := e.Sub.Eval(span, ctx)
 	if val.Type != traceql.TypeBool {
@@ -295,7 +295,7 @@ type StaticEvaluater struct {
 	Val traceql.Static
 }
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (e *StaticEvaluater) Eval(tracestorage.Span, EvaluateCtx) traceql.Static {
 	return e.Val
 }
@@ -320,6 +320,28 @@ func buildAttributeEvaluater(attr *traceql.Attribute) (Evaluater, error) {
 		return &RootServiceNameEvaluater{}, nil
 	case traceql.TraceDuration:
 		return &TraceDurationEvaluater{}, nil
+	case traceql.SpanStatusMessage:
+		return &SpanStatusMessageEvaluater{}, nil
+	case traceql.NestedSetLeft, traceql.NestedSetRight, traceql.NestedSetParent:
+		// TODO(tdakkota): nested set properties
+	case traceql.SpanID:
+		return &SpanIDEvaluater{}, nil
+	case traceql.ParentID:
+		return &ParentIDEvaluater{}, nil
+	case traceql.TraceID:
+		return &TraceIDEvaluater{}, nil
+	case traceql.EventName:
+		return &EventNameEvaluater{}, nil
+	case traceql.EventTimeSinceStart:
+		return &EventTimeSinceStartEvaluater{}, nil
+	case traceql.LinkTraceID:
+		return &LinkTraceIDEvaluater{}, nil
+	case traceql.LinkSpanID:
+		return &LinkSpanIDEvaluater{}, nil
+	case traceql.InstrumentationName:
+		return &InstrumentationNameEvaluater{}, nil
+	case traceql.InstrumentationVersion:
+		return &InstrumentationVersionEvaluater{}, nil
 	default:
 		// SpanAttribute.
 		if attr.Parent {
@@ -332,6 +354,12 @@ func buildAttributeEvaluater(attr *traceql.Attribute) (Evaluater, error) {
 			return &ResourceAttributeEvaluater{Name: attr.Name}, nil
 		case traceql.ScopeSpan:
 			return &SpanAttributeEvaluater{Name: attr.Name}, nil
+		case traceql.ScopeInstrumentation:
+			return &InstrumentationAttributeEvaluater{Name: attr.Name}, nil
+		case traceql.ScopeEvent:
+			return &EventAttributeEvaluater{Name: attr.Name}, nil
+		case traceql.ScopeLink:
+			return &LinkAttributeEvaluater{Name: attr.Name}, nil
 		default:
 			return &AttributeEvaluater{Name: attr.Name}, nil
 		}
@@ -342,7 +370,7 @@ func buildAttributeEvaluater(attr *traceql.Attribute) (Evaluater, error) {
 // SpanDurationEvalauter evaluates `duration` property.
 type SpanDurationEvalauter struct{}
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (*SpanDurationEvalauter) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
 	end := span.End.AsTime()
 	start := span.Start.AsTime()
@@ -353,7 +381,7 @@ func (*SpanDurationEvalauter) Eval(span tracestorage.Span, _ EvaluateCtx) (r tra
 // SpanNameEvaluater evaluates `name` property.
 type SpanNameEvaluater struct{}
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (*SpanNameEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
 	r.SetString(span.Name)
 	return r
@@ -362,7 +390,7 @@ func (*SpanNameEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql
 // SpanStatusEvaluater evaluates `status` property.
 type SpanStatusEvaluater struct{}
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (*SpanStatusEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
 	r.SetSpanStatus(ptrace.StatusCode(span.StatusCode))
 	return r
@@ -371,7 +399,7 @@ func (*SpanStatusEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r trace
 // SpanKindEvaluater evaluates `kind` property.
 type SpanKindEvaluater struct{}
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (*SpanKindEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
 	r.SetSpanKind(ptrace.SpanKind(span.Kind))
 	return r
@@ -380,7 +408,7 @@ func (*SpanKindEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql
 // ParentEvaluater evaluates `parent` property.
 type ParentEvaluater struct{}
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (*ParentEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
 	if span.ParentSpanID.IsEmpty() {
 		r.SetNil()
@@ -394,7 +422,7 @@ func (*ParentEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.S
 // RootSpanNameEvaluater evaluates `rootName` property.
 type RootSpanNameEvaluater struct{}
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (*RootSpanNameEvaluater) Eval(_ tracestorage.Span, ctx EvaluateCtx) (r traceql.Static) {
 	r.SetString(ctx.Set.RootSpanName)
 	return r
@@ -403,7 +431,7 @@ func (*RootSpanNameEvaluater) Eval(_ tracestorage.Span, ctx EvaluateCtx) (r trac
 // RootServiceNameEvaluater evaluates `rootServiceName` property.
 type RootServiceNameEvaluater struct{}
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (*RootServiceNameEvaluater) Eval(_ tracestorage.Span, ctx EvaluateCtx) (r traceql.Static) {
 	r.SetString(ctx.Set.RootServiceName)
 	return r
@@ -412,7 +440,7 @@ func (*RootServiceNameEvaluater) Eval(_ tracestorage.Span, ctx EvaluateCtx) (r t
 // TraceDurationEvaluater evaluates `traceDuration“ property.
 type TraceDurationEvaluater struct{}
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (*TraceDurationEvaluater) Eval(_ tracestorage.Span, ctx EvaluateCtx) (r traceql.Static) {
 	r.SetDuration(ctx.Set.TraceDuration)
 	return r
@@ -423,7 +451,7 @@ type ResourceAttributeEvaluater struct {
 	Name string
 }
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (e *ResourceAttributeEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) traceql.Static {
 	return evaluateAttr(
 		e.Name,
@@ -437,7 +465,7 @@ type SpanAttributeEvaluater struct {
 	Name string
 }
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (e *SpanAttributeEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) traceql.Static {
 	return evaluateAttr(
 		e.Name,
@@ -450,7 +478,7 @@ type AttributeEvaluater struct {
 	Name string
 }
 
-// Eval implemenets [Evaluater].
+// Eval implements [Evaluater].
 func (e *AttributeEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) traceql.Static {
 	return evaluateAttr(
 		e.Name,
@@ -466,6 +494,173 @@ func evaluateAttr(name string, attrs ...otelstorage.Attrs) (r traceql.Static) {
 			continue
 		}
 		if v, ok := m.AsMap().Get(name); ok && r.SetOTELValue(v) {
+			return r
+		}
+	}
+	r.SetNil()
+	return r
+}
+
+// SpanStatusMessageEvaluater evaluates `statusMessage` property.
+type SpanStatusMessageEvaluater struct{}
+
+// Eval implements [Evaluater].
+func (*SpanStatusMessageEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	r.SetString(span.StatusMessage)
+	return r
+}
+
+// SpanIDEvaluater evaluates `span:id` property.
+type SpanIDEvaluater struct{}
+
+// Eval implements [Evaluater].
+func (*SpanIDEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	r.SetString(span.SpanID.Hex())
+	return r
+}
+
+// ParentIDEvaluater evaluates `span:parentId` property.
+type ParentIDEvaluater struct{}
+
+// Eval implements [Evaluater].
+func (*ParentIDEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	if span.ParentSpanID.IsEmpty() {
+		r.SetNil()
+	} else {
+		r.SetString(span.ParentSpanID.Hex())
+	}
+	return r
+}
+
+// TraceIDEvaluater evaluates `trace:id` property.
+type TraceIDEvaluater struct{}
+
+// Eval implements [Evaluater].
+func (*TraceIDEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	r.SetString(span.TraceID.Hex())
+	return r
+}
+
+// InstrumentationNameEvaluater evaluates `instrumentation:name` property.
+type InstrumentationNameEvaluater struct{}
+
+// Eval implements [Evaluater].
+func (*InstrumentationNameEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	r.SetString(span.ScopeName)
+	return r
+}
+
+// InstrumentationVersionEvaluater evaluates `instrumentation:version` property.
+type InstrumentationVersionEvaluater struct{}
+
+// Eval implements [Evaluater].
+func (*InstrumentationVersionEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	r.SetString(span.ScopeVersion)
+	return r
+}
+
+// EventNameEvaluater evaluates `event:name` property.
+// Returns the name of the first event with a non-empty name, or nil if none.
+type EventNameEvaluater struct{}
+
+// Eval implements [Evaluater].
+func (*EventNameEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	for _, ev := range span.Events {
+		if ev.Name != "" {
+			r.SetString(ev.Name)
+			return r
+		}
+	}
+	r.SetNil()
+	return r
+}
+
+// EventTimeSinceStartEvaluater evaluates `event:timeSinceStart` property.
+// Returns the elapsed duration from span start for the first event with a non-zero offset, or nil if none.
+type EventTimeSinceStartEvaluater struct{}
+
+// Eval implements [Evaluater].
+func (*EventTimeSinceStartEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	start := span.Start.AsTime()
+	for _, ev := range span.Events {
+		if d := ev.Timestamp.AsTime().Sub(start); d != 0 {
+			r.SetDuration(d)
+			return r
+		}
+	}
+	r.SetNil()
+	return r
+}
+
+// LinkTraceIDEvaluater evaluates `link:traceId` property.
+// Returns the hex trace ID of the first link with a non-empty trace ID, or nil if none.
+type LinkTraceIDEvaluater struct{}
+
+// Eval implements [Evaluater].
+func (*LinkTraceIDEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	for _, lnk := range span.Links {
+		if !lnk.TraceID.IsEmpty() {
+			r.SetString(lnk.TraceID.Hex())
+			return r
+		}
+	}
+	r.SetNil()
+	return r
+}
+
+// LinkSpanIDEvaluater evaluates `link:spanId` property.
+// Returns the hex span ID of the first link with a non-empty span ID, or nil if none.
+type LinkSpanIDEvaluater struct{}
+
+// Eval implements [Evaluater].
+func (*LinkSpanIDEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	for _, lnk := range span.Links {
+		if !lnk.SpanID.IsEmpty() {
+			r.SetString(lnk.SpanID.Hex())
+			return r
+		}
+	}
+	r.SetNil()
+	return r
+}
+
+// InstrumentationAttributeEvaluater evaluates instrumentation scope attribute selector.
+type InstrumentationAttributeEvaluater struct {
+	Name string
+}
+
+// Eval implements [Evaluater].
+func (e *InstrumentationAttributeEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) traceql.Static {
+	return evaluateAttr(e.Name, span.ScopeAttrs)
+}
+
+// EventAttributeEvaluater evaluates event scope attribute selector.
+// Returns the attribute value from the first event that has it.
+type EventAttributeEvaluater struct {
+	Name string
+}
+
+// Eval implements [Evaluater].
+func (e *EventAttributeEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	for _, ev := range span.Events {
+		if r = evaluateAttr(e.Name, ev.Attrs); r.Type != traceql.TypeNil {
+			return r
+		}
+	}
+	r.SetNil()
+	return r
+}
+
+// LinkAttributeEvaluater evaluates link scope attribute selector.
+// Returns the attribute value from the first link that has it.
+type LinkAttributeEvaluater struct {
+	Name string
+}
+
+// Eval implements [Evaluater].
+func (e *LinkAttributeEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.Static) {
+	for _, lnk := range span.Links {
+		if r = evaluateAttr(e.Name, lnk.Attrs); r.Type != traceql.TypeNil {
 			return r
 		}
 	}

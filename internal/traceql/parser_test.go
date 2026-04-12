@@ -914,6 +914,211 @@ var tests = []TestCase{
 	{`coalesce()`, nil, true},
 	// Scalar filter must be a part of pipeline.
 	{`max() > 3 && { }`, nil, true},
+	// Scoped intrinsics: trace:
+	{
+		`{ trace:duration = 10s }`,
+		testBinFieldExpr(
+			&Attribute{Prop: TraceDuration},
+			OpEq,
+			&Static{Type: TypeDuration, Data: uint64(10 * 1e9)},
+		),
+		false,
+	},
+	{
+		`{ trace:rootName = "foo" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: RootSpanName},
+			OpEq,
+			&Static{Type: TypeString, Str: "foo"},
+		),
+		false,
+	},
+	{
+		`{ trace:rootService = "svc" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: RootServiceName},
+			OpEq,
+			&Static{Type: TypeString, Str: "svc"},
+		),
+		false,
+	},
+	{
+		`{ trace:id = "abc" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: TraceID},
+			OpEq,
+			&Static{Type: TypeString, Str: "abc"},
+		),
+		false,
+	},
+	// Scoped intrinsics: span:
+	{
+		`{ span:duration = 1s }`,
+		testBinFieldExpr(
+			&Attribute{Prop: SpanDuration},
+			OpEq,
+			&Static{Type: TypeDuration, Data: uint64(1e9)},
+		),
+		false,
+	},
+	{
+		`{ span:name = "foo" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: SpanName},
+			OpEq,
+			&Static{Type: TypeString, Str: "foo"},
+		),
+		false,
+	},
+	{
+		`{ span:status = ok }`,
+		testBinFieldExpr(
+			&Attribute{Prop: SpanStatus},
+			OpEq,
+			&Static{Type: TypeSpanStatus, Data: 1},
+		),
+		false,
+	},
+	{
+		`{ span:statusMessage = "msg" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: SpanStatusMessage},
+			OpEq,
+			&Static{Type: TypeString, Str: "msg"},
+		),
+		false,
+	},
+	{
+		`{ span:id = "abc" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: SpanID},
+			OpEq,
+			&Static{Type: TypeString, Str: "abc"},
+		),
+		false,
+	},
+	{
+		`{ span:parentId = "def" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: ParentID},
+			OpEq,
+			&Static{Type: TypeString, Str: "def"},
+		),
+		false,
+	},
+	{
+		`{ span:childCount = 3 }`,
+		testBinFieldExpr(
+			&Attribute{Prop: SpanChildCount},
+			OpEq,
+			&Static{Type: TypeInt, Data: 3},
+		),
+		false,
+	},
+	// Scoped intrinsics: event:
+	{
+		`{ event:name = "foo" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: EventName},
+			OpEq,
+			&Static{Type: TypeString, Str: "foo"},
+		),
+		false,
+	},
+	{
+		`{ event:timeSinceStart > 5ms }`,
+		testBinFieldExpr(
+			&Attribute{Prop: EventTimeSinceStart},
+			OpGt,
+			&Static{Type: TypeDuration, Data: uint64(5 * 1e6)},
+		),
+		false,
+	},
+	// Scoped intrinsics: link:
+	{
+		`{ link:traceId = "abc" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: LinkTraceID},
+			OpEq,
+			&Static{Type: TypeString, Str: "abc"},
+		),
+		false,
+	},
+	{
+		`{ link:spanId = "def" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: LinkSpanID},
+			OpEq,
+			&Static{Type: TypeString, Str: "def"},
+		),
+		false,
+	},
+	// Scoped intrinsics: instrumentation:
+	{
+		`{ instrumentation:name = "mylib" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: InstrumentationName},
+			OpEq,
+			&Static{Type: TypeString, Str: "mylib"},
+		),
+		false,
+	},
+	{
+		`{ instrumentation:version = "1.0" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: InstrumentationVersion},
+			OpEq,
+			&Static{Type: TypeString, Str: "1.0"},
+		),
+		false,
+	},
+	// Standalone new intrinsics.
+	{
+		`{ statusMessage = "msg" }`,
+		testBinFieldExpr(
+			&Attribute{Prop: SpanStatusMessage},
+			OpEq,
+			&Static{Type: TypeString, Str: "msg"},
+		),
+		false,
+	},
+	{
+		`{ nestedSetLeft = 1 }`,
+		testBinFieldExpr(
+			&Attribute{Prop: NestedSetLeft},
+			OpEq,
+			&Static{Type: TypeInt, Data: 1},
+		),
+		false,
+	},
+	// Scoped attribute selectors.
+	{
+		`{ event.foo = "bar" }`,
+		testBinFieldExpr(
+			&Attribute{Name: "foo", Scope: ScopeEvent},
+			OpEq,
+			&Static{Type: TypeString, Str: "bar"},
+		),
+		false,
+	},
+	{
+		`{ link.foo = "bar" }`,
+		testBinFieldExpr(
+			&Attribute{Name: "foo", Scope: ScopeLink},
+			OpEq,
+			&Static{Type: TypeString, Str: "bar"},
+		),
+		false,
+	},
+	{
+		`{ instrumentation.foo = "bar" }`,
+		testBinFieldExpr(
+			&Attribute{Name: "foo", Scope: ScopeInstrumentation},
+			OpEq,
+			&Static{Type: TypeString, Str: "bar"},
+		),
+		false,
+	},
 }
 
 func TestParse(t *testing.T) {

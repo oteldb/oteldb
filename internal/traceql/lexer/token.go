@@ -79,6 +79,26 @@ const (
 	By
 	Coalesce
 	Select
+
+	// Scoped intrinsic colon prefixes.
+	TraceColon
+	SpanColon
+	EventColon
+	LinkColon
+	InstrumentationColon
+
+	// New intrinsic keywords.
+	StatusMessage   // statusMessage
+	RootService     // rootService
+	NestedSetLeft   // nestedSetLeft
+	NestedSetRight  // nestedSetRight
+	NestedSetParent // nestedSetParent
+	ID              // id
+	TraceID         // traceId
+	SpanID          // spanId
+	ParentID        // parentId
+	TimeSinceStart  // timeSinceStart
+	Version         // version
 )
 
 var tokens = map[string]TokenType{
@@ -137,4 +157,15 @@ var tokens = map[string]TokenType{
 	"by":              By,
 	"coalesce":        Coalesce,
 	"select":          Select,
+	"statusMessage":   StatusMessage,
+	"rootService":     RootService,
+	"nestedSetLeft":   NestedSetLeft,
+	"nestedSetRight":  NestedSetRight,
+	"nestedSetParent": NestedSetParent,
+	"id":              ID,
+	"traceId":         TraceID,
+	"spanId":          SpanID,
+	"parentId":        ParentID,
+	"timeSinceStart":  TimeSinceStart,
+	"version":         Version,
 }
