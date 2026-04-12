@@ -4,7 +4,9 @@ package tempohandler
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"runtime"
 	"strings"
@@ -582,7 +584,104 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 //
 // GET /api/v2/traces/{traceID}
 func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2Params) (tempoapi.TraceByIDv2Res, error) {
-	return nil, ht.ErrNotImplemented
+	lg := zctx.From(ctx)
+
+	accept := params.Accept.Or("")
+	if accept == "" {
+		// Default to JSON if Accept header is not set.
+		accept = "application/json; charset=utf-8"
+	}
+	ct, ctParams, err := mime.ParseMediaType(accept)
+	if err != nil {
+		return nil, validationErr(err, fmt.Sprintf("invalid Accept header %q", accept))
+	}
+
+	var encoder encoderFunc
+	switch ct {
+	case "application/x-protobuf", "application/protobuf":
+		encoder = protoEncoder
+	case "", "application/json", "text/json":
+		if !strings.EqualFold(ctParams["charset"], "utf-8") {
+			return nil, &tempoapi.ErrorStatusCode{
+				StatusCode: http.StatusBadRequest,
+				Response:   tempoapi.Error(fmt.Sprintf("unsupported charset %q in Accept header", ctParams["charset"])),
+			}
+		}
+		encoder = jsonEncoder
+	case "application/vnd.grafana.llm+json":
+		encoder = llmEncoder
+	default:
+		return nil, &tempoapi.ErrorStatusCode{
+			StatusCode: http.StatusBadRequest,
+			Response:   tempoapi.Error(fmt.Sprintf("unsupported Accept header %q", params.Accept)),
+		}
+	}
+
+	traceID, err := otelstorage.ParseTraceID(params.TraceID)
+	if err != nil {
+		return nil, validationErr(err, fmt.Sprintf("invalid traceID %q", params.TraceID))
+	}
+
+	start, end, err := parseSearchTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		0,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
+	iter, err := h.q.TraceByID(ctx, traceID, tracestorage.TraceByIDOptions{
+		Start: start,
+		End:   end,
+	})
+	if err != nil {
+		return nil, executionErr(err, "query trace by ID")
+	}
+	defer func() {
+		_ = iter.Close()
+	}()
+
+	var c batchCollector
+	if err := iterators.ForEach(iter, c.AddSpan); err != nil {
+		return nil, executionErr(err, "map spans")
+	}
+	traces := c.Result()
+	spanCount := traces.SpanCount()
+
+	lg.Debug("Got trace by ID, v2", zap.Int("span_count", spanCount))
+	if spanCount < 1 {
+		return &tempoapi.TraceByIDV2NotFound{}, nil
+	}
+
+	data, err := encoder(traces)
+	if err != nil {
+		return nil, executionErr(err, "encode traces")
+	}
+	return &tempoapi.TraceByIDV2Headers{
+		ContentType: ct,
+		Response: tempoapi.TraceByIDV2{
+			Data: bytes.NewReader(data),
+		},
+	}, nil
+}
+
+type encoderFunc func(td ptrace.Traces) ([]byte, error)
+
+func protoEncoder(td ptrace.Traces) ([]byte, error) {
+	m := ptrace.ProtoMarshaler{}
+	return m.MarshalTraces(td)
+}
+
+func jsonEncoder(td ptrace.Traces) ([]byte, error) {
+	m := ptrace.JSONMarshaler{}
+	return m.MarshalTraces(td)
+}
+
+func llmEncoder(ptrace.Traces) ([]byte, error) {
+	return nil, errors.New("LLM encoder is not implemented yet")
 }
 
 // NewError creates *ErrorStatusCode from error returned by handler.
