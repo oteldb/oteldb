@@ -102,20 +102,20 @@ func (o *ClickhouseOptimizer) buildRangeAggregationSampling(n *logqlengine.Range
 		return n
 	}
 
-	samplingOp, ok := getSamplingOp(n.Expr)
+	op, ok := getSamplingOp(n.Expr)
 	if !ok {
 		return n
 	}
 
 	if ce := lg.Check(zap.DebugLevel, "Sampling could be offloaded to Clickhouse"); ce != nil {
 		ce.Write(
-			zap.Stringer("sampling_op", samplingOp),
+			zap.Stringer("sampling_op", op),
 			zap.Stringers("grouping_labels", grouping),
 		)
 	}
 	n.Input = &SamplingNode{
 		Sel:            pipelineNode.Sel,
-		Sampling:       samplingOp,
+		Sampling:       op,
 		GroupingLabels: grouping,
 		q:              pipelineNode.q,
 	}
@@ -129,17 +129,17 @@ func getGroupByLabels(g *logql.Grouping) ([]logql.Label, bool) {
 	return g.Labels, true
 }
 
-func getSamplingOp(e *logql.RangeAggregationExpr) (op SamplingOp, _ bool) {
+func getSamplingOp(e *logql.RangeAggregationExpr) (SamplingOp, bool) {
 	if er := e.Range; er.Unwrap != nil || er.Offset != nil {
-		return op, false
+		return 0, false
 	}
 	switch e.Op {
-	case logql.RangeOpCount:
+	case logql.RangeOpCount, logql.RangeOpRate:
 		return CountSampling, true
-	case logql.RangeOpBytes:
+	case logql.RangeOpBytes, logql.RangeOpBytesRate:
 		return BytesSampling, true
 	default:
-		return op, false
+		return 0, false
 	}
 }
 

@@ -272,13 +272,12 @@ func (v *SampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlengine.Sa
 			for i := 0; i < columns.Timestamp.Rows(); i++ {
 				timestamp := columns.Timestamp.Row(i)
 				sample := columns.Sample.Row(i)
-				// FIXME(tdakkota): allocates unnecessary map.
-				labels := columns.Labels.Row(i)
+				labels := columns.Labels.RowRange(i)
 
 				result = append(result, logqlmetric.SampledEntry{
 					Timestamp: pcommon.NewTimestampFromTime(timestamp),
 					Sample:    sample,
-					Set:       logqlabels.AggregatedLabelsFromMap(labels),
+					Set:       logqlabels.AggregatedLabelsFromSeq(labels),
 				})
 			}
 			return nil

@@ -2,6 +2,7 @@ package logqlabels
 
 import (
 	"cmp"
+	"iter"
 	"maps"
 	"regexp"
 	"slices"
@@ -54,9 +55,22 @@ func AggregatedLabelsFromMap(m map[string]string) AggregatedLabels {
 	for key, value := range m {
 		labels = append(labels, labelEntry{name: key, value: value})
 	}
-	slices.SortFunc(labels, func(a, b labelEntry) int {
-		return cmp.Compare(a.name, b.name)
-	})
+	sortEntries(labels)
+
+	return &aggregatedLabels{
+		entries: labels,
+		without: nil,
+		by:      nil,
+	}
+}
+
+// AggregatedLabelsFromSeq creates new [AggregatedLabels] from label sequence.
+func AggregatedLabelsFromSeq(s iter.Seq2[string, string]) AggregatedLabels {
+	var labels []labelEntry
+	for key, value := range s {
+		labels = append(labels, labelEntry{name: key, value: value})
+	}
+	sortEntries(labels)
 
 	return &aggregatedLabels{
 		entries: labels,
