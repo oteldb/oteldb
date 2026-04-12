@@ -1426,7 +1426,33 @@ func (s TraceByIDV2) Read(p []byte) (n int, err error) {
 	return s.Data.Read(p)
 }
 
-func (*TraceByIDV2) traceByIDv2Res() {}
+// TraceByIDV2Headers wraps TraceByIDV2 with response headers.
+type TraceByIDV2Headers struct {
+	ContentType string
+	Response    TraceByIDV2
+}
+
+// GetContentType returns the value of ContentType.
+func (s *TraceByIDV2Headers) GetContentType() string {
+	return s.ContentType
+}
+
+// GetResponse returns the value of Response.
+func (s *TraceByIDV2Headers) GetResponse() TraceByIDV2 {
+	return s.Response
+}
+
+// SetContentType sets the value of ContentType.
+func (s *TraceByIDV2Headers) SetContentType(val string) {
+	s.ContentType = val
+}
+
+// SetResponse sets the value of Response.
+func (s *TraceByIDV2Headers) SetResponse(val TraceByIDV2) {
+	s.Response = val
+}
+
+func (*TraceByIDV2Headers) traceByIDv2Res() {}
 
 // Ref: #/components/responses/TraceByIDV2NotFound
 type TraceByIDV2NotFound struct{}

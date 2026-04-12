@@ -1878,7 +1878,10 @@ func (c *Client) sendTraceByIDv2(ctx context.Context, params TraceByIDv2Params) 
 			Explode: false,
 		}
 		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
-			return e.EncodeValue(conv.StringToString(params.Accept))
+			if val, ok := params.Accept.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
 		}); err != nil {
 			return res, errors.Wrap(err, "encode header")
 		}

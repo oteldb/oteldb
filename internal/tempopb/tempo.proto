@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package tempopb;
+
+option go_package = "github.com/go-faster/oteldb/internal/tempopb";
+
+import "trace/v1/trace.proto";
+
+message TraceByIDResponse {
+  Trace trace = 1;
+  TraceByIDMetrics metrics = 2;
+  PartialStatus status = 3;
+  string message = 4;
+}
+
+message Trace {
+  repeated opentelemetry.proto.trace.v1.ResourceSpans resourceSpans = 1;
+}
+
+// ExportTraceServiceRequest is the OTLP collector request format returned by TraceByID (v1).
+message ExportTraceServiceRequest {
+  repeated opentelemetry.proto.trace.v1.ResourceSpans resource_spans = 1;
+}
+
+message TraceByIDMetrics {
+  uint64 inspectedBytes = 1;
+}
+
+enum PartialStatus {
+  COMPLETE = 0;
+  PARTIAL = 1;
+}
