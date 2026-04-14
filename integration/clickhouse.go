@@ -2,13 +2,9 @@ package integration
 
 import (
 	"fmt"
+	"net/url"
 	"testing"
-	"time"
 
-	"github.com/ClickHouse/ch-go"
-	"github.com/ClickHouse/ch-go/chpool"
-	"github.com/cenkalti/backoff/v4"
-	"github.com/go-faster/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	testcontainerslog "github.com/testcontainers/testcontainers-go/log"
@@ -63,28 +59,15 @@ func SetupCH(t *testing.T, opts SetupCHOptions) (testcontainers.Container, chsto
 	endpoint, err := chContainer.PortEndpoint(ctx, "9000", "")
 	require.NoError(t, err, "container endpoint")
 
-	clientOpts := ch.Options{
-		Address:  endpoint,
-		Database: "default",
-		User:     "default",
-		Password: "default",
+	dsn := (&url.URL{
+		Scheme:   "clickhouse",
+		Host:     endpoint,
+		User:     url.UserPassword("default", "default"),
+		RawQuery: "compression=zstd",
+		Path:     "/default",
+	}).String()
 
-		OpenTelemetryInstrumentation: true,
-		TracerProvider:               opts.TracerProvider,
-	}
-
-	connectBackoff := backoff.NewExponentialBackOff()
-	connectBackoff.InitialInterval = 2 * time.Second
-	connectBackoff.MaxElapsedTime = time.Minute
-	c, err := backoff.RetryWithData(func() (*chpool.Pool, error) {
-		c, err := chpool.Dial(ctx, chpool.Options{
-			ClientOptions: clientOpts,
-		})
-		if err != nil {
-			return nil, errors.Wrap(err, "dial")
-		}
-		return c, nil
-	}, connectBackoff)
+	c, err := chstorage.Dial(ctx, dsn, chstorage.DialOptions{TracerProvider: opts.TracerProvider})
 	if err != nil {
 		t.Fatal(err)
 	}
