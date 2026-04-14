@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +39,49 @@ func (opts *DialOptions) setDefaults() {
 	if opts.Logger == nil {
 		opts.Logger = zap.NewNop()
 	}
+}
+
+func parseCompressionType(opts *ch.Options, q url.Values, lg *zap.Logger) {
+	v := q.Get("compression")
+	if v == "" {
+		return
+	}
+
+	compression, err := ch.CompressionString(strings.ToLower(v))
+	if err != nil {
+		lg.Warn("Invalid compression value, using default", zap.String("compression", v))
+		return
+	}
+
+	lg.Debug("Using compression", zap.Stringer("compression", compression))
+	opts.Compression = compression
+}
+
+func parseCompressionLevel(opts *ch.Options, q url.Values, lg *zap.Logger) {
+	v := q.Get("compression_level")
+	if v == "" {
+		return
+	}
+
+	compressionLevel, err := strconv.ParseUint(v, 10, 32)
+	if err != nil {
+		lg.Warn("Invalid compression level value", zap.String("compression_level", v), zap.Error(err))
+		return
+	}
+
+	if opts.Compression != ch.CompressionLZ4HC {
+		lg.Warn("Compression level is only applicable for LZ4HC compression method, ignoring")
+		return
+	}
+
+	lg.Debug("Using compression level", zap.Uint64("compression_level", compressionLevel))
+	opts.CompressionLevel = ch.CompressionLevel(compressionLevel)
+}
+
+// parseCompressionParams parses compression parameters from URL query and applies them to ClickHouse options.
+func parseCompressionParams(opts *ch.Options, q url.Values, lg *zap.Logger) {
+	parseCompressionType(opts, q, lg)
+	parseCompressionLevel(opts, q, lg)
 }
 
 // Dial creates new [ClickHouseClient] using given DSN.
@@ -76,6 +120,8 @@ func Dial(ctx context.Context, dsn string, opts DialOptions) (ClickHouseClient, 
 		// Capture query body and other parameters.
 		OpenTelemetryInstrumentation: true,
 	}
+	q := u.Query()
+	parseCompressionParams(&chOpts, q, chLogger)
 
 	connectBackoff := backoff.NewExponentialBackOff()
 	connectBackoff.InitialInterval = 2 * time.Second
