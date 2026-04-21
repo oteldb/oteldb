@@ -36,7 +36,7 @@ require (
 	github.com/klauspost/compress v1.18.5
 	github.com/kr/logfmt v0.0.0-20210122060352-19f9bcb100e6
 	github.com/mattn/go-isatty v0.0.21
-	github.com/moby/moby/api v1.54.1
+	github.com/moby/moby/api v1.54.2
 	github.com/moby/moby/client v0.4.0
 	github.com/ogen-go/ogen v1.20.3
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector v0.150.0
