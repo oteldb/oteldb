@@ -37,7 +37,7 @@ require (
 	github.com/kr/logfmt v0.0.0-20210122060352-19f9bcb100e6
 	github.com/mattn/go-isatty v0.0.21
 	github.com/moby/moby/api v1.54.2
-	github.com/moby/moby/client v0.4.0
+	github.com/moby/moby/client v0.4.1
 	github.com/ogen-go/ogen v1.20.3
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector v0.150.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector v0.150.0
@@ -171,7 +171,7 @@ require (
 	github.com/dmarkham/enumer v1.6.3 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.5 // indirect
-	github.com/docker/go-connections v0.6.0 // indirect
+	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-metrics v0.0.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
