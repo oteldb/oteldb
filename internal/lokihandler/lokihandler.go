@@ -49,7 +49,55 @@ func NewLokiAPI(q logstorage.Querier, engine *logqlengine.Engine, opts LokiAPIOp
 //
 // GET /loki/api/v1/detected_field/{field}/values
 func (h *LokiAPI) DetectedFieldValues(ctx context.Context, params lokiapi.DetectedFieldValuesParams) (*lokiapi.DetectedFieldValues, error) {
-	return &lokiapi.DetectedFieldValues{}, nil
+	lg := zctx.From(ctx)
+
+	start, end, err := parseTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		h.opts.DefaultSince,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
+	var sel logql.Selector
+	if q := params.Query.Or(""); q != "" {
+		sel, err = logql.ParseSelector(q, h.engine.ParseOptions())
+		if err != nil {
+			return nil, validationErr(err, "parse query")
+		}
+	}
+
+	iter, err := h.q.LabelValues(ctx, params.Field, logstorage.LabelsOptions{
+		Start: start,
+		End:   end,
+		Query: sel,
+	})
+	if err != nil {
+		return nil, executionErr(err, "get label values")
+	}
+	defer func() {
+		_ = iter.Close()
+	}()
+
+	var values []string
+	if err := iterators.ForEach(iter, func(tag logstorage.Label) error {
+		values = append(values, tag.Value)
+		return nil
+	}); err != nil {
+		return nil, executionErr(err, "read label values")
+	}
+	lg.Debug("Got detected label values",
+		zap.String("field", params.Field),
+		zap.Int("count", len(values)),
+	)
+
+	return &lokiapi.DetectedFieldValues{
+		Values: lokiapi.NewOptNilStringArray(values),
+		Limit:  lokiapi.NewOptUint64(uint64(len(values))),
+	}, nil
 }
 
 // DetectedFields implements detectedFields operation.
@@ -181,10 +229,10 @@ func (h *LokiAPI) LabelValues(ctx context.Context, params lokiapi.LabelValuesPar
 		values = append(values, tag.Value)
 		return nil
 	}); err != nil {
-		return nil, executionErr(err, "read tags")
+		return nil, executionErr(err, "read label values")
 	}
-	lg.Debug("Got tag values",
-		zap.String("label_name", params.Name),
+	lg.Debug("Got label values",
+		zap.String("name", params.Name),
 		zap.Int("count", len(values)),
 	)
 
