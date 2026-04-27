@@ -358,6 +358,131 @@ func (q *Querier) DetectedLabels(ctx context.Context, opts logstorage.LabelsOpti
 	return values, nil
 }
 
+// DetectedFields implements [logstorage.Querier].
+func (q *Querier) DetectedFields(ctx context.Context, opts logstorage.LabelsOptions) (values []logstorage.DetectedField, rerr error) {
+	table := q.tables.Logs
+
+	ctx, span := q.tracer.Start(ctx, "chstorage.logs.DetectedFields",
+		trace.WithAttributes(
+			xattribute.UnixNano("chstorage.range.start", opts.Start),
+			xattribute.UnixNano("chstorage.range.end", opts.End),
+			attribute.Stringer("chstorage.matchers", opts.Query),
+			attribute.Int("chstorage.limit", opts.Limit),
+
+			attribute.String("chstorage.table", table),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+		}
+		span.End()
+	}()
+
+	limit := q.labelLimit
+	if l := opts.Limit; l > 0 && l < limit {
+		limit = l
+	}
+	if limit < 0 {
+		limit = 0
+	}
+	queryLabels := make([]string, 0, len(opts.Query.Matchers))
+	for _, m := range opts.Query.Matchers {
+		queryLabels = append(queryLabels, string(m.Label))
+	}
+	mapping, err := q.getLabelMapping(ctx, queryLabels)
+	if err != nil {
+		return nil, errors.Wrap(err, "get label mapping")
+	}
+
+	// Deduplicate by resource first (LowCardinality — few distinct values), then explode
+	// key-value pairs using arrayZip so each key stays paired with its value.
+	// WITH defines the tuple alias once and re-uses it in both SELECT columns.
+	innerQuery := chsql.Select(table,
+		chsql.ResultColumn{
+			Name: "pairs",
+			Expr: attrStringMap(colResource),
+		},
+	).GroupBy(chsql.Ident(colResource)).
+		Where(chsql.InTimeRange("timestamp", opts.Start, opts.End, proto.PrecisionNano))
+	for _, m := range opts.Query.Matchers {
+		innerQuery.Where(q.logQLLabelMatcher(m, mapping))
+	}
+
+	var (
+		name        proto.ColStr
+		cardinality proto.ColUInt64
+
+		query = chsql.SelectFrom(innerQuery,
+			chsql.ResultColumn{
+				Name: "label",
+				Expr: chsql.Function("tupleElement", chsql.Ident("tuple"), chsql.Integer(1)),
+				Data: &name,
+			},
+			chsql.ResultColumn{
+				Name: "cardinality",
+				Expr: chsql.Function("uniq",
+					chsql.Function("tupleElement", chsql.Ident("tuple"), chsql.Integer(2)),
+				),
+				Data: &cardinality,
+			},
+		).
+			With("tuple", chsql.ArrayJoin(
+				chsql.Function("arrayZip",
+					chsql.Function("mapKeys", chsql.Ident("pairs")),
+					chsql.Function("mapValues", chsql.Ident("pairs")),
+				),
+			)).
+			GroupBy(chsql.Ident("label")).
+			Limit(limit)
+	)
+
+	seen := map[string]struct{}{}
+	if err := q.do(ctx, selectQuery{
+		Query: query,
+		OnResult: func(ctx context.Context, block proto.Block) error {
+			for i := 0; i < name.Rows(); i++ {
+				k := otelstorage.KeyToLabel(name.Row(i))
+				if k == "" {
+					continue
+				}
+				seen[k] = struct{}{}
+				values = append(values, logstorage.DetectedField{
+					Name:        k,
+					Type:        "string",
+					Cardinality: cardinality.Row(i),
+				})
+			}
+			return nil
+		},
+
+		Type:   "DetectedFields",
+		Signal: "logs",
+		Table:  table,
+	}); err != nil {
+		return nil, err
+	}
+
+	for _, k := range q.getMaterializedLabelNames() {
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		values = append(values, logstorage.DetectedField{
+			Name:        k,
+			Type:        "string",
+			Cardinality: 1,
+		})
+	}
+	slices.SortFunc(values, func(a, b logstorage.DetectedField) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	span.AddEvent("fields_fetched", trace.WithAttributes(
+		attribute.Int("chstorage.total_fields", len(values)),
+	))
+	return values, nil
+}
+
 func (q *Querier) getLabelMapping(ctx context.Context, labels []string) (_ map[string]string, rerr error) {
 	table := q.tables.LogAttrs
 

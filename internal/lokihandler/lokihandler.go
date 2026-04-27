@@ -106,7 +106,50 @@ func (h *LokiAPI) DetectedFieldValues(ctx context.Context, params lokiapi.Detect
 //
 // GET /loki/api/v1/detected_fields
 func (h *LokiAPI) DetectedFields(ctx context.Context, params lokiapi.DetectedFieldsParams) (*lokiapi.DetectedFields, error) {
-	return &lokiapi.DetectedFields{}, nil
+	lg := zctx.From(ctx)
+
+	start, end, err := parseTimeRange(
+		time.Now(),
+		params.Start,
+		params.End,
+		params.Since,
+		h.opts.DefaultSince,
+	)
+	if err != nil {
+		return nil, validationErr(err, "parse time range")
+	}
+
+	var sel logql.Selector
+	if q := params.Query.Or(""); q != "" {
+		sel, err = logql.ParseSelector(q, h.engine.ParseOptions())
+		if err != nil {
+			return nil, validationErr(err, "parse query")
+		}
+	}
+
+	fields, err := h.q.DetectedFields(ctx, logstorage.LabelsOptions{
+		Start: start,
+		End:   end,
+		Query: sel,
+	})
+	if err != nil {
+		return nil, executionErr(err, "get detected fields")
+	}
+	lg.Debug("Got detected fields", zap.Int("count", len(fields)))
+
+	result := make([]lokiapi.DetectedField, len(fields))
+	for i, f := range fields {
+		result[i] = lokiapi.DetectedField{
+			Label:       lokiapi.NewOptString(f.Name),
+			Type:        lokiapi.NewOptString(f.Type),
+			Cardinality: lokiapi.NewOptInt(int(f.Cardinality)),
+		}
+	}
+
+	return &lokiapi.DetectedFields{
+		Fields: result,
+		Limit:  lokiapi.NewOptUint64(uint64(len(result))),
+	}, nil
 }
 
 // DetectedLabels implements detectedLabels operation.
