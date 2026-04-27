@@ -43,6 +43,21 @@ func NewLokiAPI(q logstorage.Querier, engine *logqlengine.Engine, opts LokiAPIOp
 	}
 }
 
+func (h *LokiAPI) parseQuery(param lokiapi.OptString) (logql.Selector, error) {
+	q := param.Or("")
+	if q == "" {
+		return logql.Selector{}, nil
+	}
+	seq, err := logql.ExtractSelectors(q, h.engine.ParseOptions())
+	if err != nil {
+		return logql.Selector{}, validationErr(err, "parse query")
+	}
+	for sel := range seq {
+		return sel, nil
+	}
+	return logql.Selector{}, nil
+}
+
 // DetectedFieldValues implements detectedFieldValues operation.
 //
 // Get detected field values.
@@ -62,12 +77,9 @@ func (h *LokiAPI) DetectedFieldValues(ctx context.Context, params lokiapi.Detect
 		return nil, validationErr(err, "parse time range")
 	}
 
-	var sel logql.Selector
-	if q := params.Query.Or(""); q != "" {
-		sel, err = logql.ParseSelector(q, h.engine.ParseOptions())
-		if err != nil {
-			return nil, validationErr(err, "parse query")
-		}
+	sel, err := h.parseQuery(params.Query)
+	if err != nil {
+		return nil, validationErr(err, "parse query")
 	}
 
 	iter, err := h.q.LabelValues(ctx, params.Field, logstorage.LabelsOptions{
@@ -119,12 +131,9 @@ func (h *LokiAPI) DetectedFields(ctx context.Context, params lokiapi.DetectedFie
 		return nil, validationErr(err, "parse time range")
 	}
 
-	var sel logql.Selector
-	if q := params.Query.Or(""); q != "" {
-		sel, err = logql.ParseSelector(q, h.engine.ParseOptions())
-		if err != nil {
-			return nil, validationErr(err, "parse query")
-		}
+	sel, err := h.parseQuery(params.Query)
+	if err != nil {
+		return nil, validationErr(err, "parse query")
 	}
 
 	fields, err := h.q.DetectedFields(ctx, logstorage.LabelsOptions{
@@ -174,12 +183,9 @@ func (h *LokiAPI) DetectedLabels(ctx context.Context, params lokiapi.DetectedLab
 		return nil, validationErr(err, "parse time range")
 	}
 
-	var sel logql.Selector
-	if q := params.Query.Or(""); q != "" {
-		sel, err = logql.ParseSelector(q, h.engine.ParseOptions())
-		if err != nil {
-			return nil, validationErr(err, "parse query")
-		}
+	sel, err := h.parseQuery(params.Query)
+	if err != nil {
+		return nil, validationErr(err, "parse query")
 	}
 	labels, err := h.q.DetectedLabels(ctx, logstorage.LabelsOptions{
 		Start: start,
@@ -247,12 +253,9 @@ func (h *LokiAPI) LabelValues(ctx context.Context, params lokiapi.LabelValuesPar
 		return nil, validationErr(err, "parse time range")
 	}
 
-	var sel logql.Selector
-	if q := params.Query.Or(""); q != "" {
-		sel, err = logql.ParseSelector(q, h.engine.ParseOptions())
-		if err != nil {
-			return nil, validationErr(err, "parse query")
-		}
+	sel, err := h.parseQuery(params.Query)
+	if err != nil {
+		return nil, validationErr(err, "parse query")
 	}
 
 	iter, err := h.q.LabelValues(ctx, params.Name, logstorage.LabelsOptions{
