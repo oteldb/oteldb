@@ -175,14 +175,20 @@ func (t *testMetrics) TracerProvider() trace.TracerProvider {
 
 func TestInstrument(t *testing.T) {
 	const (
-		code    = http.StatusOK
-		addr    = "aboba"
-		port    = 9090
-		service = "abobapi"
+		code        = http.StatusOK
+		addr        = "aboba"
+		port        = 9090
+		service     = "abobapi"
+		contentType = "application/json"
 	)
+
+	attrSet := func(base attribute.Set, kvs ...attribute.KeyValue) attribute.Set {
+		return attribute.NewSet(slices.Concat(base.ToSlice(), kvs)...)
+	}
 
 	provider := integration.NewProvider()
 	fn := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", contentType)
 		w.WriteHeader(code)
 	})
 	h := Wrap(fn,
@@ -203,31 +209,34 @@ func TestInstrument(t *testing.T) {
 		URL: &url.URL{
 			Path: testOgenRoutePath,
 		},
+		Header: http.Header{},
 	}
+	req.Header.Set("Accept", contentType)
 	h.ServeHTTP(rw, req.WithContext(context.Background()))
 	require.Equal(t, http.StatusOK, rw.Code)
 	provider.Flush()
 
-	otelhttpAttrs := []attribute.KeyValue{
+	otelhttpAttrs := attrSet(attribute.Set{},
 		attribute.String("http.request.method", req.Method),
 		attribute.Int("http.response.status_code", code),
 		attribute.String("server.address", addr),
 		attribute.Int("server.port", port),
 		attribute.String("url.path", testOgenRoutePath),
 		attribute.String("url.scheme", "http"),
-	}
+	)
+	spanAttrs := attrSet(otelhttpAttrs,
+		attribute.String("http.request.header.accept", contentType),
+		attribute.String("http.response.header.content_type", contentType),
+	)
 	{
 		spans := provider.Exporter.GetSpans()
 		require.Len(t, spans, 1)
 		span := spans[0]
 
-		// Sort/deduplicate.
-		set := attribute.NewSet(span.Attributes...)
-		attrs := set.ToSlice()
-
+		spanSet := attrSet(attribute.Set{}, span.Attributes...)
 		require.Equal(t,
-			otelhttpAttrs,
-			attrs,
+			spanAttrs.ToSlice(),
+			spanSet.ToSlice(),
 		)
 	}
 	{
@@ -303,14 +312,11 @@ func TestInstrument(t *testing.T) {
 			}
 			t.Logf("metric: %q", m.Name)
 
-			expectedSet := attribute.NewSet(slices.Concat(
-				otelhttpAttrs,
-				[]attribute.KeyValue{
-					attribute.String("oas.route.name", testOgenRouteName),
-					attribute.String("oas.operation.id", testOgenRouteID),
-					attribute.String("oteldb.api", service),
-				},
-			)...)
+			expectedSet := attrSet(otelhttpAttrs,
+				attribute.String("oas.route.name", testOgenRouteName),
+				attribute.String("oas.operation.id", testOgenRouteID),
+				attribute.String("oteldb.api", service),
+			)
 			expectedSet, _ = expectedSet.Filter(attribute.NewDenyKeysFilter(
 				"url.path",
 			))

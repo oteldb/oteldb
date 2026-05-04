@@ -31,5 +31,12 @@ type DetectedLabel struct {
 	Cardinality int    `json:"cardinality"`
 }
 
+// DetectedField is a detected field with type and cardinality information.
+type DetectedField struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Cardinality uint64 `json:"cardinality"`
+}
+
 // Series defines a list of series.
 type Series []map[string]string

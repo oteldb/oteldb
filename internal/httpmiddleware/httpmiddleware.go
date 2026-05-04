@@ -88,8 +88,20 @@ func Instrument(endpoint, serviceName string, find RouteFinder, m Metrics) Middl
 			h.ServeHTTP(w, r)
 		})
 	}
+	captureHTTPAttrs := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			span := trace.SpanFromContext(r.Context())
+			if v := r.Header.Get("Accept"); v != "" {
+				span.SetAttributes(attribute.String("http.request.header.accept", v))
+			}
+			next.ServeHTTP(w, r)
+			if ct := w.Header().Get("Content-Type"); ct != "" {
+				span.SetAttributes(attribute.String("http.response.header.content_type", ct))
+			}
+		})
+	}
 	return func(h http.Handler) http.Handler {
-		h = otelhttp.NewHandler(h, "",
+		h = otelhttp.NewHandler(captureHTTPAttrs(h), "",
 			otelhttp.WithPropagators(m.TextMapPropagator()),
 			otelhttp.WithTracerProvider(m.TracerProvider()),
 			otelhttp.WithMeterProvider(m.MeterProvider()),
