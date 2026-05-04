@@ -4,7 +4,6 @@ linters:
   enable:
     - dogsled
     - errcheck
-    - goconst
     - gocritic
     - gosec
     - govet
@@ -107,11 +106,6 @@ linters:
         text: method Seek
         source: func.+Seek\(.+int64\).+chunkenc\.ValueType
 
-      # Not gonna use const, does not make any sense.
-      - linters:
-          - goconst
-        path: internal/logparser
-        text: (trace|span)_?[Ii][Dd]
 
       # Our AST packages contain a lot of interface-based sum types.
       # Defining methods in one place next to the interface is better for readability.
