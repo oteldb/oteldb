@@ -3,7 +3,6 @@ package chdump
 import (
 	"github.com/ClickHouse/ch-go/proto"
 	"github.com/go-faster/errors"
-	"golang.org/x/exp/maps"
 
 	"github.com/go-faster/oteldb/internal/otelstorage"
 )
@@ -58,7 +57,7 @@ func (a *Attributes) Reset() {
 	a.col.Reset()
 	a.index.Reset()
 	a.values = a.values[:0]
-	maps.Clear(a.hashes)
+	clear(a.hashes)
 	a.col.Key = proto.KeyUInt64
 }
 

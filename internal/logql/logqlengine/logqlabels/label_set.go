@@ -7,7 +7,6 @@ import (
 	"github.com/go-faster/errors"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
-	"golang.org/x/exp/maps"
 
 	"github.com/go-faster/oteldb/internal/logql"
 	"github.com/go-faster/oteldb/internal/logstorage"
@@ -37,7 +36,7 @@ func (l *LabelSet) Reset() {
 	if l.labels == nil {
 		l.labels = map[logql.Label]pcommon.Value{}
 	}
-	maps.Clear(l.labels)
+	clear(l.labels)
 }
 
 // AsLokiAPI returns lokiapi.LabelSet

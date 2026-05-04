@@ -4,7 +4,6 @@ import (
 	"github.com/ClickHouse/ch-go/proto"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
-	"golang.org/x/exp/maps"
 
 	"github.com/go-faster/oteldb/internal/chstorage/chsql"
 	"github.com/go-faster/oteldb/internal/ddl"
@@ -115,7 +114,7 @@ func (a *jsonLowCardinalityAttrCol) Reset() {
 	a.col.Reset()
 	a.index.Reset()
 	a.values = a.values[:0]
-	maps.Clear(a.hashes)
+	clear(a.hashes)
 	a.col.Key = proto.KeyUInt64
 }
 
