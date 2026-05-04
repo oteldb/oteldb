@@ -133,6 +133,27 @@ func (s *promScanners) NewMatrixSelector(
 		hints.ProjectionLabels = vs.Projection.Labels
 		hints.ProjectionInclude = vs.Projection.Include
 	}
+	if call.Func.Name == "rate" {
+		q := s.storage.metricsQuerier(hints.Start, hints.End)
+		op := newRateSelector(
+			q,
+			vs.Filters,
+			opts,
+			metricSelectParams{
+				Matchers: vs.LabelMatchers,
+				Step:     opts.Step,
+				Start:    opts.Start,
+				End:      opts.End,
+				Range:    logicalNode.Range,
+				Offset:   vs.Offset,
+				Function: call.Func.Name,
+			},
+			vs.Offset,
+			vs.BatchSize,
+		)
+		op = exchange.NewConcurrent(op, 2, opts)
+		return op, nil
+	}
 
 	q, err := s.storage.Querier(hints.Start, hints.End)
 	if err != nil {

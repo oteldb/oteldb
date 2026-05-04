@@ -283,6 +283,7 @@ type metricSelectParams struct {
 
 	Range         time.Duration
 	LookbackDelta time.Duration
+	Offset        time.Duration
 
 	Function string
 
@@ -326,6 +327,7 @@ func (p *metricSelectParams) Hash(samplePoints bool) xxh3.Uint128 {
 	writeInt64(h, p.End.UnixMilli())
 	writeInt64(h, p.Range.Milliseconds())
 	writeInt64(h, p.LookbackDelta.Milliseconds())
+	writeInt64(h, p.Offset.Milliseconds())
 	writeString(h, p.Function)
 	writeBool(h, p.SelectTimestamp)
 	writeBool(h, p.GroupBy)
@@ -441,6 +443,14 @@ func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params
 	if p.timeseriesLimit > 0 && len(timeseries) > p.timeseriesLimit {
 		trace.SpanFromContext(ctx).AddEvent("chstorage.too_many_timeseries")
 		return result, errors.Wrapf(ErrMetricsTooManySeries, "%d > %d series requested", len(timeseries), p.timeseriesLimit)
+	}
+	if samplePoints && params.Function == "rate" {
+		points, err := p.queryRatePoints(ctx, params.Start, params.End, params.Step, params.Range, params.Offset, timeseries)
+		if err != nil {
+			return result, errors.Wrap(err, "query rate points")
+		}
+		result.points = points
+		return result, nil
 	}
 
 	step := params.Step
