@@ -401,9 +401,18 @@ func (q *Querier) DetectedFields(ctx context.Context, opts logstorage.LabelsOpti
 	innerQuery := chsql.Select(table,
 		chsql.ResultColumn{
 			Name: "pairs",
-			Expr: attrStringMap(colResource),
+			Expr: chsql.MapConcat(
+				q.getMaterializedLabelMap(),
+				attrStringMap(colResource),
+			),
 		},
-	).GroupBy(chsql.Ident(colResource)).
+	).GroupBy(
+		chsql.Ident(colResource),
+		chsql.Ident("service_name"),
+		chsql.Ident("service_instance_id"),
+		chsql.Ident("service_namespace"),
+		chsql.Ident("severity_text"),
+	).
 		Where(chsql.InTimeRange("timestamp", opts.Start, opts.End, proto.PrecisionNano))
 	for _, m := range opts.Query.Matchers {
 		innerQuery.Where(q.logQLLabelMatcher(m, mapping))
@@ -463,16 +472,6 @@ func (q *Querier) DetectedFields(ctx context.Context, opts logstorage.LabelsOpti
 		return nil, err
 	}
 
-	for _, k := range q.getMaterializedLabelNames() {
-		if _, ok := seen[k]; ok {
-			continue
-		}
-		values = append(values, logstorage.DetectedField{
-			Name:        k,
-			Type:        "string",
-			Cardinality: 1,
-		})
-	}
 	slices.SortFunc(values, func(a, b logstorage.DetectedField) int {
 		return strings.Compare(a.Name, b.Name)
 	})
