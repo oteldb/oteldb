@@ -108,20 +108,20 @@ func (b *DashboardBenchmark) Run(ctx context.Context) error {
 
 		if len(durations) > 0 {
 			var totalDur time.Duration
-			min := durations[0]
-			max := durations[0]
+			minDur := durations[0]
+			maxDur := durations[0]
 			for _, d := range durations {
 				totalDur += d
-				if d < min {
-					min = d
+				if d < minDur {
+					minDur = d
 				}
-				if d > max {
-					max = d
+				if d > maxDur {
+					maxDur = d
 				}
 			}
 			res.Avg = totalDur / time.Duration(len(durations))
-			res.Min = min
-			res.Max = max
+			res.Min = minDur
+			res.Max = maxDur
 
 			slices.Sort(durations)
 			res.P99 = durations[len(durations)*99/100]
@@ -198,7 +198,9 @@ func (b *DashboardBenchmark) loadDashboard() (*grafanaDashboard, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	var d grafanaDashboard
 	if err := json.NewDecoder(f).Decode(&d); err != nil {
@@ -260,7 +262,7 @@ func (b *DashboardBenchmark) interpolate(s string) string {
 	return s
 }
 
-func (b *DashboardBenchmark) execute(ctx context.Context, q extractedQuery) (bool, int, error) {
+func (b *DashboardBenchmark) execute(ctx context.Context, q extractedQuery) (isEmpty bool, n int, err error) {
 	switch q.Type {
 	case promQL:
 		return b.executePromQL(ctx, q)
@@ -273,7 +275,7 @@ func (b *DashboardBenchmark) execute(ctx context.Context, q extractedQuery) (boo
 	}
 }
 
-func (b *DashboardBenchmark) executePromQL(ctx context.Context, q extractedQuery) (bool, int, error) {
+func (b *DashboardBenchmark) executePromQL(ctx context.Context, q extractedQuery) (isEmpty bool, n int, err error) {
 	if b.start.IsZero() || b.end.IsZero() {
 		resp, err := b.promClient.GetQuery(ctx, promapi.GetQueryParams{
 			Query: q.Expr,
@@ -299,7 +301,7 @@ func (b *DashboardBenchmark) executePromQL(ctx context.Context, q extractedQuery
 	if err != nil {
 		return false, 0, err
 	}
-	n := 0
+	n = 0
 	switch resp.Data.Type {
 	case promapi.MatrixData:
 		n = len(resp.Data.Matrix.Result)
@@ -309,7 +311,7 @@ func (b *DashboardBenchmark) executePromQL(ctx context.Context, q extractedQuery
 	return n == 0, n, nil
 }
 
-func (b *DashboardBenchmark) executeLogQL(ctx context.Context, q extractedQuery) (bool, int, error) {
+func (b *DashboardBenchmark) executeLogQL(ctx context.Context, q extractedQuery) (isEmpty bool, n int, err error) {
 	if b.start.IsZero() || b.end.IsZero() {
 		resp, err := b.lokiClient.Query(ctx, lokiapi.QueryParams{
 			Query: q.Expr,
@@ -337,7 +339,7 @@ func (b *DashboardBenchmark) executeLogQL(ctx context.Context, q extractedQuery)
 	if err != nil {
 		return false, 0, err
 	}
-	n := 0
+	n = 0
 	switch resp.Data.Type {
 	case lokiapi.StreamsResultQueryResponseData:
 		n = len(resp.Data.StreamsResult.Result)
@@ -349,7 +351,7 @@ func (b *DashboardBenchmark) executeLogQL(ctx context.Context, q extractedQuery)
 	return n == 0, n, nil
 }
 
-func (b *DashboardBenchmark) executeTraceQL(ctx context.Context, q extractedQuery) (bool, int, error) {
+func (b *DashboardBenchmark) executeTraceQL(ctx context.Context, q extractedQuery) (isEmpty bool, n int, err error) {
 	resp, err := b.tempoClient.Search(ctx, tempoapi.SearchParams{
 		Q:     tempoapi.NewOptString(q.Expr),
 		Start: tempoapi.NewOptTempoTime(tempoapi.TempoTime(b.start.Format(time.RFC3339Nano))),
@@ -358,7 +360,7 @@ func (b *DashboardBenchmark) executeTraceQL(ctx context.Context, q extractedQuer
 	if err != nil {
 		return false, 0, err
 	}
-	n := len(resp.Traces)
+	n = len(resp.Traces)
 	return n == 0, n, nil
 }
 
@@ -421,7 +423,7 @@ func (b *DashboardBenchmark) report(results []queryResult) error {
 		return err
 	}
 
-	return os.WriteFile(b.Output, out, 0644)
+	return os.WriteFile(b.Output, out, 0o644)
 }
 
 type grafanaDashboard struct {
@@ -437,12 +439,12 @@ type grafanaTarget struct {
 	Datasource grafanaDatasource `json:"datasource"`
 	Expr       string            `json:"expr"`
 	Query      string            `json:"query"`
-	RefId      string            `json:"refId"`
+	RefID      string            `json:"refId"`
 }
 
 type grafanaDatasource struct {
 	Type string `json:"type"`
-	Uid  string `json:"uid"`
+	UID  string `json:"uid"`
 }
 
 func (d *grafanaDatasource) UnmarshalJSON(data []byte) error {
@@ -468,7 +470,7 @@ func newDashboardBenchmarkCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bench",
 		Short: "Run dashboard benchmarks",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return b.Run(cmd.Context())
 		},
 	}
