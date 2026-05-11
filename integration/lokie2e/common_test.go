@@ -343,6 +343,44 @@ func runTest(
 			}
 		})
 	})
+	t.Run("DetectedFields", func(t *testing.T) {
+		a := require.New(t)
+		r, err := c.DetectedFields(ctx, lokiapi.DetectedFieldsParams{
+			// Always sending time range because default is current time.
+			Start: lokiapi.NewOptLokiTime(asLokiTime(set.Start)),
+			End:   lokiapi.NewOptLokiTime(asLokiTime(set.End)),
+		})
+		a.NoError(err)
+
+		var (
+			fields      = r.Fields
+			names       []string
+			cardinality = map[string]int{}
+		)
+		for _, f := range fields {
+			name := f.Label.Value
+			names = append(names, name)
+			cardinality[name] = f.Cardinality.Value
+		}
+		slices.Sort(names)
+
+		// service_instance_id is not set in generateLogs, so it might be missing
+		// or have cardinality 0/1 (empty string).
+		// In loadTestData, we set mul=1, which means 141 records.
+		// Let's check what's actually expected.
+		a.Subset(names, []string{"level", "service_name", "service_namespace", "service_version"})
+
+		// level: Info (200, 300) and Fatal (500).
+		// generateLogs creates 2 types of status: 200 and 500.
+		// So cardinality should be 2.
+		a.Equal(2, cardinality["level"])
+		// service_name: testService and fooService.
+		a.Equal(2, cardinality["service_name"])
+		// service_namespace: testNamespace and fooNamespace.
+		a.Equal(2, cardinality["service_namespace"])
+		// service_version: testVersion.
+		a.Equal(1, cardinality["service_version"])
+	})
 	t.Run("LogQueries", func(t *testing.T) {
 		tests := []struct {
 			query   string

@@ -2,7 +2,9 @@ package logql
 
 import (
 	"fmt"
+	"iter"
 	"regexp"
+	"slices"
 	"testing"
 	"time"
 
@@ -1344,6 +1346,106 @@ func FuzzParse(f *testing.F) {
 			_, _ = Parse(input, ParseOptions{AllowDots: true})
 		}()
 	})
+}
+
+var (
+	emptySel  = []Selector{{}}
+	foobarSel = []Selector{
+		{
+			Matchers: []LabelMatcher{
+				{Label: "foo", Op: OpEq, Value: "bar"},
+			},
+		},
+	}
+	extractSelectorsTests = []struct {
+		input   string
+		wantSel []Selector
+		wantErr bool
+	}{
+		{`{}`, emptySel, false},
+		{`{} | json`, emptySel, false},
+
+		{`1`, nil, false},
+		{`sum(vector(2)*vector(2))`, nil, false},
+		{`vector(2)`, nil, false},
+		{`vector(2)*vector(3)+vector(4)`, nil, false},
+
+		{`{foo="bar"}`, foobarSel, false},
+		{`({foo="bar"})`, foobarSel, false},
+		{`{foo="bar"} | json`, foobarSel, false},
+		{`count_over_time({foo="bar"}[1m])`, foobarSel, false},
+		{`sum by (foo) (rate({foo="bar"}[1m]))`, foobarSel, false},
+		{`label_replace(rate({foo="bar"}[1m]), "dst", "replacement", "src", ".*")`, foobarSel, false},
+		{`rate({foo="bar"}[1m])*rate({foo="bar"}[1m])+rate({foo="bar"}[1m])`, slices.Repeat(foobarSel, 3), false},
+
+		{`sum(vector(2)*vector(2))`, nil, false},
+
+		// Invalid syntax.
+		{``, nil, true},
+	}
+)
+
+func TestExtractSelectors(t *testing.T) {
+	for i, tt := range extractSelectorsTests {
+		tt := tt
+		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+			gotSel, err := ExtractSelectors(tt.input, ParseOptions{AllowDots: true})
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			sels := slices.Collect(gotSel)
+			require.Equal(t, tt.wantSel, sels)
+
+			for i := range tt.wantSel {
+				onlyNSels := collectOnly(gotSel, i)
+				require.Equal(t, tt.wantSel[:i], onlyNSels)
+			}
+		})
+	}
+}
+
+func FuzzExtractSelectors(f *testing.F) {
+	for _, tt := range tests {
+		f.Add(tt.input)
+	}
+	for _, tt := range extractSelectorsTests {
+		f.Add(tt.input)
+	}
+	f.Fuzz(func(t *testing.T, input string) {
+		defer func() {
+			if r := recover(); r != nil || t.Failed() {
+				t.Logf("Input:\n%s", input)
+			}
+
+			seq, err := ExtractSelectors(input, ParseOptions{AllowDots: true})
+			if err != nil {
+				t.Skipf("Invalid input: %v", err)
+				return
+			}
+
+			for sel := range seq {
+				require.NotEmpty(t, sel.String())
+			}
+		}()
+	})
+}
+
+// collectOnly collects only n elements from the given sequence.
+func collectOnly[T any](seq iter.Seq[T], n int) []T {
+	var (
+		s   = []T{}
+		idx int
+	)
+	for v := range seq {
+		if idx == n {
+			break
+		}
+		s = append(s, v)
+		idx++
+	}
+	return s
 }
 
 func TestParseSelector(t *testing.T) {

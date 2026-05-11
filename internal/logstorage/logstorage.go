@@ -19,6 +19,8 @@ type Querier interface {
 	Series(ctx context.Context, opts SeriesOptions) (Series, error)
 	// DetectedLabels returns cardinality of all detected labels.
 	DetectedLabels(ctx context.Context, opts LabelsOptions) ([]DetectedLabel, error)
+	// DetectedFields returns detected fields with type and cardinality.
+	DetectedFields(ctx context.Context, opts LabelsOptions) ([]DetectedField, error)
 }
 
 // LabelsOptions defines options for [Querier.LabelNames] and [Querier.LabelValues] methods.
