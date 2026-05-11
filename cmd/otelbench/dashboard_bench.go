@@ -1,18 +1,20 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/yaml"
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 
 	"github.com/go-faster/oteldb/internal/lokiapi"
 	"github.com/go-faster/oteldb/internal/promapi"
@@ -33,6 +35,10 @@ type DashboardBenchmark struct {
 	StartTime string
 	EndTime   string
 	Step      string
+
+	Interval     string
+	RateInterval string
+	Range        string
 
 	Variables []string
 
@@ -153,9 +159,9 @@ func (b *DashboardBenchmark) setup(_ context.Context) (err error) {
 	}
 
 	b.vars = map[string]string{
-		"__interval":      "15s",
-		"__rate_interval": "5m",
-		"__range":         "1h",
+		"__interval":      b.Interval,
+		"__rate_interval": b.RateInterval,
+		"__range":         b.Range,
 	}
 	for _, v := range b.Variables {
 		parts := strings.SplitN(v, "=", 2)
@@ -254,10 +260,15 @@ func (b *DashboardBenchmark) identifyType(t grafanaTarget) queryType {
 	}
 }
 
+var varRegex = regexp.MustCompile(`\$[a-zA-Z_][a-zA-Z0-9_]*|\$\{[a-zA-Z0-9_:]+\}`)
+
 func (b *DashboardBenchmark) interpolate(s string) string {
 	for k, v := range b.vars {
 		s = strings.ReplaceAll(s, "$"+k, v)
 		s = strings.ReplaceAll(s, "${"+k+"}", v)
+	}
+	if varRegex.MatchString(s) {
+		fmt.Printf("warning: query %q contains unreplaced variables\n", s)
 	}
 	return s
 }
@@ -367,13 +378,7 @@ func (b *DashboardBenchmark) executeTraceQL(ctx context.Context, q extractedQuer
 func (b *DashboardBenchmark) report(results []queryResult) error {
 	fmt.Println("\nBenchmark results:")
 	slices.SortFunc(results, func(a, b queryResult) int {
-		if a.Avg > b.Avg {
-			return -1
-		}
-		if a.Avg < b.Avg {
-			return 1
-		}
-		return 0
+		return cmp.Compare(b.Avg, a.Avg)
 	})
 
 	for i, res := range results {
@@ -486,6 +491,9 @@ func newDashboardBenchmarkCommand() *cobra.Command {
 	f.StringVar(&b.StartTime, "start", "", "Start time override")
 	f.StringVar(&b.EndTime, "end", "", "End time override")
 	f.StringVar(&b.Step, "step", "15s", "Step override")
+	f.StringVar(&b.Interval, "interval", "15s", "Default $__interval variable")
+	f.StringVar(&b.RateInterval, "rate-interval", "5m", "Default $__rate_interval variable")
+	f.StringVar(&b.Range, "range", "1h", "Default $__range variable")
 	f.StringSliceVar(&b.Variables, "template-var", nil, "Template variables (key=value)")
 
 	return cmd
