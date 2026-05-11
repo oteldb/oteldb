@@ -35,3 +35,6 @@ coverage.txt
 /requests.rwq
 /report.yml
 /otelbench
+
+.gemini/
+gha-creds-*.json
