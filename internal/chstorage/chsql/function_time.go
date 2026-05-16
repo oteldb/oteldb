@@ -9,6 +9,11 @@ func ToUnixTimestamp64Nano(arg Expr) Expr {
 	return Function("toUnixTimestamp64Nano", arg)
 }
 
+// ToUnixTimestamp64Milli returns `toUnixTimestamp64Milli(<arg>)` function call expression.
+func ToUnixTimestamp64Milli(arg Expr) Expr {
+	return Function("toUnixTimestamp64Milli", arg)
+}
+
 // ToDateTime returns `toDateTime(<arg>)` function call expression.
 func ToDateTime(arg Expr) Expr {
 	return Function("toDateTime", arg)

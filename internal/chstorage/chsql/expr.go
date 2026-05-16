@@ -3,6 +3,7 @@ package chsql
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 type exprType uint8
@@ -14,6 +15,7 @@ const (
 	exprBinaryOp                     // `+`,`-`,`IN`, etc.
 	exprFunction                     // functions
 	exprTuple
+	exprLambda
 	exprSubQuery
 )
 
@@ -44,6 +46,15 @@ func (e Expr) IsZero() bool {
 // Ident returns identifier.
 func Ident(tok string) Expr {
 	return Expr{typ: exprIdent, tok: tok}
+}
+
+// Lambda returns lambda expression.
+func Lambda(args []string, body Expr) Expr {
+	return Expr{
+		typ:  exprLambda,
+		tok:  strings.Join(args, ", "),
+		args: []Expr{body},
+	}
 }
 
 // PrefixedIdent return identifier with prefix.

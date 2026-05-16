@@ -39,3 +39,8 @@ func Avg(expr Expr) Expr {
 func Count() Expr {
 	return Function("count")
 }
+
+// GroupArray returns `groupArray(<arg>)` function call expression.
+func GroupArray(arg Expr) Expr {
+	return Function("groupArray", arg)
+}

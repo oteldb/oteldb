@@ -169,6 +169,14 @@ func (p *Printer) WriteExpr(e Expr) error {
 		p.CloseParen()
 
 		return nil
+	case exprLambda:
+		p.Ident(e.tok)
+		p.Ident("->")
+		if err := p.WriteExpr(e.args[0]); err != nil {
+			return err
+		}
+
+		return nil
 	case exprSubQuery:
 		if e.subQuery == nil {
 			return errors.New("subquery is nil")

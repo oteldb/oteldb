@@ -29,3 +29,8 @@ func ToUInt64(arg Expr) Expr {
 func ToFloat64(arg Expr) Expr {
 	return Function("toFloat64", arg)
 }
+
+// ReinterpretAsUInt64 returns `reinterpretAsUInt64(<arg>)` function call expression.
+func ReinterpretAsUInt64(arg Expr) Expr {
+	return Function("reinterpretAsUInt64", arg)
+}

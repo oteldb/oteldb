@@ -125,7 +125,7 @@ func TestQueryRatePointsSQL(t *testing.T) {
 
 	for _, want := range []string{
 		"arrayJoin(arrayFilter",
-		"arrayMap(x -> x.2, arraySort",
+		"arrayMap(x -> tupleElement(x, 2), arraySort",
 		"arrayPopFront(vals)",
 		"arrayPopBack(vals)",
 		"reinterpretAsUInt64(value)",

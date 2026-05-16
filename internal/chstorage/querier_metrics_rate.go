@@ -255,14 +255,87 @@ func (p *promQuerier) queryRatePoints(
 		inputData.Append(h)
 	}
 
-	raw := chsql.Ident
-	toInt64 := func(v int64) chsql.Expr {
-		return raw(fmt.Sprintf("toInt64(%d)", v))
-	}
-	stepExpr := raw(`arrayJoin(arrayFilter(s -> s >= first_step_ms AND s <= last_step_ms AND s < point_ms + offset_ms + window_ms, arrayMap(i -> first_step_ms + intDiv(greatest(toInt64(0), point_ms + offset_ms - first_step_ms + step_ms - 1), step_ms) * step_ms + toInt64(i) * step_ms, range(toUInt64(intDiv(window_ms, step_ms) + 1)))))`)
-	valsExpr := raw(`arrayMap(x -> x.2, arraySort(x -> x.1, groupArray((timestamp, value))))`)
-	resetExpr := raw(`if(length(vals) > 1, arraySum((curr, prev) -> if(curr < prev, prev, toFloat64(0)), arrayPopFront(vals), arrayPopBack(vals)), toFloat64(0))`)
+	var (
+		firstStepMSIdent = chsql.Ident("first_step_ms")
+		lastStepMSIdent  = chsql.Ident("last_step_ms")
+		stepMSIdent      = chsql.Ident("step_ms")
+		windowMSIdent    = chsql.Ident("window_ms")
+		offsetMSIdent    = chsql.Ident("offset_ms")
+		pointMSIdent     = chsql.Ident("point_ms")
+	)
 
+	var (
+		toInt64 = chsql.ToInt64Val[int64]
+		tuple   = chsql.ColumnTupleElement
+	)
+
+	var (
+		pointOffsetMS = chsql.Add(pointMSIdent, offsetMSIdent)
+		// greatest(0, point_ms + offset_ms - first_step_ms + step_ms - 1)
+		offsetFromStart = chsql.Greatest(
+			chsql.ToInt64(chsql.Integer(0)),
+			chsql.Sub(
+				chsql.Add(pointOffsetMS, chsql.Sub(stepMSIdent, chsql.Integer(1))),
+				firstStepMSIdent,
+			),
+		)
+		// first_step_ms + intDiv(offsetFromStart, step_ms) * step_ms
+		firstSampleStepMS = chsql.Add(
+			firstStepMSIdent,
+			chsql.Mul(chsql.IntDiv(offsetFromStart, stepMSIdent), stepMSIdent),
+		)
+		mapLambda = chsql.Lambda([]string{"i"},
+			chsql.Add(firstSampleStepMS, chsql.Mul(chsql.ColumnToInt64("i"), stepMSIdent)),
+		)
+		rangeExpr = chsql.Range(chsql.ToUInt64(chsql.Add(chsql.IntDiv(windowMSIdent, stepMSIdent), chsql.Integer(1))))
+
+		filterLambda = chsql.Lambda([]string{"s"}, chsql.JoinAnd(
+			chsql.Gte(chsql.Ident("s"), firstStepMSIdent),
+			chsql.Lte(chsql.Ident("s"), lastStepMSIdent),
+			chsql.Lt(chsql.Ident("s"), chsql.Add(pointOffsetMS, windowMSIdent)),
+		))
+
+		stepExpr = chsql.ArrayJoin(
+			chsql.ArrayFilter(
+				filterLambda,
+				chsql.ArrayMap(mapLambda, rangeExpr),
+			),
+		)
+	)
+
+	var (
+		pairs       = chsql.GroupArray(chsql.Tuple(chsql.Ident("timestamp"), chsql.Ident("value")))
+		sortedPairs = chsql.ArraySort(
+			chsql.Lambda([]string{"x"}, tuple("x", 1)),
+			pairs,
+		)
+		valsExpr = chsql.ArrayMap(
+			chsql.Lambda([]string{"x"}, tuple("x", 2)),
+			sortedPairs,
+		)
+	)
+
+	var (
+		resetSumLambda = chsql.Lambda([]string{"curr", "prev"},
+			chsql.If(
+				chsql.Lt(chsql.Ident("curr"), chsql.Ident("prev")),
+				chsql.Ident("prev"),
+				chsql.ToFloat64(chsql.Integer(0)),
+			),
+		)
+		resetSum = chsql.ArraySum(
+			resetSumLambda,
+			chsql.ArrayPopFront(chsql.Ident("vals")),
+			chsql.ArrayPopBack(chsql.Ident("vals")),
+		)
+		resetExpr = chsql.If(
+			chsql.Gt(chsql.Function("length", chsql.Ident("vals")), chsql.Integer(1)),
+			resetSum,
+			chsql.ToFloat64(chsql.Integer(0)),
+		)
+	)
+
+	// Subquery 1: Filter points and map each point to the set of steps it belongs to.
 	expanded := chsql.Select(table,
 		chsql.Column("hash", nil),
 		chsql.Column("timestamp", nil),
@@ -274,33 +347,35 @@ func (p *promQuerier) queryRatePoints(
 		With("step_ms", toInt64(stepMS)).
 		With("window_ms", toInt64(windowMS)).
 		With("offset_ms", toInt64(offsetMS)).
-		With("point_ms", raw("toUnixTimestamp64Milli(timestamp)")).
+		With("point_ms", chsql.ToUnixTimestamp64Milli(chsql.Ident("timestamp"))).
 		Where(
 			chsql.Gt(chsql.Ident("timestamp"), chsql.DateTime64(rawStart, proto.PrecisionMilli)),
 			chsql.Lte(chsql.Ident("timestamp"), chsql.DateTime64(rawEnd, proto.PrecisionMilli)),
 			chsql.In(chsql.Ident("hash"), chsql.Ident(inputTable)),
-			chsql.NotEq(raw("reinterpretAsUInt64(value)"), chsql.Integer(promStaleNaNBits)),
+			chsql.NotEq(chsql.ReinterpretAsUInt64(chsql.Ident("value")), chsql.Integer(promStaleNaNBits)),
 		)
 
+	// Subquery 2: Group by series and step, then compute rate calculation components (first/last points, reset sum).
 	aggregated := chsql.SelectFrom(expanded,
 		chsql.Column("hash", nil),
 		chsql.Column("step_ms_val", nil),
 		chsql.ResultColumn{Name: "first_pair", Expr: chsql.ArgMin(chsql.Tuple(chsql.Ident("timestamp"), chsql.Ident("value")), chsql.Ident("timestamp"))},
 		chsql.ResultColumn{Name: "last_pair", Expr: chsql.ArgMax(chsql.Tuple(chsql.Ident("timestamp"), chsql.Ident("value")), chsql.Ident("timestamp"))},
 		chsql.ResultColumn{Name: "vals", Expr: valsExpr},
-		chsql.ResultColumn{Name: "samples", Expr: raw("length(vals)")},
+		chsql.ResultColumn{Name: "samples", Expr: chsql.Function("length", chsql.Ident("vals"))},
 		chsql.ResultColumn{Name: "reset_sum", Expr: resetExpr},
 	).
 		GroupBy(chsql.Ident("hash"), chsql.Ident("step_ms_val")).
 		Having(chsql.Gt(chsql.Ident("samples"), chsql.Integer(1)))
 
+	// Final query: Select and map columns to their respective Go types for processing.
 	rateQuery := chsql.SelectFrom(aggregated,
 		chsql.ResultColumn{Name: "hash", Expr: chsql.Ident("hash"), Data: hash},
-		chsql.ResultColumn{Name: "step_ts", Expr: raw("toDateTime64(step_ms_val / 1000.0, 3)"), Data: stepTS},
-		chsql.ResultColumn{Name: "first_t", Expr: raw("tupleElement(first_pair, 1)"), Data: firstTS},
-		chsql.ResultColumn{Name: "first_v", Expr: raw("tupleElement(first_pair, 2)"), Data: &firstV},
-		chsql.ResultColumn{Name: "last_t", Expr: raw("tupleElement(last_pair, 1)"), Data: lastTS},
-		chsql.ResultColumn{Name: "last_v", Expr: raw("tupleElement(last_pair, 2)"), Data: &lastV},
+		chsql.ResultColumn{Name: "step_ts", Expr: chsql.ToDateTime64(chsql.Div(chsql.Ident("step_ms_val"), chsql.Float(1000.0)), proto.PrecisionMilli), Data: stepTS},
+		chsql.ResultColumn{Name: "first_t", Expr: tuple("first_pair", 1), Data: firstTS},
+		chsql.ResultColumn{Name: "first_v", Expr: tuple("first_pair", 2), Data: &firstV},
+		chsql.ResultColumn{Name: "last_t", Expr: tuple("last_pair", 1), Data: lastTS},
+		chsql.ResultColumn{Name: "last_v", Expr: tuple("last_pair", 2), Data: &lastV},
 		chsql.ResultColumn{Name: "samples", Expr: chsql.Ident("samples"), Data: &samples},
 		chsql.ResultColumn{Name: "reset_sum", Expr: chsql.Ident("reset_sum"), Data: &reset},
 	).
