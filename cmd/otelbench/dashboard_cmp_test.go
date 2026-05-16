@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fatih/color"
@@ -99,7 +100,11 @@ func TestDashboardCmp_Run(t *testing.T) {
 
 			expected, err := os.ReadFile(golden)
 			require.NoError(t, err)
-			require.Equal(t, string(expected), buf.String())
+
+			normalize := func(s string) string {
+				return strings.ReplaceAll(s, "\r\n", "\n")
+			}
+			require.Equal(t, normalize(string(expected)), normalize(buf.String()))
 		})
 	}
 }
