@@ -31,6 +31,8 @@ services:
       - OTEL_RESOURCE_ATTRIBUTES=service.name=go-faster.oteldb
     ports:
       - "9090:9090"
+    volumes:
+      - ./oteldb.yml:/app/oteldb.yml
     depends_on:
       - clickhouse
 

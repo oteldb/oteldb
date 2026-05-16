@@ -133,6 +133,14 @@ type PrometheusConfig struct {
 	EnableAtModifier     bool          `json:"enable_at_modifier" yaml:"enable_at_modifier"`
 	EnableNegativeOffset *bool         `json:"enable_negative_offset" yaml:"enable_negative_offset"`
 	EnablePerStepStats   bool          `json:"enable_per_step_stats" yaml:"enable_per_step_stats"`
+
+	Cache MetricsCacheConfig `json:"cache" yaml:"cache"`
+}
+
+// MetricsCacheConfig is metrics cache config.
+type MetricsCacheConfig struct {
+	MaxBytes  int64         `json:"max_bytes" yaml:"max_bytes"`
+	SafetyLag time.Duration `json:"safety_lag" yaml:"safety_lag"`
 }
 
 func (cfg *PrometheusConfig) setDefaults() {

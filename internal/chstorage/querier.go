@@ -33,8 +33,9 @@ type Querier struct {
 	timeseriesLimit int
 	exemplarsLimit  int
 
-	timeseries *timeseriesQuerier
-	metricsSg  *singleflight.Group[xxh3.Uint128, metricSelectResult]
+	timeseries   *timeseriesQuerier
+	metricsCache *MetricsCache
+	metricsSg    *singleflight.Group[xxh3.Uint128, metricSelectResult]
 
 	chLogLevel                 zapcore.LevelEnabler
 	clickhouseRequestHistogram metric.Float64Histogram
@@ -52,6 +53,8 @@ type QuerierOptions struct {
 	MetricSeriesLimit int
 	// MetricExemplarsLimit defines limit for total number of exemplars returned by a single query.
 	MetricExemplarsLimit int
+	// MetricsCacheOptions configures metrics cache.
+	MetricsCacheOptions MetricsCacheOptions
 	// CHLogLevel sets log level for ch-go.
 	CHLogLevel zapcore.LevelEnabler
 	// MeterProvider provides OpenTelemetry meter for this querier.
@@ -101,12 +104,22 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "create clickhouse.request histogram metric")
 	}
+	var metricsCache *MetricsCache
+	if opts.MetricsCacheOptions.MaxBytes > 0 {
+		var err error
+		metricsCache, err = newMetricsCache(opts.MetricsCacheOptions)
+		if err != nil {
+			return nil, errors.Wrap(err, "create metrics cache")
+		}
+	}
+
 	q := &Querier{
 		ch:              c,
 		tables:          opts.Tables,
 		labelLimit:      opts.LabelLimit,
 		timeseriesLimit: opts.MetricSeriesLimit,
 		exemplarsLimit:  opts.MetricExemplarsLimit,
+		metricsCache:    metricsCache,
 		metricsSg:       new(singleflight.Group[xxh3.Uint128, metricSelectResult]),
 
 		chLogLevel:                 opts.CHLogLevel,

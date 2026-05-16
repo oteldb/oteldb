@@ -69,8 +69,12 @@ func setupCH(
 	globalmetric.SetTracker(tracker)
 
 	querier, err := chstorage.NewQuerier(c, chstorage.QuerierOptions{
-		Tables:            tables,
-		CHLogLevel:        cfg.CHLogLevel,
+		Tables:     tables,
+		CHLogLevel: cfg.CHLogLevel,
+		MetricsCacheOptions: chstorage.MetricsCacheOptions{
+			MaxBytes:  cfg.Prometheus.Cache.MaxBytes,
+			SafetyLag: cfg.Prometheus.Cache.SafetyLag,
+		},
 		MeterProvider:     m.MeterProvider(),
 		TracerProvider:    m.TracerProvider(),
 		Tracker:           tracker,

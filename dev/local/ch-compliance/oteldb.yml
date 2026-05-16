@@ -1,0 +1,4 @@
+prometheus:
+  cache:
+    max_bytes: 104857600 # 100MB
+    safety_lag: 1s
