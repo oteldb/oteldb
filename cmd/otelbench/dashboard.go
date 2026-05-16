@@ -9,6 +9,7 @@ func newDashboardCommand() *cobra.Command {
 	}
 	cmd.AddCommand(
 		newDashboardBenchmarkCommand(),
+		newDashboardCmpCommand(),
 	)
 	return cmd
 }
