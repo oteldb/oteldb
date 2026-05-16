@@ -99,8 +99,8 @@ func TestDashboardCmp_Run(t *testing.T) {
 			basePath := filepath.Join(t.TempDir(), "base.yml")
 			currPath := filepath.Join(t.TempDir(), "curr.yml")
 
-			require.NoError(t, os.WriteFile(basePath, []byte(tt.base), 0644))
-			require.NoError(t, os.WriteFile(currPath, []byte(tt.curr), 0644))
+			require.NoError(t, os.WriteFile(basePath, []byte(tt.base), 0o644))
+			require.NoError(t, os.WriteFile(currPath, []byte(tt.curr), 0o644))
 
 			var buf bytes.Buffer
 			c := &DashboardCmp{
@@ -113,16 +113,16 @@ func TestDashboardCmp_Run(t *testing.T) {
 			curr, err := c.loadReport(currPath)
 			require.NoError(t, err)
 
-			// We need to modify Run to take an io.Writer for testing, 
+			// We need to modify Run to take an io.Writer for testing,
 			// or just call the internal logic.
 			// Let's refactor DashboardCmp to take an io.Writer.
-			
+
 			err = c.runCompare(&buf, base, curr)
 			require.NoError(t, err)
 
 			golden := filepath.Join("testdata", "dashboard_cmp", tt.name+".golden")
 			if *update {
-				require.NoError(t, os.WriteFile(golden, buf.Bytes(), 0644))
+				require.NoError(t, os.WriteFile(golden, buf.Bytes(), 0o644))
 			}
 
 			expected, err := os.ReadFile(golden)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -76,12 +77,12 @@ func (c *DashboardCmp) runCompare(out io.Writer, base, current []DashboardReport
 	})
 
 	if c.Markdown {
-		fmt.Fprintln(out, "| PANEL | QUERY | OLD AVG | NEW AVG | DELTA | P99 OLD | P99 NEW | DELTA |")
-		fmt.Fprintln(out, "|-------|-------|---------|---------|-------|---------|---------|-------|")
+		_, _ = fmt.Fprintln(out, "| PANEL | QUERY | OLD AVG | NEW AVG | DELTA | P99 OLD | P99 NEW | DELTA |")
+		_, _ = fmt.Fprintln(out, "|-------|-------|---------|---------|-------|---------|---------|-------|")
 	}
 	w := tabwriter.NewWriter(out, 0, 8, 2, ' ', 0)
 	if !c.Markdown {
-		fmt.Fprintln(w, "PANEL\tQUERY\tOLD AVG\tNEW AVG\tDELTA\tP99 OLD\tP99 NEW\tDELTA")
+		_, _ = fmt.Fprintln(w, "PANEL\tQUERY\tOLD AVG\tNEW AVG\tDELTA\tP99 OLD\tP99 NEW\tDELTA")
 	}
 
 	for _, r := range rows {
@@ -90,7 +91,7 @@ func (c *DashboardCmp) runCompare(out io.Writer, base, current []DashboardReport
 
 		if c.Markdown {
 			if !hasOld {
-				fmt.Fprintf(out, "| %s | %s | - | %v | [NEW] | - | %v | [NEW] |\n",
+				_, _ = fmt.Fprintf(out, "| %s | %s | - | %v | [NEW] | - | %v | [NEW] |\n",
 					r.panel,
 					curr.Query,
 					curr.Avg.Round(time.Microsecond),
@@ -99,7 +100,7 @@ func (c *DashboardCmp) runCompare(out io.Writer, base, current []DashboardReport
 				continue
 			}
 			if !hasCurr {
-				fmt.Fprintf(out, "| %s | %s | %v | - | [REMOVED] | %v | - | [REMOVED] |\n",
+				_, _ = fmt.Fprintf(out, "| %s | %s | %v | - | [REMOVED] | %v | - | [REMOVED] |\n",
 					r.panel,
 					old.Query,
 					old.Avg.Round(time.Microsecond),
@@ -108,7 +109,7 @@ func (c *DashboardCmp) runCompare(out io.Writer, base, current []DashboardReport
 				continue
 			}
 
-			fmt.Fprintf(out, "| %s | %s | %v | %v | %s | %v | %v | %s |\n",
+			_, _ = fmt.Fprintf(out, "| %s | %s | %v | %v | %s | %v | %v | %s |\n",
 				r.panel,
 				curr.Query,
 				old.Avg.Round(time.Microsecond),
@@ -122,7 +123,7 @@ func (c *DashboardCmp) runCompare(out io.Writer, base, current []DashboardReport
 		}
 
 		if !hasOld {
-			fmt.Fprintf(w, "%s\t%s\t-\t%v\t[NEW]\t-\t%v\t[NEW]\n",
+			_, _ = fmt.Fprintf(w, "%s\t%s\t-\t%v\t[NEW]\t-\t%v\t[NEW]\n",
 				r.panel,
 				c.truncate(r.query, 32),
 				curr.Avg.Round(time.Microsecond),
@@ -131,7 +132,7 @@ func (c *DashboardCmp) runCompare(out io.Writer, base, current []DashboardReport
 			continue
 		}
 		if !hasCurr {
-			fmt.Fprintf(w, "%s\t%s\t%v\t-\t[REMOVED]\t%v\t-\t[REMOVED]\n",
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%v\t-\t[REMOVED]\t%v\t-\t[REMOVED]\n",
 				r.panel,
 				c.truncate(r.query, 32),
 				old.Avg.Round(time.Microsecond),
@@ -140,7 +141,7 @@ func (c *DashboardCmp) runCompare(out io.Writer, base, current []DashboardReport
 			continue
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%v\t%v\t%s\t%v\t%v\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%v\t%v\t%s\t%v\t%v\t%s\n",
 			r.panel,
 			c.truncate(r.query, 32),
 			old.Avg.Round(time.Microsecond),
@@ -163,7 +164,7 @@ func (c *DashboardCmp) truncate(s string, l int) string {
 }
 
 func (c *DashboardCmp) loadReport(path string) ([]DashboardReportEntry, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}
@@ -174,11 +175,11 @@ func (c *DashboardCmp) loadReport(path string) ([]DashboardReportEntry, error) {
 	return report, nil
 }
 
-func (c *DashboardCmp) formatDelta(old, new time.Duration) string {
+func (c *DashboardCmp) formatDelta(old, curr time.Duration) string {
 	if old == 0 {
 		return "-"
 	}
-	diff := new - old
+	diff := curr - old
 	pct := float64(diff) / float64(old) * 100
 	s := fmt.Sprintf("%+v (%.2f%%)", diff.Round(time.Microsecond), pct)
 	if c.Markdown {
@@ -199,7 +200,7 @@ func newDashboardCmpCommand() *cobra.Command {
 		Use:   "cmp <base.yml> <new.yml>",
 		Short: "Compare dashboard benchmark reports",
 		Args:  cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			return c.Run(args[0], args[1])
 		},
 	}
