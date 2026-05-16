@@ -1,0 +1,4 @@
+| PANEL | QUERY | OLD AVG | NEW AVG | DELTA | P99 OLD | P99 NEW | DELTA |
+|-------|-------|---------|---------|-------|---------|---------|-------|
+| Panel 1 | rate(http_requests_total[5m]) | 100ms | 120ms | 20ms (20.00%) | 150ms | 180ms | 30ms (20.00%) |
+| Panel 2 | up | 10ms | 8ms | -2ms (-20.00%) | 12ms | 10ms | -2ms (-16.67%) |

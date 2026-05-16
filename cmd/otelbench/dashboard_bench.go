@@ -375,6 +375,19 @@ func (b *DashboardBenchmark) executeTraceQL(ctx context.Context, q extractedQuer
 	return n == 0, n, nil
 }
 
+type DashboardReportEntry struct {
+	Panel string        `yaml:"panel"`
+	Query string        `yaml:"query"`
+	Type  string        `yaml:"type"`
+	Empty bool          `yaml:"empty"`
+	N     int           `yaml:"n"`
+	First time.Duration `yaml:"first"`
+	Avg   time.Duration `yaml:"avg"`
+	Min   time.Duration `yaml:"min"`
+	Max   time.Duration `yaml:"max"`
+	P99   time.Duration `yaml:"p99"`
+}
+
 func (b *DashboardBenchmark) report(results []queryResult) error {
 	fmt.Println("\nBenchmark results:")
 	slices.SortFunc(results, func(a, b queryResult) int {
@@ -394,22 +407,9 @@ func (b *DashboardBenchmark) report(results []queryResult) error {
 		fmt.Printf("%d. %s: %s (avg: %v, p99: %v, first: %v)%s\n", i+1, res.Query.Panel, res.Query.Expr, res.Avg, res.P99, res.First, empty)
 	}
 
-	type reportEntry struct {
-		Panel string        `yaml:"panel"`
-		Query string        `yaml:"query"`
-		Type  string        `yaml:"type"`
-		Empty bool          `yaml:"empty"`
-		N     int           `yaml:"n"`
-		First time.Duration `yaml:"first"`
-		Avg   time.Duration `yaml:"avg"`
-		Min   time.Duration `yaml:"min"`
-		Max   time.Duration `yaml:"max"`
-		P99   time.Duration `yaml:"p99"`
-	}
-
-	var report []reportEntry
+	var report []DashboardReportEntry
 	for _, res := range results {
-		report = append(report, reportEntry{
+		report = append(report, DashboardReportEntry{
 			Panel: res.Query.Panel,
 			Query: res.Query.Expr,
 			Type:  string(res.Query.Type),
