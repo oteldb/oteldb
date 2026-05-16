@@ -17,9 +17,10 @@ var update = flag.Bool("update", false, "update golden files")
 func TestDashboardCmp_Run(t *testing.T) {
 	color.NoColor = true
 	tests := []struct {
-		name string
-		base string
-		curr string
+		name     string
+		base     string
+		curr     string
+		markdown bool
 	}{
 		{
 			name: "basic",
@@ -43,6 +44,30 @@ func TestDashboardCmp_Run(t *testing.T) {
   avg: 8ms
   p99: 10ms
 `,
+		},
+		{
+			name: "markdown",
+			base: `
+- panel: Panel 1
+  query: rate(http_requests_total[5m])
+  avg: 100ms
+  p99: 150ms
+- panel: Panel 2
+  query: up
+  avg: 10ms
+  p99: 12ms
+`,
+			curr: `
+- panel: Panel 1
+  query: rate(http_requests_total[5m])
+  avg: 120ms
+  p99: 180ms
+- panel: Panel 2
+  query: up
+  avg: 8ms
+  p99: 10ms
+`,
+			markdown: true,
 		},
 		{
 			name: "new_removed",
@@ -78,7 +103,9 @@ func TestDashboardCmp_Run(t *testing.T) {
 			require.NoError(t, os.WriteFile(currPath, []byte(tt.curr), 0644))
 
 			var buf bytes.Buffer
-			c := &DashboardCmp{}
+			c := &DashboardCmp{
+				Markdown: tt.markdown,
+			}
 
 			// Redirect output to buffer
 			base, err := c.loadReport(basePath)

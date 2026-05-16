@@ -16,6 +16,7 @@ import (
 )
 
 type DashboardCmp struct {
+	Markdown bool
 }
 
 func (c *DashboardCmp) Run(basePath, newPath string) error {
@@ -40,9 +41,6 @@ func (c *DashboardCmp) runCompare(out io.Writer, base, current []DashboardReport
 	for _, e := range current {
 		currentMap[e.Panel+e.Query] = e
 	}
-
-	w := tabwriter.NewWriter(out, 0, 8, 2, ' ', 0)
-	fmt.Fprintln(w, "PANEL\tQUERY\tOLD AVG\tNEW AVG\tDELTA\tP99 OLD\tP99 NEW\tDELTA")
 
 	allKeys := make(map[string]struct{})
 	for k := range baseMap {
@@ -77,9 +75,51 @@ func (c *DashboardCmp) runCompare(out io.Writer, base, current []DashboardReport
 		return strings.Compare(a.query, b.query)
 	})
 
+	if c.Markdown {
+		fmt.Fprintln(out, "| PANEL | QUERY | OLD AVG | NEW AVG | DELTA | P99 OLD | P99 NEW | DELTA |")
+		fmt.Fprintln(out, "|-------|-------|---------|---------|-------|---------|---------|-------|")
+	}
+	w := tabwriter.NewWriter(out, 0, 8, 2, ' ', 0)
+	if !c.Markdown {
+		fmt.Fprintln(w, "PANEL\tQUERY\tOLD AVG\tNEW AVG\tDELTA\tP99 OLD\tP99 NEW\tDELTA")
+	}
+
 	for _, r := range rows {
 		old, hasOld := baseMap[r.key]
 		curr, hasCurr := currentMap[r.key]
+
+		if c.Markdown {
+			if !hasOld {
+				fmt.Fprintf(out, "| %s | %s | - | %v | [NEW] | - | %v | [NEW] |\n",
+					r.panel,
+					curr.Query,
+					curr.Avg.Round(time.Microsecond),
+					curr.P99.Round(time.Microsecond),
+				)
+				continue
+			}
+			if !hasCurr {
+				fmt.Fprintf(out, "| %s | %s | %v | - | [REMOVED] | %v | - | [REMOVED] |\n",
+					r.panel,
+					old.Query,
+					old.Avg.Round(time.Microsecond),
+					old.P99.Round(time.Microsecond),
+				)
+				continue
+			}
+
+			fmt.Fprintf(out, "| %s | %s | %v | %v | %s | %v | %v | %s |\n",
+				r.panel,
+				curr.Query,
+				old.Avg.Round(time.Microsecond),
+				curr.Avg.Round(time.Microsecond),
+				c.formatDelta(old.Avg, curr.Avg),
+				old.P99.Round(time.Microsecond),
+				curr.P99.Round(time.Microsecond),
+				c.formatDelta(old.P99, curr.P99),
+			)
+			continue
+		}
 
 		if !hasOld {
 			fmt.Fprintf(w, "%s\t%s\t-\t%v\t[NEW]\t-\t%v\t[NEW]\n",
@@ -141,6 +181,9 @@ func (c *DashboardCmp) formatDelta(old, new time.Duration) string {
 	diff := new - old
 	pct := float64(diff) / float64(old) * 100
 	s := fmt.Sprintf("%+v (%.2f%%)", diff.Round(time.Microsecond), pct)
+	if c.Markdown {
+		return s
+	}
 	if pct > 10 {
 		return color.RedString(s)
 	}
@@ -152,7 +195,7 @@ func (c *DashboardCmp) formatDelta(old, new time.Duration) string {
 
 func newDashboardCmpCommand() *cobra.Command {
 	c := &DashboardCmp{}
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "cmp <base.yml> <new.yml>",
 		Short: "Compare dashboard benchmark reports",
 		Args:  cobra.ExactArgs(2),
@@ -160,4 +203,7 @@ func newDashboardCmpCommand() *cobra.Command {
 			return c.Run(args[0], args[1])
 		},
 	}
+	f := cmd.Flags()
+	f.BoolVar(&c.Markdown, "markdown", false, "Output as markdown table")
+	return cmd
 }
