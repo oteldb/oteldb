@@ -33,12 +33,12 @@ func (e *MetricsCacheEntry) Slice(fromMs, toMs int64) (tss []int64, vals []float
 		return nil, nil
 	}
 
-	tss = slices.Clone(e.timestamps[start:end])
-	vals = slices.Clone(e.values[start:end])
+	tss = e.timestamps[start:end]
+	vals = e.values[start:end]
 	return tss, vals
 }
 
-// Append adds new points after current maxTs; returns new cost in bytes.
+// Append adds new points after current maxTS; returns new cost in bytes.
 func (e *MetricsCacheEntry) Append(ts []int64, vals []float64, untilMs int64) uint32 {
 	e.mu.Lock()
 	defer e.mu.Unlock()
