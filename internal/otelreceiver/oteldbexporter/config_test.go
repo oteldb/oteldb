@@ -11,7 +11,7 @@ import (
 func TestUnmarshalConfig(t *testing.T) {
 	cm, err := confmaptest.LoadConf(filepath.Join("_testdata", "config.yaml"))
 	require.NoError(t, err)
-	factory := NewFactory()
+	factory := NewFactory(Options{})
 	cfg := factory.CreateDefaultConfig()
 	require.NoError(t, cm.Unmarshal(&cfg))
 	require.Equal(t,
@@ -23,7 +23,7 @@ func TestUnmarshalConfig(t *testing.T) {
 func TestUnmarshalMetricsExemplarsDropConfig(t *testing.T) {
 	cm, err := confmaptest.LoadConf(filepath.Join("_testdata", "metrics_exemplars_drop.yaml"))
 	require.NoError(t, err)
-	factory := NewFactory()
+	factory := NewFactory(Options{})
 	cfg := factory.CreateDefaultConfig()
 	require.NoError(t, cm.Unmarshal(&cfg))
 	require.Equal(t,
@@ -42,7 +42,7 @@ func TestUnmarshalMetricsExemplarsDropConfig(t *testing.T) {
 func TestUnmarshalTracesSpansSampleConfig(t *testing.T) {
 	cm, err := confmaptest.LoadConf(filepath.Join("_testdata", "traces_spans_sample.yaml"))
 	require.NoError(t, err)
-	factory := NewFactory()
+	factory := NewFactory(Options{})
 	cfg := factory.CreateDefaultConfig()
 	require.NoError(t, cm.Unmarshal(&cfg))
 	require.Equal(t,
@@ -59,7 +59,7 @@ func TestUnmarshalTracesSpansSampleConfig(t *testing.T) {
 func TestUnmarshalLogsRecordsDropConfig(t *testing.T) {
 	cm, err := confmaptest.LoadConf(filepath.Join("_testdata", "logs_records_drop.yaml"))
 	require.NoError(t, err)
-	factory := NewFactory()
+	factory := NewFactory(Options{})
 	cfg := factory.CreateDefaultConfig()
 	require.NoError(t, cm.Unmarshal(&cfg))
 	require.Equal(t,
@@ -76,7 +76,7 @@ func TestUnmarshalLogsRecordsDropConfig(t *testing.T) {
 func TestUnmarshalLogsProcessingConfig(t *testing.T) {
 	cm, err := confmaptest.LoadConf(filepath.Join("_testdata", "logs_processing.yaml"))
 	require.NoError(t, err)
-	factory := NewFactory()
+	factory := NewFactory(Options{})
 	cfg := factory.CreateDefaultConfig()
 	require.NoError(t, cm.Unmarshal(&cfg))
 	require.Equal(t,

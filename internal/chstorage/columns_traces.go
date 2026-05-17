@@ -23,6 +23,8 @@ var (
 )
 
 type spanColumns struct {
+	tenantID *proto.ColLowCardinality[string]
+
 	serviceInstanceID *proto.ColLowCardinality[string]
 	serviceName       *proto.ColLowCardinality[string]
 	serviceNamespace  *proto.ColLowCardinality[string]
@@ -56,6 +58,7 @@ type spanColumns struct {
 
 func newSpanColumns() *spanColumns {
 	c := &spanColumns{
+		tenantID:      new(proto.ColStr).LowCardinality(),
 		name:          new(proto.ColStr).LowCardinality(),
 		start:         new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano),
 		end:           new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano),
@@ -74,6 +77,7 @@ func newSpanColumns() *spanColumns {
 	}
 	c.columns = sync.OnceValue(func() Columns {
 		return MergeColumns(Columns{
+			{Name: "tenant_id", Data: c.tenantID},
 			{Name: "service_instance_id", Data: c.serviceInstanceID},
 			{Name: "service_name", Data: c.serviceName},
 			{Name: "service_namespace", Data: c.serviceNamespace},
@@ -120,7 +124,8 @@ func (c *spanColumns) Result() proto.Results             { return c.columns().Re
 func (c *spanColumns) ChsqlResult() []chsql.ResultColumn { return c.columns().ChsqlResult() }
 func (c *spanColumns) Reset()                            { c.columns().Reset() }
 
-func (c *spanColumns) AddRow(s tracestorage.Span) {
+func (c *spanColumns) AddRow(s tracestorage.Span, tenantID string) {
+	c.tenantID.Append(tenantID)
 	c.traceID.Append(s.TraceID)
 	c.spanID.Append(s.SpanID)
 	c.traceState.Append(s.TraceState)
@@ -211,8 +216,8 @@ func (c *spanColumns) ReadRowsTo(spans []tracestorage.Span) ([]tracestorage.Span
 func (c *spanColumns) DDL() ddl.Table {
 	table := ddl.Table{
 		Engine:     ddl.Engine{Type: "MergeTree"},
-		PrimaryKey: []string{"service_namespace", "service_name", "resource"},
-		OrderBy:    []string{"service_namespace", "service_name", "resource", "start"},
+		PrimaryKey: []string{"tenant_id", "service_namespace", "service_name", "resource"},
+		OrderBy:    []string{"tenant_id", "service_namespace", "service_name", "resource", "start"},
 		TTL:        ddl.TTL{Field: "start"},
 		Indexes: []ddl.Index{
 			{
@@ -224,6 +229,10 @@ func (c *spanColumns) DDL() ddl.Table {
 			},
 		},
 		Columns: []ddl.Column{
+			{
+				Name: "tenant_id",
+				Type: c.tenantID.Type(),
+			},
 			{
 				Name:    "service_instance_id",
 				Type:    c.serviceInstanceID.Type(),
@@ -465,6 +474,7 @@ func (c *linksColumns) Row(row int) (links []tracestorage.Link, _ error) {
 }
 
 type spanAttrsColumns struct {
+	tenantID  *proto.ColLowCardinality[string]
 	name      *proto.ColLowCardinality[string]
 	value     proto.ColStr
 	valueType proto.ColEnum8
@@ -477,6 +487,7 @@ type spanAttrsColumns struct {
 
 func newSpanAttrsColumns() *spanAttrsColumns {
 	c := &spanAttrsColumns{
+		tenantID:  new(proto.ColStr).LowCardinality(),
 		name:      new(proto.ColStr).LowCardinality(),
 		value:     proto.ColStr{},
 		valueType: proto.ColEnum8{},
@@ -484,6 +495,7 @@ func newSpanAttrsColumns() *spanAttrsColumns {
 	}
 	c.columns = sync.OnceValue(func() Columns {
 		return Columns{
+			{Name: "tenant_id", Data: c.tenantID},
 			{Name: "name", Data: c.name},
 			{Name: "value", Data: &c.value},
 			{Name: "value_type", Data: proto.Wrap(&c.valueType, valueTypeDDL)},
@@ -503,14 +515,15 @@ func (c *spanAttrsColumns) Result() proto.Results             { return c.columns
 func (c *spanAttrsColumns) ChsqlResult() []chsql.ResultColumn { return c.columns().ChsqlResult() }
 func (c *spanAttrsColumns) Reset()                            { c.columns().Reset() }
 
-func (c *spanAttrsColumns) AddAttrs(scope traceql.AttributeScope, attrs otelstorage.Attrs) {
+func (c *spanAttrsColumns) AddAttrs(tenantID string, scope traceql.AttributeScope, attrs otelstorage.Attrs) {
 	attrs.AsMap().Range(func(k string, v pcommon.Value) bool {
-		c.AddRow(tracestorage.TagFromAttribute(scope, k, v))
+		c.AddRow(tenantID, tracestorage.TagFromAttribute(scope, k, v))
 		return true
 	})
 }
 
-func (c *spanAttrsColumns) AddRow(tag tracestorage.Tag) {
+func (c *spanAttrsColumns) AddRow(tenantID string, tag tracestorage.Tag) {
+	c.tenantID.Append(tenantID)
 	c.name.Append(tag.Name)
 	c.value.Append(tag.Value)
 	c.valueType.Append(proto.Enum8(tag.Type))

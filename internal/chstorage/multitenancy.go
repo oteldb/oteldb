@@ -1,0 +1,79 @@
+package chstorage
+
+import (
+	"context"
+
+	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/go-faster/oteldb/internal/chstorage/chsql"
+	"github.com/go-faster/oteldb/internal/multitenancy"
+)
+
+// decisionFilters returns PREWHERE expressions derived from the authorization
+// Decision: one for tenant_id and zero or more for resource attribute selectors.
+func decisionFilters(ctx context.Context) []chsql.Expr {
+	d, ok := multitenancy.DecisionFromContext(ctx)
+	if !ok || !d.Enabled {
+		return nil
+	}
+	var exprs []chsql.Expr
+	// Tenant filter.
+	if len(d.TenantIDs) == 1 {
+		exprs = append(exprs, chsql.Eq(chsql.Ident("tenant_id"), chsql.String(d.TenantIDs[0])))
+	} else if len(d.TenantIDs) > 1 {
+		args := make([]chsql.Expr, len(d.TenantIDs))
+		for i, t := range d.TenantIDs {
+			args[i] = chsql.String(t)
+		}
+		exprs = append(exprs, chsql.In(chsql.Ident("tenant_id"), chsql.Tuple(args...)))
+	}
+	// Mandatory resource selectors.
+	for _, sel := range d.ResourceSelectors {
+		col := resourceSelectorExpr(sel.Key)
+
+		var op labels.MatchType
+		switch sel.Op {
+		case multitenancy.OpEq:
+			op = labels.MatchEqual
+		case multitenancy.OpNotEq:
+			op = labels.MatchNotEqual
+		case multitenancy.OpRe:
+			op = labels.MatchRegexp
+		case multitenancy.OpNotRe:
+			op = labels.MatchNotRegexp
+		}
+
+		expr, _ := promQLLabelMatcher([]chsql.Expr{col}, op, sel.Value)
+		exprs = append(exprs, expr)
+	}
+	return exprs
+}
+
+func resourceSelectorExpr(key string) chsql.Expr {
+	switch key {
+	case "service.namespace":
+		return chsql.Ident("service_namespace")
+	case "service.name":
+		return chsql.Ident("service_name")
+	case "service.instance.id":
+		return chsql.Ident("service_instance_id")
+	default:
+		return attrSelector(colResource, key)
+	}
+}
+
+func newSelectQuery(ctx context.Context, table string, result ...chsql.ResultColumn) *chsql.SelectQuery {
+	query := chsql.Select(table, result...)
+	if filters := decisionFilters(ctx); len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	return query
+}
+
+func newSelectFrom(ctx context.Context, subquery *chsql.SelectQuery, result ...chsql.ResultColumn) *chsql.SelectQuery {
+	query := chsql.SelectFrom(subquery, result...)
+	if filters := decisionFilters(ctx); len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	return query
+}

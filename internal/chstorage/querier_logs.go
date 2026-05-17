@@ -66,7 +66,7 @@ func (q *Querier) LabelNames(ctx context.Context, opts logstorage.LabelsOptions)
 	if err != nil {
 		return nil, errors.Wrap(err, "get label mapping")
 	}
-	resourceQuery := q.deduplicatedResource(table, opts.Start, opts.End)
+	resourceQuery := q.deduplicatedResource(ctx, table, opts.Start, opts.End)
 	for _, m := range opts.Query.Matchers {
 		resourceQuery.Where(q.logQLLabelMatcher(m, mapping))
 	}
@@ -85,7 +85,7 @@ func (q *Querier) LabelNames(ctx context.Context, opts logstorage.LabelsOptions)
 		}
 	)
 	if err := q.do(ctx, selectQuery{
-		Query: chsql.SelectFrom(
+		Query: newSelectFrom(ctx, 
 			// Select deduplicated resources from subquery.
 			resourceQuery,
 			chsql.ResultColumn{
@@ -197,13 +197,13 @@ func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logsto
 			labelName = key
 		}
 
-		resourceQuery := q.deduplicatedResource(table, opts.Start, opts.End)
+		resourceQuery := q.deduplicatedResource(ctx, table, opts.Start, opts.End)
 		for _, m := range opts.Query.Matchers {
 			resourceQuery.Where(q.logQLLabelMatcher(m, mapping))
 		}
 		var (
 			value proto.ColStr
-			query = chsql.SelectFrom(
+			query = newSelectFrom(ctx, 
 				// Select deduplicated resources from subquery.
 				resourceQuery,
 				chsql.ResultColumn{
@@ -280,6 +280,7 @@ func (q *Querier) DetectedLabels(ctx context.Context, opts logstorage.LabelsOpti
 		return nil, errors.Wrap(err, "get label mapping")
 	}
 	subQuery := q.deduplicatedResource(
+		ctx,
 		table,
 		opts.Start, opts.End,
 	)
@@ -293,7 +294,7 @@ func (q *Querier) DetectedLabels(ctx context.Context, opts logstorage.LabelsOpti
 			new(proto.ColStr),
 		)
 
-		query = chsql.SelectFrom(subQuery, chsql.ResultColumn{
+		query = newSelectFrom(ctx, subQuery, chsql.ResultColumn{
 			Name: "series",
 			Expr: attrStringMap(colResource),
 			Data: series,
@@ -398,7 +399,7 @@ func (q *Querier) DetectedFields(ctx context.Context, opts logstorage.LabelsOpti
 	// Deduplicate by resource first (LowCardinality — few distinct values), then explode
 	// key-value pairs using arrayZip so each key stays paired with its value.
 	// WITH defines the tuple alias once and re-uses it in both SELECT columns.
-	innerQuery := chsql.Select(table,
+	innerQuery := newSelectQuery(ctx, table,
 		chsql.ResultColumn{
 			Name: "pairs",
 			Expr: chsql.MapConcat(
@@ -422,7 +423,7 @@ func (q *Querier) DetectedFields(ctx context.Context, opts logstorage.LabelsOpti
 		name        proto.ColStr
 		cardinality proto.ColUInt64
 
-		query = chsql.SelectFrom(innerQuery,
+		query = newSelectFrom(ctx, innerQuery,
 			chsql.ResultColumn{
 				Name: "label",
 				Expr: chsql.Function("tupleElement", chsql.Ident("tuple"), chsql.Integer(1)),
@@ -508,7 +509,7 @@ func (q *Querier) getLabelMapping(ctx context.Context, labels []string) (_ map[s
 		inputData.Append(label)
 	}
 	if err := q.do(ctx, selectQuery{
-		Query: chsql.Select(q.tables.LogAttrs, attrs.ChsqlResult()...).
+		Query: newSelectQuery(ctx, q.tables.LogAttrs, attrs.ChsqlResult()...).
 			Where(chsql.In(
 				chsql.Ident("name"),
 				chsql.Ident("labels"),
@@ -606,7 +607,7 @@ func (q *Querier) Series(ctx context.Context, opts logstorage.SeriesOptions) (re
 			new(proto.ColStr),
 		)
 
-		query = chsql.Select(table, chsql.ResultColumn{
+		query = newSelectQuery(ctx, table, chsql.ResultColumn{
 			Name: "series",
 			Expr: chsql.MapConcat(
 				q.getMaterializedLabelMap(),
@@ -669,11 +670,11 @@ func (q *Querier) Series(ctx context.Context, opts logstorage.SeriesOptions) (re
 	return result, nil
 }
 
-func (q *Querier) deduplicatedResource(table string, start, end time.Time) *chsql.SelectQuery {
+func (q *Querier) deduplicatedResource(ctx context.Context, table string, start, end time.Time) *chsql.SelectQuery {
 	// Select deduplicated resource by using GROUP BY, since DISTINCT is not optimized by Clickhouse.
 	//
 	// See https://github.com/ClickHouse/ClickHouse/issues/4670
-	return chsql.Select(table, chsql.Column(colResource, nil)).
+	return newSelectQuery(ctx, table, chsql.Column(colResource, nil)).
 		GroupBy(chsql.Ident(colResource)).
 		Where(chsql.InTimeRange("timestamp", start, end, proto.PrecisionNano))
 }

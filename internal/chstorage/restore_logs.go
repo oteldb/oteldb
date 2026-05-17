@@ -124,7 +124,7 @@ func (r *logsRestore) restoreLogs(ctx context.Context, dir string) error {
 
 						rec.ObservedTimestamp = rec.Timestamp
 
-						lc.AddRow(rec)
+						lc.AddRow(rec, "") // Empty tenant_id for restore operations
 						ac.AddAttrs(rec.Attrs)
 						ac.AddAttrs(rec.ScopeAttrs)
 						ac.AddAttrs(rec.ResourceAttrs)

@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/go-faster/oteldb/internal/globalmetric"
+	"github.com/go-faster/oteldb/internal/multitenancy"
 	"github.com/go-faster/oteldb/internal/semconv"
 	"github.com/go-faster/oteldb/internal/tracestorage"
 )
@@ -27,10 +28,12 @@ type Inserter struct {
 	ch     ClickHouseClient
 	tables Tables
 
-	chLogLevel zapcore.LevelEnabler
-	stats      inserterStats
-	tracer     trace.Tracer
-	tracker    globalmetric.Tracker
+	chLogLevel     zapcore.LevelEnabler
+	stats          inserterStats
+	tracer         trace.Tracer
+	tracker        globalmetric.Tracker
+	tenantMapper   *multitenancy.TenantMapper // may be nil if multi-tenancy is disabled
+	writeValidator writeValidator             // may be nil if write validation is disabled
 }
 
 type inserterStats struct {
@@ -69,6 +72,10 @@ type InserterOptions struct {
 	TracerProvider trace.TracerProvider
 	// Tracker provides global metric tracker.
 	Tracker globalmetric.Tracker
+	// TenantMapper resolves tenant_id from resource attributes (optional).
+	TenantMapper *multitenancy.TenantMapper
+	// WriteValidator validates tenant_id against write Decision (optional).
+	WriteValidator writeValidator
 }
 
 func (opts *InserterOptions) setDefaults() {
@@ -95,11 +102,13 @@ func NewInserter(c ClickHouseClient, opts InserterOptions) (*Inserter, error) {
 	opts.setDefaults()
 
 	inserter := &Inserter{
-		ch:         c,
-		tables:     opts.Tables,
-		chLogLevel: opts.CHLogLevel,
-		tracer:     opts.TracerProvider.Tracer("chstorage.Inserter"),
-		tracker:    opts.Tracker,
+		ch:             c,
+		tables:         opts.Tables,
+		chLogLevel:     opts.CHLogLevel,
+		tracer:         opts.TracerProvider.Tracer("chstorage.Inserter"),
+		tracker:        opts.Tracker,
+		tenantMapper:   opts.TenantMapper,
+		writeValidator: opts.WriteValidator,
 	}
 
 	meter := opts.MeterProvider.Meter("chstorage.Inserter")

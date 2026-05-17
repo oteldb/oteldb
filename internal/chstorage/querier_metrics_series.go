@@ -70,6 +70,7 @@ func (p *promQuerier) selectOnlySeries(
 		}
 	)
 	query, err := p.buildSeriesQuery(
+		ctx,
 		table,
 		&series,
 		start, end,
@@ -126,12 +127,13 @@ func (p *promQuerier) selectOnlySeries(
 }
 
 func (p *promQuerier) buildSeriesQuery(
+	ctx context.Context,
 	table string,
 	column proto.ColResult,
 	start, end time.Time,
 	matcherSets [][]*labels.Matcher,
 ) (*chsql.SelectQuery, error) {
-	query := chsql.Select(table,
+	query := newSelectQuery(ctx, table,
 		chsql.ResultColumn{
 			Name: "series",
 			Expr: chsql.MapConcat(

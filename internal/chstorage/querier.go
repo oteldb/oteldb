@@ -2,6 +2,7 @@ package chstorage
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/ClickHouse/ch-go"
@@ -20,6 +21,7 @@ import (
 	"github.com/go-faster/oteldb/internal/chstorage/chsql"
 	"github.com/go-faster/oteldb/internal/globalmetric"
 	"github.com/go-faster/oteldb/internal/logql/logqlengine"
+	"github.com/go-faster/oteldb/internal/multitenancy"
 	"github.com/go-faster/oteldb/internal/tracestorage"
 )
 
@@ -164,6 +166,30 @@ func (q *Querier) do(ctx context.Context, s selectQuery) error {
 	query.ExternalTable = s.ExternalTable
 	query.Logger = lg.Named("ch").WithOptions(zap.IncreaseLevel(q.chLogLevel))
 	query.OnProfileEvents = track.OnProfiles
+
+	if d, ok := multitenancy.DecisionFromContext(ctx); ok && d.Enabled {
+		if d.QuotaKey != "" {
+			query.QuotaKey = d.QuotaKey
+		}
+		if maxMem := d.Restrictions.MaxMemoryUsageBytes; maxMem > 0 {
+			query.Settings = append(query.Settings, ch.Setting{
+				Key:   "max_memory_usage",
+				Value: strconv.FormatUint(maxMem, 10),
+			})
+		}
+		if maxTime := d.Restrictions.MaxExecutionTime; maxTime > 0 {
+			query.Settings = append(query.Settings, ch.Setting{
+				Key:   "max_execution_time",
+				Value: strconv.FormatFloat(maxTime.Seconds(), 'f', -1, 64),
+			})
+		}
+		if maxRows := d.Restrictions.MaxResultRows; maxRows > 0 {
+			query.Settings = append(query.Settings, ch.Setting{
+				Key:   "max_result_rows",
+				Value: strconv.FormatUint(maxRows, 10),
+			})
+		}
+	}
 
 	if logqlengine.IsExplainQuery(ctx) {
 		query.Settings = append(query.Settings, ch.Setting{
