@@ -369,10 +369,10 @@ func (app *App) setupMultitenancy() error {
 	var mapperRules []multitenancy.TenantRule
 	for key, id := range cfg.TenantMapper.Tenants {
 		attrs := make(map[string]string)
-		for _, part := range strings.Split(key, ",") {
-			kv := strings.SplitN(part, "=", 2)
-			if len(kv) == 2 {
-				attrs[kv[0]] = kv[1]
+		for part := range strings.SplitSeq(key, ",") {
+			k, v, ok := strings.Cut(part, "=")
+			if ok {
+				attrs[k] = strings.TrimSpace(v)
 			}
 		}
 		mapperRules = append(mapperRules, multitenancy.TenantRule{
@@ -463,7 +463,6 @@ func (app *App) setupMultitenancy() error {
 }
 
 func (app *App) setupHealthCheck() error {
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/readiness", app.handleReadinessProbe)
 	mux.HandleFunc("/liveness", app.handleLivenessProbe)
