@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS `logs`
 (
+	`tenant_id`           LowCardinality(String),
 	`service_instance_id` LowCardinality(String) COMMENT 'service.instance.id',
 	`service_name`        LowCardinality(String) COMMENT 'service.name',
 	`service_namespace`   LowCardinality(String) COMMENT 'service.namespace',
@@ -22,6 +23,6 @@ CREATE TABLE IF NOT EXISTS `logs`
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(timestamp)
-ORDER BY (`severity_number`, `service_namespace`, `service_name`, `resource`, `timestamp`)
-PRIMARY KEY (`severity_number`, `service_namespace`, `service_name`, `resource`)
+ORDER BY (`tenant_id`, `severity_number`, `service_namespace`, `service_name`, `resource`, `timestamp`)
+PRIMARY KEY (`tenant_id`, `severity_number`, `service_namespace`, `service_name`, `resource`)
 TTL toDateTime(`timestamp`) + toIntervalSecond(259200)

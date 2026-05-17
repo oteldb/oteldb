@@ -15,16 +15,39 @@ import (
 )
 
 type recordWriter struct {
-	logs     *logColumns
-	attrs    *logAttrMapColumns
-	inserter *Inserter
+	logs        *logColumns
+	attrs       *logAttrMapColumns
+	inserter    *Inserter
+	droppedRows int             // count of rows dropped due to tenant validation
+	ctx         context.Context // context for write validation
 }
 
 var _ logstorage.RecordWriter = (*recordWriter)(nil)
 
 // Add adds record to the batch.
 func (w *recordWriter) Add(record logstorage.Record) error {
-	w.logs.AddRow(record)
+	// Resolve tenant_id from resource attributes if mapper is configured
+	var tenantID string
+	if m := w.inserter.tenantMapper; m != nil {
+		var ok bool
+		tenantID, ok = m.Resolve(record.ResourceAttrs)
+		if !ok {
+			// No tenant matched and no default → drop the record
+			w.droppedRows++
+			return nil
+		}
+
+		// Validate tenant_id against write Decision if validator is configured
+		if wv := w.inserter.writeValidator; wv != nil {
+			if !wv.IsAuthorized(w.ctx, tenantID) {
+				// Unauthorized write → drop the record
+				w.droppedRows++
+				return nil
+			}
+		}
+	}
+
+	w.logs.AddRow(record, tenantID)
 	w.attrs.AddAttrs(record.Attrs)
 	w.attrs.AddAttrs(record.ResourceAttrs)
 	w.attrs.AddAttrs(record.ScopeAttrs)
@@ -54,6 +77,7 @@ func (i *Inserter) RecordWriter(ctx context.Context) (logstorage.RecordWriter, e
 		logs:     logs,
 		attrs:    attrs,
 		inserter: i,
+		ctx:      ctx,
 	}, nil
 }
 

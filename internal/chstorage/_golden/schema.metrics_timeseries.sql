@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS `metrics_timeseries`
 (
+	`tenant_id`   LowCardinality(String),
 	`name`        LowCardinality(String)                                   CODEC(ZSTD(1)),
 	`unit`        SimpleAggregateFunction(anyLast, LowCardinality(String)) CODEC(ZSTD(1)),
 	`description` SimpleAggregateFunction(anyLast, String)                 CODEC(ZSTD(3)),
@@ -11,5 +12,5 @@ CREATE TABLE IF NOT EXISTS `metrics_timeseries`
 	`scope`       LowCardinality(String)
 )
 ENGINE = AggregatingMergeTree
-ORDER BY (`name`, `resource`, `scope`, `attribute`)
-PRIMARY KEY (`name`, `resource`, `scope`, `attribute`)
+ORDER BY (`tenant_id`, `name`, `resource`, `scope`, `attribute`)
+PRIMARY KEY (`tenant_id`, `name`, `resource`, `scope`, `attribute`)

@@ -192,9 +192,12 @@ func decodeMap(d *jx.Decoder, m pcommon.Map) error {
 	})
 }
 
-func hashTimeseries(name string, res, scope, attrs otelstorage.Attrs) [16]byte {
+func hashTimeseries(tenantID, name string, res, scope, attrs otelstorage.Attrs) [16]byte {
 	h := xxh3.New()
 
+	// Include tenant_id as the first hash input so identical series
+	// for different tenants produce different hashes
+	_, _ = h.WriteString(tenantID)
 	_, _ = h.WriteString(name)
 	otelstorage.WriteAttrHash(h, res.AsMap())
 	otelstorage.WriteAttrHash(h, scope.AsMap())

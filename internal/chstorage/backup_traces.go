@@ -77,6 +77,7 @@ func (b *tracesBackup) backupSpans(ctx context.Context, dir string, start, end t
 	defer func() { _ = w.Close() }()
 
 	var (
+		tenantID   = new(proto.ColStr).LowCardinality()
 		traceID    proto.ColRawOf[otelstorage.TraceID]
 		spanID     proto.ColRawOf[otelstorage.SpanID]
 		parentSpan proto.ColRawOf[otelstorage.SpanID]
@@ -107,6 +108,7 @@ func (b *tracesBackup) backupSpans(ctx context.Context, dir string, start, end t
 
 		columns = MergeColumns(
 			Columns{
+				{Name: "tenant_id", Data: tenantID},
 				{Name: "trace_id", Data: &traceID},
 				{Name: "span_id", Data: &spanID},
 				{Name: "trace_state", Data: &traceState},
@@ -145,6 +147,7 @@ func (b *tracesBackup) backupSpans(ctx context.Context, dir string, start, end t
 	)
 	if err := b.client.Do(ctx, ch.Query{
 		Body: fmt.Sprintf(`SELECT
+	tenant_id,
 	trace_id,
 	span_id,
 	trace_state,
