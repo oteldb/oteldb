@@ -18,7 +18,6 @@ import (
 	"github.com/zeebo/xxh3"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/go-faster/oteldb/internal/chstorage/chsql"
@@ -43,7 +42,7 @@ type promQuerier struct {
 
 	metricsCache    *MetricsCache
 	queryTimeseries queryMetricsTimeseriesFunc
-	queryPointsFunc func(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) ([]*series[pointData], error)
+	queryPointsFunc func(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error)
 	metricsSg       *singleflight.Group[xxh3.Uint128, metricSelectResult]
 	do              func(ctx context.Context, s selectQuery) error
 
@@ -455,7 +454,14 @@ func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params
 			if p.metricsCache != nil {
 				points, err = p.queryPointsCached(ctx, p.tables.Points, params.Start, params.End, timeseries)
 			} else {
-				points, err = p.queryPointsFunc(ctx, p.tables.Points, params.Start, params.End, timeseries)
+				var set map[[16]byte]*series[pointData]
+				set, err = p.queryPoints(ctx, p.tables.Points, params.Start, params.End, timeseries)
+				if err == nil {
+					points = make([]*series[pointData], 0, len(set))
+					for _, s := range set {
+						points = append(points, s)
+					}
+				}
 			}
 			if err != nil {
 				return errors.Wrap(err, "query points")
@@ -491,57 +497,34 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 		cacheEnd = end
 	}
 
-	const uncachedHash = -1
-	// 1. Determine per-series watermarks and global fetch lower bound
-	var (
-		seriesWatermark = make(map[[16]byte]int64, len(timeseries))
-		globalFetchFrom = start.UnixMilli()
-		hits, misses    int
+	// 1. Determine per-series watermarks and global fetch lower bound.
+	seriesWatermark, globalFetchFrom, stats := computeFetchRange(
+		p.metricsCache,
+		start.UnixMilli(),
+		timeseries,
 	)
-	for hash := range timeseries {
-		seriesWatermark[hash] = uncachedHash
-		entry, ok := p.metricsCache.cache.Get(hash)
-		if ok && entry.maxTS >= start.UnixMilli() {
-			hits++
-			seriesWatermark[hash] = entry.maxTS
-			if entry.maxTS+1 < globalFetchFrom || globalFetchFrom == start.UnixMilli() {
-				globalFetchFrom = entry.maxTS + 1
-			}
-		} else {
-			misses++
-			globalFetchFrom = start.UnixMilli()
-		}
-	}
 
 	trace.SpanFromContext(ctx).SetAttributes(
-		attribute.Int("chstorage.metrics_cache.hits", hits),
-		attribute.Int("chstorage.metrics_cache.misses", misses),
+		attribute.Int64("chstorage.metrics_cache.global_fetch_from", globalFetchFrom),
+		attribute.Int("chstorage.metrics_cache.hits", stats.hits),
+		attribute.Int("chstorage.metrics_cache.misses", stats.misses),
 	)
 
 	// 2. Single ClickHouse query: [globalFetchFrom, end]
+	// Skip the query when all watermarks are beyond end; cache covers the full range.
 	fetchStart := time.UnixMilli(globalFetchFrom)
-	fetched, err := p.queryPointsFunc(ctx, table, fetchStart, end, timeseries)
-	if err != nil {
-		return nil, err
-	}
-	fetchedByHash := make(map[[16]byte]*series[pointData], len(fetched))
-	for _, s := range fetched {
-		found := false
-		for h, lb := range timeseries {
-			if lb.Hash() == s.labels.Hash() {
-				fetchedByHash[h] = s
-				found = true
-				break
-			}
+	var fetchedByHash map[[16]byte]*series[pointData]
+	if !fetchStart.After(end) {
+		var err error
+		fetchedByHash, err = p.queryPointsFunc(ctx, table, fetchStart, end, timeseries)
+		if err != nil {
+			return nil, err
 		}
-		if !found {
-			zctx.From(ctx).Error("Can't find hash for fetched series", zap.String("labels", s.labels.String()))
-		}
-	}
 
-	// 3. Update cache: store fetched points where ts <= cacheEnd
-	for hash, s := range fetchedByHash {
-		p.upsertCache(hash, s.ts, s.data.values, cacheEnd.UnixMilli())
+		// 3. Update cache: store fetched points where ts <= cacheEnd
+		for hash, s := range fetchedByHash {
+			p.upsertCache(hash, s.ts, s.data.values, cacheEnd.UnixMilli())
+		}
 	}
 
 	// 4. Merge per series: cached[start..watermark] ++ fetched(watermark, end]
@@ -551,10 +534,11 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 		watermark := seriesWatermark[hash]
 
 		if watermark >= start.UnixMilli() {
-			entry, _ := p.metricsCache.cache.Get(hash)
-			cachedTS, cachedVals := entry.Slice(start.UnixMilli(), watermark)
-			s.ts = append(s.ts, cachedTS...)
-			s.data.values = append(s.data.values, cachedVals...)
+			if entry, ok := p.metricsCache.cache.Get(hash); ok {
+				cachedTS, cachedVals := entry.Slice(start.UnixMilli(), min(watermark, end.UnixMilli()))
+				s.ts = append(s.ts, cachedTS...)
+				s.data.values = append(s.data.values, cachedVals...)
+			}
 		}
 
 		if f, ok := fetchedByHash[hash]; ok {
@@ -577,18 +561,62 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 func (p *promQuerier) upsertCache(hash [16]byte, ts []int64, vals []float64, untilMs int64) {
 	entry, ok := p.metricsCache.cache.Get(hash)
 	if !ok {
-		entry = &MetricsCacheEntry{}
-		cost := entry.Append(ts, vals, untilMs)
-		if cost > 0 {
-			p.metricsCache.cache.Set(hash, entry)
-		}
-		return
+		entry = newMetricsCacheEntry()
 	}
 
-	cost := entry.Append(ts, vals, untilMs)
-	if cost > 0 {
+	entry.Append(ts, vals, untilMs)
+	if len(ts) > 0 {
 		p.metricsCache.cache.Set(hash, entry)
 	}
+}
+
+type cacheStats struct {
+	hits   int
+	misses int
+}
+
+const uncachedWatermark = -1
+
+func computeFetchRange(
+	cache *MetricsCache,
+	start int64,
+	timeseries map[[16]byte]labels.Labels,
+) (watermarks map[[16]byte]int64, globalFetchFrom int64, stats cacheStats) {
+	watermarks = make(map[[16]byte]int64, len(timeseries))
+	var (
+		hasAnyMiss = false
+		minHitTS   int64
+	)
+	for hash := range timeseries {
+		watermarks[hash] = uncachedWatermark
+		entry, ok := cache.cache.Get(hash)
+		if ok {
+			entry.mu.RLock()
+			entryMaxTS := entry.maxTS
+			entry.mu.RUnlock()
+
+			if entryMaxTS >= start {
+				stats.hits++
+				watermarks[hash] = entryMaxTS
+				if stats.hits == 1 || entryMaxTS < minHitTS {
+					minHitTS = entryMaxTS
+				}
+				continue
+			}
+		}
+
+		stats.misses++
+		hasAnyMiss = true
+	}
+
+	if hasAnyMiss || stats.hits == 0 {
+		globalFetchFrom = start
+	} else {
+		// All series are hits. Fetch from the minimum watermark + 1.
+		globalFetchFrom = minHitTS + 1
+	}
+
+	return watermarks, globalFetchFrom, stats
 }
 
 func canUseSampledPoints(stepDuration time.Duration, fn string) (pointsSampler, bool) {
@@ -618,7 +646,7 @@ type pointsSampler struct {
 	needPoints bool
 }
 
-func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (_ []*series[pointData], rerr error) {
+func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (_ map[[16]byte]*series[pointData], rerr error) {
 	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.queryPoints",
 		trace.WithAttributes(
 			xattribute.UnixNano("chstorage.range.start", start),
@@ -701,11 +729,7 @@ func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end 
 		attribute.Int("chstorage.total_points", totalPoints),
 	))
 
-	result := make([]*series[pointData], 0, len(set))
-	for _, s := range set {
-		result = append(result, s)
-	}
-	return result, nil
+	return set, nil
 }
 
 type groupMapping struct {

@@ -6,16 +6,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMetricsCacheEntry(t *testing.T) {
-	e := &MetricsCacheEntry{}
+	e := newMetricsCacheEntry()
 
 	// Initial append
 	cost := e.Append([]int64{10, 20, 30}, []float64{1.1, 2.2, 3.3}, 100)
-	require.Equal(t, uint32(3*16), cost)
+	require.Equal(t, uint32(3*16+128), cost)
 	require.Equal(t, int64(10), e.minTS)
 	require.Equal(t, int64(30), e.maxTS)
 
@@ -31,7 +32,7 @@ func TestMetricsCacheEntry(t *testing.T) {
 
 	// Append overlapping and new data
 	cost = e.Append([]int64{20, 30, 40, 50}, []float64{2.2, 3.3, 4.4, 5.5}, 45)
-	require.Equal(t, uint32(4*16), cost)
+	require.Equal(t, uint32(4*16+128), cost)
 	require.Equal(t, int64(10), e.minTS)
 	require.Equal(t, int64(40), e.maxTS)
 
@@ -45,7 +46,7 @@ func TestMetricsCacheEntry(t *testing.T) {
 }
 
 func TestMetricsCacheEntry_Concurrency(t *testing.T) {
-	e := &MetricsCacheEntry{}
+	e := newMetricsCacheEntry()
 	var wg sync.WaitGroup
 
 	// Concurrent appends
@@ -101,7 +102,7 @@ func TestPromQuerier_QueryPointsCached(t *testing.T) {
 
 	p := &promQuerier{
 		metricsCache: cache,
-		queryPointsFunc: func(ctx context.Context, table string, s, e time.Time, ts map[[16]byte]labels.Labels) ([]*series[pointData], error) {
+		queryPointsFunc: func(ctx context.Context, table string, s, e time.Time, ts map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
 			callCount++
 			lastStart = s
 
@@ -111,7 +112,7 @@ func TestPromQuerier_QueryPointsCached(t *testing.T) {
 				res.ts = append(res.ts, t)
 				res.data.values = append(res.data.values, float64(t))
 			}
-			return []*series[pointData]{res}, nil
+			return map[[16]byte]*series[pointData]{hash1: res}, nil
 		},
 	}
 
@@ -143,5 +144,129 @@ func TestPromQuerier_QueryPointsCached(t *testing.T) {
 		require.Greater(t, lastStart.UnixMilli(), start.UnixMilli())
 		require.Len(t, points, 1)
 		require.Len(t, points[0].ts, 13) // 11 + 2 new points
+	})
+}
+
+// TestQueryPointsCached_WatermarkBeyondEnd verifies that when a cached entry's
+// watermark exceeds the query end, points beyond end are not returned.
+func TestQueryPointsCached_WatermarkBeyondEnd(t *testing.T) {
+	opts := MetricsCacheOptions{
+		MaxBytes:  1024 * 1024,
+		SafetyLag: time.Second, // small so fixed timestamps are cacheable
+	}
+	cache, err := newMetricsCache(opts)
+	require.NoError(t, err)
+
+	lb := labels.FromStrings("__name__", "m")
+	var hash [16]byte
+	h := lb.Hash()
+	for i := range 8 {
+		hash[i] = byte(h >> (i * 8))
+	}
+	timeseries := map[[16]byte]labels.Labels{hash: lb}
+
+	// Use a fixed epoch far enough in the past so safety lag never interferes.
+	epoch := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Pre-populate cache with data from epoch to epoch+5min (watermark = epoch+5min).
+	entry := newMetricsCacheEntry()
+	for i := range 6 {
+		t := epoch.Add(time.Duration(i) * time.Minute).UnixMilli()
+		entry.Append([]int64{t}, []float64{float64(i)}, epoch.Add(10*time.Minute).UnixMilli())
+	}
+	cache.cache.Set(hash, entry)
+	// Watermark is now epoch+5min.
+	require.Equal(t, epoch.Add(5*time.Minute).UnixMilli(), entry.maxTS)
+
+	p := &promQuerier{
+		metricsCache: cache,
+		// Query function should not be called since all data is cached.
+		queryPointsFunc: func(_ context.Context, _ string, s, e time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+			return map[[16]byte]*series[pointData]{}, errors.New("unexpected query")
+		},
+	}
+
+	ctx := context.Background()
+	start := epoch
+	end := epoch.Add(3 * time.Minute) // end < watermark (epoch+5min)
+
+	points, err := p.queryPointsCached(ctx, "points", start, end, timeseries)
+	require.NoError(t, err)
+	require.Len(t, points, 1)
+
+	// Only points within [start, end] should be returned: epoch+0..+3min = 4 points.
+	for _, ts := range points[0].ts {
+		require.LessOrEqual(t, ts, end.UnixMilli(), "point %d is beyond query end %d", ts, end.UnixMilli())
+		require.GreaterOrEqual(t, ts, start.UnixMilli())
+	}
+	require.Len(t, points[0].ts, 4)
+}
+
+func TestComputeFetchRange(t *testing.T) {
+	cache, err := newMetricsCache(MetricsCacheOptions{MaxBytes: 1024 * 1024})
+	require.NoError(t, err)
+
+	h1 := [16]byte{1}
+	h2 := [16]byte{2}
+	timeseries := map[[16]byte]labels.Labels{
+		h1: labels.FromStrings("a", "b"),
+		h2: labels.FromStrings("c", "d"),
+	}
+
+	start := int64(1000)
+
+	t.Run("AllMisses", func(t *testing.T) {
+		wms, fetchStart, stats := computeFetchRange(cache, start, timeseries)
+		require.Equal(t, start, fetchStart)
+		require.Equal(t, 2, stats.misses)
+		require.Equal(t, 0, stats.hits)
+		require.Equal(t, int64(uncachedWatermark), wms[h1])
+		require.Equal(t, int64(uncachedWatermark), wms[h2])
+	})
+
+	t.Run("MixedHitAndMiss", func(t *testing.T) {
+		// h1 is a hit at 2000
+		entry1 := newMetricsCacheEntry()
+		entry1.Append([]int64{2000}, []float64{1}, 3000)
+		cache.cache.Set(h1, entry1)
+
+		wms, fetchStart, stats := computeFetchRange(cache, start, timeseries)
+		// Even though h1 is a hit, h2 is a miss, so we must fetch from start.
+		require.Equal(t, start, fetchStart)
+		require.Equal(t, 1, stats.misses)
+		require.Equal(t, 1, stats.hits)
+		require.Equal(t, int64(2000), wms[h1])
+		require.Equal(t, int64(uncachedWatermark), wms[h2])
+	})
+
+	t.Run("AllHits", func(t *testing.T) {
+		// h2 is a hit at 1500
+		entry2 := newMetricsCacheEntry()
+		entry2.Append([]int64{1500}, []float64{2}, 3000)
+		cache.cache.Set(h2, entry2)
+
+		wms, fetchStart, stats := computeFetchRange(cache, start, timeseries)
+		// Both are hits. min(2000, 1500) = 1500. Fetch from 1500 + 1.
+		require.Equal(t, int64(1501), fetchStart)
+		require.Equal(t, 0, stats.misses)
+		require.Equal(t, 2, stats.hits)
+		require.Equal(t, int64(2000), wms[h1])
+		require.Equal(t, int64(1500), wms[h2])
+	})
+
+	t.Run("HitBelowStart", func(t *testing.T) {
+		// h3 is a hit but below the requested start
+		h3 := [16]byte{3}
+		ts3 := map[[16]byte]labels.Labels{h3: labels.FromStrings("e", "f")}
+		entry3 := newMetricsCacheEntry()
+		entry3.Append([]int64{500}, []float64{3}, 1000)
+		cache.cache.Set(h3, entry3)
+
+		wms, fetchStart, stats := computeFetchRange(cache, start, ts3)
+		// maxTS (500) < start (1000), so it's a miss for the requested range.
+		require.Equal(t, start, fetchStart)
+		require.Equal(t, 1, stats.misses)
+		require.Equal(t, 0, stats.hits)
+		require.Equal(t, int64(uncachedWatermark), wms[h3])
 	})
 }
