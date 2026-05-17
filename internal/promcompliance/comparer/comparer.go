@@ -45,6 +45,9 @@ type Comparer struct {
 	testAPI        PromAPI
 	queryTweaks    []*config.QueryTweak
 	compareOptions cmp.Options
+	// Repeats controls how many times each query is sent to the test API.
+	// When greater than 1, subsequent results are diffed against the first to detect cache inconsistencies.
+	Repeats int
 }
 
 // New returns a new Comparer.
@@ -68,11 +71,13 @@ type Result struct {
 	UnexpectedFailure string    `json:"unexpectedFailure,omitempty"`
 	UnexpectedSuccess bool      `json:"unexpectedSuccess"`
 	Unsupported       bool      `json:"unsupported,omitempty"`
+	// RepeatDiff is set when the test API returns different results across repeated runs of the same query.
+	RepeatDiff string `json:"repeatDiff,omitempty"`
 }
 
 // Success returns true if the comparison result was successful.
 func (r *Result) Success() bool {
-	return r.Diff == "" && !r.UnexpectedSuccess && r.UnexpectedFailure == ""
+	return r.Diff == "" && !r.UnexpectedSuccess && r.UnexpectedFailure == "" && r.RepeatDiff == ""
 }
 
 // Compare runs a test case query against the reference API and the test API and compares the results.
@@ -109,6 +114,25 @@ func (c *Comparer) Compare(tc *TestCase) (*Result, error) {
 	}
 
 	sort.Sort(testResult.(model.Matrix))
+
+	for i := 1; i < c.Repeats; i++ {
+		rctx, rcancel := context.WithTimeout(context.Background(), 10*time.Second)
+		repeatResult, _, repeatErr := c.testAPI.QueryRange(rctx, tc.Query, r)
+		rcancel()
+		if repeatErr != nil {
+			return &Result{
+				TestCase:   tc,
+				RepeatDiff: fmt.Sprintf("run %d failed: %v", i+1, repeatErr),
+			}, nil
+		}
+		sort.Sort(repeatResult.(model.Matrix))
+		if diff := cmp.Diff(testResult, repeatResult, c.compareOptions); diff != "" {
+			return &Result{
+				TestCase:   tc,
+				RepeatDiff: fmt.Sprintf("run 1 vs run %d:\n%s", i+1, diff),
+			}, nil
+		}
+	}
 
 	for _, qt := range c.queryTweaks {
 		if qt.IgnoreFirstStep {

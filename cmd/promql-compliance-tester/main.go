@@ -89,6 +89,7 @@ func main() {
 	outputHTMLTemplate := flag.String("output-html-template", "", "The HTML template to use when using HTML as the output format.")
 	outputPassing := flag.Bool("output-passing", false, "Whether to also include passing test cases in the output.")
 	queryParallelism := flag.Int("query-parallelism", 20, "Maximum number of comparison queries to run in parallel.")
+	queryRepeats := flag.Int("query-repeats", 1, "Number of times to repeat each query against the test target; values >1 detect cache inconsistencies.")
 	endDelta := flag.Duration("end", 12*time.Minute, "The delta between the end time and current time, negated")
 	rangeDuration := flag.Duration("range", 10*time.Minute, "The duration of the query range.")
 	resolutionDuration := flag.Duration("resolution", 10*time.Second, "The resolution of the query.")
@@ -126,6 +127,7 @@ func main() {
 	}
 
 	comp := comparer.New(refAPI, testAPI, cfg.QueryTweaks)
+	comp.Repeats = *queryRepeats
 
 	end := getTime(cfg.QueryTimeParameters.EndTime, time.Now().Add(-*endDelta))
 	start := end.Add(

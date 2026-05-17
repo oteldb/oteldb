@@ -44,6 +44,10 @@ func Text(results []*comparer.Result, includePassing bool, tweaks []*config.Quer
 				fmt.Println("Query returned different results:")
 				fmt.Println(res.Diff)
 			}
+			if res.RepeatDiff != "" {
+				fmt.Println("Query returned inconsistent results across repeated runs:")
+				fmt.Println(res.RepeatDiff)
+			}
 		}
 	}
 
