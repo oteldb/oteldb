@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS `metrics_points`
 (
+	`tenant_id` LowCardinality(String),
 	`hash`      LowCardinality(FixedString(16)),
 	`timestamp` DateTime64(3)                   CODEC(Delta, ZSTD(1)),
 	`value`     Float64                         CODEC(FPC, ZSTD(1)),
@@ -18,5 +19,5 @@ CREATE TABLE IF NOT EXISTS `metrics_points`
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(timestamp)
-ORDER BY (`hash`, `timestamp`)
+ORDER BY (`tenant_id`, `hash`, `timestamp`)
 TTL toDateTime(`timestamp`) + toIntervalSecond(259200)

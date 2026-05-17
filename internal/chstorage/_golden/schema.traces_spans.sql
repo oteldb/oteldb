@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS `traces_spans`
 (
+	`tenant_id`           LowCardinality(String),
 	`service_instance_id` LowCardinality(String) COMMENT 'service.instance.id',
 	`service_name`        LowCardinality(String) COMMENT 'service.name',
 	`service_namespace`   LowCardinality(String) COMMENT 'service.namespace',
@@ -31,6 +32,6 @@ CREATE TABLE IF NOT EXISTS `traces_spans`
 	INDEX `idx_trace_id` trace_id TYPE bloom_filter(0.001) GRANULARITY 1
 )
 ENGINE = MergeTree
-ORDER BY (`service_namespace`, `service_name`, `resource`, `start`)
-PRIMARY KEY (`service_namespace`, `service_name`, `resource`)
+ORDER BY (`tenant_id`, `service_namespace`, `service_name`, `resource`, `start`)
+PRIMARY KEY (`tenant_id`, `service_namespace`, `service_name`, `resource`)
 TTL toDateTime(`start`) + toIntervalSecond(259200)
