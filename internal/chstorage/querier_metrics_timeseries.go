@@ -19,6 +19,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/chstorage/chsql"
 	"github.com/oteldb/oteldb/internal/metricstorage"
+	"github.com/oteldb/oteldb/internal/multitenancy"
 	"github.com/oteldb/oteldb/internal/promapi"
 )
 
@@ -45,8 +46,22 @@ type (
 	queryMetricsTimeseriesFunc = func(ctx context.Context, start, end time.Time, matcherSets [][]*labels.Matcher) (metricsTimeseries, error)
 )
 
-func (q *timeseriesQuerier) hashMatchers(start, end time.Time, sets [][]*labels.Matcher) xxh3.Uint128 {
+func (q *timeseriesQuerier) hashMatchers(ctx context.Context, start, end time.Time, sets [][]*labels.Matcher) xxh3.Uint128 {
 	h := xxh3.New()
+	if d, ok := multitenancy.DecisionFromContext(ctx); ok && d.Enabled {
+		for _, t := range d.TenantIDs {
+			_, _ = h.WriteString(t)
+			_, _ = h.WriteString(",")
+		}
+		for _, sel := range d.ResourceSelectors {
+			_, _ = h.WriteString(sel.Key)
+			_, _ = h.WriteString(",")
+			_, _ = h.WriteString(string(sel.Op))
+			_, _ = h.WriteString(",")
+			_, _ = h.WriteString(sel.Value)
+			_, _ = h.WriteString(",")
+		}
+	}
 	hashPrometheusMatchers(h, sets)
 	buf := make([]byte, 8)
 	binary.LittleEndian.PutUint64(buf, uint64(start.UnixNano()))
@@ -113,7 +128,7 @@ func (q *timeseriesQuerier) Query(ctx context.Context, start, end time.Time, mat
 	var (
 		parentSpan   = span
 		parentLink   = trace.LinkFromContext(ctx)
-		matchersHash = q.hashMatchers(start, end, matcherSets)
+		matchersHash = q.hashMatchers(ctx, start, end, matcherSets)
 	)
 	resultCh := q.hashSg.DoChan(matchersHash, func() (metricsTimeseries, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -182,7 +197,7 @@ func (q *timeseriesQuerier) queryTimeseries(ctx context.Context, parentSpan trac
 	})
 
 	var (
-		query = chsql.Select(table, selectExprs...)
+		query = newSelectQuery(ctx, table, selectExprs...)
 		sets  = make([]chsql.Expr, 0, len(matcherSets))
 	)
 	for _, set := range matcherSets {
@@ -350,7 +365,7 @@ func (q *timeseriesQuerier) queryMetadata(
 			{Name: "description", Data: c.description, Expr: chsql.Function("any", chsql.Ident("description"))},
 		}
 	)
-	query := chsql.Select(table, selectExprs...)
+	query := newSelectQuery(ctx, table, selectExprs...)
 	if name := params.MetricName; name != "" {
 		query.Where(chsql.Eq(
 			chsql.Ident("name"),

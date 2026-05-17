@@ -87,7 +87,7 @@ func (p *promQuerier) getLabelValues(ctx context.Context, labelName string, matc
 		valueColumn = "value"
 	)
 
-	query := chsql.Select(table, chsql.Column(valueColumn, &value)).
+	query := newSelectQuery(ctx, table, chsql.Column(valueColumn, &value)).
 		Distinct(true).
 		Where(chsql.ColumnEq("name", labelName))
 	for _, m := range matchers {
@@ -154,7 +154,7 @@ func (p *promQuerier) getMatchingLabelValues(ctx context.Context, labelName stri
 		value = &proto.ColStr{}
 	}
 
-	query := chsql.Select(table, chsql.ResultColumn{
+	query := newSelectQuery(ctx, table, chsql.ResultColumn{
 		Name: "value",
 		Expr: columnExpr,
 		Data: value,
@@ -270,7 +270,7 @@ func (p *promQuerier) getLabelNames(ctx context.Context) (result []string, rerr 
 
 	var (
 		value = new(proto.ColStr).LowCardinality()
-		query = chsql.Select(table, chsql.Column("name", value)).
+		query = newSelectQuery(ctx, table, chsql.Column("name", value)).
 			Distinct(true).
 			Order(chsql.Ident("name"), chsql.Asc)
 	)
@@ -311,7 +311,7 @@ func (p *promQuerier) getMatchingLabelNames(ctx context.Context, matchers []*lab
 	var (
 		value proto.ColStr
 
-		query = chsql.Select(table, chsql.ResultColumn{
+		query = newSelectQuery(ctx, table, chsql.ResultColumn{
 			Name: "values",
 			Expr: chsql.ArrayJoin(
 				chsql.ArrayConcat(

@@ -47,7 +47,7 @@ func Benchmark_metricsBatch(b *testing.B) {
 		chLogLevel: zapcore.PanicLevel,
 		stats:      stats,
 		tracker:    globalmetric.NewNoopTracker(),
-	})
+	}, b.Context())
 	b.SetBytes(int64(len(raw)))
 	b.ResetTimer()
 	for b.Loop() {

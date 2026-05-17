@@ -97,7 +97,7 @@ func (r *metricsRestore) restore(ctx context.Context, dir string) error {
 	}
 	{
 		lc := newLabelsColumns()
-		lc.AppendMap(r.labels)
+		lc.AppendMap("", r.labels) // Empty tenant_id for restore operations
 
 		input := lc.Input()
 		if err := r.client.Do(ctx, ch.Query{
@@ -169,6 +169,7 @@ func (r *metricsRestore) restorePoints(ctx context.Context, dir string) error {
 						)
 						r.collectLabels(name, mapping, resource, scope, attributes)
 
+						points.tenantID.Append("") // Empty tenant_id for restore operations
 						points.timestamp.Append(timestamp)
 						points.hash.Append(hash)
 					}
@@ -259,6 +260,7 @@ func (r *metricsRestore) restoreExpHistograms(ctx context.Context, dir string) e
 						)
 						r.collectLabels(name, noMapping, resource, scope, attributes)
 
+						histograms.tenantID.Append("") // Empty tenant_id for restore operations
 						histograms.hash.Append(hash)
 						histograms.timestamp.Append(timestamp)
 						histograms.sum.Append(sum.Row(i))
@@ -374,6 +376,7 @@ func (r *metricsRestore) collectTimeseries(
 	defer r.timeseriesMux.Unlock()
 
 	hash := hashTimeseries(
+		"", // Empty tenant_id for restore operations
 		name,
 		res,
 		scope,
@@ -384,6 +387,7 @@ func (r *metricsRestore) collectTimeseries(
 	}
 	r.seenTimeseries[hash] = struct{}{}
 
+	r.timeseries.tenantID.Append("") // Empty tenant_id for restore operations
 	r.timeseries.hash.Append(hash)
 	r.timeseries.name.Append(name)
 	r.timeseries.unit.Append(unit)

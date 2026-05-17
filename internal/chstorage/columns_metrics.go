@@ -10,6 +10,8 @@ import (
 )
 
 type timeseriesColumns struct {
+	tenantID *proto.ColLowCardinality[string]
+
 	name        *proto.ColLowCardinality[string]
 	unit        *colSimpleAggregateFunction[string]
 	description *colSimpleAggregateFunction[string]
@@ -25,6 +27,7 @@ type timeseriesColumns struct {
 
 func newTimeseriesColumns() *timeseriesColumns {
 	return &timeseriesColumns{
+		tenantID:    new(proto.ColStr).LowCardinality(),
 		name:        new(proto.ColStr).LowCardinality(),
 		unit:        &colSimpleAggregateFunction[string]{Function: "anyLast", Data: new(proto.ColStr).LowCardinality()},
 		description: &colSimpleAggregateFunction[string]{Function: "anyLast", Data: new(proto.ColStr)},
@@ -46,6 +49,7 @@ func (c *timeseriesColumns) timestampPrecision() proto.Precision {
 func (c *timeseriesColumns) Columns() Columns {
 	return MergeColumns(
 		Columns{
+			{Name: "tenant_id", Data: c.tenantID},
 			{Name: "name", Data: c.name},
 			{Name: "unit", Data: c.unit},
 			{Name: "description", Data: c.description},
@@ -66,9 +70,13 @@ func (c *timeseriesColumns) ChsqlResult() []chsql.ResultColumn { return c.Column
 func (c *timeseriesColumns) DDL() ddl.Table {
 	table := ddl.Table{
 		Engine:     ddl.Engine{Type: "AggregatingMergeTree"},
-		PrimaryKey: []string{"name", "resource", "scope", "attribute"},
-		OrderBy:    []string{"name", "resource", "scope", "attribute"},
+		PrimaryKey: []string{"tenant_id", "name", "resource", "scope", "attribute"},
+		OrderBy:    []string{"tenant_id", "name", "resource", "scope", "attribute"},
 		Columns: []ddl.Column{
+			{
+				Name: "tenant_id",
+				Type: c.tenantID.Type(),
+			},
 			{
 				Name:  "name",
 				Type:  c.name.Type(),
@@ -107,6 +115,8 @@ func (c *timeseriesColumns) DDL() ddl.Table {
 }
 
 type pointColumns struct {
+	tenantID *proto.ColLowCardinality[string]
+
 	hash      proto.ColumnOf[[16]byte]
 	timestamp *proto.ColDateTime64
 
@@ -118,6 +128,7 @@ type pointColumns struct {
 
 func newPointColumns() *pointColumns {
 	return &pointColumns{
+		tenantID:  new(proto.ColStr).LowCardinality(),
 		timestamp: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli),
 		hash:      proto.NewLowCardinality(&proto.ColFixedStr16{}),
 	}
@@ -126,6 +137,7 @@ func newPointColumns() *pointColumns {
 func (c *pointColumns) Columns() Columns {
 	return MergeColumns(
 		Columns{
+			{Name: "tenant_id", Data: c.tenantID},
 			{Name: "hash", Data: c.hash},
 			{Name: "timestamp", Data: c.timestamp},
 
@@ -145,9 +157,13 @@ func (c *pointColumns) DDL() ddl.Table {
 	table := ddl.Table{
 		Engine:      ddl.Engine{Type: "MergeTree"},
 		PartitionBy: "toYYYYMMDD(timestamp)",
-		OrderBy:     []string{"hash", "timestamp"},
+		OrderBy:     []string{"tenant_id", "hash", "timestamp"},
 		TTL:         ddl.TTL{Field: "timestamp"},
 		Columns: []ddl.Column{
+			{
+				Name: "tenant_id",
+				Type: c.tenantID.Type(),
+			},
 			{
 				Name: "hash",
 				Type: c.hash.Type(),
@@ -179,6 +195,8 @@ func (c *pointColumns) DDL() ddl.Table {
 }
 
 type expHistogramColumns struct {
+	tenantID *proto.ColLowCardinality[string]
+
 	hash      proto.ColFixedStr16
 	timestamp *proto.ColDateTime64
 
@@ -198,6 +216,7 @@ type expHistogramColumns struct {
 
 func newExpHistogramColumns() *expHistogramColumns {
 	return &expHistogramColumns{
+		tenantID:  new(proto.ColStr).LowCardinality(),
 		timestamp: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli),
 
 		sum:                  new(proto.ColFloat64).Nullable(),
@@ -211,6 +230,7 @@ func newExpHistogramColumns() *expHistogramColumns {
 func (c *expHistogramColumns) Columns() Columns {
 	return MergeColumns(
 		Columns{
+			{Name: "tenant_id", Data: c.tenantID},
 			{Name: "hash", Data: &c.hash},
 			{Name: "timestamp", Data: c.timestamp},
 
@@ -238,8 +258,12 @@ func (c *expHistogramColumns) DDL() ddl.Table {
 	table := ddl.Table{
 		Engine:      ddl.Engine{Type: "MergeTree"},
 		PartitionBy: "toYYYYMMDD(timestamp)",
-		OrderBy:     []string{"hash", "timestamp"},
+		OrderBy:     []string{"tenant_id", "hash", "timestamp"},
 		Columns: []ddl.Column{
+			{
+				Name: "tenant_id",
+				Type: c.tenantID.Type(),
+			},
 			{
 				Name: "hash",
 				Type: c.hash.Type(),
@@ -301,19 +325,22 @@ func (c *expHistogramColumns) DDL() ddl.Table {
 }
 
 type labelsColumns struct {
-	name  *proto.ColLowCardinality[string]
-	value proto.ColStr
-	scope proto.ColEnum8
+	tenantID *proto.ColLowCardinality[string]
+	name     *proto.ColLowCardinality[string]
+	value    proto.ColStr
+	scope    proto.ColEnum8
 }
 
 func newLabelsColumns() *labelsColumns {
 	return &labelsColumns{
-		name: new(proto.ColStr).LowCardinality(),
+		tenantID: new(proto.ColStr).LowCardinality(),
+		name:     new(proto.ColStr).LowCardinality(),
 	}
 }
 
 func (c *labelsColumns) Columns() Columns {
 	return Columns{
+		{Name: "tenant_id", Data: c.tenantID},
 		{Name: "name", Data: c.name},
 		{Name: "value", Data: &c.value},
 		{Name: "scope", Data: proto.Wrap(&c.scope, metricLabelScopeDDL)},
@@ -323,12 +350,13 @@ func (c *labelsColumns) Input() proto.Input                { return c.Columns().
 func (c *labelsColumns) Result() proto.Results             { return c.Columns().Result() }
 func (c *labelsColumns) ChsqlResult() []chsql.ResultColumn { return c.Columns().ChsqlResult() }
 
-func (c *labelsColumns) AppendMap(m map[[2]string]labelScope) {
+func (c *labelsColumns) AppendMap(tenantID string, m map[[2]string]labelScope) {
 	insertLabel := func(
 		key string,
 		value string,
 		scope labelScope,
 	) {
+		c.tenantID.Append(tenantID)
 		c.name.Append(key)
 		c.value.Append(value)
 		c.scope.Append(proto.Enum8(scope))
@@ -356,8 +384,12 @@ func (c *labelsColumns) AppendMap(m map[[2]string]labelScope) {
 func (c *labelsColumns) DDL() ddl.Table {
 	return ddl.Table{
 		Engine:  ddl.Engine{Type: "ReplacingMergeTree"},
-		OrderBy: []string{"name", "value", "scope"},
+		OrderBy: []string{"tenant_id", "name", "value", "scope"},
 		Columns: []ddl.Column{
+			{
+				Name: "tenant_id",
+				Type: c.tenantID.Type(),
+			},
 			{
 				Name: "name",
 				Type: c.name.Type(),

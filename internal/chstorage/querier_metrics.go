@@ -24,6 +24,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/chstorage/chsql"
 	"github.com/oteldb/oteldb/internal/metricscache"
+	"github.com/oteldb/oteldb/internal/multitenancy"
 	"github.com/oteldb/oteldb/internal/promapi"
 	"github.com/oteldb/oteldb/internal/xattribute"
 )
@@ -308,7 +309,7 @@ type metricSelectParams struct {
 	Grouping        []string
 }
 
-func (p *metricSelectParams) Hash(samplePoints bool) xxh3.Uint128 {
+func (p *metricSelectParams) Hash(ctx context.Context, samplePoints bool) xxh3.Uint128 {
 	const sep = ","
 	writeBool := func(h *xxh3.Hasher, val bool) {
 		if val {
@@ -337,6 +338,14 @@ func (p *metricSelectParams) Hash(samplePoints bool) xxh3.Uint128 {
 	}
 
 	h := xxh3.New()
+	if d, ok := multitenancy.DecisionFromContext(ctx); ok && d.Enabled {
+		writeStrings(h, d.TenantIDs)
+		for _, sel := range d.ResourceSelectors {
+			writeString(h, sel.Key)
+			writeInt64(h, int64(sel.Op))
+			writeString(h, sel.Value)
+		}
+	}
 	hashPrometheusMatchers(h, [][]*labels.Matcher{p.Matchers})
 	writeInt64(h, p.Step.Milliseconds())
 	writeInt64(h, p.Start.UnixMilli())
@@ -401,7 +410,7 @@ func (p *promQuerier) querySeriesSingleflight(ctx context.Context, samplePoints 
 	var (
 		parentSpan = span
 		parentLink = trace.LinkFromContext(ctx)
-		hash       = params.Hash(samplePoints)
+		hash       = params.Hash(ctx, samplePoints)
 	)
 	resultCh := p.metricsSg.DoChanContext(ctx, hash, func(ctx context.Context) (_ metricSelectResult, rerr error) {
 		ctx, span := p.tracer.Start(ctx, "chstorage.metrics.singelflight.querySeries",
@@ -880,7 +889,7 @@ func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end 
 
 	var (
 		c     = newPointColumns()
-		query = chsql.Select(table, c.ChsqlResult()...).
+		query = newSelectQuery(ctx, table, c.ChsqlResult()...).
 			Where(
 				chsql.InTimeRange("timestamp", start, end, c.timestamp.Precision),
 				chsql.In(
@@ -1090,13 +1099,13 @@ func (p *promQuerier) querySampledPointsPerSeries(
 
 	var (
 		datetime  = chsql.ToDateTime(chsql.Ident("timestamp"))
-		hashQuery = chsql.Select(inputTable, chsql.Column("hash", nil))
+		hashQuery = newSelectQuery(ctx, inputTable, chsql.Column("hash", nil))
 		joinExpr  = chsql.Eq(
 			chsql.PrefixedIdent(inputTable, "hash"),
 			chsql.PrefixedIdent(table, "hash"),
 		)
 
-		query = chsql.Select(table, results...).
+		query = newSelectQuery(ctx, table, results...).
 			With("step", chsql.Interval(step)).
 			With("window_start", chsql.ToDateTime64(chsql.TumbleStart(datetime, step), proto.PrecisionMilli)).
 			With("window_end", chsql.ToDateTime64(chsql.TumbleEnd(datetime, step), proto.PrecisionMilli)).
@@ -1400,7 +1409,7 @@ func (p *promQuerier) queryExpHistograms(ctx context.Context, table string, star
 
 	var (
 		c     = newExpHistogramColumns()
-		query = chsql.Select(table, c.ChsqlResult()...).
+		query = newSelectQuery(ctx, table, c.ChsqlResult()...).
 			Where(
 				chsql.InTimeRange("timestamp", start, end, c.timestamp.Precision),
 				chsql.In(

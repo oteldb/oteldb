@@ -17,6 +17,10 @@ func newTracesTagsDDL() ddl.Table {
 		Engine: ddl.Engine{Type: "ReplacingMergeTree"},
 		Columns: []ddl.Column{
 			{
+				Name: "tenant_id",
+				Type: proto.ColumnTypeLowCardinality.Sub(proto.ColumnTypeString),
+			},
+			{
 				Name: "name",
 				Type: proto.ColumnTypeLowCardinality.Sub(proto.ColumnTypeString),
 			},
@@ -33,6 +37,6 @@ func newTracesTagsDDL() ddl.Table {
 				Type: proto.ColumnTypeEnum8.Sub(scopeTypeDDL),
 			},
 		},
-		OrderBy: []string{"value_type", "name", "value"},
+		OrderBy: []string{"tenant_id", "value_type", "name", "value"},
 	}
 }

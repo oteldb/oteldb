@@ -107,6 +107,7 @@ func (b *metricsBackup) backupPoints(ctx context.Context, dir string, start, end
 		_ = w.Close()
 	}()
 	columns := backupColumns{
+		{Name: "hash", Data: new(proto.ColFixedStr16)},
 		{Name: "timestamp", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)},
 		{Name: "value", Data: new(proto.ColFloat64)},
 
@@ -133,6 +134,7 @@ func (b *metricsBackup) backupExpHistograms(ctx context.Context, dir string, sta
 		_ = w.Close()
 	}()
 	columns := backupColumns{
+		{Name: "hash", Data: new(proto.ColFixedStr16)},
 		{Name: "timestamp", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)},
 		{Name: "exp_histogram_count", Data: new(proto.ColUInt64)},
 		{Name: "exp_histogram_sum", Data: new(proto.ColFloat64).Nullable()},
@@ -256,6 +258,12 @@ func (b *metricsBackup) queryExistingColumns(ctx context.Context, table string) 
 
 func (b *metricsBackup) timeseriesColumns(table string) backupColumns {
 	return backupColumns{
+		{
+			Name:    "tenant_id",
+			Expr:    chsql.Cast(chsql.PrefixedIdent(table, "tenant_id"), "LowCardinality(String)"),
+			Data:    &proto.ColLowCardinalityRaw{Index: new(proto.ColStr)},
+			Default: chsql.Cast(chsql.String(""), "LowCardinality(String)"),
+		},
 		{
 			Name:    "name",
 			Expr:    chsql.Cast(chsql.PrefixedIdent(table, "name"), "LowCardinality(String)"),

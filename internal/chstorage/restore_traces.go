@@ -164,10 +164,10 @@ func (r *tracesRestore) restoreSpans(ctx context.Context, dir string) error {
 						s.ScopeVersion = scopeVersion.Row(i)
 						s.ScopeAttrs = scope.Row(i)
 
-						sc.AddRow(s)
-						tags.AddAttrs(traceql.ScopeSpan, s.Attrs)
-						tags.AddAttrs(traceql.ScopeResource, s.ResourceAttrs)
-						tags.AddAttrs(traceql.ScopeInstrumentation, s.ScopeAttrs)
+						sc.AddRow(s, "") // Empty tenant_id for restore operations
+						tags.AddAttrs("", traceql.ScopeSpan, s.Attrs)
+						tags.AddAttrs("", traceql.ScopeResource, s.ResourceAttrs)
+						tags.AddAttrs("", traceql.ScopeInstrumentation, s.ScopeAttrs)
 					}
 				}
 				rows = func() int {

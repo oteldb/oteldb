@@ -17,20 +17,43 @@ import (
 )
 
 type spanWriter struct {
-	spans *spanColumns
-	attrs *spanAttrsColumns
-
+	spans    *spanColumns
+	attrs    *spanAttrsColumns
 	inserter *Inserter
+
+	droppedRows int             // count of rows dropped due to tenant validation
+	ctx         context.Context // context for write validation
 }
 
 var _ tracestorage.SpanWriter = (*spanWriter)(nil)
 
 // Add adds record to the batch.
 func (w *spanWriter) Add(s tracestorage.Span) error {
-	w.spans.AddRow(s)
-	w.attrs.AddAttrs(traceql.ScopeSpan, s.Attrs)
-	w.attrs.AddAttrs(traceql.ScopeResource, s.ResourceAttrs)
-	w.attrs.AddAttrs(traceql.ScopeInstrumentation, s.ScopeAttrs)
+	// Resolve tenant_id from resource attributes if mapper is configured
+	var tenantID string
+	if w.inserter.tenantMapper != nil {
+		var ok bool
+		tenantID, ok = w.inserter.tenantMapper.Resolve(s.ResourceAttrs)
+		if !ok {
+			// No tenant matched and no default → drop the record
+			w.droppedRows++
+			return nil
+		}
+
+		// Validate tenant_id against write Decision if validator is configured
+		if w.inserter.writeValidator != nil {
+			if !w.inserter.writeValidator.IsAuthorized(w.ctx, tenantID) {
+				// Unauthorized write → drop the record
+				w.droppedRows++
+				return nil
+			}
+		}
+	}
+
+	w.spans.AddRow(s, tenantID)
+	w.attrs.AddAttrs(tenantID, traceql.ScopeSpan, s.Attrs)
+	w.attrs.AddAttrs(tenantID, traceql.ScopeResource, s.ResourceAttrs)
+	w.attrs.AddAttrs(tenantID, traceql.ScopeInstrumentation, s.ScopeAttrs)
 	return nil
 }
 
@@ -54,6 +77,7 @@ func (i *Inserter) SpanWriter(ctx context.Context) (tracestorage.SpanWriter, err
 		spans:    xsync.GetReset(spanColumnsPool),
 		attrs:    xsync.GetReset(spanAttrsColumnsPool),
 		inserter: i,
+		ctx:      ctx,
 	}, nil
 }
 

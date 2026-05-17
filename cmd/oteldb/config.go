@@ -64,6 +64,9 @@ type Config struct {
 
 	// Collector is an otelcol config.
 	Collector map[string]any `json:"otelcol" yaml:"otelcol"`
+
+	// Multitenancy is the multitenancy config.
+	Multitenancy MultitenancyConfig `json:"multitenancy" yaml:"multitenancy"`
 }
 
 func (cfg *Config) setDefaults() {
@@ -231,4 +234,90 @@ func (cfg *AuthConfig) setDefaults() {
 	if cfg.Type == "" {
 		cfg.Type = AuthTypeNone
 	}
+}
+
+// MultitenancyConfig is the multitenancy config.
+type MultitenancyConfig struct {
+	// Enabled indicates if multitenancy is enabled.
+	Enabled bool `json:"enabled" yaml:"enabled"`
+
+	// TenantMapper configures how tenant IDs are resolved from resource attributes.
+	TenantMapper TenantMapperConfig `json:"tenant_mapper" yaml:"tenant_mapper"`
+
+	// Resolver configures the backend resolver for mapping tokens to decisions.
+	Resolver ResolverConfig `json:"resolver" yaml:"resolver"`
+
+	// DefaultRestrictions are the default query restrictions.
+	DefaultRestrictions RestrictionsConfig `json:"default_restrictions" yaml:"default_restrictions"`
+}
+
+// TenantMapperConfig configures tenant ID resolution from resource attributes.
+type TenantMapperConfig struct {
+	// Tenants is a map of compound keys to tenant IDs for explicit mapping.
+	// Keys are in the format "attr1:value1,attr2:value2" -> "tenant_id".
+	Tenants map[string]string `json:"tenants" yaml:"tenants"`
+
+	// Template is a template string for tenant ID resolution using {key} substitution.
+	// Example: "{service.namespace}_{service.name}"
+	Template string `json:"template" yaml:"template"`
+
+	// DefaultTenant is the default tenant ID to use if no match is found.
+	DefaultTenant string `json:"default_tenant" yaml:"default_tenant"`
+}
+
+// ResolverConfig configures the backend resolver.
+type ResolverConfig struct {
+	// Type is the resolver type (e.g., "static", "http").
+	Type string `json:"type" yaml:"type"`
+
+	// Static contains static token-to-tenant mappings.
+	Static []StaticTokenConfig `json:"static" yaml:"static"`
+
+	// HTTP configures the HTTP callback resolver.
+	HTTP HTTPResolverConfig `json:"http" yaml:"http"`
+}
+
+// StaticTokenConfig defines a static token mapping.
+type StaticTokenConfig struct {
+	// Token is the credential value.
+	Token string `json:"token" yaml:"token"`
+	// ReadTenantIDs are the tenants this token can query.
+	ReadTenantIDs []string `json:"read_tenant_ids" yaml:"read_tenant_ids"`
+	// WriteTenantIDs are the tenants this token can write for.
+	WriteTenantIDs []string `json:"write_tenant_ids" yaml:"write_tenant_ids"`
+	// ReadResourceSelectors are mandatory resource filters for queries.
+	ReadResourceSelectors []ResourceSelectorConfig `json:"read_resource_selectors" yaml:"read_resource_selectors"`
+	// Username is the informational username.
+	Username string `json:"username" yaml:"username"`
+	// QuotaKey is the ClickHouse quota key.
+	QuotaKey string `json:"quota_key" yaml:"quota_key"`
+}
+
+// ResourceSelectorConfig defines a resource selector.
+type ResourceSelectorConfig struct {
+	Key   string `json:"key" yaml:"key"`
+	Op    string `json:"op" yaml:"op"`
+	Value string `json:"value" yaml:"value"`
+}
+
+// HTTPResolverConfig configures the HTTP callback resolver.
+type HTTPResolverConfig struct {
+	// URL is the callback URL.
+	URL string `json:"url" yaml:"url"`
+	// Timeout is the callback timeout.
+	Timeout time.Duration `json:"timeout" yaml:"timeout"`
+	// CacheTTL is the cache TTL.
+	CacheTTL time.Duration `json:"cache_ttl" yaml:"cache_ttl"`
+	// CredentialHeader is the header name to extract the credential from.
+	CredentialHeader string `json:"credential_header" yaml:"credential_header"`
+}
+
+// RestrictionsConfig configures query restrictions.
+type RestrictionsConfig struct {
+	// MaxMemoryUsageBytes is the maximum memory usage in bytes.
+	MaxMemoryUsageBytes uint64 `json:"max_memory_usage_bytes" yaml:"max_memory_usage_bytes"`
+	// MaxExecutionTimeMS is the maximum execution time in milliseconds.
+	MaxExecutionTimeMS int64 `json:"max_execution_time_ms" yaml:"max_execution_time_ms"`
+	// MaxResultRows is the maximum number of result rows.
+	MaxResultRows uint64 `json:"max_result_rows" yaml:"max_result_rows"`
 }

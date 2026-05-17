@@ -21,6 +21,8 @@ var (
 )
 
 type logColumns struct {
+	tenantID *proto.ColLowCardinality[string]
+
 	serviceInstanceID *proto.ColLowCardinality[string]
 	serviceName       *proto.ColLowCardinality[string]
 	serviceNamespace  *proto.ColLowCardinality[string]
@@ -49,6 +51,7 @@ type logColumns struct {
 
 func newLogColumns() *logColumns {
 	c := &logColumns{
+		tenantID:          new(proto.ColStr).LowCardinality(),
 		serviceName:       new(proto.ColStr).LowCardinality(),
 		serviceInstanceID: new(proto.ColStr).LowCardinality(),
 		serviceNamespace:  new(proto.ColStr).LowCardinality(),
@@ -62,6 +65,7 @@ func newLogColumns() *logColumns {
 	}
 	c.columns = sync.OnceValue(func() Columns {
 		return MergeColumns(Columns{
+			{Name: "tenant_id", Data: c.tenantID},
 			{Name: "service_instance_id", Data: c.serviceInstanceID},
 			{Name: "service_name", Data: c.serviceName},
 			{Name: "service_namespace", Data: c.serviceNamespace},
@@ -99,8 +103,8 @@ func (c *logColumns) DDL() ddl.Table {
 	table := ddl.Table{
 		Engine:      ddl.Engine{Type: "MergeTree"},
 		PartitionBy: "toYYYYMMDD(timestamp)",
-		PrimaryKey:  []string{"severity_number", "service_namespace", "service_name", "resource"},
-		OrderBy:     []string{"severity_number", "service_namespace", "service_name", "resource", "timestamp"},
+		PrimaryKey:  []string{"tenant_id", "severity_number", "service_namespace", "service_name", "resource"},
+		OrderBy:     []string{"tenant_id", "severity_number", "service_namespace", "service_name", "resource", "timestamp"},
 		TTL:         ddl.TTL{Field: "timestamp"},
 		Indexes: []ddl.Index{
 			{
@@ -125,6 +129,10 @@ func (c *logColumns) DDL() ddl.Table {
 			},
 		},
 		Columns: []ddl.Column{
+			{
+				Name: "tenant_id",
+				Type: c.tenantID.Type(),
+			},
 			{
 				Name:    "service_instance_id",
 				Type:    c.serviceInstanceID.Type(),
@@ -255,7 +263,8 @@ func (c *logColumns) ForEach(f func(r logstorage.Record) error) error {
 	return nil
 }
 
-func (c *logColumns) AddRow(r logstorage.Record) {
+func (c *logColumns) AddRow(r logstorage.Record, tenantID string) {
+	c.tenantID.Append(tenantID)
 	{
 		m := r.ResourceAttrs.AsMap()
 		setStrOrEmpty(c.serviceInstanceID, m, string(semconv.ServiceInstanceIDKey))

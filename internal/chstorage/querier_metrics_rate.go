@@ -454,7 +454,7 @@ func (p *promQuerier) queryRatePointsByHash(
 	// arrayMap generates candidate step timestamps starting from first_sample_step_ms,
 	// arrayFilter discards those outside [first_step_ms, last_step_ms] or past the sample,
 	// arrayJoin materializes one row per surviving step.
-	expanded := chsql.Select(table,
+	expanded := newSelectQuery(ctx, table,
 		chsql.Column("hash", nil),
 		chsql.Column("timestamp", nil),
 		chsql.Column("value", nil),

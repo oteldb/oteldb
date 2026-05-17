@@ -44,7 +44,7 @@ func (q *Querier) SearchTags(ctx context.Context, tags map[string]string, opts t
 		span.End()
 	}()
 
-	subquery := chsql.Select(table, chsql.Column("trace_id", nil)).
+	subquery := newSelectQuery(ctx, table, chsql.Column("trace_id", nil)).
 		Distinct(true).
 		Where(traceInTimeRange(opts.Start, opts.End))
 	{
@@ -84,7 +84,7 @@ func (q *Querier) SearchTags(ctx context.Context, tags map[string]string, opts t
 
 	var (
 		c     = newSpanColumns()
-		query = chsql.Select(table, c.ChsqlResult()...).
+		query = newSelectQuery(ctx, table, c.ChsqlResult()...).
 			Where(chsql.In(
 				chsql.Ident("trace_id"),
 				chsql.SubQuery(subquery),
@@ -132,7 +132,7 @@ func (q *Querier) TagNames(ctx context.Context, opts tracestorage.TagNamesOption
 		name  = new(proto.ColStr).LowCardinality()
 		scope proto.ColEnum8
 
-		query = chsql.Select(table,
+		query = newSelectQuery(ctx, table,
 			chsql.Column("name", name),
 			chsql.Column("scope", &scope),
 		).
@@ -262,7 +262,7 @@ func (q *Querier) spanNames(ctx context.Context, tag traceql.Attribute, opts tra
 
 	var (
 		name  = new(proto.ColStr).LowCardinality()
-		query = chsql.Select(table, chsql.Column("name", name)).
+		query = newSelectQuery(ctx, table, chsql.Column("name", name)).
 			// Select deduplicated column by using GROUP BY, since DISTINCT is not optimized by Clickhouse.
 			//
 			// See https://github.com/ClickHouse/ClickHouse/issues/4670
@@ -334,7 +334,7 @@ func (q *Querier) attributeValues(ctx context.Context, tag traceql.Attribute, op
 		value     proto.ColStr
 		valueType proto.ColEnum8
 
-		query = chsql.Select(table,
+		query = newSelectQuery(ctx, table,
 			chsql.Column("value", &value),
 			chsql.Column("value_type", proto.Wrap(&valueType, valueTypeDDL)),
 		).
@@ -410,7 +410,7 @@ func (q *Querier) TraceByID(ctx context.Context, id otelstorage.TraceID, opts tr
 
 	var (
 		c     = newSpanColumns()
-		query = chsql.Select(table, c.ChsqlResult()...).
+		query = newSelectQuery(ctx, table, c.ChsqlResult()...).
 			Where(
 				chsql.Eq(
 					chsql.Ident("trace_id"),
@@ -466,11 +466,11 @@ func (q *Querier) SelectSpansets(ctx context.Context, params traceqlengine.Selec
 
 	var (
 		c     = newSpanColumns()
-		query = chsql.Select(table, c.ChsqlResult()...).
+		query = newSelectQuery(ctx, table, c.ChsqlResult()...).
 			Where(
 				chsql.In(
 					chsql.Ident("trace_id"),
-					chsql.SubQuery(q.buildSpansetsQuery(table, span, params)),
+					chsql.SubQuery(q.buildSpansetsQuery(ctx, table, span, params)),
 				),
 			).
 			Order(chsql.Ident("start"), chsql.Asc)
@@ -516,7 +516,7 @@ func (q *Querier) SelectSpansets(ctx context.Context, params traceqlengine.Selec
 	return iterators.Slice(result), nil
 }
 
-func (q *Querier) buildSpansetsQuery(table string, span trace.Span, params traceqlengine.SelectSpansetsParams) *chsql.SelectQuery {
+func (q *Querier) buildSpansetsQuery(ctx context.Context, table string, span trace.Span, params traceqlengine.SelectSpansetsParams) *chsql.SelectQuery {
 	var (
 		dropped    int
 		matchExprs = make([]chsql.Expr, 0, len(params.Matchers))
@@ -534,7 +534,7 @@ func (q *Querier) buildSpansetsQuery(table string, span trace.Span, params trace
 		attribute.String("chstorage.table", table),
 	)
 
-	query := chsql.Select(table,
+	query := newSelectQuery(ctx, table,
 		chsql.Column("trace_id", nil)).
 		Distinct(true).
 		Where(traceInTimeRange(params.Start, params.End))

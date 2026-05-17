@@ -1,0 +1,97 @@
+openapi: 3.0.3
+info:
+  title: oteldb multitenancy callback API
+  version: 0.1.0
+paths:
+  /v1/authorize:
+    post:
+      operationId: authorize
+      summary: Resolve tenant ID from credential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizeRequest'
+      responses:
+        '200':
+          description: Authorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizeResponse'
+        '401':
+          description: Unauthorized
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+components:
+  schemas:
+    AuthorizeRequest:
+      type: object
+      required:
+        - credential
+        - operation
+      properties:
+        credential:
+          type: string
+        operation:
+          type: string
+          enum: [read, write]
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    AuthorizeResponse:
+      type: object
+      required:
+        - tenant_ids
+      properties:
+        tenant_ids:
+          type: array
+          items:
+            type: string
+        username:
+          type: string
+        quota_key:
+          type: string
+        resource_selectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceSelector'
+        restrictions:
+          $ref: '#/components/schemas/Restrictions'
+        cache_ttl:
+          type: integer
+          description: cache TTL in seconds
+    ResourceSelector:
+      type: object
+      required:
+        - key
+        - op
+        - value
+      properties:
+        key:
+          type: string
+        op:
+          type: string
+          enum: [eq, neq, re, nre]
+        value:
+          type: string
+    Restrictions:
+      type: object
+      properties:
+        max_memory_usage_bytes:
+          type: integer
+          format: uint64
+        max_execution_time_ms:
+          type: integer
+        max_result_rows:
+          type: integer
+          format: uint64

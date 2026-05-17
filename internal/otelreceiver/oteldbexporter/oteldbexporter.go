@@ -16,6 +16,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/logparser"
 	"github.com/oteldb/oteldb/internal/logstorage"
+	"github.com/oteldb/oteldb/internal/multitenancy"
 	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
@@ -26,15 +27,26 @@ const (
 
 var typ = component.MustNewType(typeStr)
 
+// Options defines [NewFactory] options.
+type Options struct {
+	TenantMapper *multitenancy.TenantMapper
+	Resolver     multitenancy.Resolver
+}
+
 // NewFactory creates new factory of [Exporter].
-func NewFactory() exporter.Factory {
+func NewFactory(opts Options) exporter.Factory {
+	f := &factory{opts: opts}
 	return exporter.NewFactory(
 		typ,
 		createDefaultConfig,
-		exporter.WithTraces(createTracesExporter, stability),
-		exporter.WithMetrics(createMetricsExporter, stability),
-		exporter.WithLogs(createLogsExporter, stability),
+		exporter.WithTraces(f.createTracesExporter, stability),
+		exporter.WithMetrics(f.createMetricsExporter, stability),
+		exporter.WithLogs(f.createLogsExporter, stability),
 	)
+}
+
+type factory struct {
+	opts Options
 }
 
 func createDefaultConfig() component.Config {
@@ -43,13 +55,13 @@ func createDefaultConfig() component.Config {
 	}
 }
 
-func createTracesExporter(
+func (f *factory) createTracesExporter(
 	ctx context.Context,
 	settings exporter.Settings,
 	cfg component.Config,
 ) (exporter.Traces, error) {
 	ecfg := cfg.(*Config)
-	inserter, err := ecfg.connect(ctx, settings)
+	inserter, err := ecfg.connect(ctx, settings, f.opts)
 	if err != nil {
 		return nil, err
 	}
@@ -70,13 +82,13 @@ func createTracesExporter(
 	return exporterhelper.NewTraces(ctx, settings, cfg, consume)
 }
 
-func createMetricsExporter(
+func (f *factory) createMetricsExporter(
 	ctx context.Context,
 	settings exporter.Settings,
 	cfg component.Config,
 ) (exporter.Metrics, error) {
 	ecfg := cfg.(*Config)
-	inserter, err := ecfg.connect(ctx, settings)
+	inserter, err := ecfg.connect(ctx, settings, f.opts)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +108,7 @@ func createMetricsExporter(
 	return exporterhelper.NewMetrics(ctx, settings, cfg, consume)
 }
 
-func createLogsExporter(
+func (f *factory) createLogsExporter(
 	ctx context.Context,
 	settings exporter.Settings,
 	cfg component.Config,
@@ -122,7 +134,7 @@ func createLogsExporter(
 		zap.Stringers("format", formats),
 	)
 
-	inserter, err := ecfg.connect(ctx, settings)
+	inserter, err := ecfg.connect(ctx, settings, f.opts)
 	if err != nil {
 		return nil, errors.Wrap(err, "connect to ClickHouse")
 	}
