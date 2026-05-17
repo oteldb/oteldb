@@ -356,7 +356,7 @@ func (app *App) trySetupProm() error {
 	}
 
 	addOgen(app, "prom", s, cfg.Bind, cfg.Auth, promhandler.PatchForm)
-	return app, nil
+	return nil
 }
 
 func (app *App) setupMultitenancy() error {
@@ -369,10 +369,10 @@ func (app *App) setupMultitenancy() error {
 	var mapperRules []multitenancy.TenantRule
 	for key, id := range cfg.TenantMapper.Tenants {
 		attrs := make(map[string]string)
-		for _, part := range strings.Split(key, ",") {
-			kv := strings.SplitN(part, "=", 2)
-			if len(kv) == 2 {
-				attrs[kv[0]] = kv[1]
+		for part := range strings.SplitSeq(key, ",") {
+			k, v, ok := strings.Cut(part, "=")
+			if ok {
+				attrs[k] = strings.TrimSpace(v)
 			}
 		}
 		mapperRules = append(mapperRules, multitenancy.TenantRule{
@@ -442,9 +442,7 @@ func (app *App) setupMultitenancy() error {
 			WriteDecisions: writeDecisions,
 		})
 	case "http":
-		client, err := multitenancyapi.NewClient(cfg.Resolver.HTTP.URL,
-			multitenancyapi.WithClient(app.telemetry.HTTPClient()),
-		)
+		client, err := multitenancyapi.NewClient(cfg.Resolver.HTTP.URL)
 		if err != nil {
 			return errors.Wrap(err, "create multitenancy client")
 		}
@@ -465,7 +463,6 @@ func (app *App) setupMultitenancy() error {
 }
 
 func (app *App) setupHealthCheck() error {
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/readiness", app.handleReadinessProbe)
 	mux.HandleFunc("/liveness", app.handleLivenessProbe)
