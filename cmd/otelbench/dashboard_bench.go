@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -79,7 +79,7 @@ func (b *DashboardBenchmark) Run(ctx context.Context) error {
 		}
 
 		// Warmup
-		for i := 0; i < b.Warmup; i++ {
+		for i := range b.Warmup {
 			start := time.Now()
 			isEmpty, n, err := b.execute(ctx, q)
 			if err != nil {
@@ -96,7 +96,7 @@ func (b *DashboardBenchmark) Run(ctx context.Context) error {
 
 		// Benchmark
 		var durations []time.Duration
-		for i := 0; i < b.Count; i++ {
+		for i := range b.Count {
 			start := time.Now()
 			isEmpty, n, err := b.execute(ctx, q)
 			if err != nil {
@@ -164,11 +164,11 @@ func (b *DashboardBenchmark) setup(_ context.Context) (err error) {
 		"__range":         b.Range,
 	}
 	for _, v := range b.Variables {
-		parts := strings.SplitN(v, "=", 2)
-		if len(parts) != 2 {
+		key, val, ok := strings.Cut(v, "=")
+		if !ok {
 			return errors.Errorf("invalid variable %q", v)
 		}
-		b.vars[parts[0]] = parts[1]
+		b.vars[key] = val
 	}
 
 	return nil
@@ -260,17 +260,14 @@ func (b *DashboardBenchmark) identifyType(t grafanaTarget) queryType {
 	}
 }
 
-var varRegex = regexp.MustCompile(`\$[a-zA-Z_][a-zA-Z0-9_]*|\$\{[a-zA-Z0-9_:]+\}`)
-
 func (b *DashboardBenchmark) interpolate(s string) string {
-	for k, v := range b.vars {
-		s = strings.ReplaceAll(s, "$"+k, v)
-		s = strings.ReplaceAll(s, "${"+k+"}", v)
-	}
-	if varRegex.MatchString(s) {
-		fmt.Printf("warning: query %q contains unreplaced variables\n", s)
-	}
-	return s
+	return os.Expand(s, func(s string) string {
+		val, ok := b.vars[s]
+		if !ok {
+			fmt.Printf("warning: query %q contains unreplaced variables\n", s)
+		}
+		return val
+	})
 }
 
 func (b *DashboardBenchmark) execute(ctx context.Context, q extractedQuery) (isEmpty bool, n int, err error) {
@@ -428,7 +425,11 @@ func (b *DashboardBenchmark) report(results []queryResult) error {
 		return err
 	}
 
-	return os.WriteFile(b.Output, out, 0o644)
+	outputPath := filepath.Clean(b.Output)
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(b.Output, out, 0o600)
 }
 
 type grafanaDashboard struct {
