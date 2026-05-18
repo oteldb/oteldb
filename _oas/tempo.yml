@@ -619,6 +619,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TraceSearchMetadata"
+        metrics:
+          $ref: "#/components/schemas/SearchMetrics"
     TraceSearchMetadata:
       type: object
       required:
@@ -638,6 +640,14 @@ components:
           type: integer
         spanSet:
           $ref: "#/components/schemas/TempoSpanSet"
+        spanSets:
+          type: array
+          items:
+            $ref: "#/components/schemas/TempoSpanSet"
+        serviceStats:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ServiceStats"
     TempoSpanSet:
       type: object
       required:
@@ -680,7 +690,7 @@ components:
           items:
             $ref: "#/components/schemas/TimeSeries"
         metrics:
-          $ref: "#/components/schemas/QueryStats"
+          $ref: "#/components/schemas/SearchMetrics"
         status:
           $ref: "#/components/schemas/PartialStatus"
         message:
@@ -693,7 +703,7 @@ components:
           items:
             $ref: "#/components/schemas/InstantSeries"
         metrics:
-          $ref: "#/components/schemas/QueryStats"
+          $ref: "#/components/schemas/SearchMetrics"
         status:
           $ref: "#/components/schemas/PartialStatus"
         message:
@@ -737,6 +747,33 @@ components:
         value:
           type: number
           format: float64
+    SearchMetrics:
+      type: object
+      properties:
+        inspectedTraces:
+          type: integer
+        inspectedBytes:
+          type: integer
+          format: int64
+        totalBlocks:
+          type: integer
+        completedJobs:
+          type: integer
+        totalJobs:
+          type: integer
+        totalBlockBytes:
+          type: integer
+          format: int64
+        inspectedSpans:
+          type: integer
+          format: int64
+    ServiceStats:
+      type: object
+      properties:
+        spanCount:
+          type: integer
+        errorCount:
+          type: integer
     QueryStats:
       type: object
     PartialStatus:
@@ -788,11 +825,24 @@ components:
       properties:
         doubleValue:
           type: number
+    BytesValue:
+      type: object
+      required: [bytesValue]
+      properties:
+        bytesValue:
+          type: string
+          format: base64
     ArrayValue:
       type: object
       required: [arrayValue]
       properties:
         arrayValue:
+          $ref: "#/components/schemas/ArrayValueItems"
+    ArrayValueItems:
+      type: object
+      required: [values]
+      properties:
+        values:
           type: array
           items:
             $ref: "#/components/schemas/AnyValue"
@@ -801,16 +851,15 @@ components:
       required: [kvlistValue]
       properties:
         kvlistValue:
+          $ref: "#/components/schemas/KvlistValueItems"
+    KvlistValueItems:
+      type: object
+      required: [values]
+      properties:
+        values:
           type: array
           items:
             $ref: "#/components/schemas/KeyValue"
-    BytesValue:
-      type: object
-      required: [bytesValue]
-      properties:
-        bytesValue:
-          type: string
-          format: base64
 
     TagNames:
       type: object
@@ -819,6 +868,8 @@ components:
           type: array
           items:
             type: string
+        metrics:
+          $ref: "#/components/schemas/MetadataMetrics"
 
     TagValues:
       type: object
@@ -827,6 +878,8 @@ components:
           type: array
           items:
             type: string
+        metrics:
+          $ref: "#/components/schemas/MetadataMetrics"
 
     TagNamesV2:
       type: object
@@ -835,6 +888,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ScopeTags"
+        metrics:
+          $ref: "#/components/schemas/MetadataMetrics"
     ScopeTags:
       type: object
       required: [name]
@@ -853,6 +908,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TagValue"
+        metrics:
+          $ref: "#/components/schemas/MetadataMetrics"
 
     TagValue:
       type: object
@@ -907,3 +964,18 @@ components:
 
     Error:
       type: string
+    MetadataMetrics:
+      type: object
+      properties:
+        inspectedBytes:
+          type: integer
+          format: int64
+        totalJobs:
+          type: integer
+        completedJobs:
+          type: integer
+        totalBlocks:
+          type: integer
+        totalBlockBytes:
+          type: integer
+          format: int64
