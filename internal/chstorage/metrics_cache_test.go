@@ -9,6 +9,7 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	nooptrace "go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestMetricsCacheEntry(t *testing.T) {
@@ -84,7 +85,7 @@ func TestPromQuerier_QueryPointsCached(t *testing.T) {
 	h1 := labels1.Hash()
 	var hash1 [16]byte
 	// Fill hash1 with some stable value from h1
-	for i := 0; i < 8; i++ {
+	for i := range len(hash1) / 2 {
 		hash1[i] = byte(h1 >> (i * 8))
 	}
 
@@ -114,6 +115,7 @@ func TestPromQuerier_QueryPointsCached(t *testing.T) {
 			}
 			return map[[16]byte]*series[pointData]{hash1: res}, nil
 		},
+		tracer: nooptrace.NewTracerProvider().Tracer("test"),
 	}
 
 	t.Run("CacheMiss", func(t *testing.T) {
@@ -184,6 +186,7 @@ func TestQueryPointsCached_WatermarkBeyondEnd(t *testing.T) {
 		queryPointsFunc: func(_ context.Context, _ string, s, e time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
 			return map[[16]byte]*series[pointData]{}, errors.New("unexpected query")
 		},
+		tracer: nooptrace.NewTracerProvider().Tracer("test"),
 	}
 
 	ctx := context.Background()
@@ -312,6 +315,7 @@ func TestQueryPointsCached_GapAtStart(t *testing.T) {
 			}
 			return map[[16]byte]*series[pointData]{hash: res}, nil
 		},
+		tracer: nooptrace.NewTracerProvider().Tracer("test"),
 	}
 
 	ctx := context.Background()
@@ -326,7 +330,7 @@ func TestQueryPointsCached_GapAtStart(t *testing.T) {
 	// Check for gaps. We expect points from start (epoch-10min) to end (epoch+10min).
 	expectedCount := int(end.Sub(start).Minutes()) + 1
 	require.Equal(t, expectedCount, len(points[0].ts), "should have %d points, but got %d. Range: [%s, %s]", expectedCount, len(points[0].ts), start, end)
-	
+
 	for i, ts := range points[0].ts {
 		expectedTS := start.Add(time.Duration(i) * time.Minute).UnixMilli()
 		require.Equal(t, expectedTS, ts, "point %d timestamp mismatch", i)
