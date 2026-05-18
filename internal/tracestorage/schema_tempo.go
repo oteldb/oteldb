@@ -1,6 +1,8 @@
 package tracestorage
 
 import (
+	"encoding/json"
+	"fmt"
 	"slices"
 	"time"
 
@@ -70,24 +72,19 @@ func otelToTempoValue(val pcommon.Value) (r tempoapi.AnyValue) {
 		r.SetIntValue(tempoapi.IntValue{IntValue: val.Int()})
 	case pcommon.ValueTypeDouble:
 		r.SetDoubleValue(tempoapi.DoubleValue{DoubleValue: val.Double()})
-	case pcommon.ValueTypeMap:
-		m := tempoapi.KvlistValue{}
-		val.Map().Range(func(k string, v pcommon.Value) bool {
-			m.KvlistValue.Values = append(m.KvlistValue.Values, tempoapi.KeyValue{
-				Key:   k,
-				Value: otelToTempoValue(v),
-			})
-			return true
-		})
-		r.SetKvlistValue(m)
-	case pcommon.ValueTypeSlice:
-		a := tempoapi.ArrayValue{}
-		ss := val.Slice()
-		for i := 0; i < ss.Len(); i++ {
-			v := ss.At(i)
-			a.ArrayValue.Values = append(a.ArrayValue.Values, otelToTempoValue(v))
+	case pcommon.ValueTypeMap, pcommon.ValueTypeSlice:
+		// Grafana search result transformation does not handle nested attributes
+		// and panics if it encounters one.
+		//
+		// See:
+		//  - https://github.com/grafana/grafana/blob/v13.0.1/pkg/tsdb/tempo/search.go#L569
+		//  - https://github.com/grafana/grafana/blob/v13.0.1/pkg/tsdb/tempo/search.go#L540
+		data, err := json.Marshal(val.AsRaw())
+		if err != nil {
+			r.SetStringValue(tempoapi.StringValue{StringValue: fmt.Sprintf("marshal %q: %s", val.Type(), err.Error())})
+		} else {
+			r.SetStringValue(tempoapi.StringValue{StringValue: string(data)})
 		}
-		r.SetArrayValue(a)
 	case pcommon.ValueTypeBytes:
 		r.SetBytesValue(tempoapi.BytesValue{BytesValue: val.Bytes().AsRaw()})
 	default:

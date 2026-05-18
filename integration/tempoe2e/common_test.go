@@ -906,14 +906,14 @@ func getRawValueFromAPI(val tempoapi.AnyValue) any {
 	case tempoapi.DoubleValueAnyValue:
 		return val.DoubleValue.DoubleValue
 	case tempoapi.ArrayValueAnyValue:
-		arr := val.ArrayValue.ArrayValue
+		arr := val.ArrayValue.ArrayValue.Values
 		r := make([]any, len(arr))
 		for i, val := range arr {
 			r[i] = getRawValueFromAPI(val)
 		}
 		return arr
 	case tempoapi.KvlistValueAnyValue:
-		return getRawMapFromAPI(val.KvlistValue.KvlistValue)
+		return getRawMapFromAPI(val.KvlistValue.KvlistValue.Values)
 	case tempoapi.BytesValueAnyValue:
 		return val.BytesValue.BytesValue
 	default:
