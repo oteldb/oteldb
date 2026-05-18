@@ -46,11 +46,34 @@ func (s *ArrayValue) Validate() error {
 
 	var failures []validate.FieldError
 	if err := func() error {
-		if s.ArrayValue == nil {
+		if err := s.ArrayValue.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "arrayValue",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
+func (s *ArrayValueItems) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if s.Values == nil {
 			return errors.New("nil is invalid value")
 		}
 		var failures []validate.FieldError
-		for i, elem := range s.ArrayValue {
+		for i, elem := range s.Values {
 			if err := func() error {
 				if err := elem.Validate(); err != nil {
 					return err
@@ -69,7 +92,7 @@ func (s *ArrayValue) Validate() error {
 		return nil
 	}(); err != nil {
 		failures = append(failures, validate.FieldError{
-			Name:  "arrayValue",
+			Name:  "values",
 			Error: err,
 		})
 	}
@@ -273,11 +296,34 @@ func (s *KvlistValue) Validate() error {
 
 	var failures []validate.FieldError
 	if err := func() error {
-		if s.KvlistValue == nil {
+		if err := s.KvlistValue.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "kvlistValue",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
+func (s *KvlistValueItems) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if s.Values == nil {
 			return errors.New("nil is invalid value")
 		}
 		var failures []validate.FieldError
-		for i, elem := range s.KvlistValue {
+		for i, elem := range s.Values {
 			if err := func() error {
 				if err := elem.Validate(); err != nil {
 					return err
@@ -296,7 +342,7 @@ func (s *KvlistValue) Validate() error {
 		return nil
 	}(); err != nil {
 		failures = append(failures, validate.FieldError{
-			Name:  "kvlistValue",
+			Name:  "values",
 			Error: err,
 		})
 	}
@@ -647,6 +693,31 @@ func (s *TraceSearchMetadata) Validate() error {
 	}(); err != nil {
 		failures = append(failures, validate.FieldError{
 			Name:  "spanSet",
+			Error: err,
+		})
+	}
+	if err := func() error {
+		var failures []validate.FieldError
+		for i, elem := range s.SpanSets {
+			if err := func() error {
+				if err := elem.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				failures = append(failures, validate.FieldError{
+					Name:  fmt.Sprintf("[%d]", i),
+					Error: err,
+				})
+			}
+		}
+		if len(failures) > 0 {
+			return &validate.Error{Fields: failures}
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "spanSets",
 			Error: err,
 		})
 	}

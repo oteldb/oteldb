@@ -211,17 +211,32 @@ func NewBytesValueAnyValue(v BytesValue) AnyValue {
 
 // Ref: #/components/schemas/ArrayValue
 type ArrayValue struct {
-	ArrayValue []AnyValue `json:"arrayValue"`
+	ArrayValue ArrayValueItems `json:"arrayValue"`
 }
 
 // GetArrayValue returns the value of ArrayValue.
-func (s *ArrayValue) GetArrayValue() []AnyValue {
+func (s *ArrayValue) GetArrayValue() ArrayValueItems {
 	return s.ArrayValue
 }
 
 // SetArrayValue sets the value of ArrayValue.
-func (s *ArrayValue) SetArrayValue(val []AnyValue) {
+func (s *ArrayValue) SetArrayValue(val ArrayValueItems) {
 	s.ArrayValue = val
+}
+
+// Ref: #/components/schemas/ArrayValueItems
+type ArrayValueItems struct {
+	Values []AnyValue `json:"values"`
+}
+
+// GetValues returns the value of Values.
+func (s *ArrayValueItems) GetValues() []AnyValue {
+	return s.Values
+}
+
+// SetValues sets the value of Values.
+func (s *ArrayValueItems) SetValues(val []AnyValue) {
+	s.Values = val
 }
 
 type Attributes []KeyValue
@@ -353,7 +368,7 @@ func (s *Exemplar) SetValue(val OptFloat64) {
 // Ref: #/components/schemas/InstantMetrics
 type InstantMetrics struct {
 	Series  []InstantSeries  `json:"series"`
-	Metrics *QueryStats      `json:"metrics"`
+	Metrics OptSearchMetrics `json:"metrics"`
 	Status  OptPartialStatus `json:"status"`
 	Message OptString        `json:"message"`
 }
@@ -364,7 +379,7 @@ func (s *InstantMetrics) GetSeries() []InstantSeries {
 }
 
 // GetMetrics returns the value of Metrics.
-func (s *InstantMetrics) GetMetrics() *QueryStats {
+func (s *InstantMetrics) GetMetrics() OptSearchMetrics {
 	return s.Metrics
 }
 
@@ -384,7 +399,7 @@ func (s *InstantMetrics) SetSeries(val []InstantSeries) {
 }
 
 // SetMetrics sets the value of Metrics.
-func (s *InstantMetrics) SetMetrics(val *QueryStats) {
+func (s *InstantMetrics) SetMetrics(val OptSearchMetrics) {
 	s.Metrics = val
 }
 
@@ -467,17 +482,91 @@ func (s *KeyValue) SetValue(val AnyValue) {
 
 // Ref: #/components/schemas/KvlistValue
 type KvlistValue struct {
-	KvlistValue []KeyValue `json:"kvlistValue"`
+	KvlistValue KvlistValueItems `json:"kvlistValue"`
 }
 
 // GetKvlistValue returns the value of KvlistValue.
-func (s *KvlistValue) GetKvlistValue() []KeyValue {
+func (s *KvlistValue) GetKvlistValue() KvlistValueItems {
 	return s.KvlistValue
 }
 
 // SetKvlistValue sets the value of KvlistValue.
-func (s *KvlistValue) SetKvlistValue(val []KeyValue) {
+func (s *KvlistValue) SetKvlistValue(val KvlistValueItems) {
 	s.KvlistValue = val
+}
+
+// Ref: #/components/schemas/KvlistValueItems
+type KvlistValueItems struct {
+	Values []KeyValue `json:"values"`
+}
+
+// GetValues returns the value of Values.
+func (s *KvlistValueItems) GetValues() []KeyValue {
+	return s.Values
+}
+
+// SetValues sets the value of Values.
+func (s *KvlistValueItems) SetValues(val []KeyValue) {
+	s.Values = val
+}
+
+// Ref: #/components/schemas/MetadataMetrics
+type MetadataMetrics struct {
+	InspectedBytes  OptInt64 `json:"inspectedBytes"`
+	TotalJobs       OptInt   `json:"totalJobs"`
+	CompletedJobs   OptInt   `json:"completedJobs"`
+	TotalBlocks     OptInt   `json:"totalBlocks"`
+	TotalBlockBytes OptInt64 `json:"totalBlockBytes"`
+}
+
+// GetInspectedBytes returns the value of InspectedBytes.
+func (s *MetadataMetrics) GetInspectedBytes() OptInt64 {
+	return s.InspectedBytes
+}
+
+// GetTotalJobs returns the value of TotalJobs.
+func (s *MetadataMetrics) GetTotalJobs() OptInt {
+	return s.TotalJobs
+}
+
+// GetCompletedJobs returns the value of CompletedJobs.
+func (s *MetadataMetrics) GetCompletedJobs() OptInt {
+	return s.CompletedJobs
+}
+
+// GetTotalBlocks returns the value of TotalBlocks.
+func (s *MetadataMetrics) GetTotalBlocks() OptInt {
+	return s.TotalBlocks
+}
+
+// GetTotalBlockBytes returns the value of TotalBlockBytes.
+func (s *MetadataMetrics) GetTotalBlockBytes() OptInt64 {
+	return s.TotalBlockBytes
+}
+
+// SetInspectedBytes sets the value of InspectedBytes.
+func (s *MetadataMetrics) SetInspectedBytes(val OptInt64) {
+	s.InspectedBytes = val
+}
+
+// SetTotalJobs sets the value of TotalJobs.
+func (s *MetadataMetrics) SetTotalJobs(val OptInt) {
+	s.TotalJobs = val
+}
+
+// SetCompletedJobs sets the value of CompletedJobs.
+func (s *MetadataMetrics) SetCompletedJobs(val OptInt) {
+	s.CompletedJobs = val
+}
+
+// SetTotalBlocks sets the value of TotalBlocks.
+func (s *MetadataMetrics) SetTotalBlocks(val OptInt) {
+	s.TotalBlocks = val
+}
+
+// SetTotalBlockBytes sets the value of TotalBlockBytes.
+func (s *MetadataMetrics) SetTotalBlockBytes(val OptInt64) {
+	s.TotalBlockBytes = val
 }
 
 // NewOptDuration returns new OptDuration with value set to v.
@@ -618,6 +707,98 @@ func (o OptInt) Or(d int) int {
 	return d
 }
 
+// NewOptInt64 returns new OptInt64 with value set to v.
+func NewOptInt64(v int64) OptInt64 {
+	return OptInt64{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptInt64 is optional int64.
+type OptInt64 struct {
+	Value int64
+	Set   bool
+}
+
+// IsSet returns true if OptInt64 was set.
+func (o OptInt64) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptInt64) Reset() {
+	var v int64
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptInt64) SetTo(v int64) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptInt64) Get() (v int64, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptInt64) Or(d int64) int64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptMetadataMetrics returns new OptMetadataMetrics with value set to v.
+func NewOptMetadataMetrics(v MetadataMetrics) OptMetadataMetrics {
+	return OptMetadataMetrics{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptMetadataMetrics is optional MetadataMetrics.
+type OptMetadataMetrics struct {
+	Value MetadataMetrics
+	Set   bool
+}
+
+// IsSet returns true if OptMetadataMetrics was set.
+func (o OptMetadataMetrics) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptMetadataMetrics) Reset() {
+	var v MetadataMetrics
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptMetadataMetrics) SetTo(v MetadataMetrics) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptMetadataMetrics) Get() (v MetadataMetrics, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptMetadataMetrics) Or(d MetadataMetrics) MetadataMetrics {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptPartialStatus returns new OptPartialStatus with value set to v.
 func NewOptPartialStatus(v PartialStatus) OptPartialStatus {
 	return OptPartialStatus{
@@ -704,6 +885,52 @@ func (o OptPrometheusDuration) Get() (v PrometheusDuration, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptPrometheusDuration) Or(d PrometheusDuration) PrometheusDuration {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptSearchMetrics returns new OptSearchMetrics with value set to v.
+func NewOptSearchMetrics(v SearchMetrics) OptSearchMetrics {
+	return OptSearchMetrics{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptSearchMetrics is optional SearchMetrics.
+type OptSearchMetrics struct {
+	Value SearchMetrics
+	Set   bool
+}
+
+// IsSet returns true if OptSearchMetrics was set.
+func (o OptSearchMetrics) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptSearchMetrics) Reset() {
+	var v SearchMetrics
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptSearchMetrics) SetTo(v SearchMetrics) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptSearchMetrics) Get() (v SearchMetrics, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptSearchMetrics) Or(d SearchMetrics) SearchMetrics {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -894,6 +1121,52 @@ func (o OptTempoTime) Or(d TempoTime) TempoTime {
 	return d
 }
 
+// NewOptTraceSearchMetadataServiceStats returns new OptTraceSearchMetadataServiceStats with value set to v.
+func NewOptTraceSearchMetadataServiceStats(v TraceSearchMetadataServiceStats) OptTraceSearchMetadataServiceStats {
+	return OptTraceSearchMetadataServiceStats{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptTraceSearchMetadataServiceStats is optional TraceSearchMetadataServiceStats.
+type OptTraceSearchMetadataServiceStats struct {
+	Value TraceSearchMetadataServiceStats
+	Set   bool
+}
+
+// IsSet returns true if OptTraceSearchMetadataServiceStats was set.
+func (o OptTraceSearchMetadataServiceStats) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptTraceSearchMetadataServiceStats) Reset() {
+	var v TraceSearchMetadataServiceStats
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptTraceSearchMetadataServiceStats) SetTo(v TraceSearchMetadataServiceStats) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptTraceSearchMetadataServiceStats) Get() (v TraceSearchMetadataServiceStats, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptTraceSearchMetadataServiceStats) Or(d TraceSearchMetadataServiceStats) TraceSearchMetadataServiceStats {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 type PartialStatus int
 
 type PrometheusDuration string
@@ -968,13 +1241,10 @@ func (s *PrometheusVersion) SetGoVersion(val string) {
 	s.GoVersion = val
 }
 
-// Ref: #/components/schemas/QueryStats
-type QueryStats struct{}
-
 // Ref: #/components/schemas/RangeMetrics
 type RangeMetrics struct {
 	Series  []TimeSeries     `json:"series"`
-	Metrics *QueryStats      `json:"metrics"`
+	Metrics OptSearchMetrics `json:"metrics"`
 	Status  OptPartialStatus `json:"status"`
 	Message OptString        `json:"message"`
 }
@@ -985,7 +1255,7 @@ func (s *RangeMetrics) GetSeries() []TimeSeries {
 }
 
 // GetMetrics returns the value of Metrics.
-func (s *RangeMetrics) GetMetrics() *QueryStats {
+func (s *RangeMetrics) GetMetrics() OptSearchMetrics {
 	return s.Metrics
 }
 
@@ -1005,7 +1275,7 @@ func (s *RangeMetrics) SetSeries(val []TimeSeries) {
 }
 
 // SetMetrics sets the value of Metrics.
-func (s *RangeMetrics) SetMetrics(val *QueryStats) {
+func (s *RangeMetrics) SetMetrics(val OptSearchMetrics) {
 	s.Metrics = val
 }
 
@@ -1071,6 +1341,113 @@ func (s *ScopeTags) SetTags(val []string) {
 	s.Tags = val
 }
 
+// Ref: #/components/schemas/SearchMetrics
+type SearchMetrics struct {
+	InspectedTraces OptInt   `json:"inspectedTraces"`
+	InspectedBytes  OptInt64 `json:"inspectedBytes"`
+	TotalBlocks     OptInt   `json:"totalBlocks"`
+	CompletedJobs   OptInt   `json:"completedJobs"`
+	TotalJobs       OptInt   `json:"totalJobs"`
+	TotalBlockBytes OptInt64 `json:"totalBlockBytes"`
+	InspectedSpans  OptInt64 `json:"inspectedSpans"`
+}
+
+// GetInspectedTraces returns the value of InspectedTraces.
+func (s *SearchMetrics) GetInspectedTraces() OptInt {
+	return s.InspectedTraces
+}
+
+// GetInspectedBytes returns the value of InspectedBytes.
+func (s *SearchMetrics) GetInspectedBytes() OptInt64 {
+	return s.InspectedBytes
+}
+
+// GetTotalBlocks returns the value of TotalBlocks.
+func (s *SearchMetrics) GetTotalBlocks() OptInt {
+	return s.TotalBlocks
+}
+
+// GetCompletedJobs returns the value of CompletedJobs.
+func (s *SearchMetrics) GetCompletedJobs() OptInt {
+	return s.CompletedJobs
+}
+
+// GetTotalJobs returns the value of TotalJobs.
+func (s *SearchMetrics) GetTotalJobs() OptInt {
+	return s.TotalJobs
+}
+
+// GetTotalBlockBytes returns the value of TotalBlockBytes.
+func (s *SearchMetrics) GetTotalBlockBytes() OptInt64 {
+	return s.TotalBlockBytes
+}
+
+// GetInspectedSpans returns the value of InspectedSpans.
+func (s *SearchMetrics) GetInspectedSpans() OptInt64 {
+	return s.InspectedSpans
+}
+
+// SetInspectedTraces sets the value of InspectedTraces.
+func (s *SearchMetrics) SetInspectedTraces(val OptInt) {
+	s.InspectedTraces = val
+}
+
+// SetInspectedBytes sets the value of InspectedBytes.
+func (s *SearchMetrics) SetInspectedBytes(val OptInt64) {
+	s.InspectedBytes = val
+}
+
+// SetTotalBlocks sets the value of TotalBlocks.
+func (s *SearchMetrics) SetTotalBlocks(val OptInt) {
+	s.TotalBlocks = val
+}
+
+// SetCompletedJobs sets the value of CompletedJobs.
+func (s *SearchMetrics) SetCompletedJobs(val OptInt) {
+	s.CompletedJobs = val
+}
+
+// SetTotalJobs sets the value of TotalJobs.
+func (s *SearchMetrics) SetTotalJobs(val OptInt) {
+	s.TotalJobs = val
+}
+
+// SetTotalBlockBytes sets the value of TotalBlockBytes.
+func (s *SearchMetrics) SetTotalBlockBytes(val OptInt64) {
+	s.TotalBlockBytes = val
+}
+
+// SetInspectedSpans sets the value of InspectedSpans.
+func (s *SearchMetrics) SetInspectedSpans(val OptInt64) {
+	s.InspectedSpans = val
+}
+
+// Ref: #/components/schemas/ServiceStats
+type ServiceStats struct {
+	SpanCount  OptInt `json:"spanCount"`
+	ErrorCount OptInt `json:"errorCount"`
+}
+
+// GetSpanCount returns the value of SpanCount.
+func (s *ServiceStats) GetSpanCount() OptInt {
+	return s.SpanCount
+}
+
+// GetErrorCount returns the value of ErrorCount.
+func (s *ServiceStats) GetErrorCount() OptInt {
+	return s.ErrorCount
+}
+
+// SetSpanCount sets the value of SpanCount.
+func (s *ServiceStats) SetSpanCount(val OptInt) {
+	s.SpanCount = val
+}
+
+// SetErrorCount sets the value of ErrorCount.
+func (s *ServiceStats) SetErrorCount(val OptInt) {
+	s.ErrorCount = val
+}
+
 // Ref: #/components/schemas/StringValue
 type StringValue struct {
 	StringValue string `json:"stringValue"`
@@ -1088,7 +1465,8 @@ func (s *StringValue) SetStringValue(val string) {
 
 // Ref: #/components/schemas/TagNames
 type TagNames struct {
-	TagNames []string `json:"tagNames"`
+	TagNames []string           `json:"tagNames"`
+	Metrics  OptMetadataMetrics `json:"metrics"`
 }
 
 // GetTagNames returns the value of TagNames.
@@ -1096,14 +1474,25 @@ func (s *TagNames) GetTagNames() []string {
 	return s.TagNames
 }
 
+// GetMetrics returns the value of Metrics.
+func (s *TagNames) GetMetrics() OptMetadataMetrics {
+	return s.Metrics
+}
+
 // SetTagNames sets the value of TagNames.
 func (s *TagNames) SetTagNames(val []string) {
 	s.TagNames = val
 }
 
+// SetMetrics sets the value of Metrics.
+func (s *TagNames) SetMetrics(val OptMetadataMetrics) {
+	s.Metrics = val
+}
+
 // Ref: #/components/schemas/TagNamesV2
 type TagNamesV2 struct {
-	Scopes []ScopeTags `json:"scopes"`
+	Scopes  []ScopeTags        `json:"scopes"`
+	Metrics OptMetadataMetrics `json:"metrics"`
 }
 
 // GetScopes returns the value of Scopes.
@@ -1111,9 +1500,19 @@ func (s *TagNamesV2) GetScopes() []ScopeTags {
 	return s.Scopes
 }
 
+// GetMetrics returns the value of Metrics.
+func (s *TagNamesV2) GetMetrics() OptMetadataMetrics {
+	return s.Metrics
+}
+
 // SetScopes sets the value of Scopes.
 func (s *TagNamesV2) SetScopes(val []ScopeTags) {
 	s.Scopes = val
+}
+
+// SetMetrics sets the value of Metrics.
+func (s *TagNamesV2) SetMetrics(val OptMetadataMetrics) {
+	s.Metrics = val
 }
 
 // Ref: #/components/schemas/TagScope
@@ -1228,7 +1627,8 @@ func (s *TagValue) SetValue(val OptString) {
 
 // Ref: #/components/schemas/TagValues
 type TagValues struct {
-	TagValues []string `json:"tagValues"`
+	TagValues []string           `json:"tagValues"`
+	Metrics   OptMetadataMetrics `json:"metrics"`
 }
 
 // GetTagValues returns the value of TagValues.
@@ -1236,14 +1636,25 @@ func (s *TagValues) GetTagValues() []string {
 	return s.TagValues
 }
 
+// GetMetrics returns the value of Metrics.
+func (s *TagValues) GetMetrics() OptMetadataMetrics {
+	return s.Metrics
+}
+
 // SetTagValues sets the value of TagValues.
 func (s *TagValues) SetTagValues(val []string) {
 	s.TagValues = val
 }
 
+// SetMetrics sets the value of Metrics.
+func (s *TagValues) SetMetrics(val OptMetadataMetrics) {
+	s.Metrics = val
+}
+
 // Ref: #/components/schemas/TagValuesV2
 type TagValuesV2 struct {
-	TagValues []TagValue `json:"tagValues"`
+	TagValues []TagValue         `json:"tagValues"`
+	Metrics   OptMetadataMetrics `json:"metrics"`
 }
 
 // GetTagValues returns the value of TagValues.
@@ -1251,9 +1662,19 @@ func (s *TagValuesV2) GetTagValues() []TagValue {
 	return s.TagValues
 }
 
+// GetMetrics returns the value of Metrics.
+func (s *TagValuesV2) GetMetrics() OptMetadataMetrics {
+	return s.Metrics
+}
+
 // SetTagValues sets the value of TagValues.
 func (s *TagValuesV2) SetTagValues(val []TagValue) {
 	s.TagValues = val
+}
+
+// SetMetrics sets the value of Metrics.
+func (s *TagValuesV2) SetMetrics(val OptMetadataMetrics) {
+	s.Metrics = val
 }
 
 // Ref: #/components/schemas/TempoSpan
@@ -1461,12 +1882,14 @@ func (*TraceByIDV2NotFound) traceByIDv2Res() {}
 
 // Ref: #/components/schemas/TraceSearchMetadata
 type TraceSearchMetadata struct {
-	TraceID           string          `json:"traceID"`
-	RootServiceName   OptString       `json:"rootServiceName"`
-	RootTraceName     OptString       `json:"rootTraceName"`
-	StartTimeUnixNano time.Time       `json:"startTimeUnixNano"`
-	DurationMs        OptInt          `json:"durationMs"`
-	SpanSet           OptTempoSpanSet `json:"spanSet"`
+	TraceID           string                             `json:"traceID"`
+	RootServiceName   OptString                          `json:"rootServiceName"`
+	RootTraceName     OptString                          `json:"rootTraceName"`
+	StartTimeUnixNano time.Time                          `json:"startTimeUnixNano"`
+	DurationMs        OptInt                             `json:"durationMs"`
+	SpanSet           OptTempoSpanSet                    `json:"spanSet"`
+	SpanSets          []TempoSpanSet                     `json:"spanSets"`
+	ServiceStats      OptTraceSearchMetadataServiceStats `json:"serviceStats"`
 }
 
 // GetTraceID returns the value of TraceID.
@@ -1499,6 +1922,16 @@ func (s *TraceSearchMetadata) GetSpanSet() OptTempoSpanSet {
 	return s.SpanSet
 }
 
+// GetSpanSets returns the value of SpanSets.
+func (s *TraceSearchMetadata) GetSpanSets() []TempoSpanSet {
+	return s.SpanSets
+}
+
+// GetServiceStats returns the value of ServiceStats.
+func (s *TraceSearchMetadata) GetServiceStats() OptTraceSearchMetadataServiceStats {
+	return s.ServiceStats
+}
+
 // SetTraceID sets the value of TraceID.
 func (s *TraceSearchMetadata) SetTraceID(val string) {
 	s.TraceID = val
@@ -1529,9 +1962,31 @@ func (s *TraceSearchMetadata) SetSpanSet(val OptTempoSpanSet) {
 	s.SpanSet = val
 }
 
+// SetSpanSets sets the value of SpanSets.
+func (s *TraceSearchMetadata) SetSpanSets(val []TempoSpanSet) {
+	s.SpanSets = val
+}
+
+// SetServiceStats sets the value of ServiceStats.
+func (s *TraceSearchMetadata) SetServiceStats(val OptTraceSearchMetadataServiceStats) {
+	s.ServiceStats = val
+}
+
+type TraceSearchMetadataServiceStats map[string]ServiceStats
+
+func (s *TraceSearchMetadataServiceStats) init() TraceSearchMetadataServiceStats {
+	m := *s
+	if m == nil {
+		m = map[string]ServiceStats{}
+		*s = m
+	}
+	return m
+}
+
 // Ref: #/components/schemas/Traces
 type Traces struct {
-	Traces []TraceSearchMetadata `json:"traces"`
+	Traces  []TraceSearchMetadata `json:"traces"`
+	Metrics OptSearchMetrics      `json:"metrics"`
 }
 
 // GetTraces returns the value of Traces.
@@ -1539,7 +1994,17 @@ func (s *Traces) GetTraces() []TraceSearchMetadata {
 	return s.Traces
 }
 
+// GetMetrics returns the value of Metrics.
+func (s *Traces) GetMetrics() OptSearchMetrics {
+	return s.Metrics
+}
+
 // SetTraces sets the value of Traces.
 func (s *Traces) SetTraces(val []TraceSearchMetadata) {
 	s.Traces = val
+}
+
+// SetMetrics sets the value of Metrics.
+func (s *Traces) SetMetrics(val OptSearchMetrics) {
+	s.Metrics = val
 }
