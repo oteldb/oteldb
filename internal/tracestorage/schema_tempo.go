@@ -73,7 +73,7 @@ func otelToTempoValue(val pcommon.Value) (r tempoapi.AnyValue) {
 	case pcommon.ValueTypeMap:
 		m := tempoapi.KvlistValue{}
 		val.Map().Range(func(k string, v pcommon.Value) bool {
-			m.KvlistValue = append(m.KvlistValue, tempoapi.KeyValue{
+			m.KvlistValue.Values = append(m.KvlistValue.Values, tempoapi.KeyValue{
 				Key:   k,
 				Value: otelToTempoValue(v),
 			})
@@ -85,7 +85,7 @@ func otelToTempoValue(val pcommon.Value) (r tempoapi.AnyValue) {
 		ss := val.Slice()
 		for i := 0; i < ss.Len(); i++ {
 			v := ss.At(i)
-			a.ArrayValue = append(a.ArrayValue, otelToTempoValue(v))
+			a.ArrayValue.Values = append(a.ArrayValue.Values, otelToTempoValue(v))
 		}
 		r.SetArrayValue(a)
 	case pcommon.ValueTypeBytes:

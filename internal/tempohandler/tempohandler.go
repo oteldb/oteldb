@@ -218,7 +218,8 @@ func (h *TempoAPI) searchTags(ctx context.Context, query string, params tempoapi
 	}
 
 	return &tempoapi.Traces{
-		Traces: c.Result(),
+		Traces:  c.Result(),
+		Metrics: tempoapi.NewOptSearchMetrics(tempoapi.SearchMetrics{}),
 	}, nil
 }
 
@@ -291,6 +292,7 @@ func (h *TempoAPI) SearchTagValues(ctx context.Context, params tempoapi.SearchTa
 
 	return &tempoapi.TagValues{
 		TagValues: values,
+		Metrics:   tempoapi.NewOptMetadataMetrics(tempoapi.MetadataMetrics{}),
 	}, nil
 }
 
@@ -382,6 +384,7 @@ func (h *TempoAPI) SearchTagValuesV2(ctx context.Context, params tempoapi.Search
 
 	return &tempoapi.TagValuesV2{
 		TagValues: values,
+		Metrics:   tempoapi.NewOptMetadataMetrics(tempoapi.MetadataMetrics{}),
 	}, nil
 }
 
@@ -437,6 +440,7 @@ func (h *TempoAPI) SearchTags(ctx context.Context, params tempoapi.SearchTagsPar
 
 	return &tempoapi.TagNames{
 		TagNames: maps.Keys(names),
+		Metrics:  tempoapi.NewOptMetadataMetrics(tempoapi.MetadataMetrics{}),
 	}, nil
 }
 
@@ -520,7 +524,8 @@ func (h *TempoAPI) SearchTagsV2(ctx context.Context, params tempoapi.SearchTagsV
 	}
 
 	return &tempoapi.TagNamesV2{
-		Scopes: maps.Values(scopes),
+		Scopes:  maps.Values(scopes),
+		Metrics: tempoapi.NewOptMetadataMetrics(tempoapi.MetadataMetrics{}),
 	}, nil
 }
 

@@ -197,6 +197,7 @@ func (e *Engine) evalExpr(ctx context.Context, expr traceql.Expr, params EvalPar
 				StartTimeUnixNano: s.Start,
 				DurationMs:        tempoapi.NewOptInt(int(s.TraceDuration.Milliseconds())),
 				SpanSet:           tempoapi.NewOptTempoSpanSet(spans),
+				SpanSets:          []tempoapi.TempoSpanSet{spans},
 			})
 		}
 	}
@@ -207,7 +208,10 @@ func (e *Engine) evalExpr(ctx context.Context, expr traceql.Expr, params EvalPar
 	slices.SortFunc(result, func(a, b tempoapi.TraceSearchMetadata) int {
 		return a.StartTimeUnixNano.Compare(b.StartTimeUnixNano)
 	})
-	return &tempoapi.Traces{Traces: result}, nil
+	return &tempoapi.Traces{
+		Traces:  result,
+		Metrics: tempoapi.NewOptSearchMetrics(tempoapi.SearchMetrics{}),
+	}, nil
 }
 
 type timeRange struct {

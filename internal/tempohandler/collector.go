@@ -59,6 +59,10 @@ func (b *metadataCollector) Result() (r []tempoapi.TraceSearchMetadata) {
 		if v.StartTimeUnixNano.IsZero() {
 			continue
 		}
+		// Populate spanSets for better compatibility with modern Grafana versions.
+		if v.SpanSet.Set {
+			v.SpanSets = []tempoapi.TempoSpanSet{v.SpanSet.Value}
+		}
 		r = append(r, v)
 	}
 	slices.SortFunc(r, func(a, b tempoapi.TraceSearchMetadata) int {
