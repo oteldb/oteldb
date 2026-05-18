@@ -216,7 +216,7 @@ func TestComputeFetchRange(t *testing.T) {
 	start := int64(1000)
 
 	t.Run("AllMisses", func(t *testing.T) {
-		wms, fetchStart, stats := computeFetchRange(cache, start, timeseries)
+		wms, fetchStart, stats := computeFetchRange(context.Background(), cache, start, timeseries)
 		require.Equal(t, start, fetchStart)
 		require.Equal(t, 2, stats.misses)
 		require.Equal(t, 0, stats.hits)
@@ -225,12 +225,12 @@ func TestComputeFetchRange(t *testing.T) {
 	})
 
 	t.Run("MixedHitAndMiss", func(t *testing.T) {
-		// h1 is a hit at 2000
+		// h1 is a hit at 2000, covering start (1000)
 		entry1 := newMetricsCacheEntry()
-		entry1.Append([]int64{2000}, []float64{1}, 3000)
+		entry1.Append([]int64{1000, 2000}, []float64{1, 1}, 3000)
 		cache.cache.Set(h1, entry1)
 
-		wms, fetchStart, stats := computeFetchRange(cache, start, timeseries)
+		wms, fetchStart, stats := computeFetchRange(context.Background(), cache, start, timeseries)
 		// Even though h1 is a hit, h2 is a miss, so we must fetch from start.
 		require.Equal(t, start, fetchStart)
 		require.Equal(t, 1, stats.misses)
@@ -240,12 +240,12 @@ func TestComputeFetchRange(t *testing.T) {
 	})
 
 	t.Run("AllHits", func(t *testing.T) {
-		// h2 is a hit at 1500
+		// h2 is a hit at 1500, covering start (1000)
 		entry2 := newMetricsCacheEntry()
-		entry2.Append([]int64{1500}, []float64{2}, 3000)
+		entry2.Append([]int64{1000, 1500}, []float64{2, 2}, 3000)
 		cache.cache.Set(h2, entry2)
 
-		wms, fetchStart, stats := computeFetchRange(cache, start, timeseries)
+		wms, fetchStart, stats := computeFetchRange(context.Background(), cache, start, timeseries)
 		// Both are hits. min(2000, 1500) = 1500. Fetch from 1500 + 1.
 		require.Equal(t, int64(1501), fetchStart)
 		require.Equal(t, 0, stats.misses)
@@ -262,11 +262,73 @@ func TestComputeFetchRange(t *testing.T) {
 		entry3.Append([]int64{500}, []float64{3}, 1000)
 		cache.cache.Set(h3, entry3)
 
-		wms, fetchStart, stats := computeFetchRange(cache, start, ts3)
+		wms, fetchStart, stats := computeFetchRange(context.Background(), cache, start, ts3)
 		// maxTS (500) < start (1000), so it's a miss for the requested range.
 		require.Equal(t, start, fetchStart)
 		require.Equal(t, 1, stats.misses)
 		require.Equal(t, 0, stats.hits)
 		require.Equal(t, int64(uncachedWatermark), wms[h3])
 	})
+}
+
+func TestQueryPointsCached_GapAtStart(t *testing.T) {
+	opts := MetricsCacheOptions{
+		MaxBytes:  1024 * 1024,
+		SafetyLag: time.Minute,
+	}
+	cache, err := newMetricsCache(opts)
+	require.NoError(t, err)
+
+	lb := labels.FromStrings("__name__", "m")
+	var hash [16]byte
+	h := lb.Hash()
+	for i := range 8 {
+		hash[i] = byte(h >> (i * 8))
+	}
+	timeseries := map[[16]byte]labels.Labels{hash: lb}
+
+	// Use a fixed epoch far enough in the past so safety lag never interferes.
+	epoch := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Pre-populate cache with data from epoch to epoch+5min (watermark = epoch+5min).
+	// This represents a previous query for [epoch, epoch+5min].
+	entry := newMetricsCacheEntry()
+	for i := range 6 {
+		t := epoch.Add(time.Duration(i) * time.Minute).UnixMilli()
+		entry.Append([]int64{t}, []float64{float64(i)}, epoch.Add(10*time.Minute).UnixMilli())
+	}
+	cache.cache.Set(hash, entry)
+	require.Equal(t, epoch.Add(5*time.Minute).UnixMilli(), entry.maxTS)
+	require.Equal(t, epoch.UnixMilli(), entry.minTS)
+
+	p := &promQuerier{
+		metricsCache: cache,
+		queryPointsFunc: func(_ context.Context, _ string, s, e time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+			// Return data from s to e with 1-minute step
+			res := &series[pointData]{labels: lb}
+			for t := s.UnixMilli(); t <= e.UnixMilli(); t += 60000 {
+				res.ts = append(res.ts, t)
+				res.data.values = append(res.data.values, float64(t))
+			}
+			return map[[16]byte]*series[pointData]{hash: res}, nil
+		},
+	}
+
+	ctx := context.Background()
+	// Query starting BEFORE the cached range.
+	start := epoch.Add(-10 * time.Minute)
+	end := epoch.Add(10 * time.Minute)
+
+	points, err := p.queryPointsCached(ctx, "points", start, end, timeseries)
+	require.NoError(t, err)
+	require.Len(t, points, 1)
+
+	// Check for gaps. We expect points from start (epoch-10min) to end (epoch+10min).
+	expectedCount := int(end.Sub(start).Minutes()) + 1
+	require.Equal(t, expectedCount, len(points[0].ts), "should have %d points, but got %d. Range: [%s, %s]", expectedCount, len(points[0].ts), start, end)
+	
+	for i, ts := range points[0].ts {
+		expectedTS := start.Add(time.Duration(i) * time.Minute).UnixMilli()
+		require.Equal(t, expectedTS, ts, "point %d timestamp mismatch", i)
+	}
 }

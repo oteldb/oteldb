@@ -491,7 +491,21 @@ func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params
 	return result, nil
 }
 
-func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) ([]*series[pointData], error) {
+func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (_ []*series[pointData], rerr error) {
+	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.queryPointsCached",
+		trace.WithAttributes(
+			xattribute.UnixNano("chstorage.range.start", start),
+			xattribute.UnixNano("chstorage.range.end", end),
+			attribute.String("chstorage.table", table),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+		}
+		span.End()
+	}()
+
 	cacheEnd := time.Now().Add(-p.metricsCache.safetyLag)
 	if end.Before(cacheEnd) {
 		cacheEnd = end
@@ -499,12 +513,14 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 
 	// 1. Determine per-series watermarks and global fetch lower bound.
 	seriesWatermark, globalFetchFrom, stats := computeFetchRange(
+		ctx,
 		p.metricsCache,
 		start.UnixMilli(),
 		timeseries,
 	)
 
-	trace.SpanFromContext(ctx).SetAttributes(
+	span.SetAttributes(
+		attribute.Int64("chstorage.metrics_cache.cache_end", cacheEnd.UnixMilli()),
 		attribute.Int64("chstorage.metrics_cache.global_fetch_from", globalFetchFrom),
 		attribute.Int("chstorage.metrics_cache.hits", stats.hits),
 		attribute.Int("chstorage.metrics_cache.misses", stats.misses),
@@ -516,15 +532,22 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 	var fetchedByHash map[[16]byte]*series[pointData]
 	if !fetchStart.After(end) {
 		var err error
+
+		span.AddEvent("chstorage.fetch_more_series")
 		fetchedByHash, err = p.queryPointsFunc(ctx, table, fetchStart, end, timeseries)
 		if err != nil {
 			return nil, err
 		}
+		span.AddEvent("chstorage.fetched_more_series", trace.WithAttributes(
+			attribute.Int("chstorage.fetched_series", len(fetchedByHash)),
+		))
 
 		// 3. Update cache: store fetched points where ts <= cacheEnd
 		for hash, s := range fetchedByHash {
 			p.upsertCache(hash, s.ts, s.data.values, cacheEnd.UnixMilli())
 		}
+	} else {
+		span.AddEvent("chstorage.fully_covered_by_cache")
 	}
 
 	// 4. Merge per series: cached[start..watermark] ++ fetched(watermark, end]
@@ -578,6 +601,7 @@ type cacheStats struct {
 const uncachedWatermark = -1
 
 func computeFetchRange(
+	ctx context.Context,
 	cache *MetricsCache,
 	start int64,
 	timeseries map[[16]byte]labels.Labels,
@@ -592,10 +616,11 @@ func computeFetchRange(
 		entry, ok := cache.cache.Get(hash)
 		if ok {
 			entry.mu.RLock()
+			entryMinTS := entry.minTS
 			entryMaxTS := entry.maxTS
 			entry.mu.RUnlock()
 
-			if entryMaxTS >= start {
+			if entryMinTS <= start && entryMaxTS >= start {
 				stats.hits++
 				watermarks[hash] = entryMaxTS
 				if stats.hits == 1 || entryMaxTS < minHitTS {
@@ -603,8 +628,16 @@ func computeFetchRange(
 				}
 				continue
 			}
-		}
 
+			// Record only first partial hit: don't spam events.
+			if stats.misses == 0 {
+				trace.SpanFromContext(ctx).AddEvent("chstorage.metrics_cache.partial_hit", trace.WithAttributes(
+					attribute.Int64("chstorage.metrics_cache.entry_min_ts", entryMinTS),
+					attribute.Int64("chstorage.metrics_cache.entry_max_ts", entryMaxTS),
+					attribute.Int64("chstorage.metrics_cache.requested_start", start),
+				))
+			}
+		}
 		stats.misses++
 		hasAnyMiss = true
 	}
