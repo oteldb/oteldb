@@ -180,7 +180,7 @@ func TestComputeFetchRange(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(mc)
 			}
-			wms, fetchFrom, stats := computeFetchRange(context.Background(), mc, 0, start, tc.timeseries)
+			wms, fetchFrom, stats := computeFetchRange(context.Background(), mc, 0, "", start, tc.timeseries)
 			require.Equal(t, tc.wantFetchFrom, fetchFrom)
 			require.Equal(t, tc.wantHits, stats.hits)
 			require.Equal(t, tc.wantMisses, stats.misses)
@@ -664,4 +664,188 @@ func TestCacheKeyStepIsolation(t *testing.T) {
 func labelHash(v uint64) (r [16]byte) {
 	binary.LittleEndian.PutUint64(r[:], v)
 	return r
+}
+
+func makeTestQuerier() *promQuerier {
+	return &promQuerier{tracer: nooptrace.NewTracerProvider().Tracer("test")}
+}
+
+// makeSeries builds a series with the given label pairs and (ts, val) pairs.
+func makeSeries(lbs labels.Labels, points [][2]float64) *series[pointData] {
+	s := &series[pointData]{labels: lbs}
+	for _, p := range points {
+		s.ts = append(s.ts, int64(p[0]))
+		s.data.values = append(s.data.values, p[1])
+	}
+	return s
+}
+
+// pointsAt returns the value at timestamp ts from a series, or NaN if absent.
+func pointAt(s *series[pointData], ts int64) (float64, bool) {
+	for i, t := range s.ts {
+		if t == ts {
+			return s.data.values[i], true
+		}
+	}
+	return 0, false
+}
+
+func TestAggregateSampledPoints(t *testing.T) {
+	ctx := context.Background()
+	p := makeTestQuerier()
+
+	// Label sets used across sub-tests.
+	lbJob1 := labels.FromStrings("__name__", "m", "job", "a", "instance", "1")
+	lbJob1b := labels.FromStrings("__name__", "m", "job", "a", "instance", "2") // same job, different instance
+	lbJob2 := labels.FromStrings("__name__", "m", "job", "b", "instance", "1")
+
+	h1 := labelHash(lbJob1.Hash())
+	h2 := labelHash(lbJob1b.Hash())
+	h3 := labelHash(lbJob2.Hash())
+
+	// Three series, two timestamps each.
+	//
+	//          t=10  t=20
+	// job=a/1:   2    8
+	// job=a/2:   4    6
+	// job=b/1:   3    9
+	input := map[[16]byte]*series[pointData]{
+		h1: makeSeries(lbJob1, [][2]float64{{10, 2}, {20, 8}}),
+		h2: makeSeries(lbJob1b, [][2]float64{{10, 4}, {20, 6}}),
+		h3: makeSeries(lbJob2, [][2]float64{{10, 3}, {20, 9}}),
+	}
+
+	findGroup := func(t *testing.T, result []*series[pointData], match labels.Labels) *series[pointData] {
+		t.Helper()
+		for _, s := range result {
+			if labels.Equal(s.labels, match) {
+				return s
+			}
+		}
+		t.Fatalf("group %v not found in result", match)
+		return nil
+	}
+
+	t.Run("Sum_ByJob", func(t *testing.T) {
+		// sum by (job): on=true, groupBy=["job"] — keep only the "job" label.
+		sampler, _ := canUseSampledPoints(time.Second, "sum")
+		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler)
+
+		require.Len(t, result, 2)
+
+		gA := findGroup(t, result, labels.FromStrings("job", "a"))
+		v, ok := pointAt(gA, 10)
+		require.True(t, ok)
+		require.Equal(t, 6.0, v, "sum job=a t=10: 2+4")
+
+		v, ok = pointAt(gA, 20)
+		require.True(t, ok)
+		require.Equal(t, 14.0, v, "sum job=a t=20: 8+6")
+
+		gB := findGroup(t, result, labels.FromStrings("job", "b"))
+		v, ok = pointAt(gB, 10)
+		require.True(t, ok)
+		require.Equal(t, 3.0, v)
+	})
+
+	t.Run("Min_ByJob", func(t *testing.T) {
+		sampler, _ := canUseSampledPoints(time.Second, "min")
+		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler)
+
+		require.Len(t, result, 2)
+		gA := findGroup(t, result, labels.FromStrings("job", "a"))
+
+		v, _ := pointAt(gA, 10)
+		require.Equal(t, 2.0, v, "min job=a t=10: min(2,4)=2")
+		v, _ = pointAt(gA, 20)
+		require.Equal(t, 6.0, v, "min job=a t=20: min(8,6)=6")
+	})
+
+	t.Run("Max_ByJob", func(t *testing.T) {
+		sampler, _ := canUseSampledPoints(time.Second, "max")
+		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler)
+
+		require.Len(t, result, 2)
+		gA := findGroup(t, result, labels.FromStrings("job", "a"))
+
+		v, _ := pointAt(gA, 10)
+		require.Equal(t, 4.0, v, "max job=a t=10: max(2,4)=4")
+		v, _ = pointAt(gA, 20)
+		require.Equal(t, 8.0, v, "max job=a t=20: max(8,6)=8")
+	})
+
+	t.Run("Avg_ByJob", func(t *testing.T) {
+		sampler, _ := canUseSampledPoints(time.Second, "avg")
+		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler)
+
+		require.Len(t, result, 2)
+		gA := findGroup(t, result, labels.FromStrings("job", "a"))
+
+		v, _ := pointAt(gA, 10)
+		require.Equal(t, 3.0, v, "avg job=a t=10: (2+4)/2=3")
+		v, _ = pointAt(gA, 20)
+		require.Equal(t, 7.0, v, "avg job=a t=20: (8+6)/2=7")
+	})
+
+	t.Run("Sum_Without_Instance", func(t *testing.T) {
+		// sum without (instance): on=false, groupBy=["instance"] — drop instance, keep rest.
+		// job=a/1 and job=a/2 share {__name__,job} after dropping instance → collapse.
+		// job=b/1 is alone in its group.
+		sampler, _ := canUseSampledPoints(time.Second, "sum")
+		result := p.aggregateSampledPoints(ctx, input, false, []string{"instance"}, sampler)
+
+		require.Len(t, result, 2)
+	})
+
+	t.Run("OutputSortedByTimestamp", func(t *testing.T) {
+		// Feed unsorted timestamps; result must be sorted.
+		unordered := map[[16]byte]*series[pointData]{
+			h1: makeSeries(lbJob1, [][2]float64{{30, 1}, {10, 2}, {20, 3}}),
+		}
+		sampler, _ := canUseSampledPoints(time.Second, "sum")
+		result := p.aggregateSampledPoints(ctx, unordered, false, []string{"job"}, sampler)
+		require.Len(t, result, 1)
+		require.Equal(t, []int64{10, 20, 30}, result[0].ts)
+	})
+
+	t.Run("SingleSeries_SumEqualsValue", func(t *testing.T) {
+		// With only one series in the group, all aggregators return the original value.
+		single := map[[16]byte]*series[pointData]{
+			h3: makeSeries(lbJob2, [][2]float64{{10, 7}, {20, 3}}),
+		}
+		for _, fn := range []string{"sum", "avg", "min", "max"} {
+			sampler, _ := canUseSampledPoints(time.Second, fn)
+			result := p.aggregateSampledPoints(ctx, single, false, []string{"job"}, sampler)
+			require.Len(t, result, 1)
+			v, _ := pointAt(result[0], 10)
+			require.Equalf(t, 7.0, v, "fn=%s: single-series result must equal original value", fn)
+		}
+	})
+}
+
+// TestCanUseSampledPoints verifies which PromQL function names are accepted by
+// canUseSampledPoints and which correctly fall back to the raw-points path.
+func TestCanUseSampledPoints(t *testing.T) {
+	step := 30 * time.Second
+
+	supported := []string{"", "sum", "sum_over_time", "avg", "avg_over_time", "min", "min_over_time", "max", "max_over_time", "count", "count_over_time"}
+	for _, fn := range supported {
+		s, ok := canUseSampledPoints(step, fn)
+		require.Truef(t, ok, "canUseSampledPoints should accept function %q", fn)
+		if fn == "count" {
+			// count must set noClientGrouping so PromQL sees all series and counts
+			// them itself rather than counting the pre-collapsed single group.
+			require.Truef(t, s.noClientGrouping, "count sampler must set noClientGrouping")
+		}
+	}
+
+	unsupported := []string{"rate", "irate", "delta", "increase", "unknown"}
+	for _, fn := range unsupported {
+		_, ok := canUseSampledPoints(step, fn)
+		require.Falsef(t, ok, "canUseSampledPoints should reject function %q (must fall back to raw points)", fn)
+	}
+
+	// Step below 1s must always fall back regardless of function.
+	_, ok := canUseSampledPoints(500*time.Millisecond, "sum")
+	require.False(t, ok, "step < 1s must always fall back")
 }

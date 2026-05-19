@@ -50,11 +50,19 @@ func TestCH(t *testing.T) {
 	querier, err := chstorage.NewQuerier(c, chstorage.QuerierOptions{
 		Tables:         tables,
 		TracerProvider: provider,
+		MetricsCacheOptions: chstorage.MetricsCacheOptions{
+			MaxBytes: 64 * 1024 * 1024, // 64 MiB
+		},
 	})
 	require.NoError(t, err)
 
 	ctx = zctx.Base(ctx, integration.Logger(t))
-	runTest(ctx, t, provider, set, querier, false)
+	t.Run("WarmCache", func(t *testing.T) {
+		runTest(ctx, t, provider, set, querier, false)
+	})
+	t.Run("CachedRun", func(t *testing.T) {
+		runTest(ctx, t, provider, set, querier, false)
+	})
 }
 
 func TestCHBackup(t *testing.T) {
@@ -102,6 +110,9 @@ func TestCHBackup(t *testing.T) {
 		querier, err := chstorage.NewQuerier(client, chstorage.QuerierOptions{
 			Tables:         tables,
 			TracerProvider: provider,
+			MetricsCacheOptions: chstorage.MetricsCacheOptions{
+				MaxBytes: 64 * 1024 * 1024, // 64 MiB
+			},
 		})
 		require.NoError(t, err)
 
@@ -173,6 +184,9 @@ func TestCHBackupOldOteldb(t *testing.T) {
 		querier, err := chstorage.NewQuerier(client, chstorage.QuerierOptions{
 			Tables:         tables,
 			TracerProvider: provider,
+			MetricsCacheOptions: chstorage.MetricsCacheOptions{
+				MaxBytes: 64 * 1024 * 1024, // 64 MiB
+			},
 		})
 		require.NoError(t, err)
 
