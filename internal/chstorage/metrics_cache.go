@@ -81,9 +81,32 @@ func (e *MetricsCacheEntry) Append(ts []int64, vals []float64, untilMs int64) ui
 	return uint32(len(e.timestamps)*16 + 128)
 }
 
+// MarkFetched advances the watermark to record that [fetchFrom, untilMs] has been
+// confirmed queried — even when no data points exist in that range.
+//
+// This lets computeFetchRange treat a series with no data as a cache hit so that
+// subsequent queries for the same range skip the ClickHouse round-trip.
+func (e *MetricsCacheEntry) MarkFetched(fetchFrom, untilMs int64) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.minTS == math.MinInt64 || fetchFrom < e.minTS {
+		e.minTS = fetchFrom
+	}
+	if untilMs > e.maxTS {
+		e.maxTS = untilMs
+	}
+}
+
+// MetricsCacheKey is a key for metrics cache.
+type MetricsCacheKey struct {
+	Hash [16]byte
+	Step int64  // Milliseconds. 0 means raw points.
+	Fn   string // aggregation function name; empty means raw/anyLast
+}
+
 // MetricsCache wraps otter cache.
 type MetricsCache struct {
-	cache     otter.Cache[[16]byte, *MetricsCacheEntry]
+	cache     otter.Cache[MetricsCacheKey, *MetricsCacheEntry]
 	safetyLag time.Duration
 }
 
@@ -121,8 +144,8 @@ func newMetricsCache(opts MetricsCacheOptions) (*MetricsCache, error) {
 
 	// otter.MustBuilder capacity is the maximum number of items if Cost is not set,
 	// or the maximum total cost if Cost is set.
-	builder := otter.MustBuilder[[16]byte, *MetricsCacheEntry](int(opts.MaxBytes)).
-		Cost(func(_ [16]byte, e *MetricsCacheEntry) uint32 {
+	builder := otter.MustBuilder[MetricsCacheKey, *MetricsCacheEntry](int(opts.MaxBytes)).
+		Cost(func(_ MetricsCacheKey, e *MetricsCacheEntry) uint32 {
 			e.mu.RLock()
 			defer e.mu.RUnlock()
 			return uint32(len(e.timestamps)*16 + 128)
@@ -150,7 +173,7 @@ func newMetricsCache(opts MetricsCacheOptions) (*MetricsCache, error) {
 	}, nil
 }
 
-func registerMetrics(meter metric.Meter, cache otter.Cache[[16]byte, *MetricsCacheEntry]) error {
+func registerMetrics(meter metric.Meter, cache otter.Cache[MetricsCacheKey, *MetricsCacheEntry]) error {
 	hits, err := meter.Int64ObservableCounter("chstorage.metrics_cache.hits")
 	if err != nil {
 		return err
