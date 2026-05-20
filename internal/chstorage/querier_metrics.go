@@ -573,6 +573,12 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 
 		// 3. Update cache for all timeseries, including those with no data in the
 		// fetched range, so that subsequent queries skip the ClickHouse round-trip.
+		//
+		// bigQuery is true when the fetched data exceeds the cache budget: in that case
+		// we only refresh already-cached entries to avoid evicting warm data for other
+		// series/queries.
+		bigQuery := p.metricsCache.maxBytes > 0 && int64(totalPoints)*16 > p.metricsCache.maxBytes
+		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
 		for hash := range timeseries {
 			var ts []int64
 			var vals []float64
@@ -580,7 +586,7 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 				ts = s.ts
 				vals = s.data.values
 			}
-			p.upsertCache(hash, 0, "", globalFetchFrom, ts, vals, cacheEnd.UnixMilli())
+			p.upsertCache(hash, 0, "", globalFetchFrom, ts, vals, cacheEnd.UnixMilli(), bigQuery)
 		}
 	} else {
 		span.AddEvent("chstorage.fully_covered_by_cache")
@@ -694,6 +700,10 @@ func (p *promQuerier) querySampledPointsCached(
 
 		// 3. Update cache for all timeseries, including those with no data in the
 		// fetched range, so that subsequent queries skip the ClickHouse round-trip.
+		//
+		// bigQuery: see analogous comment in queryPointsCached.
+		bigQuery := p.metricsCache.maxBytes > 0 && int64(totalPoints)*16 > p.metricsCache.maxBytes
+		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
 		for hash := range timeseries {
 			var (
 				ts   []int64
@@ -703,7 +713,7 @@ func (p *promQuerier) querySampledPointsCached(
 				ts = s.ts
 				vals = s.data.values
 			}
-			p.upsertCache(hash, step, sampler.fn, globalFetchFrom, ts, vals, cacheEnd.UnixMilli())
+			p.upsertCache(hash, step, sampler.fn, globalFetchFrom, ts, vals, cacheEnd.UnixMilli(), bigQuery)
 		}
 	} else {
 		span.AddEvent("chstorage.fully_covered_by_cache")
@@ -766,7 +776,10 @@ func (p *promQuerier) querySampledPointsCached(
 	return result, nil
 }
 
-func (p *promQuerier) upsertCache(hash [16]byte, step time.Duration, fn string, fetchFrom int64, ts []int64, vals []float64, untilMs int64) {
+// upsertCache writes fetched points and watermark for one series into the cache.
+// If onlyIfExists is true and the entry is not yet in the cache, the call is a no-op:
+// this prevents a large query from evicting warm entries belonging to other series.
+func (p *promQuerier) upsertCache(hash [16]byte, step time.Duration, fn string, fetchFrom int64, ts []int64, vals []float64, untilMs int64, onlyIfExists bool) {
 	key := MetricsCacheKey{
 		Hash: hash,
 		Step: step.Milliseconds(),
@@ -774,6 +787,9 @@ func (p *promQuerier) upsertCache(hash [16]byte, step time.Duration, fn string, 
 	}
 	entry, ok := p.metricsCache.cache.Get(key)
 	if !ok {
+		if onlyIfExists {
+			return
+		}
 		entry = newMetricsCacheEntry()
 	}
 

@@ -378,6 +378,68 @@ func TestQueryPointsCached_AbsentSeries(t *testing.T) {
 	require.Empty(t, pts)
 }
 
+// TestQueryPointsCached_BigQuery verifies the big-query guard: when the number of
+// fetched points would exceed MaxBytes, upsertCache must not create new entries but
+// must still refresh entries that are already in the cache.
+func TestQueryPointsCached_BigQuery(t *testing.T) {
+	epoch := testEpoch
+
+	lb1 := labels.FromStrings("__name__", "m", "instance", "1")
+	lb2 := labels.FromStrings("__name__", "m", "instance", "2")
+	hash1 := labelHash(lb1.Hash())
+	hash2 := labelHash(lb2.Hash())
+	timeseries := map[[16]byte]labels.Labels{hash1: lb1, hash2: lb2}
+
+	stepMs := int64(60_000)
+	// mock returns 100 points per series → totalPoints=200, totalBytes=3200.
+	mockFn := func(_ context.Context, _ string, s, e time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+		build := func(lb labels.Labels) *series[pointData] {
+			ser := &series[pointData]{labels: lb}
+			for t := s.UnixMilli(); t <= e.UnixMilli(); t += stepMs {
+				ser.ts = append(ser.ts, t)
+				ser.data.values = append(ser.data.values, 1.0)
+			}
+			return ser
+		}
+		return map[[16]byte]*series[pointData]{
+			hash1: build(lb1),
+			hash2: build(lb2),
+		}, nil
+	}
+
+	// MaxBytes is between one-series cost (100*16+128=1728) and two-series cost (3200)
+	// so that the guard fires (3200 > 2048) but a single updated entry still fits.
+	mc, err := newMetricsCache(MetricsCacheOptions{MaxBytes: 2048, SafetyLag: time.Second})
+	require.NoError(t, err)
+
+	// Pre-warm only hash1 in the cache.
+	warm := newMetricsCacheEntry()
+	warm.Append([]int64{epoch.UnixMilli()}, []float64{0.0}, epoch.UnixMilli())
+	warm.MarkFetched(epoch.UnixMilli(), epoch.UnixMilli())
+	mc.cache.Set(MetricsCacheKey{Hash: hash1}, warm)
+
+	p := &promQuerier{
+		metricsCache:    mc,
+		tracer:          nooptrace.NewTracerProvider().Tracer("test"),
+		queryPointsFunc: mockFn,
+	}
+
+	// Query triggers the big-query guard (fetched >> MaxBytes=256).
+	pts, err := p.queryPointsCached(context.Background(), "points", epoch, epoch.Add(99*time.Minute), timeseries)
+	require.NoError(t, err)
+	require.NotEmpty(t, pts, "results should still be returned even for a big query")
+
+	// hash1 was already cached: its entry must have been updated.
+	e1, ok := mc.cache.Get(MetricsCacheKey{Hash: hash1})
+	require.True(t, ok, "pre-warmed hash1 must still be in cache after big query")
+	ts1, _ := e1.Slice(epoch.UnixMilli(), epoch.Add(99*time.Minute).UnixMilli())
+	require.NotEmpty(t, ts1, "hash1 cache entry must have been refreshed with new points")
+
+	// hash2 was NOT cached before the query: the guard must have prevented its insertion.
+	_, ok = mc.cache.Get(MetricsCacheKey{Hash: hash2})
+	require.False(t, ok, "uncached hash2 must NOT be inserted during a big query")
+}
+
 // TestQuerySampledPointsCached is a 4×4 combinatorial test: every cache scenario
 // is exercised against every grouping configuration.
 //

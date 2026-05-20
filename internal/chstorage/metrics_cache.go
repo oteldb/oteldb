@@ -154,6 +154,7 @@ type MetricsCacheKey struct {
 type MetricsCache struct {
 	cache     otter.Cache[MetricsCacheKey, *MetricsCacheEntry]
 	safetyLag time.Duration
+	maxBytes  int64
 }
 
 // MetricsCacheOptions configures the cache.
@@ -216,6 +217,7 @@ func newMetricsCache(opts MetricsCacheOptions) (*MetricsCache, error) {
 	return &MetricsCache{
 		cache:     cache,
 		safetyLag: opts.SafetyLag,
+		maxBytes:  opts.MaxBytes,
 	}, nil
 }
 
