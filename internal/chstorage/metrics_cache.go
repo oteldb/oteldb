@@ -51,16 +51,65 @@ func (e *MetricsCacheEntry) Slice(fromMs, toMs int64) (tss []int64, vals []float
 	return tss, vals
 }
 
-// Append adds new points after current maxTS; returns new cost in bytes.
+// Append stores points into the entry.
+//
+// Points older than current minTS are prepended (backward-fill when the caller fetches
+// a wider historical range than what was previously cached). Points already inside
+// [minTS, maxTS] are skipped as duplicates. Points in (maxTS, untilMs] are appended.
 //
 // Input MUST be sorted by timestamp.
 func (e *MetricsCacheEntry) Append(ts []int64, vals []float64, untilMs int64) uint32 {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	for i, t := range ts {
-		// Skip points that are already cached or older than current watermark.
-		// We use <= to avoid duplicates if ClickHouse returns the boundary point again.
+	if len(ts) == 0 {
+		return uint32(len(e.timestamps)*16 + 128)
+	}
+
+	if e.minTS == math.MinInt64 {
+		// Cache is empty: append all points up to untilMs.
+		for i, t := range ts {
+			if t > untilMs {
+				break
+			}
+			e.timestamps = append(e.timestamps, t)
+			e.values = append(e.values, vals[i])
+			if e.minTS == math.MinInt64 || t < e.minTS {
+				e.minTS = t
+			}
+			if t > e.maxTS {
+				e.maxTS = t
+			}
+		}
+		return uint32(len(e.timestamps)*16 + 128)
+	}
+
+	// Cache already has data. Split ts into:
+	//   prefix: points older than minTS (need prepend)
+	//   suffix: points newer than maxTS, up to untilMs (need append)
+	//   middle: already covered by [minTS, maxTS] (skip)
+	splitIdx, _ := slices.BinarySearch(ts, e.minTS)
+
+	// Prepend points older than minTS.
+	if splitIdx > 0 {
+		prTS := ts[:splitIdx]
+		prVals := vals[:splitIdx]
+		newTS := make([]int64, len(prTS)+len(e.timestamps))
+		copy(newTS, prTS)
+		copy(newTS[len(prTS):], e.timestamps)
+		e.timestamps = newTS
+
+		newVals := make([]float64, len(prVals)+len(e.values))
+		copy(newVals, prVals)
+		copy(newVals[len(prVals):], e.values)
+		e.values = newVals
+
+		e.minTS = prTS[0]
+	}
+
+	// Append points newer than maxTS, up to untilMs.
+	for i, t := range ts[splitIdx:] {
+		// Use <= to avoid duplicates if ClickHouse returns the boundary point again.
 		if t <= e.maxTS {
 			continue
 		}
@@ -68,10 +117,7 @@ func (e *MetricsCacheEntry) Append(ts []int64, vals []float64, untilMs int64) ui
 			break
 		}
 		e.timestamps = append(e.timestamps, t)
-		e.values = append(e.values, vals[i])
-		if e.minTS == math.MinInt64 || t < e.minTS {
-			e.minTS = t
-		}
+		e.values = append(e.values, vals[splitIdx+i])
 		if t > e.maxTS {
 			e.maxTS = t
 		}

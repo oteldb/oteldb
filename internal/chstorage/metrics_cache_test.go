@@ -53,6 +53,38 @@ func TestMetricsCacheEntry(t *testing.T) {
 	require.Equal(t, int64(50), e.maxTS)
 }
 
+// TestMetricsCacheEntry_Prepend reproduces the bug where querying a wider historical
+// range after a shorter query would leave a stale cache that only covered the shorter
+// range. Append must prepend older points rather than silently dropping them.
+func TestMetricsCacheEntry_Prepend(t *testing.T) {
+	e := newMetricsCacheEntry()
+
+	// Simulate first query: 30-minute window [100, 300].
+	e.Append([]int64{100, 200, 300}, []float64{1.0, 2.0, 3.0}, 300)
+	e.MarkFetched(100, 300)
+	require.Equal(t, int64(100), e.minTS)
+	require.Equal(t, int64(300), e.maxTS)
+
+	// Simulate second query: 24-hour window [1, 300].
+	// The caller fetches [1, 300] from ClickHouse and calls Append with all results.
+	// Points older than current minTS (100) must be prepended, not dropped.
+	e.Append([]int64{1, 50, 100, 200, 300}, []float64{0.1, 0.5, 1.0, 2.0, 3.0}, 300)
+	e.MarkFetched(1, 300)
+
+	require.Equal(t, int64(1), e.minTS, "minTS must be updated to the oldest new point")
+	require.Equal(t, int64(300), e.maxTS)
+
+	// Full slice must include the prepended points.
+	ts, vals := e.Slice(0, 400)
+	require.Equal(t, []int64{1, 50, 100, 200, 300}, ts)
+	require.Equal(t, []float64{0.1, 0.5, 1.0, 2.0, 3.0}, vals)
+
+	// Third query on the same 24-hour window must be a cache hit returning all data.
+	ts, vals = e.Slice(1, 300)
+	require.Equal(t, []int64{1, 50, 100, 200, 300}, ts)
+	require.Equal(t, []float64{0.1, 0.5, 1.0, 2.0, 3.0}, vals)
+}
+
 func TestMetricsCacheEntry_Concurrency(t *testing.T) {
 	e := newMetricsCacheEntry()
 	var wg sync.WaitGroup
@@ -417,7 +449,7 @@ func TestQuerySampledPointsCached(t *testing.T) {
 			for t := start.UnixMilli(); t <= end.UnixMilli(); t += stepMs {
 				e.Append([]int64{t}, []float64{1.0}, end.UnixMilli())
 			}
-			mc.cache.Set(MetricsCacheKey{Hash: h, Step: stepMs}, e)
+			mc.cache.Set(MetricsCacheKey{Hash: h, Step: stepMs, Fn: "sum"}, e)
 		}
 	}
 
@@ -566,7 +598,7 @@ func TestQuerySampledPointsCached(t *testing.T) {
 		},
 	}
 
-	sampler := pointsSampler{needPoints: true, pointExpr: chsql.LastValue}
+	sampler := pointsSampler{needPoints: true, pointExpr: chsql.LastValue, agg: sumAggregator, fn: "sum"}
 	for _, cs := range cacheScenarios {
 		for _, gs := range groupingScenarios {
 			cs, gs := cs, gs
