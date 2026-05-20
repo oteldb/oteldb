@@ -1,6 +1,7 @@
 package chstorage
 
 import (
+	"cmp"
 	"context"
 	"math"
 	"slices"
@@ -14,11 +15,11 @@ import (
 
 // MetricsCacheEntry is per-series cached sample data.
 type MetricsCacheEntry struct {
-	mu         sync.RWMutex
-	timestamps []int64   // sorted, milliseconds
-	values     []float64 // parallel
-	minTS      int64
-	maxTS      int64 // watermark
+	mu      sync.RWMutex
+	deltaTS []int32   // ms deltas from minTS; replaces timestamps []int64
+	values  []float64 // parallel
+	minTS   int64
+	maxTS   int64 // watermark
 }
 
 func newMetricsCacheEntry() *MetricsCacheEntry {
@@ -33,8 +34,17 @@ func (e *MetricsCacheEntry) Slice(fromMs, toMs int64) (tss []int64, vals []float
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	start, _ := slices.BinarySearch(e.timestamps, fromMs)
-	end, ok := slices.BinarySearch(e.timestamps, toMs)
+	if e.minTS == math.MinInt64 {
+		return nil, nil
+	}
+
+	fromDelta := fromMs - e.minTS
+	toDelta := toMs - e.minTS
+
+	start, _ := slices.BinarySearchFunc(e.deltaTS, fromDelta,
+		func(d int32, target int64) int { return cmp.Compare(int64(d), target) })
+	end, ok := slices.BinarySearchFunc(e.deltaTS, toDelta,
+		func(d int32, target int64) int { return cmp.Compare(int64(d), target) })
 	if ok {
 		// Include toMs.
 		end++
@@ -44,9 +54,10 @@ func (e *MetricsCacheEntry) Slice(fromMs, toMs int64) (tss []int64, vals []float
 		return nil, nil
 	}
 
-	// We return slices of internal arrays.
-	// It is safe because we only append to them and never modify existing elements.
-	tss = e.timestamps[start:end]
+	tss = make([]int64, end-start)
+	for i, d := range e.deltaTS[start:end] {
+		tss[i] = e.minTS + int64(d)
+	}
 	vals = e.values[start:end]
 	return tss, vals
 }
@@ -63,7 +74,7 @@ func (e *MetricsCacheEntry) Append(ts []int64, vals []float64, untilMs int64) ui
 	defer e.mu.Unlock()
 
 	if len(ts) == 0 {
-		return uint32(len(e.timestamps)*16 + 128)
+		return uint32(len(e.deltaTS)*12 + 128)
 	}
 
 	if e.minTS == math.MinInt64 {
@@ -72,16 +83,16 @@ func (e *MetricsCacheEntry) Append(ts []int64, vals []float64, untilMs int64) ui
 			if t > untilMs {
 				break
 			}
-			e.timestamps = append(e.timestamps, t)
-			e.values = append(e.values, vals[i])
-			if e.minTS == math.MinInt64 || t < e.minTS {
+			if e.minTS == math.MinInt64 {
 				e.minTS = t
 			}
+			e.deltaTS = append(e.deltaTS, int32(t-e.minTS))
+			e.values = append(e.values, vals[i])
 			if t > e.maxTS {
 				e.maxTS = t
 			}
 		}
-		return uint32(len(e.timestamps)*16 + 128)
+		return uint32(len(e.deltaTS)*12 + 128)
 	}
 
 	// Cache already has data. Split ts into:
@@ -94,17 +105,26 @@ func (e *MetricsCacheEntry) Append(ts []int64, vals []float64, untilMs int64) ui
 	if splitIdx > 0 {
 		prTS := ts[:splitIdx]
 		prVals := vals[:splitIdx]
-		newTS := make([]int64, len(prTS)+len(e.timestamps))
-		copy(newTS, prTS)
-		copy(newTS[len(prTS):], e.timestamps)
-		e.timestamps = newTS
 
-		newVals := make([]float64, len(prVals)+len(e.values))
-		copy(newVals, prVals)
-		copy(newVals[len(prVals):], e.values)
-		e.values = newVals
+		oldMinTS := e.minTS
+		newMinTS := prTS[0]
+		shift := int32(oldMinTS - newMinTS)
+		for i := range e.deltaTS {
+			e.deltaTS[i] += shift
+		}
+		e.minTS = newMinTS
 
-		e.minTS = prTS[0]
+		newDelta := make([]int32, len(prTS)+len(e.deltaTS))
+		for i, t := range prTS {
+			newDelta[i] = int32(t - newMinTS)
+		}
+		copy(newDelta[len(prTS):], e.deltaTS)
+		e.deltaTS = newDelta
+
+		e.values = slices.Concat(
+			prVals,
+			e.values,
+		)
 	}
 
 	// Append points newer than maxTS, up to untilMs.
@@ -116,15 +136,15 @@ func (e *MetricsCacheEntry) Append(ts []int64, vals []float64, untilMs int64) ui
 		if t > untilMs {
 			break
 		}
-		e.timestamps = append(e.timestamps, t)
+		e.deltaTS = append(e.deltaTS, int32(t-e.minTS))
 		e.values = append(e.values, vals[splitIdx+i])
 		if t > e.maxTS {
 			e.maxTS = t
 		}
 	}
 
-	// 16 bytes per sample (int64 ts + float64 val) + 128 bytes for struct/bookkeeping.
-	return uint32(len(e.timestamps)*16 + 128)
+	// 12 bytes per sample (int32 deltaTS + float64 val) + 128 bytes for struct/bookkeeping.
+	return uint32(len(e.deltaTS)*12 + 128)
 }
 
 // MarkFetched advances the watermark to record that [fetchFrom, untilMs] has been
@@ -135,7 +155,13 @@ func (e *MetricsCacheEntry) Append(ts []int64, vals []float64, untilMs int64) ui
 func (e *MetricsCacheEntry) MarkFetched(fetchFrom, untilMs int64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.minTS == math.MinInt64 || fetchFrom < e.minTS {
+	if e.minTS == math.MinInt64 {
+		e.minTS = fetchFrom
+	} else if fetchFrom < e.minTS {
+		shift := int32(e.minTS - fetchFrom)
+		for i := range e.deltaTS {
+			e.deltaTS[i] += shift
+		}
 		e.minTS = fetchFrom
 	}
 	if untilMs > e.maxTS {
@@ -195,7 +221,7 @@ func newMetricsCache(opts MetricsCacheOptions) (*MetricsCache, error) {
 		Cost(func(_ MetricsCacheKey, e *MetricsCacheEntry) uint32 {
 			e.mu.RLock()
 			defer e.mu.RUnlock()
-			return uint32(len(e.timestamps)*16 + 128)
+			return uint32(len(e.deltaTS)*12 + 128)
 		}).
 		WithTTL(30 * time.Minute)
 

@@ -24,7 +24,7 @@ func TestMetricsCacheEntry(t *testing.T) {
 
 	// Initial append.
 	cost := e.Append([]int64{10, 20, 30}, []float64{1.1, 2.2, 3.3}, 100)
-	require.Equal(t, uint32(3*16+128), cost)
+	require.Equal(t, uint32(3*12+128), cost)
 	require.Equal(t, int64(10), e.minTS)
 	require.Equal(t, int64(30), e.maxTS)
 
@@ -40,7 +40,7 @@ func TestMetricsCacheEntry(t *testing.T) {
 
 	// Append overlapping and new data.
 	cost = e.Append([]int64{20, 30, 40, 50}, []float64{2.2, 3.3, 4.4, 5.5}, 45)
-	require.Equal(t, uint32(4*16+128), cost)
+	require.Equal(t, uint32(4*12+128), cost)
 	require.Equal(t, int64(10), e.minTS)
 	require.Equal(t, int64(40), e.maxTS)
 
@@ -105,7 +105,7 @@ func TestMetricsCacheEntry_Concurrency(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	require.Greater(t, len(e.timestamps), 0)
+	require.Greater(t, len(e.deltaTS), 0)
 }
 
 // TestMetricsCacheEntry_MarkFetched verifies that MarkFetched advances the
@@ -125,6 +125,23 @@ func TestMetricsCacheEntry_MarkFetched(t *testing.T) {
 	// Advancing to a later window should extend maxTS.
 	e.MarkFetched(1000, 8000)
 	require.Equal(t, int64(8000), e.maxTS)
+}
+
+func TestMetricsCacheEntry_DeltaRange(t *testing.T) {
+	e := newMetricsCacheEntry()
+
+	// 24 hour range delta in ms: 24 * 60 * 60 * 1000 = 86,400,000.
+	// This fits in int32 comfortably without overflow.
+	startTS := int64(100000000000)
+	endTS := startTS + 24*3600*1000
+
+	e.Append([]int64{startTS, endTS}, []float64{1.1, 2.2}, endTS)
+	require.Equal(t, startTS, e.minTS)
+	require.Equal(t, endTS, e.maxTS)
+
+	tss, vals := e.Slice(startTS, endTS)
+	require.Equal(t, []int64{startTS, endTS}, tss)
+	require.Equal(t, []float64{1.1, 2.2}, vals)
 }
 
 func TestComputeFetchRange(t *testing.T) {

@@ -577,7 +577,7 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 		// bigQuery is true when the fetched data exceeds the cache budget: in that case
 		// we only refresh already-cached entries to avoid evicting warm data for other
 		// series/queries.
-		bigQuery := p.metricsCache.maxBytes > 0 && int64(totalPoints)*16 > p.metricsCache.maxBytes
+		bigQuery := p.metricsCache.maxBytes > 0 && int64(totalPoints)*12 > p.metricsCache.maxBytes
 		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
 		for hash := range timeseries {
 			var ts []int64
@@ -702,7 +702,7 @@ func (p *promQuerier) querySampledPointsCached(
 		// fetched range, so that subsequent queries skip the ClickHouse round-trip.
 		//
 		// bigQuery: see analogous comment in queryPointsCached.
-		bigQuery := p.metricsCache.maxBytes > 0 && int64(totalPoints)*16 > p.metricsCache.maxBytes
+		bigQuery := p.metricsCache.maxBytes > 0 && int64(totalPoints)*12 > p.metricsCache.maxBytes
 		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
 		for hash := range timeseries {
 			var (
@@ -948,8 +948,8 @@ type samplerAggregator struct {
 var (
 	sumAggregator     = samplerAggregator{func(a, b float64) float64 { return a + b }, func(a float64, _ int) float64 { return a }}
 	avgAggregator     = samplerAggregator{func(a, b float64) float64 { return a + b }, func(a float64, n int) float64 { return a / float64(n) }}
-	minAggregator     = samplerAggregator{func(a, b float64) float64 { return math.Min(a, b) }, func(a float64, _ int) float64 { return a }}
-	maxAggregator     = samplerAggregator{func(a, b float64) float64 { return math.Max(a, b) }, func(a float64, _ int) float64 { return a }}
+	minAggregator     = samplerAggregator{math.Min, func(a float64, _ int) float64 { return a }}
+	maxAggregator     = samplerAggregator{math.Max, func(a float64, _ int) float64 { return a }}
 	anyLastAggregator = samplerAggregator{func(_, b float64) float64 { return b }, func(a float64, _ int) float64 { return a }}
 )
 
