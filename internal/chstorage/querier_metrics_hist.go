@@ -172,6 +172,7 @@ func (e expHistData) Iterator(ts []int64) chunkenc.Iterator {
 
 type expHistIterator struct {
 	values expHistData
+	step   int64
 
 	current histogram.Histogram
 	err     error
@@ -186,6 +187,7 @@ func newExpHistIterator(values expHistData, ts []int64) *expHistIterator {
 	return &expHistIterator{
 		values: values,
 		ts:     ts,
+		step:   computeStep(ts),
 		n:      -1,
 	}
 }
@@ -209,7 +211,7 @@ func (p *expHistIterator) Next() chunkenc.ValueType {
 // exhausted.
 func (p *expHistIterator) Seek(seek int64) chunkenc.ValueType {
 	// Find the closest value.
-	if !seekIterator(p.ts, &p.n, seek) {
+	if !seekIterator(p.ts, &p.n, p.step, seek) {
 		return chunkenc.ValNone
 	}
 	p.current, p.err = p.loadValue()

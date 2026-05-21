@@ -284,10 +284,12 @@ func (o *vectorSelector) Next(ctx context.Context, buf []model.StepVector) (int,
 			var (
 				series          = o.pointSeries[o.currentSeries]
 				seriesTimestamp = ts
+				idx             int
+				step            = computeStep(series.ts)
 			)
 			for currStep := 0; currStep < n && seriesTimestamp <= o.maxt; currStep++ {
 				currStepSamples = 0
-				t, v, ok := o.selectPoint(series.ts, series.data.values, seriesTimestamp, o.lookbackDelta, o.offset)
+				t, v, ok := o.selectPoint(series.ts, series.data.values, &idx, step, seriesTimestamp, o.lookbackDelta, o.offset)
 				if o.params.SelectTimestamp {
 					v = float64(t) / 1000
 				}
@@ -303,10 +305,12 @@ func (o *vectorSelector) Next(ctx context.Context, buf []model.StepVector) (int,
 			var (
 				series          = o.expHistSeries[o.currentSeries]
 				seriesTimestamp = ts
+				idx             int
+				step            = computeStep(series.ts)
 			)
 			for currStep := 0; currStep < n && seriesTimestamp <= o.maxt; currStep++ {
 				currStepSamples = 0
-				_, h, ok, err := o.selectExpHistPoint(series.ts, series.data, seriesTimestamp, o.lookbackDelta, o.offset)
+				_, h, ok, err := o.selectExpHistPoint(series.ts, series.data, &idx, step, seriesTimestamp, o.lookbackDelta, o.offset)
 				if err != nil {
 					return 0, err
 				}
@@ -329,23 +333,22 @@ func (o *vectorSelector) Next(ctx context.Context, buf []model.StepVector) (int,
 	return n, nil
 }
 
-func (o *vectorSelector) selectPoint(tss []int64, samples []float64, ts, lookbackDelta, offset int64) (t int64, v float64, _ bool) {
+func (o *vectorSelector) selectPoint(tss []int64, samples []float64, idx *int, step, ts, lookbackDelta, offset int64) (t int64, v float64, _ bool) {
 	var (
 		refTime = ts - offset
-		idx     int
 	)
-	if !seekIterator(tss, &idx, refTime) || tss[idx] > refTime {
+	if !seekIterator(tss, idx, step, refTime) || tss[*idx] > refTime {
 		// Look for previous sample.
-		idx--
-		if idx < 0 || idx >= len(tss) {
+		*idx--
+		if *idx < 0 || *idx >= len(tss) {
 			return 0, 0, false
 		}
-		prevT := tss[idx]
+		prevT := tss[*idx]
 		if prevT <= refTime-lookbackDelta {
 			return 0, 0, false
 		}
 	}
-	t, v = tss[idx], samples[idx]
+	t, v = tss[*idx], samples[*idx]
 
 	if value.IsStaleNaN(v) {
 		return 0, 0, false
@@ -353,26 +356,24 @@ func (o *vectorSelector) selectPoint(tss []int64, samples []float64, ts, lookbac
 	return t, v, true
 }
 
-func (o *vectorSelector) selectExpHistPoint(tss []int64, samples expHistData, ts, lookbackDelta, offset int64) (t int64, h histogram.Histogram, _ bool, _ error) {
+func (o *vectorSelector) selectExpHistPoint(tss []int64, samples expHistData, idx *int, step, ts, lookbackDelta, offset int64) (t int64, h histogram.Histogram, _ bool, _ error) {
 	var (
 		refTime = ts - offset
-
-		idx int
 	)
-	if !seekIterator(tss, &idx, refTime) || tss[idx] > refTime {
+	if !seekIterator(tss, idx, step, refTime) || tss[*idx] > refTime {
 		// Look for previous sample.
-		idx--
-		if idx < 0 || idx >= len(tss) {
+		*idx--
+		if *idx < 0 || *idx >= len(tss) {
 			return 0, h, false, nil
 		}
-		prevT := tss[idx]
+		prevT := tss[*idx]
 		if prevT <= refTime-lookbackDelta {
 			return 0, h, false, nil
 		}
 	}
 
-	t = tss[idx]
-	h, err := samples.value(idx)
+	t = tss[*idx]
+	h, err := samples.value(*idx)
 	if err != nil {
 		return 0, h, false, err
 	}
