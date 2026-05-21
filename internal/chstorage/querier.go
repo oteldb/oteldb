@@ -108,7 +108,9 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 	if opts.MetricsCacheOptions.MaxBytes > 0 {
 		var err error
 		cacheOpts := opts.MetricsCacheOptions
-		cacheOpts.Meter = meter
+		if cacheOpts.MeterProvider == nil {
+			cacheOpts.MeterProvider = opts.MeterProvider
+		}
 		metricsCache, err = newMetricsCache(cacheOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "create metrics cache")

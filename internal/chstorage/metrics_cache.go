@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/autometric"
 	"github.com/maypok86/otter"
 	"go.opentelemetry.io/otel/metric"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
 )
 
 // MetricsCacheEntry is per-series cached sample data.
@@ -176,11 +178,25 @@ type MetricsCacheKey struct {
 	Fn   string // aggregation function name; empty means raw/anyLast
 }
 
+type metricsCacheStats struct {
+	SeriesHits     metric.Int64Counter `name:"metrics_cache.series_hits" description:"Series with a cache watermark covering the full query range." unit:"{series}"`
+	SeriesMisses   metric.Int64Counter `name:"metrics_cache.series_misses" description:"Series that required a ClickHouse fetch." unit:"{series}"`
+	BigQueries     metric.Int64Counter `name:"metrics_cache.big_queries" description:"Queries where fetched data exceeded maxBytes and the big-query guard fired." unit:"{queries}"`
+	SkippedInserts metric.Int64Counter `name:"metrics_cache.skipped_inserts" description:"Series not inserted into cache because a big-query guard was active." unit:"{series}"`
+	FullyCovered   metric.Int64Counter `name:"metrics_cache.fully_covered_queries" description:"Queries fully covered by cache with no ClickHouse fetch." unit:"{queries}"`
+}
+
+func (s *metricsCacheStats) Init(meter metric.Meter) error {
+	return autometric.Init(meter, s, autometric.InitOptions{Prefix: "chstorage."})
+}
+
 // MetricsCache wraps otter cache.
 type MetricsCache struct {
 	cache     otter.Cache[MetricsCacheKey, *MetricsCacheEntry]
 	safetyLag time.Duration
 	maxBytes  int64
+
+	stats metricsCacheStats
 }
 
 // MetricsCacheOptions configures the cache.
@@ -189,13 +205,16 @@ type MetricsCacheOptions struct {
 	MaxBytes int64
 	// SafetyLag is the duration from now that is not cached.
 	SafetyLag time.Duration // default 60s
-	// Meter is OpenTelemetry meter to use for cache metrics.
-	Meter metric.Meter
+	// MeterProvider is OpenTelemetry meter provider to use for cache metrics.
+	MeterProvider metric.MeterProvider
 }
 
 func (opts *MetricsCacheOptions) setDefaults() {
 	if opts.SafetyLag <= 0 {
 		opts.SafetyLag = time.Minute
+	}
+	if opts.MeterProvider == nil {
+		opts.MeterProvider = metricnoop.NewMeterProvider()
 	}
 }
 
@@ -224,49 +243,61 @@ func newMetricsCache(opts MetricsCacheOptions) (*MetricsCache, error) {
 			return uint32(len(e.deltaTS)*12 + 128)
 		}).
 		WithTTL(30 * time.Minute)
-
-	if opts.Meter != nil {
-		builder = builder.CollectStats()
-	}
+	builder = builder.CollectStats()
 
 	cache, err := builder.Build()
 	if err != nil {
 		return nil, err
 	}
 
-	if opts.Meter != nil {
-		if err := registerMetrics(opts.Meter, cache); err != nil {
-			return nil, errors.Wrap(err, "register metrics")
-		}
-	}
-
-	return &MetricsCache{
+	mc := &MetricsCache{
 		cache:     cache,
 		safetyLag: opts.SafetyLag,
 		maxBytes:  opts.MaxBytes,
-	}, nil
+	}
+
+	meter := opts.MeterProvider.Meter("chstorage.MetricsCache")
+	if err := mc.stats.Init(meter); err != nil {
+		return nil, errors.Wrap(err, "init metrics")
+	}
+	if err := registerMetrics(meter, mc); err != nil {
+		return nil, errors.Wrap(err, "register metrics")
+	}
+
+	return mc, nil
 }
 
-func registerMetrics(meter metric.Meter, cache otter.Cache[MetricsCacheKey, *MetricsCacheEntry]) error {
-	hits, err := meter.Int64ObservableCounter("chstorage.metrics_cache.hits")
+func registerMetrics(meter metric.Meter, mc *MetricsCache) error {
+	hits, err := meter.Int64ObservableCounter("chstorage.metrics_cache.hits",
+		metric.WithDescription("Cumulative otter cache.Get hits."))
 	if err != nil {
 		return err
 	}
-	misses, err := meter.Int64ObservableCounter("chstorage.metrics_cache.misses")
+	misses, err := meter.Int64ObservableCounter("chstorage.metrics_cache.misses",
+		metric.WithDescription("Cumulative otter cache.Get misses."))
 	if err != nil {
 		return err
 	}
-	size, err := meter.Int64ObservableGauge("chstorage.metrics_cache.size")
+	size, err := meter.Int64ObservableGauge("chstorage.metrics_cache.size",
+		metric.WithDescription("Current number of entries in the cache."),
+		metric.WithUnit("{entries}"))
+	if err != nil {
+		return err
+	}
+	capacity, err := meter.Int64ObservableGauge("chstorage.metrics_cache.capacity_bytes",
+		metric.WithDescription("Configured maximum cache size."),
+		metric.WithUnit("By"))
 	if err != nil {
 		return err
 	}
 
-	_, err = meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
-		stats := cache.Stats()
+	_, err = meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
+		stats := mc.cache.Stats()
 		observer.ObserveInt64(hits, stats.Hits())
 		observer.ObserveInt64(misses, stats.Misses())
-		observer.ObserveInt64(size, int64(cache.Size()))
+		observer.ObserveInt64(size, int64(mc.cache.Size()))
+		observer.ObserveInt64(capacity, mc.maxBytes)
 		return nil
-	}, hits, misses, size)
+	}, hits, misses, size, capacity)
 	return err
 }

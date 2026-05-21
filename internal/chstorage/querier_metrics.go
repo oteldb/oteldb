@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/zeebo/xxh3"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
@@ -579,6 +580,9 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 		// series/queries.
 		bigQuery := p.metricsCache.maxBytes > 0 && int64(totalPoints)*12 > p.metricsCache.maxBytes
 		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
+		if bigQuery {
+			p.metricsCache.stats.BigQueries.Add(ctx, 1, cacheTypeRaw)
+		}
 		for hash := range timeseries {
 			var ts []int64
 			var vals []float64
@@ -586,10 +590,11 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 				ts = s.ts
 				vals = s.data.values
 			}
-			p.upsertCache(hash, 0, "", globalFetchFrom, ts, vals, cacheEnd.UnixMilli(), bigQuery)
+			p.upsertCache(ctx, hash, 0, "", globalFetchFrom, ts, vals, cacheEnd.UnixMilli(), bigQuery)
 		}
 	} else {
 		span.AddEvent("chstorage.fully_covered_by_cache")
+		p.metricsCache.stats.FullyCovered.Add(ctx, 1, cacheTypeRaw)
 	}
 
 	// 4. Merge per series: cached[start..watermark] ++ fetched(watermark, end]
@@ -704,6 +709,9 @@ func (p *promQuerier) querySampledPointsCached(
 		// bigQuery: see analogous comment in queryPointsCached.
 		bigQuery := p.metricsCache.maxBytes > 0 && int64(totalPoints)*12 > p.metricsCache.maxBytes
 		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
+		if bigQuery {
+			p.metricsCache.stats.BigQueries.Add(ctx, 1, cacheTypeAggregated)
+		}
 		for hash := range timeseries {
 			var (
 				ts   []int64
@@ -713,10 +721,11 @@ func (p *promQuerier) querySampledPointsCached(
 				ts = s.ts
 				vals = s.data.values
 			}
-			p.upsertCache(hash, step, sampler.fn, globalFetchFrom, ts, vals, cacheEnd.UnixMilli(), bigQuery)
+			p.upsertCache(ctx, hash, step, sampler.fn, globalFetchFrom, ts, vals, cacheEnd.UnixMilli(), bigQuery)
 		}
 	} else {
 		span.AddEvent("chstorage.fully_covered_by_cache")
+		p.metricsCache.stats.FullyCovered.Add(ctx, 1, cacheTypeAggregated)
 	}
 
 	// 4. Merge per series: cached[start..watermark] ++ fetched(watermark, end]
@@ -779,7 +788,7 @@ func (p *promQuerier) querySampledPointsCached(
 // upsertCache writes fetched points and watermark for one series into the cache.
 // If onlyIfExists is true and the entry is not yet in the cache, the call is a no-op:
 // this prevents a large query from evicting warm entries belonging to other series.
-func (p *promQuerier) upsertCache(hash [16]byte, step time.Duration, fn string, fetchFrom int64, ts []int64, vals []float64, untilMs int64, onlyIfExists bool) {
+func (p *promQuerier) upsertCache(ctx context.Context, hash [16]byte, step time.Duration, fn string, fetchFrom int64, ts []int64, vals []float64, untilMs int64, onlyIfExists bool) {
 	key := MetricsCacheKey{
 		Hash: hash,
 		Step: step.Milliseconds(),
@@ -788,6 +797,7 @@ func (p *promQuerier) upsertCache(hash [16]byte, step time.Duration, fn string, 
 	entry, ok := p.metricsCache.cache.Get(key)
 	if !ok {
 		if onlyIfExists {
+			p.metricsCache.stats.SkippedInserts.Add(ctx, 1, cacheTypeOpt(step))
 			return
 		}
 		entry = newMetricsCacheEntry()
@@ -798,6 +808,18 @@ func (p *promQuerier) upsertCache(hash [16]byte, step time.Duration, fn string, 
 	// are treated as cache hits on the next query (skipping the ClickHouse round-trip).
 	entry.MarkFetched(fetchFrom, untilMs)
 	p.metricsCache.cache.Set(key, entry)
+}
+
+var (
+	cacheTypeRaw        = metric.WithAttributes(attribute.String("cache_type", "raw"))
+	cacheTypeAggregated = metric.WithAttributes(attribute.String("cache_type", "aggregated"))
+)
+
+func cacheTypeOpt(step time.Duration) metric.MeasurementOption {
+	if step == 0 {
+		return cacheTypeRaw
+	}
+	return cacheTypeAggregated
 }
 
 type cacheStats struct {
@@ -863,6 +885,10 @@ func computeFetchRange(
 		// All series are hits. Fetch from the minimum watermark + 1.
 		globalFetchFrom = minHitTS + 1
 	}
+
+	opt := cacheTypeOpt(step)
+	cache.stats.SeriesHits.Add(ctx, int64(stats.hits), opt)
+	cache.stats.SeriesMisses.Add(ctx, int64(stats.misses), opt)
 
 	return watermarks, globalFetchFrom, stats
 }
