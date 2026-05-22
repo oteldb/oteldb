@@ -43,6 +43,12 @@ type (
 		step time.Duration,
 		timeseries map[[16]byte]labels.Labels,
 	) (map[[16]byte]*series[pointData], error)
+	queryRatePointsByHashFunc = func(
+		ctx context.Context,
+		start, end time.Time,
+		step, window, offset time.Duration,
+		timeseries map[[16]byte]labels.Labels,
+	) (map[[16]byte]*series[pointData], error)
 )
 
 type promQuerier struct {
@@ -57,6 +63,7 @@ type promQuerier struct {
 	queryTimeseries                 queryMetricsTimeseriesFunc
 	queryPointsFunc                 queryPointsFunc
 	querySampledPointsPerSeriesFunc querySampledPointsPerSeriesFunc
+	queryRatePointsByHashFunc       queryRatePointsByHashFunc
 	metricsSg                       *singleflight.Group[xxh3.Uint128, metricSelectResult]
 	do                              func(ctx context.Context, s selectQuery) error
 
@@ -92,6 +99,7 @@ func (q *Querier) metricsQuerier(mint, maxt int64) *promQuerier {
 	}
 	p.queryPointsFunc = p.queryPoints
 	p.querySampledPointsPerSeriesFunc = p.querySampledPointsPerSeries
+	p.queryRatePointsByHashFunc = p.queryRatePointsByHash
 	return p
 }
 
@@ -445,7 +453,15 @@ func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params
 		return result, errors.Wrapf(ErrMetricsTooManySeries, "%d > %d series requested", len(timeseries), p.timeseriesLimit)
 	}
 	if samplePoints && params.Function == "rate" {
-		points, err := p.queryRatePoints(ctx, params.Start, params.End, params.Step, params.Range, params.Offset, timeseries)
+		var (
+			points []*series[pointData]
+			err    error
+		)
+		if p.metricsCache != nil {
+			points, err = p.queryRatePointsCached(ctx, params.Start, params.End, params.Step, params.Range, params.Offset, timeseries)
+		} else {
+			points, err = p.queryRatePoints(ctx, params.Start, params.End, params.Step, params.Range, params.Offset, timeseries)
+		}
 		if err != nil {
 			return result, errors.Wrap(err, "query rate points")
 		}
@@ -543,102 +559,17 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 		span.End()
 	}()
 
-	cacheEnd := time.Now().Add(-p.metricsCache.safetyLag)
-	if end.Before(cacheEnd) {
-		cacheEnd = end
+	fetch := func(ctx context.Context, fetchStart, fetchEnd time.Time) (map[[16]byte]*series[pointData], error) {
+		return p.queryPointsFunc(ctx, table, fetchStart, fetchEnd, timeseries)
+	}
+	resultMap, err := p.fetchAndMergeCache(ctx, span, start, end, 0, "", timeseries, fetch)
+	if err != nil {
+		return nil, err
 	}
 
-	// 1. Determine per-series watermarks and global fetch lower bound.
-	seriesWatermark, globalFetchFrom, stats := computeFetchRange(
-		ctx,
-		p.metricsCache,
-		0, // raw points
-		"",
-		start.UnixMilli(),
-		timeseries,
-	)
-
-	span.SetAttributes(
-		attribute.Int64("chstorage.metrics_cache.cache_end", cacheEnd.UnixMilli()),
-		attribute.Int64("chstorage.metrics_cache.global_fetch_from", globalFetchFrom),
-		attribute.Int("chstorage.metrics_cache.hits", stats.hits),
-		attribute.Int("chstorage.metrics_cache.partial_hits", stats.partialHits),
-		attribute.Int("chstorage.metrics_cache.misses", stats.misses),
-	)
-
-	// 2. Single ClickHouse query: [globalFetchFrom, end]
-	// Skip the query when all watermarks are beyond end; cache covers the full range.
-	fetchStart := time.UnixMilli(globalFetchFrom)
-	var fetchedByHash map[[16]byte]*series[pointData]
-	if !fetchStart.After(end) {
-		var err error
-
-		span.AddEvent("chstorage.fetch_more_series")
-		fetchedByHash, err = p.queryPointsFunc(ctx, table, fetchStart, end, timeseries)
-		if err != nil {
-			return nil, err
-		}
-		totalPoints := 0
-		for _, s := range fetchedByHash {
-			totalPoints += len(s.ts)
-		}
-		span.AddEvent("chstorage.fetched_more_series", trace.WithAttributes(
-			attribute.Int("chstorage.fetched_series", len(fetchedByHash)),
-			attribute.Int("chstorage.fetched_points", totalPoints),
-		))
-
-		// 3. Update cache for all timeseries, including those with no data in the
-		// fetched range, so that subsequent queries skip the ClickHouse round-trip.
-		//
-		// bigQuery is true when the fetched data exceeds the cache budget: in that case
-		// we only refresh already-cached entries to avoid evicting warm data for other
-		// series/queries.
-		bigQuery := p.metricsCache.IsBigQuery(totalPoints)
-		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
-		if bigQuery {
-			p.metricsCache.stats.BigQueries.Add(ctx, 1, cacheTypeRaw)
-		}
-		for hash := range timeseries {
-			var ts []int64
-			var vals []float64
-			if s, ok := fetchedByHash[hash]; ok {
-				ts = s.ts
-				vals = s.data.values
-			}
-			p.upsertCache(ctx, hash, 0, "", globalFetchFrom, ts, vals, cacheEnd.UnixMilli(), bigQuery)
-		}
-	} else {
-		span.AddEvent("chstorage.fully_covered_by_cache")
-		p.metricsCache.stats.FullyCovered.Add(ctx, 1, cacheTypeRaw)
-	}
-
-	// 4. Merge per series: cached[start..watermark] ++ fetched(watermark, end]
-	result := make([]*series[pointData], 0, len(timeseries))
-	for hash, lb := range timeseries {
-		s := &series[pointData]{labels: lb}
-		watermark := seriesWatermark[hash]
-
-		if watermark >= start.UnixMilli() {
-			key := MetricsCacheKey{Hash: hash, Step: 0, Fn: ""}
-			if entry, ok := p.metricsCache.cache.Get(key); ok {
-				cachedTS, cachedVals := entry.Slice(start.UnixMilli(), min(watermark, end.UnixMilli()))
-				s.ts = append(s.ts, cachedTS...)
-				s.data.values = append(s.data.values, cachedVals...)
-			}
-		}
-
-		if f, ok := fetchedByHash[hash]; ok {
-			for i, t := range f.ts {
-				if t > watermark {
-					s.ts = append(s.ts, t)
-					s.data.values = append(s.data.values, f.data.values[i])
-				}
-			}
-		}
-
-		if len(s.ts) > 0 {
-			result = append(result, s)
-		}
+	result := make([]*series[pointData], 0, len(resultMap))
+	for _, s := range resultMap {
+		result = append(result, s)
 	}
 
 	totalPoints := 0
@@ -675,102 +606,12 @@ func (p *promQuerier) querySampledPointsCached(
 		span.End()
 	}()
 
-	cacheEnd := time.Now().Add(-p.metricsCache.safetyLag)
-	if end.Before(cacheEnd) {
-		cacheEnd = end
+	fetch := func(ctx context.Context, fetchStart, fetchEnd time.Time) (map[[16]byte]*series[pointData], error) {
+		return p.querySampledPointsPerSeriesFunc(ctx, sampler, fetchStart, fetchEnd, step, timeseries)
 	}
-
-	// 1. Determine per-series watermarks and global fetch lower bound.
-	seriesWatermark, globalFetchFrom, stats := computeFetchRange(
-		ctx,
-		p.metricsCache,
-		step,
-		sampler.fn,
-		start.UnixMilli(),
-		timeseries,
-	)
-
-	span.SetAttributes(
-		attribute.Int64("chstorage.metrics_cache.cache_end", cacheEnd.UnixMilli()),
-		attribute.Int64("chstorage.metrics_cache.global_fetch_from", globalFetchFrom),
-		attribute.Int("chstorage.metrics_cache.hits", stats.hits),
-		attribute.Int("chstorage.metrics_cache.partial_hits", stats.partialHits),
-		attribute.Int("chstorage.metrics_cache.misses", stats.misses),
-	)
-
-	// 2. Fetch the "Gap" from ClickHouse.
-	// We fetch per-series (no grouping) to populate a reusable cache.
-	fetchStart := time.UnixMilli(globalFetchFrom)
-	var fetchedByHash map[[16]byte]*series[pointData]
-	if !fetchStart.After(end) {
-		var err error
-		span.AddEvent("chstorage.fetch_more_sampled_series")
-		fetchedByHash, err = p.querySampledPointsPerSeriesFunc(ctx, sampler, fetchStart, end, step, timeseries)
-		if err != nil {
-			return nil, err
-		}
-
-		totalPoints := 0
-		for _, s := range fetchedByHash {
-			totalPoints += len(s.ts)
-		}
-		span.AddEvent("chstorage.fetched_more_sampled_series", trace.WithAttributes(
-			attribute.Int("chstorage.fetched_series", len(fetchedByHash)),
-			attribute.Int("chstorage.fetched_points", totalPoints),
-		))
-
-		// 3. Update cache for all timeseries, including those with no data in the
-		// fetched range, so that subsequent queries skip the ClickHouse round-trip.
-		//
-		// bigQuery: see analogous comment in queryPointsCached.
-		bigQuery := p.metricsCache.IsBigQuery(totalPoints)
-		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
-		if bigQuery {
-			p.metricsCache.stats.BigQueries.Add(ctx, 1, cacheTypeAggregated)
-		}
-		for hash := range timeseries {
-			var (
-				ts   []int64
-				vals []float64
-			)
-			if s, ok := fetchedByHash[hash]; ok {
-				ts = s.ts
-				vals = s.data.values
-			}
-			p.upsertCache(ctx, hash, step, sampler.fn, globalFetchFrom, ts, vals, cacheEnd.UnixMilli(), bigQuery)
-		}
-	} else {
-		span.AddEvent("chstorage.fully_covered_by_cache")
-		p.metricsCache.stats.FullyCovered.Add(ctx, 1, cacheTypeAggregated)
-	}
-
-	// 4. Merge per series: cached[start..watermark] ++ fetched(watermark, end]
-	resultMap := make(map[[16]byte]*series[pointData], len(timeseries))
-	for hash, lb := range timeseries {
-		s := &series[pointData]{labels: lb}
-		watermark := seriesWatermark[hash]
-
-		if watermark >= start.UnixMilli() {
-			key := MetricsCacheKey{Hash: hash, Step: step.Milliseconds(), Fn: sampler.fn}
-			if entry, ok := p.metricsCache.cache.Get(key); ok {
-				cachedTS, cachedVals := entry.Slice(start.UnixMilli(), min(watermark, end.UnixMilli()))
-				s.ts = append(s.ts, cachedTS...)
-				s.data.values = append(s.data.values, cachedVals...)
-			}
-		}
-
-		if f, ok := fetchedByHash[hash]; ok {
-			for i, t := range f.ts {
-				if t > watermark {
-					s.ts = append(s.ts, t)
-					s.data.values = append(s.data.values, f.data.values[i])
-				}
-			}
-		}
-
-		if len(s.ts) > 0 {
-			resultMap[hash] = s
-		}
+	resultMap, err := p.fetchAndMergeCache(ctx, span, start, end, step, sampler.fn, timeseries, fetch)
+	if err != nil {
+		return nil, err
 	}
 
 	if sampler.noClientGrouping || (!on && len(groupBy) == 0) {

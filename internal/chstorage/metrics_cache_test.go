@@ -774,6 +774,129 @@ func TestCacheKeyStepIsolation(t *testing.T) {
 	require.Equal(t, 0, callCount, "step=1min is fully cached: ClickHouse must not be called")
 }
 
+// TestQueryRatePointsCached covers the four cache-state scenarios for queryRatePointsCached.
+// Each case is independent (own cache instance).
+func TestQueryRatePointsCached(t *testing.T) {
+	lb := labels.FromStrings("__name__", "m")
+	hash := labelHash(lb.Hash())
+	timeseries := map[[16]byte]labels.Labels{hash: lb}
+
+	epoch := testEpoch
+	step := time.Minute
+	stepMs := step.Milliseconds()
+	window := 5 * time.Minute
+
+	// rateMock returns one pre-computed rate value per step starting from fetchStart.
+	rateMock := func(_ context.Context, s, e time.Time, _, _, _ time.Duration, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+		ser := &series[pointData]{labels: lb}
+		for t := s.UnixMilli(); t <= e.UnixMilli(); t += stepMs {
+			ser.ts = append(ser.ts, t)
+			ser.data.values = append(ser.data.values, 1.0)
+		}
+		return map[[16]byte]*series[pointData]{hash: ser}, nil
+	}
+	mustNotCall := func(_ context.Context, _, _ time.Time, _, _, _ time.Duration, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+		return nil, errors.New("unexpected ClickHouse query")
+	}
+
+	// populateRate fills the cache for the series with step-aligned rate values.
+	populateRate := func(mc *MetricsCache, start, end time.Time) {
+		e := newMetricsCacheEntry()
+		for t := start.UnixMilli(); t <= end.UnixMilli(); t += stepMs {
+			e.Append([]int64{t}, []float64{1.0}, end.UnixMilli())
+		}
+		mc.cache.Set(MetricsCacheKey{Hash: hash, Step: stepMs, Fn: "rate"}, e)
+	}
+
+	for _, tc := range []struct {
+		name           string
+		setup          func(*MetricsCache)
+		mockFn         queryRatePointsByHashFunc
+		queryStart     time.Time
+		queryEnd       time.Time
+		wantCallCount  int
+		wantPointCount int
+	}{
+		{
+			name:           "NoHit",
+			mockFn:         rateMock,
+			queryStart:     epoch,
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  1,
+			wantPointCount: 11, // epoch+0..+10min inclusive
+		},
+		{
+			// Cache covers [epoch, epoch+5min]; query extends to epoch+10min.
+			// Only the newer gap is fetched.
+			name: "PartialHit_NewerGap",
+			setup: func(mc *MetricsCache) {
+				populateRate(mc, epoch, epoch.Add(5*time.Minute))
+			},
+			mockFn:         rateMock,
+			queryStart:     epoch,
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  1,
+			wantPointCount: 11, // 6 from cache + 5 fetched
+		},
+		{
+			// Cache covers [epoch, epoch+5min]; query starts before that.
+			// entryMinTS (epoch) > queryStart (epoch-5min) → full miss.
+			name: "PartialHit_OlderGap",
+			setup: func(mc *MetricsCache) {
+				populateRate(mc, epoch, epoch.Add(5*time.Minute))
+			},
+			mockFn:         rateMock,
+			queryStart:     epoch.Add(-5 * time.Minute),
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  1,
+			wantPointCount: 16, // epoch-5min..+10min inclusive
+		},
+		{
+			// Cache covers the full query range; ClickHouse must not be called.
+			name: "TotalHit",
+			setup: func(mc *MetricsCache) {
+				populateRate(mc, epoch, epoch.Add(10*time.Minute))
+			},
+			mockFn:         mustNotCall,
+			queryStart:     epoch,
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  0,
+			wantPointCount: 11,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mc, err := newMetricsCache(MetricsCacheOptions{
+				MaxBytes:  1024 * 1024,
+				SafetyLag: time.Minute,
+			})
+			require.NoError(t, err)
+			if tc.setup != nil {
+				tc.setup(mc)
+			}
+
+			callCount := 0
+			p := &promQuerier{
+				metricsCache: mc,
+				tracer:       nooptrace.NewTracerProvider().Tracer("test"),
+				queryRatePointsByHashFunc: func(ctx context.Context, s, e time.Time, step, window, offset time.Duration, ts map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+					callCount++
+					return tc.mockFn(ctx, s, e, step, window, offset, ts)
+				},
+			}
+
+			pts, err := p.queryRatePointsCached(context.Background(), tc.queryStart, tc.queryEnd, step, window, 0, timeseries)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantCallCount, callCount, "ClickHouse call count")
+			if tc.wantPointCount == 0 {
+				require.Empty(t, pts)
+			} else {
+				require.Len(t, pts, 1)
+				require.Len(t, pts[0].ts, tc.wantPointCount, "point count")
+			}
+		})
+	}
+}
+
 func labelHash(v uint64) (r [16]byte) {
 	binary.LittleEndian.PutUint64(r[:], v)
 	return r

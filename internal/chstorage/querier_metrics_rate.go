@@ -203,7 +203,71 @@ func (p *promQuerier) queryRatePoints(
 	start, end time.Time,
 	step, window, offset time.Duration,
 	timeseries map[[16]byte]labels.Labels,
+) ([]*series[pointData], error) {
+	m, err := p.queryRatePointsByHash(ctx, start, end, step, window, offset, timeseries)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*series[pointData], 0, len(m))
+	for _, s := range m {
+		result = append(result, s)
+	}
+	return result, nil
+}
+
+func (p *promQuerier) queryRatePointsCached(
+	ctx context.Context,
+	start, end time.Time,
+	step, window, offset time.Duration,
+	timeseries map[[16]byte]labels.Labels,
 ) (_ []*series[pointData], rerr error) {
+	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.queryRatePointsCached",
+		trace.WithAttributes(
+			xattribute.UnixNano("chstorage.range.start", start),
+			xattribute.UnixNano("chstorage.range.end", end),
+			attribute.Stringer("chstorage.step", step),
+			attribute.Stringer("chstorage.window", window),
+			attribute.Stringer("chstorage.offset", offset),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+		}
+		span.End()
+	}()
+
+	fetch := func(ctx context.Context, fetchStart, fetchEnd time.Time) (map[[16]byte]*series[pointData], error) {
+		return p.queryRatePointsByHashFunc(ctx, fetchStart, fetchEnd, step, window, offset, timeseries)
+	}
+	resultMap, err := p.fetchAndMergeCache(ctx, span, start, end, step, "rate", timeseries, fetch)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*series[pointData], 0, len(resultMap))
+	for _, s := range resultMap {
+		result = append(result, s)
+	}
+
+	totalPoints := 0
+	for _, s := range result {
+		totalPoints += len(s.ts)
+	}
+	span.AddEvent("chstorage.merged_result", trace.WithAttributes(
+		attribute.Int("chstorage.merged_series", len(result)),
+		attribute.Int("chstorage.merged_points", totalPoints),
+	))
+
+	return result, nil
+}
+
+func (p *promQuerier) queryRatePointsByHash(
+	ctx context.Context,
+	start, end time.Time,
+	step, window, offset time.Duration,
+	timeseries map[[16]byte]labels.Labels,
+) (_ map[[16]byte]*series[pointData], rerr error) {
 	table := p.tables.Points
 	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.queryRatePoints",
 		trace.WithAttributes(
@@ -271,7 +335,7 @@ func (p *promQuerier) queryRatePoints(
 
 	var (
 		pointOffsetMS = chsql.Add(pointMSIdent, offsetMSIdent)
-		// greatest(0, point_ms + offset_ms - first_step_ms + step_ms - 1)
+		// offset Expr: greatest(0, point_ms + offset_ms - first_step_ms + step_ms - 1)
 		offsetFromStart = chsql.Greatest(
 			chsql.ToInt64(chsql.Integer(0)),
 			chsql.Sub(
@@ -444,11 +508,7 @@ func (p *promQuerier) queryRatePoints(
 		attribute.Int("chstorage.total_points", totalPoints),
 	))
 
-	result := make([]*series[pointData], 0, len(set))
-	for _, s := range set {
-		result = append(result, s)
-	}
-	return result, nil
+	return set, nil
 }
 
 type rateWindow struct {
