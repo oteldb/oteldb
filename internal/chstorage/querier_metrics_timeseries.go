@@ -3,6 +3,7 @@ package chstorage
 import (
 	"cmp"
 	"context"
+	"encoding/binary"
 	"errors"
 	"slices"
 	"strconv"
@@ -41,12 +42,17 @@ func newTimeseriesQuerier(q *Querier) *timeseriesQuerier {
 
 type (
 	metricsTimeseries          = map[[16]byte]labels.Labels
-	queryMetricsTimeseriesFunc = func(ctx context.Context, matcherSets [][]*labels.Matcher) (metricsTimeseries, error)
+	queryMetricsTimeseriesFunc = func(ctx context.Context, start, end time.Time, matcherSets [][]*labels.Matcher) (metricsTimeseries, error)
 )
 
-func (q *timeseriesQuerier) hashMatchers(sets [][]*labels.Matcher) xxh3.Uint128 {
+func (q *timeseriesQuerier) hashMatchers(start, end time.Time, sets [][]*labels.Matcher) xxh3.Uint128 {
 	h := xxh3.New()
 	hashPrometheusMatchers(h, sets)
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, uint64(start.UnixNano()))
+	_, _ = h.Write(buf)
+	binary.LittleEndian.PutUint64(buf, uint64(end.UnixNano()))
+	_, _ = h.Write(buf)
 	return h.Sum128()
 }
 
@@ -95,7 +101,7 @@ func hashPrometheusMatchers(h *xxh3.Hasher, sets [][]*labels.Matcher) {
 	}
 }
 
-func (q *timeseriesQuerier) Query(ctx context.Context, matcherSets [][]*labels.Matcher) (_ map[[16]byte]labels.Labels, rerr error) {
+func (q *timeseriesQuerier) Query(ctx context.Context, start, end time.Time, matcherSets [][]*labels.Matcher) (_ map[[16]byte]labels.Labels, rerr error) {
 	ctx, span := q.tracer.Start(ctx, "chstorage.metrics.timeseries.Query")
 	defer func() {
 		if rerr != nil {
@@ -107,13 +113,13 @@ func (q *timeseriesQuerier) Query(ctx context.Context, matcherSets [][]*labels.M
 	var (
 		parentSpan   = span
 		parentLink   = trace.LinkFromContext(ctx)
-		matchersHash = q.hashMatchers(matcherSets)
+		matchersHash = q.hashMatchers(start, end, matcherSets)
 	)
 	resultCh := q.hashSg.DoChan(matchersHash, func() (metricsTimeseries, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		return q.queryTimeseries(ctx, parentSpan, parentLink, matcherSets)
+		return q.queryTimeseries(ctx, parentSpan, parentLink, start, end, matcherSets)
 	})
 	select {
 	case <-ctx.Done():
@@ -124,7 +130,7 @@ func (q *timeseriesQuerier) Query(ctx context.Context, matcherSets [][]*labels.M
 			// Query did not complete, probably stuck.
 			span.AddEvent("retry_query")
 			// Try again without singleflight.
-			result, err = q.queryTimeseries(ctx, trace.Span(nil), trace.Link{}, matcherSets)
+			result, err = q.queryTimeseries(ctx, trace.Span(nil), trace.Link{}, start, end, matcherSets)
 			shared = false
 		}
 		if err != nil {
@@ -139,7 +145,7 @@ func (q *timeseriesQuerier) Query(ctx context.Context, matcherSets [][]*labels.M
 	}
 }
 
-func (q *timeseriesQuerier) queryTimeseries(ctx context.Context, parentSpan trace.Span, parentLink trace.Link, matcherSets [][]*labels.Matcher) (_ map[[16]byte]labels.Labels, rerr error) {
+func (q *timeseriesQuerier) queryTimeseries(ctx context.Context, parentSpan trace.Span, parentLink trace.Link, start, end time.Time, matcherSets [][]*labels.Matcher) (_ map[[16]byte]labels.Labels, rerr error) {
 	table := q.tables.Timeseries
 
 	ctx, span := q.tracer.Start(ctx, "chstorage.metrics.timeseries.queryTimeseries",
@@ -201,6 +207,7 @@ func (q *timeseriesQuerier) queryTimeseries(ctx context.Context, parentSpan trac
 		chsql.Ident("scope"),
 		chsql.Ident("resource"),
 	)
+	timeseriesInRange(query, start, end, c.timestampPrecision())
 
 	var (
 		set = map[[16]byte]labels.Labels{}

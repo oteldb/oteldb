@@ -189,12 +189,16 @@ func promQLLabelMatcher(valueSel []chsql.Expr, typ labels.MatchType, value strin
 
 func timeseriesInRange(query *chsql.SelectQuery, start, end time.Time, prec proto.Precision) {
 	if !start.IsZero() {
+		// Add some lag to start time to handle inconsistency in case of imprecise timestamps.
+		start = start.Add(-time.Minute)
 		query.Having(chsql.Gte(
 			chsql.Function("max", chsql.Ident("last_seen")),
 			chsql.DateTime64(start, prec),
 		))
 	}
 	if !end.IsZero() {
+		// Also add some lag to end time.
+		end = end.Add(time.Minute)
 		query.Having(chsql.Lte(
 			chsql.Function("min", chsql.Ident("first_seen")),
 			chsql.DateTime64(end, prec),
@@ -424,7 +428,7 @@ var ErrMetricsTooManySeries = errors.New("too many timeseries requested")
 func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params metricSelectParams) (result metricSelectResult, _ error) {
 	span := trace.SpanFromContext(ctx)
 
-	timeseries, err := p.queryTimeseries(ctx, [][]*labels.Matcher{params.Matchers})
+	timeseries, err := p.queryTimeseries(ctx, params.Start, params.End, [][]*labels.Matcher{params.Matchers})
 	if err != nil {
 		return result, errors.Wrap(err, "query timeseries hashes")
 	}
