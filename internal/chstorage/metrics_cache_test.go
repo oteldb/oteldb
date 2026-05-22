@@ -11,6 +11,8 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	nooptrace "go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/go-faster/oteldb/internal/chstorage/chsql"
@@ -959,4 +961,80 @@ func TestCanUseSampledPoints(t *testing.T) {
 	// Step below 1s must always fall back regardless of function.
 	_, ok := canUseSampledPoints(500*time.Millisecond, "sum")
 	require.False(t, ok, "step < 1s must always fall back")
+}
+
+func TestMetricsCache_Metrics(t *testing.T) {
+	reader := metric.NewManualReader()
+	meterProvider := metric.NewMeterProvider(metric.WithReader(reader))
+
+	opts := MetricsCacheOptions{
+		MaxBytes:      100 * 1024,
+		MeterProvider: meterProvider,
+	}
+	mc, err := newMetricsCache(opts)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Perform some operations to generate stats.
+	key := MetricsCacheKey{Hash: [16]byte{1}}
+	entry := newMetricsCacheEntry()
+	// Cost will be 1*12 + 128 = 140.
+	entry.Append([]int64{1000}, []float64{1.0}, 2000)
+	mc.cache.Set(key, entry)
+
+	// Hit.
+	_, ok := mc.cache.Get(key)
+	require.True(t, ok)
+
+	// Miss.
+	_, ok = mc.cache.Get(MetricsCacheKey{Hash: [16]byte{2}})
+	require.False(t, ok)
+
+	// Collect metrics.
+	var rm metricdata.ResourceMetrics
+	err = reader.Collect(ctx, &rm)
+	require.NoError(t, err)
+
+	found := make(map[string]bool)
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			found[m.Name] = true
+			switch m.Name {
+			case "chstorage.metrics_cache.hits":
+				data := m.Data.(metricdata.Sum[int64])
+				require.Equal(t, int64(1), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.misses":
+				data := m.Data.(metricdata.Sum[int64])
+				require.Equal(t, int64(1), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.size":
+				data := m.Data.(metricdata.Gauge[int64])
+				require.Equal(t, int64(1), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.capacity_bytes":
+				data := m.Data.(metricdata.Gauge[int64])
+				require.Equal(t, int64(100*1024), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.evicted_count":
+				// Should be 0 initially.
+				data := m.Data.(metricdata.Sum[int64])
+				require.Equal(t, int64(0), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.evicted_cost":
+				// Should be 0 initially.
+				data := m.Data.(metricdata.Sum[int64])
+				require.Equal(t, int64(0), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.rejected_sets":
+				// Should be 0 initially.
+				data := m.Data.(metricdata.Sum[int64])
+				require.Equal(t, int64(0), data.DataPoints[0].Value)
+			}
+		}
+	}
+
+	require.True(t, found["chstorage.metrics_cache.hits"])
+	require.True(t, found["chstorage.metrics_cache.misses"])
+	require.True(t, found["chstorage.metrics_cache.size"])
+	require.True(t, found["chstorage.metrics_cache.capacity_bytes"])
+	require.True(t, found["chstorage.metrics_cache.ratio"])
+	require.True(t, found["chstorage.metrics_cache.evicted_count"])
+	require.True(t, found["chstorage.metrics_cache.evicted_cost"])
+	require.True(t, found["chstorage.metrics_cache.rejected_sets"])
 }

@@ -268,6 +268,12 @@ func newMetricsCache(opts MetricsCacheOptions) (*MetricsCache, error) {
 }
 
 func registerMetrics(meter metric.Meter, mc *MetricsCache) error {
+	ratio, err := meter.Float64ObservableGauge("chstorage.metrics_cache.ratio",
+		metric.WithDescription("Hit/miss ratio of the metrics cache."),
+		metric.WithUnit("{ratio}"))
+	if err != nil {
+		return err
+	}
 	hits, err := meter.Int64ObservableCounter("chstorage.metrics_cache.hits",
 		metric.WithDescription("Cumulative otter cache.Get hits."))
 	if err != nil {
@@ -290,14 +296,34 @@ func registerMetrics(meter metric.Meter, mc *MetricsCache) error {
 	if err != nil {
 		return err
 	}
+	evictedCount, err := meter.Int64ObservableCounter("chstorage.metrics_cache.evicted_count",
+		metric.WithDescription("Cumulative number of evicted entries."))
+	if err != nil {
+		return err
+	}
+	evictedCost, err := meter.Int64ObservableCounter("chstorage.metrics_cache.evicted_cost",
+		metric.WithDescription("Cumulative cost of evicted entries."),
+		metric.WithUnit("By"))
+	if err != nil {
+		return err
+	}
+	rejectedSets, err := meter.Int64ObservableCounter("chstorage.metrics_cache.rejected_sets",
+		metric.WithDescription("Cumulative number of rejected sets."))
+	if err != nil {
+		return err
+	}
 
 	_, err = meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
 		stats := mc.cache.Stats()
 		observer.ObserveInt64(hits, stats.Hits())
 		observer.ObserveInt64(misses, stats.Misses())
 		observer.ObserveInt64(size, int64(mc.cache.Size()))
+		observer.ObserveFloat64(ratio, stats.Ratio())
 		observer.ObserveInt64(capacity, mc.maxBytes)
+		observer.ObserveInt64(evictedCount, stats.EvictedCount())
+		observer.ObserveInt64(evictedCost, stats.EvictedCost())
+		observer.ObserveInt64(rejectedSets, stats.RejectedSets())
 		return nil
-	}, hits, misses, size, capacity)
+	}, ratio, hits, misses, size, capacity, evictedCount, evictedCost, rejectedSets)
 	return err
 }
