@@ -73,11 +73,11 @@ func setupCH(
 		CHLogLevel: cfg.CHLogLevel,
 
 		MaxResultRows:    cfg.MaxResultRows,
-		MaxResultBytes:   cfg.MaxResultBytes,
+		MaxResultBytes:   int(cfg.MaxResultBytes),
 		MaxExecutionTime: cfg.MaxExecutionTime,
 
 		MetricsCacheOptions: chstorage.MetricsCacheOptions{
-			MaxBytes:  cfg.Prometheus.Cache.MaxBytes,
+			MaxBytes:  int64(cfg.Prometheus.Cache.MaxBytes),
 			SafetyLag: cfg.Prometheus.Cache.SafetyLag,
 		},
 		MeterProvider:     m.MeterProvider(),
