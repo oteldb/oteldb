@@ -46,6 +46,10 @@ type Config struct {
 	Replicated bool          `json:"replicated" yaml:"replicated"`
 	CHLogLevel zapcore.Level `json:"ch_log_level" yaml:"ch_log_level"`
 
+	MaxResultRows    int           `json:"max_result_rows" yaml:"max_result_rows"`
+	MaxResultBytes   int           `json:"max_result_bytes" yaml:"max_result_bytes"`
+	MaxExecutionTime time.Duration `json:"max_execution_time" yaml:"max_execution_time"`
+
 	Tempo       TempoConfig       `json:"tempo" yaml:"tempo"`
 	Prometheus  PrometheusConfig  `json:"prometheus" yaml:"prometheus"`
 	Loki        LokiConfig        `json:"loki" yaml:"loki"`
