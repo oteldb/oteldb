@@ -334,9 +334,7 @@ func (o *vectorSelector) Next(ctx context.Context, buf []model.StepVector) (int,
 }
 
 func (o *vectorSelector) selectPoint(tss []int64, samples []float64, idx *int, step, ts, lookbackDelta, offset int64) (t int64, v float64, _ bool) {
-	var (
-		refTime = ts - offset
-	)
+	refTime := ts - offset
 	if !seekIterator(tss, idx, step, refTime) || tss[*idx] > refTime {
 		// Look for previous sample.
 		*idx--
@@ -357,9 +355,7 @@ func (o *vectorSelector) selectPoint(tss []int64, samples []float64, idx *int, s
 }
 
 func (o *vectorSelector) selectExpHistPoint(tss []int64, samples expHistData, idx *int, step, ts, lookbackDelta, offset int64) (t int64, h histogram.Histogram, _ bool, _ error) {
-	var (
-		refTime = ts - offset
-	)
+	refTime := ts - offset
 	if !seekIterator(tss, idx, step, refTime) || tss[*idx] > refTime {
 		// Look for previous sample.
 		*idx--

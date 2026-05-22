@@ -1038,23 +1038,35 @@ func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end 
 			{Name: "hash", Data: &inputData},
 		},
 		OnResult: func(ctx context.Context, block proto.Block) error {
+			var (
+				lastHash   [16]byte
+				lastSeries *series[pointData]
+			)
 			for i := 0; i < c.timestamp.Rows(); i++ {
 				var (
 					hash      = c.hash.Row(i)
 					value     = c.value.Row(i)
 					timestamp = c.timestamp.Row(i)
 				)
-				s, ok := set[hash]
-				if !ok {
-					lb, ok := timeseries[hash]
+				var s *series[pointData]
+				if lastSeries != nil && hash == lastHash {
+					s = lastSeries
+				} else {
+					var ok bool
+					s, ok = set[hash]
 					if !ok {
-						zctx.From(ctx).Error("Can't find labels for requested series")
-						continue
+						lb, ok := timeseries[hash]
+						if !ok {
+							zctx.From(ctx).Error("Can't find labels for requested series")
+							continue
+						}
+						s = &series[pointData]{
+							labels: lb,
+						}
+						set[hash] = s
 					}
-					s = &series[pointData]{
-						labels: lb,
-					}
-					set[hash] = s
+					lastHash = hash
+					lastSeries = s
 				}
 
 				s.data.values = append(s.data.values, value)
@@ -1255,26 +1267,40 @@ func (p *promQuerier) querySampledPointsPerSeries(
 			{Name: "grouping", Data: mapping.inputGrouping},
 		},
 		OnResult: func(ctx context.Context, block proto.Block) error {
+			var (
+				lastGroup  uint64
+				hasGroup   bool
+				lastSeries *series[pointData]
+			)
 			for i := 0; i < timestampCol.Rows(); i++ {
 				var (
 					group     = groupCol.Row(i)
 					timestamp = timestampCol.Row(i)
 				)
-				hash, ok := hashes[group]
-				if !ok {
-					return errors.Errorf("can't find hash for requested group %d", group)
-				}
-
-				s, ok := set[hash]
-				if !ok {
-					lb, ok := mapping.groups[group]
+				var s *series[pointData]
+				if hasGroup && group == lastGroup {
+					s = lastSeries
+				} else {
+					hash, ok := hashes[group]
 					if !ok {
-						return errors.Errorf("can't find labels for requested series %d", group)
+						return errors.Errorf("can't find hash for requested group %d", group)
 					}
-					s = &series[pointData]{
-						labels: lb,
+
+					var ok2 bool
+					s, ok2 = set[hash]
+					if !ok2 {
+						lb, ok := mapping.groups[group]
+						if !ok {
+							return errors.Errorf("can't find labels for requested series %d", group)
+						}
+						s = &series[pointData]{
+							labels: lb,
+						}
+						set[hash] = s
 					}
-					set[hash] = s
+					lastGroup = group
+					hasGroup = true
+					lastSeries = s
 				}
 
 				if sampler.needPoints {
