@@ -773,7 +773,7 @@ func (p *promQuerier) querySampledPointsCached(
 		return result, nil
 	}
 
-	result := p.aggregateSampledPoints(ctx, resultMap, on, groupBy, sampler)
+	result := p.aggregateSampledPoints(ctx, resultMap, on, groupBy, sampler, step)
 	totalPoints := 0
 	for _, s := range result {
 		totalPoints += len(s.ts)
@@ -1153,7 +1153,7 @@ func (p *promQuerier) querySampledPoints(
 		return result, nil
 	}
 
-	return p.aggregateSampledPoints(ctx, set, on, groupBy, sampler), nil
+	return p.aggregateSampledPoints(ctx, set, on, groupBy, sampler, step), nil
 }
 
 func (p *promQuerier) querySampledPointsPerSeries(
@@ -1334,6 +1334,7 @@ func (p *promQuerier) aggregateSampledPoints(
 	set map[[16]byte]*series[pointData],
 	on bool, groupBy []string,
 	sampler pointsSampler,
+	step time.Duration,
 ) []*series[pointData] {
 	_, span := p.tracer.Start(ctx, "chstorage.metrics.aggregateSampledPoints",
 		trace.WithAttributes(
@@ -1344,6 +1345,111 @@ func (p *promQuerier) aggregateSampledPoints(
 	)
 	defer span.End()
 
+	if len(set) == 0 {
+		return nil
+	}
+
+	stepMs := step.Milliseconds()
+	span.SetAttributes(attribute.Int64("chstorage.aggregate.step_ms", stepMs))
+	// TumbleEnd(ts, step) = (floor(ts/step) + 1) * step
+	// The timestamps from ClickHouse are aligned to step boundaries.
+	// We can use a slice if we know the range.
+	var (
+		minTS   int64 = math.MaxInt64
+		maxTS   int64 = math.MinInt64
+		aligned       = true
+	)
+	for _, s := range set {
+		for _, t := range s.ts {
+			if t < minTS {
+				minTS = t
+			}
+			if t > maxTS {
+				maxTS = t
+			}
+			if t%stepMs != 0 {
+				aligned = false
+			}
+		}
+	}
+
+	if minTS == math.MaxInt64 {
+		return nil
+	}
+
+	// Safety check for crazy ranges and misaligned timestamps.
+	numSteps := int((maxTS-minTS)/stepMs) + 1
+	if !aligned || numSteps > 100_000 {
+		// Fallback to map-based aggregation if range is too large or timestamps are misaligned.
+		return p.aggregateSampledPointsMap(ctx, set, on, groupBy, sampler)
+	}
+
+	type groupKey struct {
+		hash uint64
+	}
+	type groupData struct {
+		labels labels.Labels
+		values []float64
+		counts []int
+	}
+	groups := map[groupKey]*groupData{}
+
+	agg := sampler.agg
+	for _, s := range set {
+		lb := s.labels
+		if len(groupBy) > 0 {
+			lb = s.labels.MatchLabels(on, groupBy...)
+		}
+		key := groupKey{hash: lb.Hash()}
+		g, ok := groups[key]
+		if !ok {
+			g = &groupData{
+				labels: lb,
+				values: make([]float64, numSteps),
+				counts: make([]int, numSteps),
+			}
+			groups[key] = g
+		}
+
+		for i, ts := range s.ts {
+			idx := (ts - minTS) / stepMs
+			if idx < 0 || idx >= int64(numSteps) {
+				continue
+			}
+			v := s.data.values[i]
+			if g.counts[idx] == 0 {
+				g.values[idx] = v
+			} else {
+				g.values[idx] = agg.combine(g.values[idx], v)
+			}
+			g.counts[idx]++
+		}
+	}
+
+	result := make([]*series[pointData], 0, len(groups))
+	for _, g := range groups {
+		s := &series[pointData]{
+			labels: g.labels,
+		}
+		for i, count := range g.counts {
+			if count == 0 {
+				continue
+			}
+			s.ts = append(s.ts, minTS+int64(i)*stepMs)
+			s.data.values = append(s.data.values, agg.finalize(g.values[i], count))
+		}
+		result = append(result, s)
+	}
+	span.SetAttributes(attribute.Int("chstorage.grouped_series", len(result)))
+	return result
+}
+
+func (p *promQuerier) aggregateSampledPointsMap(
+	ctx context.Context,
+	set map[[16]byte]*series[pointData],
+	on bool, groupBy []string,
+	sampler pointsSampler,
+) []*series[pointData] {
 	// Group series by requested labels.
 	type groupKey struct {
 		hash uint64
@@ -1404,7 +1510,6 @@ func (p *promQuerier) aggregateSampledPoints(
 		}
 		result = append(result, s)
 	}
-	span.SetAttributes(attribute.Int("chstorage.grouped_series", len(result)))
 	return result
 }
 

@@ -816,14 +816,14 @@ func TestAggregateSampledPoints(t *testing.T) {
 
 	// Three series, two timestamps each.
 	//
-	//          t=10  t=20
+	//          t=1000  t=2000
 	// job=a/1:   2    8
 	// job=a/2:   4    6
 	// job=b/1:   3    9
 	input := map[[16]byte]*series[pointData]{
-		h1: makeSeries(lbJob1, [][2]float64{{10, 2}, {20, 8}}),
-		h2: makeSeries(lbJob1b, [][2]float64{{10, 4}, {20, 6}}),
-		h3: makeSeries(lbJob2, [][2]float64{{10, 3}, {20, 9}}),
+		h1: makeSeries(lbJob1, [][2]float64{{1000, 2}, {2000, 8}}),
+		h2: makeSeries(lbJob1b, [][2]float64{{1000, 4}, {2000, 6}}),
+		h3: makeSeries(lbJob2, [][2]float64{{1000, 3}, {2000, 9}}),
 	}
 
 	findGroup := func(t *testing.T, result []*series[pointData], match labels.Labels) *series[pointData] {
@@ -840,62 +840,62 @@ func TestAggregateSampledPoints(t *testing.T) {
 	t.Run("Sum_ByJob", func(t *testing.T) {
 		// sum by (job): on=true, groupBy=["job"] — keep only the "job" label.
 		sampler, _ := canUseSampledPoints(time.Second, "sum")
-		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler)
+		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler, time.Second)
 
 		require.Len(t, result, 2)
 
 		gA := findGroup(t, result, labels.FromStrings("job", "a"))
-		v, ok := pointAt(gA, 10)
+		v, ok := pointAt(gA, 1000)
 		require.True(t, ok)
-		require.Equal(t, 6.0, v, "sum job=a t=10: 2+4")
+		require.Equal(t, 6.0, v, "sum job=a t=1000: 2+4")
 
-		v, ok = pointAt(gA, 20)
+		v, ok = pointAt(gA, 2000)
 		require.True(t, ok)
-		require.Equal(t, 14.0, v, "sum job=a t=20: 8+6")
+		require.Equal(t, 14.0, v, "sum job=a t=2000: 8+6")
 
 		gB := findGroup(t, result, labels.FromStrings("job", "b"))
-		v, ok = pointAt(gB, 10)
+		v, ok = pointAt(gB, 1000)
 		require.True(t, ok)
 		require.Equal(t, 3.0, v)
 	})
 
 	t.Run("Min_ByJob", func(t *testing.T) {
 		sampler, _ := canUseSampledPoints(time.Second, "min")
-		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler)
+		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler, time.Second)
 
 		require.Len(t, result, 2)
 		gA := findGroup(t, result, labels.FromStrings("job", "a"))
 
-		v, _ := pointAt(gA, 10)
-		require.Equal(t, 2.0, v, "min job=a t=10: min(2,4)=2")
-		v, _ = pointAt(gA, 20)
-		require.Equal(t, 6.0, v, "min job=a t=20: min(8,6)=6")
+		v, _ := pointAt(gA, 1000)
+		require.Equal(t, 2.0, v, "min job=a t=1000: min(2,4)=2")
+		v, _ = pointAt(gA, 2000)
+		require.Equal(t, 6.0, v, "min job=a t=2000: min(8,6)=6")
 	})
 
 	t.Run("Max_ByJob", func(t *testing.T) {
 		sampler, _ := canUseSampledPoints(time.Second, "max")
-		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler)
+		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler, time.Second)
 
 		require.Len(t, result, 2)
 		gA := findGroup(t, result, labels.FromStrings("job", "a"))
 
-		v, _ := pointAt(gA, 10)
-		require.Equal(t, 4.0, v, "max job=a t=10: max(2,4)=4")
-		v, _ = pointAt(gA, 20)
-		require.Equal(t, 8.0, v, "max job=a t=20: max(8,6)=8")
+		v, _ := pointAt(gA, 1000)
+		require.Equal(t, 4.0, v, "max job=a t=1000: max(2,4)=4")
+		v, _ = pointAt(gA, 2000)
+		require.Equal(t, 8.0, v, "max job=a t=2000: max(8,6)=8")
 	})
 
 	t.Run("Avg_ByJob", func(t *testing.T) {
 		sampler, _ := canUseSampledPoints(time.Second, "avg")
-		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler)
+		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler, time.Second)
 
 		require.Len(t, result, 2)
 		gA := findGroup(t, result, labels.FromStrings("job", "a"))
 
-		v, _ := pointAt(gA, 10)
-		require.Equal(t, 3.0, v, "avg job=a t=10: (2+4)/2=3")
-		v, _ = pointAt(gA, 20)
-		require.Equal(t, 7.0, v, "avg job=a t=20: (8+6)/2=7")
+		v, _ := pointAt(gA, 1000)
+		require.Equal(t, 3.0, v, "avg job=a t=1000: (2+4)/2=3")
+		v, _ = pointAt(gA, 2000)
+		require.Equal(t, 7.0, v, "avg job=a t=2000: (8+6)/2=7")
 	})
 
 	t.Run("Sum_Without_Instance", func(t *testing.T) {
@@ -903,7 +903,7 @@ func TestAggregateSampledPoints(t *testing.T) {
 		// job=a/1 and job=a/2 share {__name__,job} after dropping instance → collapse.
 		// job=b/1 is alone in its group.
 		sampler, _ := canUseSampledPoints(time.Second, "sum")
-		result := p.aggregateSampledPoints(ctx, input, false, []string{"instance"}, sampler)
+		result := p.aggregateSampledPoints(ctx, input, false, []string{"instance"}, sampler, time.Second)
 
 		require.Len(t, result, 2)
 	})
@@ -911,24 +911,24 @@ func TestAggregateSampledPoints(t *testing.T) {
 	t.Run("OutputSortedByTimestamp", func(t *testing.T) {
 		// Feed unsorted timestamps; result must be sorted.
 		unordered := map[[16]byte]*series[pointData]{
-			h1: makeSeries(lbJob1, [][2]float64{{30, 1}, {10, 2}, {20, 3}}),
+			h1: makeSeries(lbJob1, [][2]float64{{3000, 1}, {1000, 2}, {2000, 3}}),
 		}
 		sampler, _ := canUseSampledPoints(time.Second, "sum")
-		result := p.aggregateSampledPoints(ctx, unordered, false, []string{"job"}, sampler)
+		result := p.aggregateSampledPoints(ctx, unordered, false, []string{"job"}, sampler, time.Second)
 		require.Len(t, result, 1)
-		require.Equal(t, []int64{10, 20, 30}, result[0].ts)
+		require.Equal(t, []int64{1000, 2000, 3000}, result[0].ts)
 	})
 
 	t.Run("SingleSeries_SumEqualsValue", func(t *testing.T) {
 		// With only one series in the group, all aggregators return the original value.
 		single := map[[16]byte]*series[pointData]{
-			h3: makeSeries(lbJob2, [][2]float64{{10, 7}, {20, 3}}),
+			h3: makeSeries(lbJob2, [][2]float64{{1000, 7}, {2000, 3}}),
 		}
 		for _, fn := range []string{"sum", "avg", "min", "max"} {
 			sampler, _ := canUseSampledPoints(time.Second, fn)
-			result := p.aggregateSampledPoints(ctx, single, false, []string{"job"}, sampler)
+			result := p.aggregateSampledPoints(ctx, single, false, []string{"job"}, sampler, time.Second)
 			require.Len(t, result, 1)
-			v, _ := pointAt(result[0], 10)
+			v, _ := pointAt(result[0], 1000)
 			require.Equalf(t, 7.0, v, "fn=%s: single-series result must equal original value", fn)
 		}
 	})
