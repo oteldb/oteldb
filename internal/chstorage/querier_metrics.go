@@ -552,6 +552,7 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 		attribute.Int64("chstorage.metrics_cache.cache_end", cacheEnd.UnixMilli()),
 		attribute.Int64("chstorage.metrics_cache.global_fetch_from", globalFetchFrom),
 		attribute.Int("chstorage.metrics_cache.hits", stats.hits),
+		attribute.Int("chstorage.metrics_cache.partial_hits", stats.partialHits),
 		attribute.Int("chstorage.metrics_cache.misses", stats.misses),
 	)
 
@@ -582,7 +583,7 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 		// bigQuery is true when the fetched data exceeds the cache budget: in that case
 		// we only refresh already-cached entries to avoid evicting warm data for other
 		// series/queries.
-		bigQuery := p.metricsCache.maxBytes > 0 && int64(totalPoints)*12 > p.metricsCache.maxBytes
+		bigQuery := p.metricsCache.IsBigQuery(totalPoints)
 		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
 		if bigQuery {
 			p.metricsCache.stats.BigQueries.Add(ctx, 1, cacheTypeRaw)
@@ -683,6 +684,7 @@ func (p *promQuerier) querySampledPointsCached(
 		attribute.Int64("chstorage.metrics_cache.cache_end", cacheEnd.UnixMilli()),
 		attribute.Int64("chstorage.metrics_cache.global_fetch_from", globalFetchFrom),
 		attribute.Int("chstorage.metrics_cache.hits", stats.hits),
+		attribute.Int("chstorage.metrics_cache.partial_hits", stats.partialHits),
 		attribute.Int("chstorage.metrics_cache.misses", stats.misses),
 	)
 
@@ -711,7 +713,7 @@ func (p *promQuerier) querySampledPointsCached(
 		// fetched range, so that subsequent queries skip the ClickHouse round-trip.
 		//
 		// bigQuery: see analogous comment in queryPointsCached.
-		bigQuery := p.metricsCache.maxBytes > 0 && int64(totalPoints)*12 > p.metricsCache.maxBytes
+		bigQuery := p.metricsCache.IsBigQuery(totalPoints)
 		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
 		if bigQuery {
 			p.metricsCache.stats.BigQueries.Add(ctx, 1, cacheTypeAggregated)
@@ -827,8 +829,9 @@ func cacheTypeOpt(step time.Duration) metric.MeasurementOption {
 }
 
 type cacheStats struct {
-	hits   int
-	misses int
+	hits        int
+	partialHits int
+	misses      int
 }
 
 const uncachedWatermark = -1
@@ -870,14 +873,7 @@ func computeFetchRange(
 				continue
 			}
 
-			// Record only first partial hit: don't spam events.
-			if stats.misses == 0 {
-				trace.SpanFromContext(ctx).AddEvent("chstorage.metrics_cache.partial_hit", trace.WithAttributes(
-					attribute.Int64("chstorage.metrics_cache.entry_min_ts", entryMinTS),
-					attribute.Int64("chstorage.metrics_cache.entry_max_ts", entryMaxTS),
-					attribute.Int64("chstorage.metrics_cache.requested_start", start),
-				))
-			}
+			stats.partialHits++
 		}
 		stats.misses++
 		hasAnyMiss = true

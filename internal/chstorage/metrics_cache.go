@@ -24,6 +24,15 @@ type MetricsCacheEntry struct {
 	maxTS   int64 // watermark
 }
 
+const (
+	metricsCachePointCost     = 12
+	metricsCacheEntryOverhead = 128
+)
+
+func metricsCacheCost(points int) uint32 {
+	return uint32(points)*metricsCachePointCost + metricsCacheEntryOverhead
+}
+
 func newMetricsCacheEntry() *MetricsCacheEntry {
 	return &MetricsCacheEntry{
 		minTS: math.MinInt64,
@@ -76,7 +85,7 @@ func (e *MetricsCacheEntry) Append(ts []int64, vals []float64, untilMs int64) ui
 	defer e.mu.Unlock()
 
 	if len(ts) == 0 {
-		return uint32(len(e.deltaTS)*12 + 128)
+		return metricsCacheCost(len(e.deltaTS))
 	}
 
 	if e.minTS == math.MinInt64 {
@@ -94,7 +103,7 @@ func (e *MetricsCacheEntry) Append(ts []int64, vals []float64, untilMs int64) ui
 				e.maxTS = t
 			}
 		}
-		return uint32(len(e.deltaTS)*12 + 128)
+		return metricsCacheCost(len(e.deltaTS))
 	}
 
 	// Cache already has data. Split ts into:
@@ -145,8 +154,7 @@ func (e *MetricsCacheEntry) Append(ts []int64, vals []float64, untilMs int64) ui
 		}
 	}
 
-	// 12 bytes per sample (int32 deltaTS + float64 val) + 128 bytes for struct/bookkeeping.
-	return uint32(len(e.deltaTS)*12 + 128)
+	return metricsCacheCost(len(e.deltaTS))
 }
 
 // MarkFetched advances the watermark to record that [fetchFrom, untilMs] has been
@@ -240,7 +248,7 @@ func newMetricsCache(opts MetricsCacheOptions) (*MetricsCache, error) {
 		Cost(func(_ MetricsCacheKey, e *MetricsCacheEntry) uint32 {
 			e.mu.RLock()
 			defer e.mu.RUnlock()
-			return uint32(len(e.deltaTS)*12 + 128)
+			return metricsCacheCost(len(e.deltaTS))
 		}).
 		WithTTL(30 * time.Minute)
 	builder = builder.CollectStats()
@@ -265,6 +273,11 @@ func newMetricsCache(opts MetricsCacheOptions) (*MetricsCache, error) {
 	}
 
 	return mc, nil
+}
+
+// IsBigQuery returns true if the number of points would exceed the cache memory budget.
+func (c *MetricsCache) IsBigQuery(totalPoints int) bool {
+	return c.maxBytes > 0 && int64(totalPoints)*metricsCachePointCost > c.maxBytes
 }
 
 func registerMetrics(meter metric.Meter, mc *MetricsCache) error {

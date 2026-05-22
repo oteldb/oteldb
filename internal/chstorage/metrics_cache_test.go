@@ -26,7 +26,7 @@ func TestMetricsCacheEntry(t *testing.T) {
 
 	// Initial append.
 	cost := e.Append([]int64{10, 20, 30}, []float64{1.1, 2.2, 3.3}, 100)
-	require.Equal(t, uint32(3*12+128), cost)
+	require.Equal(t, metricsCacheCost(3), cost)
 	require.Equal(t, int64(10), e.minTS)
 	require.Equal(t, int64(30), e.maxTS)
 
@@ -42,7 +42,7 @@ func TestMetricsCacheEntry(t *testing.T) {
 
 	// Append overlapping and new data.
 	cost = e.Append([]int64{20, 30, 40, 50}, []float64{2.2, 3.3, 4.4, 5.5}, 45)
-	require.Equal(t, uint32(4*12+128), cost)
+	require.Equal(t, metricsCacheCost(4), cost)
 	require.Equal(t, int64(10), e.minTS)
 	require.Equal(t, int64(40), e.maxTS)
 
@@ -979,7 +979,7 @@ func TestMetricsCache_Metrics(t *testing.T) {
 	// Perform some operations to generate stats.
 	key := MetricsCacheKey{Hash: [16]byte{1}}
 	entry := newMetricsCacheEntry()
-	// Cost will be 1*12 + 128 = 140.
+	// Cost will be metricsCacheCost(1).
 	entry.Append([]int64{1000}, []float64{1.0}, 2000)
 	mc.cache.Set(key, entry)
 
