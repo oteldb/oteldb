@@ -41,8 +41,8 @@ func TupleElement(tup Expr, index int) Expr {
 }
 
 // If returns `if(<cond>, <then>, <else>)` function call expression.
-func If(cond, then, else_ Expr) Expr {
-	return Function("if", cond, then, else_)
+func If(cond, then, elseExpr Expr) Expr {
+	return Function("if", cond, then, elseExpr)
 }
 
 // Greatest returns `greatest(<args>...)` function call expression.
