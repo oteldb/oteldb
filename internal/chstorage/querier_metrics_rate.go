@@ -367,38 +367,6 @@ func (p *promQuerier) queryRatePointsByHash(
 		)
 	)
 
-	var (
-		pairs       = chsql.GroupArray(chsql.Tuple(chsql.Ident("timestamp"), chsql.Ident("value")))
-		sortedPairs = chsql.ArraySort(
-			chsql.Lambda([]string{"x"}, tuple("x", 1)),
-			pairs,
-		)
-		valsExpr = chsql.ArrayMap(
-			chsql.Lambda([]string{"x"}, tuple("x", 2)),
-			sortedPairs,
-		)
-	)
-
-	var (
-		resetSumLambda = chsql.Lambda([]string{"curr", "prev"},
-			chsql.If(
-				chsql.Lt(chsql.Ident("curr"), chsql.Ident("prev")),
-				chsql.Ident("prev"),
-				chsql.ToFloat64(chsql.Integer(0)),
-			),
-		)
-		resetSum = chsql.ArraySum(
-			resetSumLambda,
-			chsql.ArrayPopFront(chsql.Ident("vals")),
-			chsql.ArrayPopBack(chsql.Ident("vals")),
-		)
-		resetExpr = chsql.If(
-			chsql.Gt(chsql.Function("length", chsql.Ident("vals")), chsql.Integer(1)),
-			resetSum,
-			chsql.ToFloat64(chsql.Integer(0)),
-		)
-	)
-
 	// Subquery 1: Filter points and map each point to the set of steps it belongs to.
 	expanded := chsql.Select(table,
 		chsql.Column("hash", nil),
@@ -419,15 +387,31 @@ func (p *promQuerier) queryRatePointsByHash(
 			chsql.NotEq(chsql.ReinterpretAsUInt64(chsql.Ident("value")), chsql.Integer(promStaleNaNBits)),
 		)
 
-	// Subquery 2: Group by series and step, then compute rate calculation components (first/last points, reset sum).
-	aggregated := chsql.SelectFrom(expanded,
+	// Subquery 2: Annotate each row with the previous value in the same (hash, step_ms_val) window,
+	// ordered by timestamp. This avoids groupArray+arraySort for reset detection.
+	withPrev := chsql.SelectFrom(expanded,
+		chsql.Column("hash", nil),
+		chsql.Column("step_ms_val", nil),
+		chsql.Column("timestamp", nil),
+		chsql.Column("value", nil),
+		chsql.ResultColumn{
+			Name: "prev_value",
+			Expr: chsql.Over(
+				chsql.LagInFrame(chsql.Ident("value"), chsql.Integer(1), chsql.Ident("value")),
+				[]chsql.Expr{chsql.Ident("hash"), chsql.Ident("step_ms_val")},
+				[]chsql.WindowOrderSpec{chsql.WindowAsc(chsql.Ident("timestamp"))},
+			),
+		},
+	)
+
+	// Subquery 3: Group by series and step, computing rate components without materializing per-group arrays.
+	aggregated := chsql.SelectFrom(withPrev,
 		chsql.Column("hash", nil),
 		chsql.Column("step_ms_val", nil),
 		chsql.ResultColumn{Name: "first_pair", Expr: chsql.ArgMin(chsql.Tuple(chsql.Ident("timestamp"), chsql.Ident("value")), chsql.Ident("timestamp"))},
 		chsql.ResultColumn{Name: "last_pair", Expr: chsql.ArgMax(chsql.Tuple(chsql.Ident("timestamp"), chsql.Ident("value")), chsql.Ident("timestamp"))},
-		chsql.ResultColumn{Name: "vals", Expr: valsExpr},
-		chsql.ResultColumn{Name: "samples", Expr: chsql.Function("length", chsql.Ident("vals"))},
-		chsql.ResultColumn{Name: "reset_sum", Expr: resetExpr},
+		chsql.ResultColumn{Name: "samples", Expr: chsql.Count()},
+		chsql.ResultColumn{Name: "reset_sum", Expr: chsql.SumIf(chsql.Ident("prev_value"), chsql.Lt(chsql.Ident("value"), chsql.Ident("prev_value")))},
 	).
 		GroupBy(chsql.Ident("hash"), chsql.Ident("step_ms_val")).
 		Having(chsql.Gt(chsql.Ident("samples"), chsql.Integer(1)))

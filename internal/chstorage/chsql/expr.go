@@ -17,6 +17,8 @@ const (
 	exprTuple
 	exprLambda
 	exprSubQuery
+	exprWindowFunc // fn OVER (PARTITION BY ... ORDER BY ...)
+	exprSortDir    // expr ASC/DESC (for ORDER BY inside OVER clause)
 )
 
 // Expr is a Clickhouse expression.

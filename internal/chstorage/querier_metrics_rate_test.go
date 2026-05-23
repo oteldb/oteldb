@@ -125,9 +125,8 @@ func TestQueryRatePointsSQL(t *testing.T) {
 
 	for _, want := range []string{
 		"arrayJoin(arrayFilter",
-		"arrayMap(x -> tupleElement(x, 2), arraySort",
-		"arrayPopFront(vals)",
-		"arrayPopBack(vals)",
+		"lagInFrame(value, 1, value) OVER (PARTITION BY hash,step_ms_val ORDER BY timestamp ASC)",
+		"sumIf(prev_value, (value < prev_value))",
 		"reinterpretAsUInt64(value)",
 		"GROUP BY hash,step_ms_val",
 		"HAVING (samples > 1)",

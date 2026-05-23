@@ -44,3 +44,8 @@ func Count() Expr {
 func GroupArray(arg Expr) Expr {
 	return Function("groupArray", arg)
 }
+
+// SumIf returns `sumIf(<arg>, <cond>)` function call expression.
+func SumIf(arg, cond Expr) Expr {
+	return Function("sumIf", arg, cond)
+}
