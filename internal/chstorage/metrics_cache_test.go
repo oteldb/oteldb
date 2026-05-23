@@ -787,7 +787,7 @@ func TestQueryRatePointsCached(t *testing.T) {
 	window := 5 * time.Minute
 
 	// rateMock returns one pre-computed rate value per step starting from fetchStart.
-	rateMock := func(_ context.Context, s, e time.Time, _, _, _ time.Duration, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+	rateMock := func(_ context.Context, s, e time.Time, _, _, _ time.Duration, _ map[[16]byte]labels.Labels, _ rateKind) (map[[16]byte]*series[pointData], error) {
 		ser := &series[pointData]{labels: lb}
 		for t := s.UnixMilli(); t <= e.UnixMilli(); t += stepMs {
 			ser.ts = append(ser.ts, t)
@@ -795,7 +795,7 @@ func TestQueryRatePointsCached(t *testing.T) {
 		}
 		return map[[16]byte]*series[pointData]{hash: ser}, nil
 	}
-	mustNotCall := func(_ context.Context, _, _ time.Time, _, _, _ time.Duration, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+	mustNotCall := func(_ context.Context, _, _ time.Time, _, _, _ time.Duration, _ map[[16]byte]labels.Labels, _ rateKind) (map[[16]byte]*series[pointData], error) {
 		return nil, errors.New("unexpected ClickHouse query")
 	}
 
@@ -878,13 +878,13 @@ func TestQueryRatePointsCached(t *testing.T) {
 			p := &promQuerier{
 				metricsCache: mc,
 				tracer:       nooptrace.NewTracerProvider().Tracer("test"),
-				queryRatePointsByHashFunc: func(ctx context.Context, s, e time.Time, step, window, offset time.Duration, ts map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+				queryRatePointsByHashFunc: func(ctx context.Context, s, e time.Time, step, window, offset time.Duration, ts map[[16]byte]labels.Labels, kind rateKind) (map[[16]byte]*series[pointData], error) {
 					callCount++
-					return tc.mockFn(ctx, s, e, step, window, offset, ts)
+					return tc.mockFn(ctx, s, e, step, window, offset, ts, kind)
 				},
 			}
 
-			pts, err := p.queryRatePointsCached(context.Background(), tc.queryStart, tc.queryEnd, step, window, 0, timeseries)
+			pts, err := p.queryRatePointsCached(context.Background(), tc.queryStart, tc.queryEnd, step, window, 0, timeseries, rateKindRate)
 			require.NoError(t, err)
 			require.Equal(t, tc.wantCallCount, callCount, "ClickHouse call count")
 			if tc.wantPointCount == 0 {

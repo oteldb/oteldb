@@ -48,6 +48,7 @@ type (
 		start, end time.Time,
 		step, window, offset time.Duration,
 		timeseries map[[16]byte]labels.Labels,
+		kind rateKind,
 	) (map[[16]byte]*series[pointData], error)
 )
 
@@ -452,21 +453,23 @@ func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params
 		trace.SpanFromContext(ctx).AddEvent("chstorage.too_many_timeseries")
 		return result, errors.Wrapf(ErrMetricsTooManySeries, "%d > %d series requested", len(timeseries), p.timeseriesLimit)
 	}
-	if samplePoints && params.Function == "rate" {
-		var (
-			points []*series[pointData]
-			err    error
-		)
-		if p.metricsCache != nil {
-			points, err = p.queryRatePointsCached(ctx, params.Start, params.End, params.Step, params.Range, params.Offset, timeseries)
-		} else {
-			points, err = p.queryRatePoints(ctx, params.Start, params.End, params.Step, params.Range, params.Offset, timeseries)
+	if samplePoints {
+		if kind, ok := funcNameToRateKind(params.Function); ok {
+			var (
+				points []*series[pointData]
+				err    error
+			)
+			if p.metricsCache != nil {
+				points, err = p.queryRatePointsCached(ctx, params.Start, params.End, params.Step, params.Range, params.Offset, timeseries, kind)
+			} else {
+				points, err = p.queryRatePoints(ctx, params.Start, params.End, params.Step, params.Range, params.Offset, timeseries, kind)
+			}
+			if err != nil {
+				return result, errors.Wrap(err, "query rate points")
+			}
+			result.points = points
+			return result, nil
 		}
-		if err != nil {
-			return result, errors.Wrap(err, "query rate points")
-		}
-		result.points = points
-		return result, nil
 	}
 
 	step := params.Step

@@ -133,7 +133,7 @@ func (s *promScanners) NewMatrixSelector(
 		hints.ProjectionLabels = vs.Projection.Labels
 		hints.ProjectionInclude = vs.Projection.Include
 	}
-	if call.Func.Name == "rate" {
+	if kind, ok := funcNameToRateKind(call.Func.Name); ok {
 		q := s.storage.metricsQuerier(hints.Start, hints.End)
 		op := newRateSelector(
 			q,
@@ -150,6 +150,7 @@ func (s *promScanners) NewMatrixSelector(
 			},
 			vs.Offset,
 			vs.BatchSize,
+			kind,
 		)
 		op = exchange.NewConcurrent(op, 2, opts)
 		return op, nil
