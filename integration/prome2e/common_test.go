@@ -683,6 +683,7 @@ func runTest(
 				empty bool
 			}{
 				{"All", `count(prometheus_http_requests_total{})`, 51, false},
+				{"GroupingAll", `sum by (__name__) (count(prometheus_http_requests_total{}))`, 51, false},
 				{"AllRegexFilter", `count(prometheus_http_requests_total{handler=~".+"})`, 51, false},
 				{"AllNegativeFilter", `count(prometheus_http_requests_total{"handler"!="clearly-not-exist"})`, 51, false},
 				{"AllNegativeEmptyFilter", `count(prometheus_http_requests_total{"handler"!=""})`, 51, false},
@@ -700,6 +701,19 @@ func runTest(
 				{"ExcludeRegexFilterFullMatch", `count(prometheus_http_requests_total{"handler"!~"/api/v1/query"})`, 50, false},
 
 				{"Empty", `count(prometheus_http_requests_total{"handler"="clearly-not-exist"})`, 0, true},
+				{"GroupingEmpty", `sum by (handler) (count(prometheus_http_requests_total{"handler"="clearly-not-exist"}))`, 0, true},
+
+				// count by (__name__) counts series, not values — must not be affected by
+				// the sampled-points pre-aggregation path (which would collapse 51 series to 1).
+				{"CountByName", `count by (__name__) (prometheus_http_requests_total)`, 51, false},
+				// min across all series is 0 because several handlers never receive requests.
+				{"MinByName", `min by (__name__) (prometheus_http_requests_total)`, 0, false},
+				// For a single series whose counter never increments, all four aggregators must return 0
+				// (not produce wrong values from incorrect client-side aggregation logic).
+				{"SumSingleZeroSeries", `sum by (handler) (prometheus_http_requests_total{handler="/api/v1/query"})`, 0, false},
+				{"MinSingleZeroSeries", `min by (handler) (prometheus_http_requests_total{handler="/api/v1/query"})`, 0, false},
+				{"MaxSingleZeroSeries", `max by (handler) (prometheus_http_requests_total{handler="/api/v1/query"})`, 0, false},
+				{"AvgSingleZeroSeries", `avg by (handler) (prometheus_http_requests_total{handler="/api/v1/query"})`, 0, false},
 			} {
 				tt := tt
 				t.Run(tt.name, func(t *testing.T) {
@@ -731,6 +745,52 @@ func runTest(
 						}
 					}
 				})
+			}
+		})
+		t.Run("AggregationInvariants", func(t *testing.T) {
+			// Query sum/min/max/avg of the same metric and verify the invariant
+			// min ≤ avg ≤ max ≤ sum holds at every timestamp.
+			// This guards against the aggregateSampledPoints bug where min/max/avg
+			// were all computed as sums.
+			params := func(q string) promapi.GetQueryRangeParams {
+				return promapi.GetQueryRangeParams{
+					Query: q,
+					Start: getPromTS(set.Start),
+					End:   getPromTS(set.End),
+					Step:  promapi.NewOptString("5s"),
+				}
+			}
+			a := require.New(t)
+
+			fetchVals := func(q string) []float64 {
+				r, err := c.GetQueryRange(ctx, params(q))
+				a.NoError(err)
+				a.Equal(promapi.MatrixData, r.Data.Type)
+				mat := r.Data.Matrix.Result
+				a.Len(mat, 1, "query %q should return exactly 1 series", q)
+				a.NotEmpty(mat[0].Values)
+				vals := make([]float64, len(mat[0].Values))
+				for i, p := range mat[0].Values {
+					vals[i] = p.V
+				}
+				return vals
+			}
+
+			const metric = `prometheus_http_requests_total`
+			sumVals := fetchVals(`sum by (__name__) (` + metric + `)`)
+			minVals := fetchVals(`min by (__name__) (` + metric + `)`)
+			maxVals := fetchVals(`max by (__name__) (` + metric + `)`)
+			avgVals := fetchVals(`avg by (__name__) (` + metric + `)`)
+
+			a.Equal(len(sumVals), len(minVals), "series length must match")
+			a.Equal(len(sumVals), len(maxVals), "series length must match")
+			a.Equal(len(sumVals), len(avgVals), "series length must match")
+
+			for i := range sumVals {
+				a.GreaterOrEqualf(sumVals[i], maxVals[i], "sum >= max at index %d", i)
+				a.GreaterOrEqualf(maxVals[i], avgVals[i], "max >= avg at index %d", i)
+				a.GreaterOrEqualf(avgVals[i], minVals[i], "avg >= min at index %d", i)
+				a.GreaterOrEqualf(minVals[i], 0.0, "min >= 0 at index %d", i)
 			}
 		})
 		t.Run("Histogram", func(t *testing.T) {

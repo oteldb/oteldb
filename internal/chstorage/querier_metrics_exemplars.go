@@ -69,7 +69,7 @@ func (q *exemplarQuerier) Select(startMs, endMs int64, matcherSets ...[]*labels.
 		span.End()
 	}()
 
-	timeseries, err := q.queryTimeseries(ctx, matcherSets)
+	timeseries, err := q.queryTimeseries(ctx, start, end, matcherSets)
 	if err != nil {
 		return nil, errors.Wrap(err, "query timeseries hashes")
 	}

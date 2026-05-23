@@ -1,5 +1,5 @@
 prometheus:
   cache:
-    max_bytes: 104857600 # 100MB
+    max_bytes: 100MiB # 100MB
     # safety_lag should be >= async_insert_busy_timeout_max_ms + scrape_interval.
     safety_lag: 30s

@@ -341,6 +341,7 @@ func (p *promQuerier) getMatchingLabelNames(ctx context.Context, matchers []*lab
 		chsql.Ident("scope"),
 		chsql.Ident("resource"),
 	)
+	timeseriesInRange(query, p.mint, p.maxt, newTimeseriesColumns().timestampPrecision())
 	query.Limit(p.labelLimit)
 
 	var result []string

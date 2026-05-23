@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/go-faster/oteldb/internal/httpmiddleware"
+	"github.com/go-faster/oteldb/internal/xbytes"
 )
 
 func loadConfig(name string) (cfg Config, _ error) {
@@ -45,6 +46,10 @@ type Config struct {
 	Cluster    string        `json:"cluster" yaml:"cluster"`
 	Replicated bool          `json:"replicated" yaml:"replicated"`
 	CHLogLevel zapcore.Level `json:"ch_log_level" yaml:"ch_log_level"`
+
+	MaxResultRows    int           `json:"max_result_rows" yaml:"max_result_rows"`
+	MaxResultBytes   xbytes.Bytes  `json:"max_result_bytes" yaml:"max_result_bytes"`
+	MaxExecutionTime time.Duration `json:"max_execution_time" yaml:"max_execution_time"`
 
 	Tempo       TempoConfig       `json:"tempo" yaml:"tempo"`
 	Prometheus  PrometheusConfig  `json:"prometheus" yaml:"prometheus"`
@@ -139,7 +144,7 @@ type PrometheusConfig struct {
 
 // MetricsCacheConfig is metrics cache config.
 type MetricsCacheConfig struct {
-	MaxBytes  int64         `json:"max_bytes" yaml:"max_bytes"`
+	MaxBytes  xbytes.Bytes  `json:"max_bytes" yaml:"max_bytes"`
 	SafetyLag time.Duration `json:"safety_lag" yaml:"safety_lag"`
 }
 

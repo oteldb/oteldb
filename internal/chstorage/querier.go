@@ -2,6 +2,7 @@ package chstorage
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/ClickHouse/ch-go"
@@ -33,6 +34,10 @@ type Querier struct {
 	timeseriesLimit int
 	exemplarsLimit  int
 
+	maxResultRows    int
+	maxResultBytes   int
+	maxExecutionTime time.Duration
+
 	timeseries   *timeseriesQuerier
 	metricsCache *MetricsCache
 	metricsSg    *singleflight.Group[xxh3.Uint128, metricSelectResult]
@@ -53,6 +58,14 @@ type QuerierOptions struct {
 	MetricSeriesLimit int
 	// MetricExemplarsLimit defines limit for total number of exemplars returned by a single query.
 	MetricExemplarsLimit int
+
+	// MaxResultRows defines max number of rows to read from ClickHouse.
+	MaxResultRows int
+	// MaxResultBytes defines max number of bytes to read from ClickHouse.
+	MaxResultBytes int
+	// MaxExecutionTime defines max execution time for ClickHouse query.
+	MaxExecutionTime time.Duration
+
 	// MetricsCacheOptions configures metrics cache.
 	MetricsCacheOptions MetricsCacheOptions
 	// CHLogLevel sets log level for ch-go.
@@ -77,6 +90,15 @@ func (opts *QuerierOptions) setDefaults() {
 	}
 	if opts.MetricExemplarsLimit == 0 {
 		opts.MetricExemplarsLimit = 1_000
+	}
+	if opts.MaxResultRows == 0 {
+		opts.MaxResultRows = 10_000_000
+	}
+	if opts.MaxResultBytes == 0 {
+		opts.MaxResultBytes = 1024 * 1024 * 1024 // 1 GiB
+	}
+	if opts.MaxExecutionTime == 0 {
+		opts.MaxExecutionTime = 30 * time.Second
 	}
 	if opts.CHLogLevel == nil {
 		opts.CHLogLevel = zap.DebugLevel
@@ -108,7 +130,9 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 	if opts.MetricsCacheOptions.MaxBytes > 0 {
 		var err error
 		cacheOpts := opts.MetricsCacheOptions
-		cacheOpts.Meter = meter
+		if cacheOpts.MeterProvider == nil {
+			cacheOpts.MeterProvider = opts.MeterProvider
+		}
 		metricsCache, err = newMetricsCache(cacheOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "create metrics cache")
@@ -121,8 +145,13 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 		labelLimit:      opts.LabelLimit,
 		timeseriesLimit: opts.MetricSeriesLimit,
 		exemplarsLimit:  opts.MetricExemplarsLimit,
-		metricsCache:    metricsCache,
-		metricsSg:       new(singleflight.Group[xxh3.Uint128, metricSelectResult]),
+
+		maxResultRows:    opts.MaxResultRows,
+		maxResultBytes:   opts.MaxResultBytes,
+		maxExecutionTime: opts.MaxExecutionTime,
+
+		metricsCache: metricsCache,
+		metricsSg:    new(singleflight.Group[xxh3.Uint128, metricSelectResult]),
 
 		chLogLevel:                 opts.CHLogLevel,
 		tracer:                     opts.TracerProvider.Tracer("chstorage.Querier"),
@@ -164,6 +193,25 @@ func (q *Querier) do(ctx context.Context, s selectQuery) error {
 	query.ExternalTable = s.ExternalTable
 	query.Logger = lg.Named("ch").WithOptions(zap.IncreaseLevel(q.chLogLevel))
 	query.OnProfileEvents = track.OnProfiles
+
+	if q.maxResultRows > 0 {
+		query.Settings = append(query.Settings, ch.Setting{
+			Key:   "max_result_rows",
+			Value: strconv.Itoa(q.maxResultRows),
+		})
+	}
+	if q.maxResultBytes > 0 {
+		query.Settings = append(query.Settings, ch.Setting{
+			Key:   "max_result_bytes",
+			Value: strconv.Itoa(q.maxResultBytes),
+		})
+	}
+	if q.maxExecutionTime > 0 {
+		query.Settings = append(query.Settings, ch.Setting{
+			Key:   "max_execution_time",
+			Value: strconv.Itoa(int(q.maxExecutionTime.Seconds())),
+		})
+	}
 
 	if logqlengine.IsExplainQuery(ctx) {
 		query.Settings = append(query.Settings, ch.Setting{

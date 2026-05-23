@@ -26,6 +26,7 @@ func main() {
 		newOtelCommand(),
 		newDumpCommand(),
 		newDashboardCommand(),
+		newChDumpCommand(),
 	)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()

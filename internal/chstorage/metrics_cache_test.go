@@ -2,6 +2,8 @@ package chstorage
 
 import (
 	"context"
+	"encoding/binary"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -9,31 +11,38 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	nooptrace "go.opentelemetry.io/otel/trace/noop"
+
+	"github.com/go-faster/oteldb/internal/chstorage/chsql"
 )
+
+// testEpoch is a fixed point in the past so safety-lag never interferes.
+var testEpoch = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 
 func TestMetricsCacheEntry(t *testing.T) {
 	e := newMetricsCacheEntry()
 
-	// Initial append
+	// Initial append.
 	cost := e.Append([]int64{10, 20, 30}, []float64{1.1, 2.2, 3.3}, 100)
-	require.Equal(t, uint32(3*16+128), cost)
+	require.Equal(t, metricsCacheCost(3), cost)
 	require.Equal(t, int64(10), e.minTS)
 	require.Equal(t, int64(30), e.maxTS)
 
-	// Slice part of data
+	// Slice part of data.
 	ts, vals := e.Slice(15, 25)
 	require.Equal(t, []int64{20}, ts)
 	require.Equal(t, []float64{2.2}, vals)
 
-	// Slice including exact boundaries
+	// Slice including exact boundaries.
 	ts, vals = e.Slice(10, 30)
 	require.Equal(t, []int64{10, 20, 30}, ts)
 	require.Equal(t, []float64{1.1, 2.2, 3.3}, vals)
 
-	// Append overlapping and new data
+	// Append overlapping and new data.
 	cost = e.Append([]int64{20, 30, 40, 50}, []float64{2.2, 3.3, 4.4, 5.5}, 45)
-	require.Equal(t, uint32(4*16+128), cost)
+	require.Equal(t, metricsCacheCost(4), cost)
 	require.Equal(t, int64(10), e.minTS)
 	require.Equal(t, int64(40), e.maxTS)
 
@@ -41,26 +50,55 @@ func TestMetricsCacheEntry(t *testing.T) {
 	require.Equal(t, []int64{10, 20, 30, 40}, ts)
 	require.Equal(t, []float64{1.1, 2.2, 3.3, 4.4}, vals)
 
-	// Append with untilMs filter
+	// Append with untilMs filter.
 	e.Append([]int64{50, 60}, []float64{5.5, 6.6}, 55)
 	require.Equal(t, int64(50), e.maxTS)
+}
+
+// TestMetricsCacheEntry_Prepend reproduces the bug where querying a wider historical
+// range after a shorter query would leave a stale cache that only covered the shorter
+// range. Append must prepend older points rather than silently dropping them.
+func TestMetricsCacheEntry_Prepend(t *testing.T) {
+	e := newMetricsCacheEntry()
+
+	// Simulate first query: 30-minute window [100, 300].
+	e.Append([]int64{100, 200, 300}, []float64{1.0, 2.0, 3.0}, 300)
+	e.MarkFetched(100, 300)
+	require.Equal(t, int64(100), e.minTS)
+	require.Equal(t, int64(300), e.maxTS)
+
+	// Simulate second query: 24-hour window [1, 300].
+	// The caller fetches [1, 300] from ClickHouse and calls Append with all results.
+	// Points older than current minTS (100) must be prepended, not dropped.
+	e.Append([]int64{1, 50, 100, 200, 300}, []float64{0.1, 0.5, 1.0, 2.0, 3.0}, 300)
+	e.MarkFetched(1, 300)
+
+	require.Equal(t, int64(1), e.minTS, "minTS must be updated to the oldest new point")
+	require.Equal(t, int64(300), e.maxTS)
+
+	// Full slice must include the prepended points.
+	ts, vals := e.Slice(0, 400)
+	require.Equal(t, []int64{1, 50, 100, 200, 300}, ts)
+	require.Equal(t, []float64{0.1, 0.5, 1.0, 2.0, 3.0}, vals)
+
+	// Third query on the same 24-hour window must be a cache hit returning all data.
+	ts, vals = e.Slice(1, 300)
+	require.Equal(t, []int64{1, 50, 100, 200, 300}, ts)
+	require.Equal(t, []float64{0.1, 0.5, 1.0, 2.0, 3.0}, vals)
 }
 
 func TestMetricsCacheEntry_Concurrency(t *testing.T) {
 	e := newMetricsCacheEntry()
 	var wg sync.WaitGroup
 
-	// Concurrent appends
 	for i := range 10 {
 		wg.Go(func() {
-			for j := 0; j < 100; j++ {
+			for j := range 100 {
 				ts := int64(i*1000 + j)
 				e.Append([]int64{ts}, []float64{float64(ts)}, 10000)
 			}
 		})
 	}
-
-	// Concurrent slices
 	for range 10 {
 		wg.Go(func() {
 			for range 100 {
@@ -68,271 +106,935 @@ func TestMetricsCacheEntry_Concurrency(t *testing.T) {
 			}
 		})
 	}
-
 	wg.Wait()
-	require.Greater(t, len(e.timestamps), 0)
+	require.Greater(t, len(e.deltaTS), 0)
 }
 
-func TestPromQuerier_QueryPointsCached(t *testing.T) {
-	opts := MetricsCacheOptions{
-		MaxBytes:  1024 * 1024,
-		SafetyLag: time.Minute,
-	}
-	cache, err := newMetricsCache(opts)
-	require.NoError(t, err)
+// TestMetricsCacheEntry_MarkFetched verifies that MarkFetched advances the
+// watermark for ranges with no data, enabling hit detection in computeFetchRange.
+func TestMetricsCacheEntry_MarkFetched(t *testing.T) {
+	e := newMetricsCacheEntry()
 
-	labels1 := labels.FromStrings("__name__", "test_metric", "job", "test")
-	h1 := labels1.Hash()
-	var hash1 [16]byte
-	// Fill hash1 with some stable value from h1
-	for i := range len(hash1) / 2 {
-		hash1[i] = byte(h1 >> (i * 8))
-	}
+	e.MarkFetched(1000, 5000)
+	require.Equal(t, int64(1000), e.minTS)
+	require.Equal(t, int64(5000), e.maxTS)
 
-	timeseries := map[[16]byte]labels.Labels{
-		hash1: labels1,
-	}
+	// Appending actual points within the range must not shrink the watermark bounds.
+	e.Append([]int64{2000, 3000}, []float64{1, 2}, 5000)
+	require.Equal(t, int64(1000), e.minTS, "minTS should remain at fetchFrom")
+	require.Equal(t, int64(5000), e.maxTS, "maxTS should remain at untilMs")
 
-	ctx := context.Background()
-	now := time.Now().Truncate(time.Second)
-	start := now.Add(-10 * time.Minute)
-	end := now
-
-	var callCount int
-	var lastStart time.Time
-
-	p := &promQuerier{
-		metricsCache: cache,
-		queryPointsFunc: func(ctx context.Context, table string, s, e time.Time, ts map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
-			callCount++
-			lastStart = s
-
-			// Return data from s to e with 1-minute step
-			res := &series[pointData]{labels: labels1}
-			for t := s.UnixMilli(); t <= e.UnixMilli(); t += 60000 {
-				res.ts = append(res.ts, t)
-				res.data.values = append(res.data.values, float64(t))
-			}
-			return map[[16]byte]*series[pointData]{hash1: res}, nil
-		},
-		tracer: nooptrace.NewTracerProvider().Tracer("test"),
-	}
-
-	t.Run("CacheMiss", func(t *testing.T) {
-		callCount = 0
-		points, err := p.queryPointsCached(ctx, "points", start, end, timeseries)
-		require.NoError(t, err)
-		require.Equal(t, 1, callCount)
-		require.Equal(t, start.UnixMilli(), lastStart.UnixMilli())
-		require.Len(t, points, 1)
-		// 11 points (0 to 10 minutes, inclusive)
-		require.Len(t, points[0].ts, 11)
-
-		// Verify cache populated (up to safety lag)
-		entry, ok := cache.cache.Get(hash1)
-		require.True(t, ok)
-		require.Greater(t, entry.maxTS, start.UnixMilli())
-	})
-
-	t.Run("CacheHit_Partial", func(t *testing.T) {
-		callCount = 0
-		// Shift end by 2 minutes
-		newEnd := end.Add(2 * time.Minute)
-		points, err := p.queryPointsCached(ctx, "points", start, newEnd, timeseries)
-		require.NoError(t, err)
-
-		require.Equal(t, 1, callCount)
-		// Should fetch from watermark + 1
-		require.Greater(t, lastStart.UnixMilli(), start.UnixMilli())
-		require.Len(t, points, 1)
-		require.Len(t, points[0].ts, 13) // 11 + 2 new points
-	})
+	// Advancing to a later window should extend maxTS.
+	e.MarkFetched(1000, 8000)
+	require.Equal(t, int64(8000), e.maxTS)
 }
 
-// TestQueryPointsCached_WatermarkBeyondEnd verifies that when a cached entry's
-// watermark exceeds the query end, points beyond end are not returned.
-func TestQueryPointsCached_WatermarkBeyondEnd(t *testing.T) {
-	opts := MetricsCacheOptions{
-		MaxBytes:  1024 * 1024,
-		SafetyLag: time.Second, // small so fixed timestamps are cacheable
-	}
-	cache, err := newMetricsCache(opts)
-	require.NoError(t, err)
+func TestMetricsCacheEntry_DeltaRange(t *testing.T) {
+	e := newMetricsCacheEntry()
 
-	lb := labels.FromStrings("__name__", "m")
-	var hash [16]byte
-	h := lb.Hash()
-	for i := range 8 {
-		hash[i] = byte(h >> (i * 8))
-	}
-	timeseries := map[[16]byte]labels.Labels{hash: lb}
+	// 24 hour range delta in ms: 24 * 60 * 60 * 1000 = 86,400,000.
+	// This fits in int32 comfortably without overflow.
+	startTS := int64(100000000000)
+	endTS := startTS + 24*3600*1000
 
-	// Use a fixed epoch far enough in the past so safety lag never interferes.
-	epoch := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	e.Append([]int64{startTS, endTS}, []float64{1.1, 2.2}, endTS)
+	require.Equal(t, startTS, e.minTS)
+	require.Equal(t, endTS, e.maxTS)
 
-	// Pre-populate cache with data from epoch to epoch+5min (watermark = epoch+5min).
-	entry := newMetricsCacheEntry()
-	for i := range 6 {
-		t := epoch.Add(time.Duration(i) * time.Minute).UnixMilli()
-		entry.Append([]int64{t}, []float64{float64(i)}, epoch.Add(10*time.Minute).UnixMilli())
-	}
-	cache.cache.Set(hash, entry)
-	// Watermark is now epoch+5min.
-	require.Equal(t, epoch.Add(5*time.Minute).UnixMilli(), entry.maxTS)
-
-	p := &promQuerier{
-		metricsCache: cache,
-		// Query function should not be called since all data is cached.
-		queryPointsFunc: func(_ context.Context, _ string, s, e time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
-			return map[[16]byte]*series[pointData]{}, errors.New("unexpected query")
-		},
-		tracer: nooptrace.NewTracerProvider().Tracer("test"),
-	}
-
-	ctx := context.Background()
-	start := epoch
-	end := epoch.Add(3 * time.Minute) // end < watermark (epoch+5min)
-
-	points, err := p.queryPointsCached(ctx, "points", start, end, timeseries)
-	require.NoError(t, err)
-	require.Len(t, points, 1)
-
-	// Only points within [start, end] should be returned: epoch+0..+3min = 4 points.
-	for _, ts := range points[0].ts {
-		require.LessOrEqual(t, ts, end.UnixMilli(), "point %d is beyond query end %d", ts, end.UnixMilli())
-		require.GreaterOrEqual(t, ts, start.UnixMilli())
-	}
-	require.Len(t, points[0].ts, 4)
+	tss, vals := e.Slice(startTS, endTS)
+	require.Equal(t, []int64{startTS, endTS}, tss)
+	require.Equal(t, []float64{1.1, 2.2}, vals)
 }
 
 func TestComputeFetchRange(t *testing.T) {
-	cache, err := newMetricsCache(MetricsCacheOptions{MaxBytes: 1024 * 1024})
-	require.NoError(t, err)
-
 	h1 := [16]byte{1}
 	h2 := [16]byte{2}
-	timeseries := map[[16]byte]labels.Labels{
-		h1: labels.FromStrings("a", "b"),
-		h2: labels.FromStrings("c", "d"),
-	}
-
 	start := int64(1000)
 
-	t.Run("AllMisses", func(t *testing.T) {
-		wms, fetchStart, stats := computeFetchRange(context.Background(), cache, start, timeseries)
-		require.Equal(t, start, fetchStart)
-		require.Equal(t, 2, stats.misses)
-		require.Equal(t, 0, stats.hits)
-		require.Equal(t, int64(uncachedWatermark), wms[h1])
-		require.Equal(t, int64(uncachedWatermark), wms[h2])
-	})
+	for _, tc := range []struct {
+		name           string
+		timeseries     map[[16]byte]labels.Labels
+		setup          func(*MetricsCache)
+		wantFetchFrom  int64
+		wantHits       int
+		wantMisses     int
+		wantWatermarks map[[16]byte]int64
+	}{
+		{
+			name: "AllMisses",
+			timeseries: map[[16]byte]labels.Labels{
+				h1: labels.FromStrings("a", "b"),
+				h2: labels.FromStrings("c", "d"),
+			},
+			wantFetchFrom:  start,
+			wantHits:       0,
+			wantMisses:     2,
+			wantWatermarks: map[[16]byte]int64{h1: uncachedWatermark, h2: uncachedWatermark},
+		},
+		{
+			name: "SingleHit",
+			timeseries: map[[16]byte]labels.Labels{
+				h1: labels.FromStrings("a", "b"),
+				h2: labels.FromStrings("c", "d"),
+			},
+			setup: func(mc *MetricsCache) {
+				// h1 is a hit at 2000 covering start (1000); h2 has no entry.
+				e := newMetricsCacheEntry()
+				e.Append([]int64{1000, 2000}, []float64{1, 1}, 3000)
+				mc.cache.Set(MetricsCacheKey{Hash: h1, Step: 0}, e)
+			},
+			wantFetchFrom:  start, // h2 is a miss — must fetch from start
+			wantHits:       1,
+			wantMisses:     1,
+			wantWatermarks: map[[16]byte]int64{h1: 2000, h2: uncachedWatermark},
+		},
+		{
+			name: "AllHits",
+			timeseries: map[[16]byte]labels.Labels{
+				h1: labels.FromStrings("a", "b"),
+				h2: labels.FromStrings("c", "d"),
+			},
+			setup: func(mc *MetricsCache) {
+				e1 := newMetricsCacheEntry()
+				e1.Append([]int64{1000, 2000}, []float64{1, 1}, 3000)
+				mc.cache.Set(MetricsCacheKey{Hash: h1, Step: 0}, e1)
 
-	t.Run("MixedHitAndMiss", func(t *testing.T) {
-		// h1 is a hit at 2000, covering start (1000)
-		entry1 := newMetricsCacheEntry()
-		entry1.Append([]int64{1000, 2000}, []float64{1, 1}, 3000)
-		cache.cache.Set(h1, entry1)
-
-		wms, fetchStart, stats := computeFetchRange(context.Background(), cache, start, timeseries)
-		// Even though h1 is a hit, h2 is a miss, so we must fetch from start.
-		require.Equal(t, start, fetchStart)
-		require.Equal(t, 1, stats.misses)
-		require.Equal(t, 1, stats.hits)
-		require.Equal(t, int64(2000), wms[h1])
-		require.Equal(t, int64(uncachedWatermark), wms[h2])
-	})
-
-	t.Run("AllHits", func(t *testing.T) {
-		// h2 is a hit at 1500, covering start (1000)
-		entry2 := newMetricsCacheEntry()
-		entry2.Append([]int64{1000, 1500}, []float64{2, 2}, 3000)
-		cache.cache.Set(h2, entry2)
-
-		wms, fetchStart, stats := computeFetchRange(context.Background(), cache, start, timeseries)
-		// Both are hits. min(2000, 1500) = 1500. Fetch from 1500 + 1.
-		require.Equal(t, int64(1501), fetchStart)
-		require.Equal(t, 0, stats.misses)
-		require.Equal(t, 2, stats.hits)
-		require.Equal(t, int64(2000), wms[h1])
-		require.Equal(t, int64(1500), wms[h2])
-	})
-
-	t.Run("HitBelowStart", func(t *testing.T) {
-		// h3 is a hit but below the requested start
-		h3 := [16]byte{3}
-		ts3 := map[[16]byte]labels.Labels{h3: labels.FromStrings("e", "f")}
-		entry3 := newMetricsCacheEntry()
-		entry3.Append([]int64{500}, []float64{3}, 1000)
-		cache.cache.Set(h3, entry3)
-
-		wms, fetchStart, stats := computeFetchRange(context.Background(), cache, start, ts3)
-		// maxTS (500) < start (1000), so it's a miss for the requested range.
-		require.Equal(t, start, fetchStart)
-		require.Equal(t, 1, stats.misses)
-		require.Equal(t, 0, stats.hits)
-		require.Equal(t, int64(uncachedWatermark), wms[h3])
-	})
+				e2 := newMetricsCacheEntry()
+				e2.Append([]int64{1000, 1500}, []float64{2, 2}, 3000)
+				mc.cache.Set(MetricsCacheKey{Hash: h2, Step: 0}, e2)
+			},
+			wantFetchFrom:  1501, // min(2000, 1500) + 1
+			wantHits:       2,
+			wantMisses:     0,
+			wantWatermarks: map[[16]byte]int64{h1: 2000, h2: 1500},
+		},
+		{
+			name: "HitBelowStart",
+			timeseries: map[[16]byte]labels.Labels{
+				h1: labels.FromStrings("a", "b"),
+			},
+			setup: func(mc *MetricsCache) {
+				// maxTS (500) < start (1000): entry exists but doesn't cover start.
+				e := newMetricsCacheEntry()
+				e.Append([]int64{500}, []float64{3}, 1000)
+				mc.cache.Set(MetricsCacheKey{Hash: h1, Step: 0}, e)
+			},
+			wantFetchFrom:  start,
+			wantHits:       0,
+			wantMisses:     1,
+			wantWatermarks: map[[16]byte]int64{h1: uncachedWatermark},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mc, err := newMetricsCache(MetricsCacheOptions{MaxBytes: 1024 * 1024})
+			require.NoError(t, err)
+			if tc.setup != nil {
+				tc.setup(mc)
+			}
+			wms, fetchFrom, stats := computeFetchRange(context.Background(), mc, 0, "", start, tc.timeseries)
+			require.Equal(t, tc.wantFetchFrom, fetchFrom)
+			require.Equal(t, tc.wantHits, stats.hits)
+			require.Equal(t, tc.wantMisses, stats.misses)
+			for h, want := range tc.wantWatermarks {
+				require.Equal(t, want, wms[h], "watermark for hash %v", h)
+			}
+		})
+	}
 }
 
-func TestQueryPointsCached_GapAtStart(t *testing.T) {
-	opts := MetricsCacheOptions{
-		MaxBytes:  1024 * 1024,
-		SafetyLag: time.Minute,
+// TestQueryPointsCached covers the four cache-state scenarios for queryPointsCached.
+// Each case is independent (own cache instance).
+func TestQueryPointsCached(t *testing.T) {
+	lb := labels.FromStrings("__name__", "m")
+	hash := labelHash(lb.Hash())
+	timeseries := map[[16]byte]labels.Labels{hash: lb}
+	stepMs := int64(60_000)
+
+	// linearMock returns one data point per minute starting exactly at s.
+	// This keeps the arithmetic simple: the first returned timestamp equals s.
+	linearMock := func(_ context.Context, _ string, s, e time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+		ser := &series[pointData]{labels: lb}
+		for t := s.UnixMilli(); t <= e.UnixMilli(); t += stepMs {
+			ser.ts = append(ser.ts, t)
+			ser.data.values = append(ser.data.values, 1.0)
+		}
+		return map[[16]byte]*series[pointData]{hash: ser}, nil
 	}
-	cache, err := newMetricsCache(opts)
+	mustNotCall := func(_ context.Context, _ string, _, _ time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+		return nil, errors.New("unexpected ClickHouse query")
+	}
+
+	// populateRaw fills the cache with 1 point per minute for [start, end].
+	populateRaw := func(mc *MetricsCache, start, end time.Time) {
+		e := newMetricsCacheEntry()
+		for t := start.UnixMilli(); t <= end.UnixMilli(); t += stepMs {
+			e.Append([]int64{t}, []float64{1.0}, end.UnixMilli())
+		}
+		mc.cache.Set(MetricsCacheKey{Hash: hash, Step: 0}, e)
+	}
+
+	epoch := testEpoch
+	for _, tc := range []struct {
+		name           string
+		setup          func(*MetricsCache)
+		mockFn         queryPointsFunc
+		queryStart     time.Time
+		queryEnd       time.Time
+		wantCallCount  int
+		wantPointCount int // expected number of points in the single result series
+	}{
+		{
+			name:           "NoHit",
+			mockFn:         linearMock,
+			queryStart:     epoch,
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  1,
+			wantPointCount: 11, // epoch+0..+10min inclusive
+		},
+		{
+			// Cache covers [epoch, epoch+5min]; query end extends beyond — only the gap
+			// [epoch+5min+1ms, epoch+10min] is fetched.  Merged result: 11 points.
+			name: "PartialHit_NewerGap",
+			setup: func(mc *MetricsCache) {
+				populateRaw(mc, epoch, epoch.Add(5*time.Minute))
+			},
+			mockFn:         linearMock,
+			queryStart:     epoch,
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  1,
+			wantPointCount: 11, // 6 from cache + 5 from fetch
+		},
+		{
+			// Cache covers [epoch, epoch+5min]; query starts before that range.
+			// entryMinTS (epoch) > queryStart (epoch-5min) → full miss → full fetch.
+			name: "PartialHit_OlderGap",
+			setup: func(mc *MetricsCache) {
+				populateRaw(mc, epoch, epoch.Add(5*time.Minute))
+			},
+			mockFn:         linearMock,
+			queryStart:     epoch.Add(-5 * time.Minute),
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  1,
+			wantPointCount: 16, // epoch-5min..+10min inclusive
+		},
+		{
+			// Cache covers the entire query range; ClickHouse must not be called.
+			name: "TotalHit",
+			setup: func(mc *MetricsCache) {
+				populateRaw(mc, epoch, epoch.Add(10*time.Minute))
+			},
+			mockFn:         mustNotCall,
+			queryStart:     epoch,
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  0,
+			wantPointCount: 11,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mc, err := newMetricsCache(MetricsCacheOptions{
+				MaxBytes:  1024 * 1024,
+				SafetyLag: time.Minute,
+			})
+			require.NoError(t, err)
+			if tc.setup != nil {
+				tc.setup(mc)
+			}
+
+			callCount := 0
+			p := &promQuerier{
+				metricsCache: mc,
+				tracer:       nooptrace.NewTracerProvider().Tracer("test"),
+				queryPointsFunc: func(ctx context.Context, table string, s, e time.Time, ts map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+					callCount++
+					return tc.mockFn(ctx, table, s, e, ts)
+				},
+			}
+
+			pts, err := p.queryPointsCached(context.Background(), "points", tc.queryStart, tc.queryEnd, timeseries)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantCallCount, callCount, "ClickHouse call count")
+			if tc.wantPointCount == 0 {
+				require.Empty(t, pts)
+			} else {
+				require.Len(t, pts, 1)
+				require.Len(t, pts[0].ts, tc.wantPointCount, "point count")
+			}
+		})
+	}
+}
+
+// TestQueryPointsCached_AbsentSeries verifies that a series with no data from
+// ClickHouse is cached as empty so subsequent queries skip the round-trip.
+func TestQueryPointsCached_AbsentSeries(t *testing.T) {
+	mc, err := newMetricsCache(MetricsCacheOptions{MaxBytes: 1024 * 1024, SafetyLag: time.Second})
 	require.NoError(t, err)
 
-	lb := labels.FromStrings("__name__", "m")
-	var hash [16]byte
-	h := lb.Hash()
-	for i := range 8 {
-		hash[i] = byte(h >> (i * 8))
-	}
+	lb := labels.FromStrings("__name__", "absent")
+	hash := labelHash(lb.Hash())
 	timeseries := map[[16]byte]labels.Labels{hash: lb}
+	epoch := testEpoch
 
-	// Use a fixed epoch far enough in the past so safety lag never interferes.
-	epoch := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	// Pre-populate cache with data from epoch to epoch+5min (watermark = epoch+5min).
-	// This represents a previous query for [epoch, epoch+5min].
-	entry := newMetricsCacheEntry()
-	for i := range 6 {
-		t := epoch.Add(time.Duration(i) * time.Minute).UnixMilli()
-		entry.Append([]int64{t}, []float64{float64(i)}, epoch.Add(10*time.Minute).UnixMilli())
-	}
-	cache.cache.Set(hash, entry)
-	require.Equal(t, epoch.Add(5*time.Minute).UnixMilli(), entry.maxTS)
-	require.Equal(t, epoch.UnixMilli(), entry.minTS)
-
+	callCount := 0
 	p := &promQuerier{
-		metricsCache: cache,
-		queryPointsFunc: func(_ context.Context, _ string, s, e time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
-			// Return data from s to e with 1-minute step
-			res := &series[pointData]{labels: lb}
-			for t := s.UnixMilli(); t <= e.UnixMilli(); t += 60000 {
-				res.ts = append(res.ts, t)
-				res.data.values = append(res.data.values, float64(t))
-			}
-			return map[[16]byte]*series[pointData]{hash: res}, nil
+		metricsCache: mc,
+		tracer:       nooptrace.NewTracerProvider().Tracer("test"),
+		queryPointsFunc: func(_ context.Context, _ string, _, _ time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+			callCount++
+			return map[[16]byte]*series[pointData]{}, nil
 		},
-		tracer: nooptrace.NewTracerProvider().Tracer("test"),
 	}
 
 	ctx := context.Background()
-	// Query starting BEFORE the cached range.
-	start := epoch.Add(-10 * time.Minute)
-	end := epoch.Add(10 * time.Minute)
-
-	points, err := p.queryPointsCached(ctx, "points", start, end, timeseries)
+	pts, err := p.queryPointsCached(ctx, "points", epoch, epoch.Add(5*time.Minute), timeseries)
 	require.NoError(t, err)
-	require.Len(t, points, 1)
+	require.Equal(t, 1, callCount)
+	require.Empty(t, pts)
 
-	// Check for gaps. We expect points from start (epoch-10min) to end (epoch+10min).
-	expectedCount := int(end.Sub(start).Minutes()) + 1
-	require.Equal(t, expectedCount, len(points[0].ts), "should have %d points, but got %d. Range: [%s, %s]", expectedCount, len(points[0].ts), start, end)
+	callCount = 0
+	pts, err = p.queryPointsCached(ctx, "points", epoch, epoch.Add(5*time.Minute), timeseries)
+	require.NoError(t, err)
+	require.Equal(t, 0, callCount, "second query must hit the empty-series cache")
+	require.Empty(t, pts)
+}
 
-	for i, ts := range points[0].ts {
-		expectedTS := start.Add(time.Duration(i) * time.Minute).UnixMilli()
-		require.Equal(t, expectedTS, ts, "point %d timestamp mismatch", i)
+// TestQueryPointsCached_BigQuery verifies the big-query guard: when the number of
+// fetched points would exceed MaxBytes, upsertCache must not create new entries but
+// must still refresh entries that are already in the cache.
+func TestQueryPointsCached_BigQuery(t *testing.T) {
+	epoch := testEpoch
+
+	lb1 := labels.FromStrings("__name__", "m", "instance", "1")
+	lb2 := labels.FromStrings("__name__", "m", "instance", "2")
+	hash1 := labelHash(lb1.Hash())
+	hash2 := labelHash(lb2.Hash())
+	timeseries := map[[16]byte]labels.Labels{hash1: lb1, hash2: lb2}
+
+	stepMs := int64(60_000)
+	// mock returns 100 points per series → totalPoints=200, totalBytes=3200.
+	mockFn := func(_ context.Context, _ string, s, e time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+		build := func(lb labels.Labels) *series[pointData] {
+			ser := &series[pointData]{labels: lb}
+			for t := s.UnixMilli(); t <= e.UnixMilli(); t += stepMs {
+				ser.ts = append(ser.ts, t)
+				ser.data.values = append(ser.data.values, 1.0)
+			}
+			return ser
+		}
+		return map[[16]byte]*series[pointData]{
+			hash1: build(lb1),
+			hash2: build(lb2),
+		}, nil
 	}
+
+	// MaxBytes is between one-series cost (100*16+128=1728) and two-series cost (3200)
+	// so that the guard fires (3200 > 2048) but a single updated entry still fits.
+	mc, err := newMetricsCache(MetricsCacheOptions{MaxBytes: 2048, SafetyLag: time.Second})
+	require.NoError(t, err)
+
+	// Pre-warm only hash1 in the cache.
+	warm := newMetricsCacheEntry()
+	warm.Append([]int64{epoch.UnixMilli()}, []float64{0.0}, epoch.UnixMilli())
+	warm.MarkFetched(epoch.UnixMilli(), epoch.UnixMilli())
+	mc.cache.Set(MetricsCacheKey{Hash: hash1}, warm)
+
+	p := &promQuerier{
+		metricsCache:    mc,
+		tracer:          nooptrace.NewTracerProvider().Tracer("test"),
+		queryPointsFunc: mockFn,
+	}
+
+	// Query triggers the big-query guard (fetched >> MaxBytes=256).
+	pts, err := p.queryPointsCached(context.Background(), "points", epoch, epoch.Add(99*time.Minute), timeseries)
+	require.NoError(t, err)
+	require.NotEmpty(t, pts, "results should still be returned even for a big query")
+
+	// hash1 was already cached: its entry must have been updated.
+	e1, ok := mc.cache.Get(MetricsCacheKey{Hash: hash1})
+	require.True(t, ok, "pre-warmed hash1 must still be in cache after big query")
+	ts1, _ := e1.Slice(epoch.UnixMilli(), epoch.Add(99*time.Minute).UnixMilli())
+	require.NotEmpty(t, ts1, "hash1 cache entry must have been refreshed with new points")
+
+	// hash2 was NOT cached before the query: the guard must have prevented its insertion.
+	_, ok = mc.cache.Get(MetricsCacheKey{Hash: hash2})
+	require.False(t, ok, "uncached hash2 must NOT be inserted during a big query")
+}
+
+// TestQuerySampledPointsCached is a 4×4 combinatorial test: every cache scenario
+// is exercised against every grouping configuration.
+//
+// Three series are used so that all four grouping modes produce distinguishable
+// results:
+//
+//	lb1 {job=a, instance=1, ns=prod}
+//	lb2 {job=a, instance=2, ns=prod}
+//	lb3 {job=b, instance=1, ns=prod}
+//
+// All mock functions return value=1.0 per point, so the total sum across all
+// output series is always 3×pointsPerSeries, regardless of grouping.
+func TestQuerySampledPointsCached(t *testing.T) {
+	lb1 := labels.FromStrings("job", "a", "instance", "1", "ns", "prod")
+	lb2 := labels.FromStrings("job", "a", "instance", "2", "ns", "prod")
+	lb3 := labels.FromStrings("job", "b", "instance", "1", "ns", "prod")
+
+	hash1 := labelHash(lb1.Hash())
+	hash2 := labelHash(lb2.Hash())
+	hash3 := labelHash(lb3.Hash())
+
+	allHashes := [3][16]byte{hash1, hash2, hash3}
+	timeseries := map[[16]byte]labels.Labels{
+		hash1: lb1,
+		hash2: lb2,
+		hash3: lb3,
+	}
+
+	epoch := testEpoch
+	step := time.Minute
+	stepMs := step.Milliseconds()
+
+	// snapToStep rounds ms up to the nearest step boundary relative to epoch,
+	// matching the tumble-window alignment used by querySampledPointsPerSeries.
+	snapToStep := func(ms int64) int64 {
+		epochMs := epoch.UnixMilli()
+		offset := (ms - epochMs) % stepMs
+		if offset < 0 {
+			offset += stepMs
+		}
+		if offset == 0 {
+			return ms
+		}
+		return ms + stepMs - offset
+	}
+
+	// sampledMock returns one step-aligned point (value=1.0) per series per step.
+	sampledMock := func(_ context.Context, _ pointsSampler, s, e time.Time, _ time.Duration, ts map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+		res := make(map[[16]byte]*series[pointData], len(ts))
+		firstMs := snapToStep(s.UnixMilli())
+		for h, lb := range ts {
+			ser := &series[pointData]{labels: lb}
+			for t := firstMs; t <= e.UnixMilli(); t += stepMs {
+				ser.ts = append(ser.ts, t)
+				ser.data.values = append(ser.data.values, 1.0)
+			}
+			res[h] = ser
+		}
+		return res, nil
+	}
+	mustNotCall := func(_ context.Context, _ pointsSampler, _, _ time.Time, _ time.Duration, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+		return nil, errors.New("unexpected ClickHouse query")
+	}
+
+	// populateSampled fills the cache for all three series with step-aligned points.
+	populateSampled := func(mc *MetricsCache, start, end time.Time) {
+		for _, h := range allHashes {
+			e := newMetricsCacheEntry()
+			for t := start.UnixMilli(); t <= end.UnixMilli(); t += stepMs {
+				e.Append([]int64{t}, []float64{1.0}, end.UnixMilli())
+			}
+			mc.cache.Set(MetricsCacheKey{Hash: h, Step: stepMs, Fn: "sum"}, e)
+		}
+	}
+
+	// sumAllValues returns the sum of every data value across all series.
+	// Regardless of grouping, this always equals 3 × pointsPerSeries.
+	sumAllValues := func(pts []*series[pointData]) float64 {
+		var sum float64
+		for _, s := range pts {
+			for _, v := range s.data.values {
+				sum += v
+			}
+		}
+		return sum
+	}
+
+	type cacheScenario struct {
+		name           string
+		setup          func(*MetricsCache)
+		mockFn         querySampledPointsPerSeriesFunc
+		queryStart     time.Time
+		queryEnd       time.Time
+		wantCallCount  int
+		wantPointsEach int // expected points per original series before grouping
+	}
+	cacheScenarios := []cacheScenario{
+		{
+			name:           "NoHit",
+			mockFn:         sampledMock,
+			queryStart:     epoch,
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  1,
+			wantPointsEach: 11, // epoch+0..+10min inclusive
+		},
+		{
+			// Cache covers [epoch, epoch+5min]; query extends to epoch+10min.
+			// Only the newer gap is fetched.
+			name: "PartialHit_NewerGap",
+			setup: func(mc *MetricsCache) {
+				populateSampled(mc, epoch, epoch.Add(5*time.Minute))
+			},
+			mockFn:         sampledMock,
+			queryStart:     epoch,
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  1,
+			wantPointsEach: 11, // 6 from cache (epoch..+5min) + 5 fetched (+6..+10min)
+		},
+		{
+			// Cache covers [epoch, epoch+5min]; query starts before that.
+			// entryMinTS (epoch) > queryStart (epoch-5min) → full miss.
+			name: "PartialHit_OlderGap",
+			setup: func(mc *MetricsCache) {
+				populateSampled(mc, epoch, epoch.Add(5*time.Minute))
+			},
+			mockFn:         sampledMock,
+			queryStart:     epoch.Add(-5 * time.Minute),
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  1,
+			wantPointsEach: 16, // epoch-5min..+10min inclusive
+		},
+		{
+			// Cache covers the full query range; ClickHouse must not be called.
+			name: "TotalHit",
+			setup: func(mc *MetricsCache) {
+				populateSampled(mc, epoch, epoch.Add(10*time.Minute))
+			},
+			mockFn:         mustNotCall,
+			queryStart:     epoch,
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  0,
+			wantPointsEach: 11,
+		},
+	}
+
+	type groupingScenario struct {
+		name        string
+		on          bool
+		groupBy     []string
+		wantGroups  int
+		checkGroups func(t *testing.T, pts []*series[pointData], pointsEach int)
+	}
+	groupingScenarios := []groupingScenario{
+		{
+			// No aggregation: three separate series, each value=1.0/pt.
+			name:       "NoGrouping",
+			wantGroups: 3,
+			checkGroups: func(t *testing.T, pts []*series[pointData], pointsEach int) {
+				require.InDelta(t, float64(3*pointsEach), sumAllValues(pts), 1e-9)
+				for _, s := range pts {
+					require.Len(t, s.ts, pointsEach)
+					for _, v := range s.data.values {
+						require.InDelta(t, 1.0, v, 1e-9)
+					}
+				}
+			},
+		},
+		{
+			// by (job): two groups — job=a (lb1+lb2, value=2.0) and job=b (lb3, value=1.0).
+			name:       "SingleLabel_MultiValue",
+			on:         true,
+			groupBy:    []string{"job"},
+			wantGroups: 2,
+			checkGroups: func(t *testing.T, pts []*series[pointData], pointsEach int) {
+				require.InDelta(t, float64(3*pointsEach), sumAllValues(pts), 1e-9)
+				for _, s := range pts {
+					require.Len(t, s.ts, pointsEach)
+					job := s.labels.Get("job")
+					wantVal := map[string]float64{"a": 2.0, "b": 1.0}[job]
+					for _, v := range s.data.values {
+						require.InDelta(t, wantVal, v, 1e-9, "job=%s", job)
+					}
+				}
+			},
+		},
+		{
+			// by (ns): all three series share ns=prod → collapses to one group, value=3.0/pt.
+			name:       "SingleLabel_AllSameValue",
+			on:         true,
+			groupBy:    []string{"ns"},
+			wantGroups: 1,
+			checkGroups: func(t *testing.T, pts []*series[pointData], pointsEach int) {
+				require.Equal(t, "prod", pts[0].labels.Get("ns"))
+				require.Len(t, pts[0].ts, pointsEach)
+				require.InDelta(t, float64(3*pointsEach), sumAllValues(pts), 1e-9)
+				for _, v := range pts[0].data.values {
+					require.InDelta(t, 3.0, v, 1e-9)
+				}
+			},
+		},
+		{
+			// by (job, instance): each (job,instance) pair is unique → three groups, value=1.0/pt.
+			name:       "MultiLabel",
+			on:         true,
+			groupBy:    []string{"job", "instance"},
+			wantGroups: 3,
+			checkGroups: func(t *testing.T, pts []*series[pointData], pointsEach int) {
+				require.InDelta(t, float64(3*pointsEach), sumAllValues(pts), 1e-9)
+				for _, s := range pts {
+					require.Len(t, s.ts, pointsEach)
+					require.NotEmpty(t, s.labels.Get("job"))
+					require.NotEmpty(t, s.labels.Get("instance"))
+					for _, v := range s.data.values {
+						require.InDelta(t, 1.0, v, 1e-9)
+					}
+				}
+			},
+		},
+	}
+
+	sampler := pointsSampler{needPoints: true, pointExpr: chsql.LastValue, agg: sumAggregator, fn: "sum"}
+	for _, cs := range cacheScenarios {
+		for _, gs := range groupingScenarios {
+			cs, gs := cs, gs
+			t.Run(cs.name+"/"+gs.name, func(t *testing.T) {
+				mc, err := newMetricsCache(MetricsCacheOptions{
+					MaxBytes:  1024 * 1024,
+					SafetyLag: time.Minute,
+				})
+				require.NoError(t, err)
+				if cs.setup != nil {
+					cs.setup(mc)
+				}
+
+				callCount := 0
+				p := &promQuerier{
+					metricsCache: mc,
+					tables:       Tables{Points: "points"},
+					tracer:       nooptrace.NewTracerProvider().Tracer("test"),
+					querySampledPointsPerSeriesFunc: func(ctx context.Context, s pointsSampler, start, end time.Time, step time.Duration, ts map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+						callCount++
+						return cs.mockFn(ctx, s, start, end, step, ts)
+					},
+				}
+
+				pts, err := p.querySampledPointsCached(context.Background(), sampler, gs.on, gs.groupBy, cs.queryStart, cs.queryEnd, step, timeseries)
+				require.NoError(t, err)
+				require.Equal(t, cs.wantCallCount, callCount, "ClickHouse call count")
+				require.Len(t, pts, gs.wantGroups, "group count")
+				gs.checkGroups(t, pts, cs.wantPointsEach)
+
+				// Ensure the labels contain exactly the expected label set for the
+				// grouping (no leakage of ungrouped labels or missing grouped labels).
+				for _, s := range pts {
+					if !gs.on {
+						continue
+					}
+					for _, key := range gs.groupBy {
+						require.NotEmpty(t, s.labels.Get(key), "grouped label %q missing", key)
+					}
+					for _, key := range []string{"job", "instance", "ns"} {
+						if !slices.Contains(gs.groupBy, key) {
+							require.Empty(t, s.labels.Get(key), "ungrouped label %q should be absent", key)
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+// TestCacheKeyStepIsolation verifies that cached data for one step value is never
+// served for a query with a different step value.
+func TestCacheKeyStepIsolation(t *testing.T) {
+	mc, err := newMetricsCache(MetricsCacheOptions{MaxBytes: 1024 * 1024})
+	require.NoError(t, err)
+
+	lb := labels.FromStrings("__name__", "m")
+	hash := labelHash(lb.Hash())
+	timeseries := map[[16]byte]labels.Labels{hash: lb}
+
+	epoch := testEpoch
+	start := epoch
+	end := epoch.Add(10 * time.Minute)
+	stepMin := time.Minute
+	step5Min := 5 * time.Minute
+
+	// Populate cache at step=1min.
+	entry := newMetricsCacheEntry()
+	for i := range 11 {
+		entry.Append([]int64{epoch.Add(time.Duration(i) * time.Minute).UnixMilli()}, []float64{float64(i)}, end.UnixMilli())
+	}
+	mc.cache.Set(MetricsCacheKey{Hash: hash, Step: stepMin.Milliseconds()}, entry)
+
+	callCount := 0
+	p := &promQuerier{
+		metricsCache: mc,
+		tracer:       nooptrace.NewTracerProvider().Tracer("test"),
+		querySampledPointsPerSeriesFunc: func(_ context.Context, _ pointsSampler, _, _ time.Time, _ time.Duration, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+			callCount++
+			return map[[16]byte]*series[pointData]{}, nil
+		},
+	}
+
+	sampler := pointsSampler{needPoints: true, pointExpr: chsql.LastValue}
+	_, err = p.querySampledPointsCached(context.Background(), sampler, false, nil, start, end, step5Min, timeseries)
+	require.NoError(t, err)
+	require.Equal(t, 1, callCount, "step=5min cache is empty: ClickHouse must be called")
+
+	callCount = 0
+	_, err = p.querySampledPointsCached(context.Background(), sampler, false, nil, start, end, stepMin, timeseries)
+	require.NoError(t, err)
+	require.Equal(t, 0, callCount, "step=1min is fully cached: ClickHouse must not be called")
+}
+
+func labelHash(v uint64) (r [16]byte) {
+	binary.LittleEndian.PutUint64(r[:], v)
+	return r
+}
+
+func makeTestQuerier() *promQuerier {
+	return &promQuerier{tracer: nooptrace.NewTracerProvider().Tracer("test")}
+}
+
+// makeSeries builds a series with the given label pairs and (ts, val) pairs.
+func makeSeries(lbs labels.Labels, points [][2]float64) *series[pointData] {
+	s := &series[pointData]{labels: lbs}
+	for _, p := range points {
+		s.ts = append(s.ts, int64(p[0]))
+		s.data.values = append(s.data.values, p[1])
+	}
+	return s
+}
+
+// pointsAt returns the value at timestamp ts from a series, or NaN if absent.
+func pointAt(s *series[pointData], ts int64) (float64, bool) {
+	for i, t := range s.ts {
+		if t == ts {
+			return s.data.values[i], true
+		}
+	}
+	return 0, false
+}
+
+func TestAggregateSampledPoints(t *testing.T) {
+	ctx := context.Background()
+	p := makeTestQuerier()
+
+	// Label sets used across sub-tests.
+	lbJob1 := labels.FromStrings("__name__", "m", "job", "a", "instance", "1")
+	lbJob1b := labels.FromStrings("__name__", "m", "job", "a", "instance", "2") // same job, different instance
+	lbJob2 := labels.FromStrings("__name__", "m", "job", "b", "instance", "1")
+
+	h1 := labelHash(lbJob1.Hash())
+	h2 := labelHash(lbJob1b.Hash())
+	h3 := labelHash(lbJob2.Hash())
+
+	// Three series, two timestamps each.
+	//
+	//          t=1000  t=2000
+	// job=a/1:   2    8
+	// job=a/2:   4    6
+	// job=b/1:   3    9
+	input := map[[16]byte]*series[pointData]{
+		h1: makeSeries(lbJob1, [][2]float64{{1000, 2}, {2000, 8}}),
+		h2: makeSeries(lbJob1b, [][2]float64{{1000, 4}, {2000, 6}}),
+		h3: makeSeries(lbJob2, [][2]float64{{1000, 3}, {2000, 9}}),
+	}
+
+	findGroup := func(t *testing.T, result []*series[pointData], match labels.Labels) *series[pointData] {
+		t.Helper()
+		for _, s := range result {
+			if labels.Equal(s.labels, match) {
+				return s
+			}
+		}
+		t.Fatalf("group %v not found in result", match)
+		return nil
+	}
+
+	t.Run("Sum_ByJob", func(t *testing.T) {
+		// sum by (job): on=true, groupBy=["job"] — keep only the "job" label.
+		sampler, _ := canUseSampledPoints(time.Second, "sum")
+		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler, time.Second)
+
+		require.Len(t, result, 2)
+
+		gA := findGroup(t, result, labels.FromStrings("job", "a"))
+		v, ok := pointAt(gA, 1000)
+		require.True(t, ok)
+		require.Equal(t, 6.0, v, "sum job=a t=1000: 2+4")
+
+		v, ok = pointAt(gA, 2000)
+		require.True(t, ok)
+		require.Equal(t, 14.0, v, "sum job=a t=2000: 8+6")
+
+		gB := findGroup(t, result, labels.FromStrings("job", "b"))
+		v, ok = pointAt(gB, 1000)
+		require.True(t, ok)
+		require.Equal(t, 3.0, v)
+	})
+
+	t.Run("Min_ByJob", func(t *testing.T) {
+		sampler, _ := canUseSampledPoints(time.Second, "min")
+		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler, time.Second)
+
+		require.Len(t, result, 2)
+		gA := findGroup(t, result, labels.FromStrings("job", "a"))
+
+		v, _ := pointAt(gA, 1000)
+		require.Equal(t, 2.0, v, "min job=a t=1000: min(2,4)=2")
+		v, _ = pointAt(gA, 2000)
+		require.Equal(t, 6.0, v, "min job=a t=2000: min(8,6)=6")
+	})
+
+	t.Run("Max_ByJob", func(t *testing.T) {
+		sampler, _ := canUseSampledPoints(time.Second, "max")
+		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler, time.Second)
+
+		require.Len(t, result, 2)
+		gA := findGroup(t, result, labels.FromStrings("job", "a"))
+
+		v, _ := pointAt(gA, 1000)
+		require.Equal(t, 4.0, v, "max job=a t=1000: max(2,4)=4")
+		v, _ = pointAt(gA, 2000)
+		require.Equal(t, 8.0, v, "max job=a t=2000: max(8,6)=8")
+	})
+
+	t.Run("Avg_ByJob", func(t *testing.T) {
+		sampler, _ := canUseSampledPoints(time.Second, "avg")
+		result := p.aggregateSampledPoints(ctx, input, true, []string{"job"}, sampler, time.Second)
+
+		require.Len(t, result, 2)
+		gA := findGroup(t, result, labels.FromStrings("job", "a"))
+
+		v, _ := pointAt(gA, 1000)
+		require.Equal(t, 3.0, v, "avg job=a t=1000: (2+4)/2=3")
+		v, _ = pointAt(gA, 2000)
+		require.Equal(t, 7.0, v, "avg job=a t=2000: (8+6)/2=7")
+	})
+
+	t.Run("Sum_Without_Instance", func(t *testing.T) {
+		// sum without (instance): on=false, groupBy=["instance"] — drop instance, keep rest.
+		// job=a/1 and job=a/2 share {__name__,job} after dropping instance → collapse.
+		// job=b/1 is alone in its group.
+		sampler, _ := canUseSampledPoints(time.Second, "sum")
+		result := p.aggregateSampledPoints(ctx, input, false, []string{"instance"}, sampler, time.Second)
+
+		require.Len(t, result, 2)
+	})
+
+	t.Run("OutputSortedByTimestamp", func(t *testing.T) {
+		// Feed unsorted timestamps; result must be sorted.
+		unordered := map[[16]byte]*series[pointData]{
+			h1: makeSeries(lbJob1, [][2]float64{{3000, 1}, {1000, 2}, {2000, 3}}),
+		}
+		sampler, _ := canUseSampledPoints(time.Second, "sum")
+		result := p.aggregateSampledPoints(ctx, unordered, false, []string{"job"}, sampler, time.Second)
+		require.Len(t, result, 1)
+		require.Equal(t, []int64{1000, 2000, 3000}, result[0].ts)
+	})
+
+	t.Run("SingleSeries_SumEqualsValue", func(t *testing.T) {
+		// With only one series in the group, all aggregators return the original value.
+		single := map[[16]byte]*series[pointData]{
+			h3: makeSeries(lbJob2, [][2]float64{{1000, 7}, {2000, 3}}),
+		}
+		for _, fn := range []string{"sum", "avg", "min", "max"} {
+			sampler, _ := canUseSampledPoints(time.Second, fn)
+			result := p.aggregateSampledPoints(ctx, single, false, []string{"job"}, sampler, time.Second)
+			require.Len(t, result, 1)
+			v, _ := pointAt(result[0], 1000)
+			require.Equalf(t, 7.0, v, "fn=%s: single-series result must equal original value", fn)
+		}
+	})
+}
+
+// TestCanUseSampledPoints verifies which PromQL function names are accepted by
+// canUseSampledPoints and which correctly fall back to the raw-points path.
+func TestCanUseSampledPoints(t *testing.T) {
+	step := 30 * time.Second
+
+	supported := []string{"", "sum", "sum_over_time", "avg", "avg_over_time", "min", "min_over_time", "max", "max_over_time", "count", "count_over_time"}
+	for _, fn := range supported {
+		s, ok := canUseSampledPoints(step, fn)
+		require.Truef(t, ok, "canUseSampledPoints should accept function %q", fn)
+		if fn == "count" {
+			// count must set noClientGrouping so PromQL sees all series and counts
+			// them itself rather than counting the pre-collapsed single group.
+			require.Truef(t, s.noClientGrouping, "count sampler must set noClientGrouping")
+		}
+	}
+
+	unsupported := []string{"rate", "irate", "delta", "increase", "unknown"}
+	for _, fn := range unsupported {
+		_, ok := canUseSampledPoints(step, fn)
+		require.Falsef(t, ok, "canUseSampledPoints should reject function %q (must fall back to raw points)", fn)
+	}
+
+	// Step below 1s must always fall back regardless of function.
+	_, ok := canUseSampledPoints(500*time.Millisecond, "sum")
+	require.False(t, ok, "step < 1s must always fall back")
+}
+
+func TestMetricsCache_Metrics(t *testing.T) {
+	reader := metric.NewManualReader()
+	meterProvider := metric.NewMeterProvider(metric.WithReader(reader))
+
+	opts := MetricsCacheOptions{
+		MaxBytes:      100 * 1024,
+		MeterProvider: meterProvider,
+	}
+	mc, err := newMetricsCache(opts)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Perform some operations to generate stats.
+	key := MetricsCacheKey{Hash: [16]byte{1}}
+	entry := newMetricsCacheEntry()
+	// Cost will be metricsCacheCost(1).
+	entry.Append([]int64{1000}, []float64{1.0}, 2000)
+	mc.cache.Set(key, entry)
+
+	// Hit.
+	_, ok := mc.cache.Get(key)
+	require.True(t, ok)
+
+	// Miss.
+	_, ok = mc.cache.Get(MetricsCacheKey{Hash: [16]byte{2}})
+	require.False(t, ok)
+
+	// Collect metrics.
+	var rm metricdata.ResourceMetrics
+	err = reader.Collect(ctx, &rm)
+	require.NoError(t, err)
+
+	found := make(map[string]bool)
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			found[m.Name] = true
+			switch m.Name {
+			case "chstorage.metrics_cache.hits":
+				data := m.Data.(metricdata.Sum[int64])
+				require.Equal(t, int64(1), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.misses":
+				data := m.Data.(metricdata.Sum[int64])
+				require.Equal(t, int64(1), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.size":
+				data := m.Data.(metricdata.Gauge[int64])
+				require.Equal(t, int64(1), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.capacity_bytes":
+				data := m.Data.(metricdata.Gauge[int64])
+				require.Equal(t, int64(100*1024), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.evicted_count":
+				// Should be 0 initially.
+				data := m.Data.(metricdata.Sum[int64])
+				require.Equal(t, int64(0), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.evicted_cost":
+				// Should be 0 initially.
+				data := m.Data.(metricdata.Sum[int64])
+				require.Equal(t, int64(0), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.rejected_sets":
+				// Should be 0 initially.
+				data := m.Data.(metricdata.Sum[int64])
+				require.Equal(t, int64(0), data.DataPoints[0].Value)
+			}
+		}
+	}
+
+	require.True(t, found["chstorage.metrics_cache.hits"])
+	require.True(t, found["chstorage.metrics_cache.misses"])
+	require.True(t, found["chstorage.metrics_cache.size"])
+	require.True(t, found["chstorage.metrics_cache.capacity_bytes"])
+	require.True(t, found["chstorage.metrics_cache.ratio"])
+	require.True(t, found["chstorage.metrics_cache.evicted_count"])
+	require.True(t, found["chstorage.metrics_cache.evicted_cost"])
+	require.True(t, found["chstorage.metrics_cache.rejected_sets"])
 }

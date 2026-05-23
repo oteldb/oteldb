@@ -2,6 +2,7 @@ package chstorage
 
 import (
 	"context"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/zeebo/xxh3"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
@@ -32,6 +34,17 @@ func (q *Querier) Querier(mint, maxt int64) (storage.Querier, error) {
 	return q.metricsQuerier(mint, maxt), nil
 }
 
+type (
+	queryPointsFunc                 = func(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error)
+	querySampledPointsPerSeriesFunc = func(
+		ctx context.Context,
+		sampler pointsSampler,
+		start, end time.Time,
+		step time.Duration,
+		timeseries map[[16]byte]labels.Labels,
+	) (map[[16]byte]*series[pointData], error)
+)
+
 type promQuerier struct {
 	mint time.Time
 	maxt time.Time
@@ -40,11 +53,12 @@ type promQuerier struct {
 	labelLimit      int
 	timeseriesLimit int
 
-	metricsCache    *MetricsCache
-	queryTimeseries queryMetricsTimeseriesFunc
-	queryPointsFunc func(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error)
-	metricsSg       *singleflight.Group[xxh3.Uint128, metricSelectResult]
-	do              func(ctx context.Context, s selectQuery) error
+	metricsCache                    *MetricsCache
+	queryTimeseries                 queryMetricsTimeseriesFunc
+	queryPointsFunc                 queryPointsFunc
+	querySampledPointsPerSeriesFunc querySampledPointsPerSeriesFunc
+	metricsSg                       *singleflight.Group[xxh3.Uint128, metricSelectResult]
+	do                              func(ctx context.Context, s selectQuery) error
 
 	tracer trace.Tracer
 }
@@ -77,6 +91,7 @@ func (q *Querier) metricsQuerier(mint, maxt int64) *promQuerier {
 		tracer: q.tracer,
 	}
 	p.queryPointsFunc = p.queryPoints
+	p.querySampledPointsPerSeriesFunc = p.querySampledPointsPerSeries
 	return p
 }
 
@@ -174,12 +189,16 @@ func promQLLabelMatcher(valueSel []chsql.Expr, typ labels.MatchType, value strin
 
 func timeseriesInRange(query *chsql.SelectQuery, start, end time.Time, prec proto.Precision) {
 	if !start.IsZero() {
+		// Add some lag to start time to handle inconsistency in case of imprecise timestamps.
+		start = start.Add(-time.Minute)
 		query.Having(chsql.Gte(
 			chsql.Function("max", chsql.Ident("last_seen")),
 			chsql.DateTime64(start, prec),
 		))
 	}
 	if !end.IsZero() {
+		// Also add some lag to end time.
+		end = end.Add(time.Minute)
 		query.Having(chsql.Lte(
 			chsql.Function("min", chsql.Ident("first_seen")),
 			chsql.DateTime64(end, prec),
@@ -225,7 +244,7 @@ func (p *promQuerier) Select(ctx context.Context, sortSeries bool, hints *storag
 		return ss
 	}
 
-	r, err := p.querySeriesSingleflight(ctx, false, metricSelectParams{
+	r, err := p.querySeriesSingleflight(ctx, true, metricSelectParams{
 		Matchers:        matchers,
 		Step:            time.Duration(hints.Step) * time.Millisecond,
 		Start:           start,
@@ -409,7 +428,7 @@ var ErrMetricsTooManySeries = errors.New("too many timeseries requested")
 func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params metricSelectParams) (result metricSelectResult, _ error) {
 	span := trace.SpanFromContext(ctx)
 
-	timeseries, err := p.queryTimeseries(ctx, [][]*labels.Matcher{params.Matchers})
+	timeseries, err := p.queryTimeseries(ctx, params.Start, params.End, [][]*labels.Matcher{params.Matchers})
 	if err != nil {
 		return result, errors.Wrap(err, "query timeseries hashes")
 	}
@@ -441,7 +460,15 @@ func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params
 				attribute.Int64("chstorage.window_step", step.Milliseconds()),
 			))
 
-			points, err := p.querySampledPoints(ctx, s, params.GroupBy, params.Grouping, params.Start, params.End, step, timeseries)
+			var (
+				points []*series[pointData]
+				err    error
+			)
+			if p.metricsCache != nil {
+				points, err = p.querySampledPointsCached(ctx, s, params.GroupBy, params.Grouping, params.Start, params.End, step, timeseries)
+			} else {
+				points, err = p.querySampledPoints(ctx, s, params.GroupBy, params.Grouping, params.Start, params.End, step, timeseries)
+			}
 			if err != nil {
 				return errors.Wrap(err, "query sampled points")
 			}
@@ -515,6 +542,8 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 	seriesWatermark, globalFetchFrom, stats := computeFetchRange(
 		ctx,
 		p.metricsCache,
+		0, // raw points
+		"",
 		start.UnixMilli(),
 		timeseries,
 	)
@@ -523,6 +552,7 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 		attribute.Int64("chstorage.metrics_cache.cache_end", cacheEnd.UnixMilli()),
 		attribute.Int64("chstorage.metrics_cache.global_fetch_from", globalFetchFrom),
 		attribute.Int("chstorage.metrics_cache.hits", stats.hits),
+		attribute.Int("chstorage.metrics_cache.partial_hits", stats.partialHits),
 		attribute.Int("chstorage.metrics_cache.misses", stats.misses),
 	)
 
@@ -538,16 +568,38 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 		if err != nil {
 			return nil, err
 		}
+		totalPoints := 0
+		for _, s := range fetchedByHash {
+			totalPoints += len(s.ts)
+		}
 		span.AddEvent("chstorage.fetched_more_series", trace.WithAttributes(
 			attribute.Int("chstorage.fetched_series", len(fetchedByHash)),
+			attribute.Int("chstorage.fetched_points", totalPoints),
 		))
 
-		// 3. Update cache: store fetched points where ts <= cacheEnd
-		for hash, s := range fetchedByHash {
-			p.upsertCache(hash, s.ts, s.data.values, cacheEnd.UnixMilli())
+		// 3. Update cache for all timeseries, including those with no data in the
+		// fetched range, so that subsequent queries skip the ClickHouse round-trip.
+		//
+		// bigQuery is true when the fetched data exceeds the cache budget: in that case
+		// we only refresh already-cached entries to avoid evicting warm data for other
+		// series/queries.
+		bigQuery := p.metricsCache.IsBigQuery(totalPoints)
+		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
+		if bigQuery {
+			p.metricsCache.stats.BigQueries.Add(ctx, 1, cacheTypeRaw)
+		}
+		for hash := range timeseries {
+			var ts []int64
+			var vals []float64
+			if s, ok := fetchedByHash[hash]; ok {
+				ts = s.ts
+				vals = s.data.values
+			}
+			p.upsertCache(ctx, hash, 0, "", globalFetchFrom, ts, vals, cacheEnd.UnixMilli(), bigQuery)
 		}
 	} else {
 		span.AddEvent("chstorage.fully_covered_by_cache")
+		p.metricsCache.stats.FullyCovered.Add(ctx, 1, cacheTypeRaw)
 	}
 
 	// 4. Merge per series: cached[start..watermark] ++ fetched(watermark, end]
@@ -557,7 +609,8 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 		watermark := seriesWatermark[hash]
 
 		if watermark >= start.UnixMilli() {
-			if entry, ok := p.metricsCache.cache.Get(hash); ok {
+			key := MetricsCacheKey{Hash: hash, Step: 0, Fn: ""}
+			if entry, ok := p.metricsCache.cache.Get(key); ok {
 				cachedTS, cachedVals := entry.Slice(start.UnixMilli(), min(watermark, end.UnixMilli()))
 				s.ts = append(s.ts, cachedTS...)
 				s.data.values = append(s.data.values, cachedVals...)
@@ -578,24 +631,207 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 		}
 	}
 
+	totalPoints := 0
+	for _, s := range result {
+		totalPoints += len(s.ts)
+	}
+	span.AddEvent("chstorage.merged_result", trace.WithAttributes(
+		attribute.Int("chstorage.merged_series", len(result)),
+		attribute.Int("chstorage.merged_points", totalPoints),
+	))
+
 	return result, nil
 }
 
-func (p *promQuerier) upsertCache(hash [16]byte, ts []int64, vals []float64, untilMs int64) {
-	entry, ok := p.metricsCache.cache.Get(hash)
+func (p *promQuerier) querySampledPointsCached(
+	ctx context.Context,
+	sampler pointsSampler,
+	on bool, groupBy []string,
+	start, end time.Time,
+	step time.Duration,
+	timeseries map[[16]byte]labels.Labels,
+) (_ []*series[pointData], rerr error) {
+	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.querySampledPointsCached",
+		trace.WithAttributes(
+			xattribute.UnixNano("chstorage.range.start", start),
+			xattribute.UnixNano("chstorage.range.end", end),
+			attribute.Stringer("chstorage.step", step),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+		}
+		span.End()
+	}()
+
+	cacheEnd := time.Now().Add(-p.metricsCache.safetyLag)
+	if end.Before(cacheEnd) {
+		cacheEnd = end
+	}
+
+	// 1. Determine per-series watermarks and global fetch lower bound.
+	seriesWatermark, globalFetchFrom, stats := computeFetchRange(
+		ctx,
+		p.metricsCache,
+		step,
+		sampler.fn,
+		start.UnixMilli(),
+		timeseries,
+	)
+
+	span.SetAttributes(
+		attribute.Int64("chstorage.metrics_cache.cache_end", cacheEnd.UnixMilli()),
+		attribute.Int64("chstorage.metrics_cache.global_fetch_from", globalFetchFrom),
+		attribute.Int("chstorage.metrics_cache.hits", stats.hits),
+		attribute.Int("chstorage.metrics_cache.partial_hits", stats.partialHits),
+		attribute.Int("chstorage.metrics_cache.misses", stats.misses),
+	)
+
+	// 2. Fetch the "Gap" from ClickHouse.
+	// We fetch per-series (no grouping) to populate a reusable cache.
+	fetchStart := time.UnixMilli(globalFetchFrom)
+	var fetchedByHash map[[16]byte]*series[pointData]
+	if !fetchStart.After(end) {
+		var err error
+		span.AddEvent("chstorage.fetch_more_sampled_series")
+		fetchedByHash, err = p.querySampledPointsPerSeriesFunc(ctx, sampler, fetchStart, end, step, timeseries)
+		if err != nil {
+			return nil, err
+		}
+
+		totalPoints := 0
+		for _, s := range fetchedByHash {
+			totalPoints += len(s.ts)
+		}
+		span.AddEvent("chstorage.fetched_more_sampled_series", trace.WithAttributes(
+			attribute.Int("chstorage.fetched_series", len(fetchedByHash)),
+			attribute.Int("chstorage.fetched_points", totalPoints),
+		))
+
+		// 3. Update cache for all timeseries, including those with no data in the
+		// fetched range, so that subsequent queries skip the ClickHouse round-trip.
+		//
+		// bigQuery: see analogous comment in queryPointsCached.
+		bigQuery := p.metricsCache.IsBigQuery(totalPoints)
+		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
+		if bigQuery {
+			p.metricsCache.stats.BigQueries.Add(ctx, 1, cacheTypeAggregated)
+		}
+		for hash := range timeseries {
+			var (
+				ts   []int64
+				vals []float64
+			)
+			if s, ok := fetchedByHash[hash]; ok {
+				ts = s.ts
+				vals = s.data.values
+			}
+			p.upsertCache(ctx, hash, step, sampler.fn, globalFetchFrom, ts, vals, cacheEnd.UnixMilli(), bigQuery)
+		}
+	} else {
+		span.AddEvent("chstorage.fully_covered_by_cache")
+		p.metricsCache.stats.FullyCovered.Add(ctx, 1, cacheTypeAggregated)
+	}
+
+	// 4. Merge per series: cached[start..watermark] ++ fetched(watermark, end]
+	resultMap := make(map[[16]byte]*series[pointData], len(timeseries))
+	for hash, lb := range timeseries {
+		s := &series[pointData]{labels: lb}
+		watermark := seriesWatermark[hash]
+
+		if watermark >= start.UnixMilli() {
+			key := MetricsCacheKey{Hash: hash, Step: step.Milliseconds(), Fn: sampler.fn}
+			if entry, ok := p.metricsCache.cache.Get(key); ok {
+				cachedTS, cachedVals := entry.Slice(start.UnixMilli(), min(watermark, end.UnixMilli()))
+				s.ts = append(s.ts, cachedTS...)
+				s.data.values = append(s.data.values, cachedVals...)
+			}
+		}
+
+		if f, ok := fetchedByHash[hash]; ok {
+			for i, t := range f.ts {
+				if t > watermark {
+					s.ts = append(s.ts, t)
+					s.data.values = append(s.data.values, f.data.values[i])
+				}
+			}
+		}
+
+		if len(s.ts) > 0 {
+			resultMap[hash] = s
+		}
+	}
+
+	if sampler.noClientGrouping || (!on && len(groupBy) == 0) {
+		result := make([]*series[pointData], 0, len(resultMap))
+		for _, s := range resultMap {
+			result = append(result, s)
+		}
+		totalPoints := 0
+		for _, s := range result {
+			totalPoints += len(s.ts)
+		}
+		span.AddEvent("chstorage.merged_result", trace.WithAttributes(
+			attribute.Int("chstorage.merged_series", len(result)),
+			attribute.Int("chstorage.merged_points", totalPoints),
+		))
+		return result, nil
+	}
+
+	result := p.aggregateSampledPoints(ctx, resultMap, on, groupBy, sampler, step)
+	totalPoints := 0
+	for _, s := range result {
+		totalPoints += len(s.ts)
+	}
+	span.AddEvent("chstorage.merged_aggregated_result", trace.WithAttributes(
+		attribute.Int("chstorage.merged_series", len(result)),
+		attribute.Int("chstorage.merged_points", totalPoints),
+	))
+	return result, nil
+}
+
+// upsertCache writes fetched points and watermark for one series into the cache.
+// If onlyIfExists is true and the entry is not yet in the cache, the call is a no-op:
+// this prevents a large query from evicting warm entries belonging to other series.
+func (p *promQuerier) upsertCache(ctx context.Context, hash [16]byte, step time.Duration, fn string, fetchFrom int64, ts []int64, vals []float64, untilMs int64, onlyIfExists bool) {
+	key := MetricsCacheKey{
+		Hash: hash,
+		Step: step.Milliseconds(),
+		Fn:   fn,
+	}
+	entry, ok := p.metricsCache.cache.Get(key)
 	if !ok {
+		if onlyIfExists {
+			p.metricsCache.stats.SkippedInserts.Add(ctx, 1, cacheTypeOpt(step))
+			return
+		}
 		entry = newMetricsCacheEntry()
 	}
 
 	entry.Append(ts, vals, untilMs)
-	if len(ts) > 0 {
-		p.metricsCache.cache.Set(hash, entry)
+	// Always advance the watermark so series with no data in the fetched range
+	// are treated as cache hits on the next query (skipping the ClickHouse round-trip).
+	entry.MarkFetched(fetchFrom, untilMs)
+	p.metricsCache.cache.Set(key, entry)
+}
+
+var (
+	cacheTypeRaw        = metric.WithAttributes(attribute.String("cache_type", "raw"))
+	cacheTypeAggregated = metric.WithAttributes(attribute.String("cache_type", "aggregated"))
+)
+
+func cacheTypeOpt(step time.Duration) metric.MeasurementOption {
+	if step == 0 {
+		return cacheTypeRaw
 	}
+	return cacheTypeAggregated
 }
 
 type cacheStats struct {
-	hits   int
-	misses int
+	hits        int
+	partialHits int
+	misses      int
 }
 
 const uncachedWatermark = -1
@@ -603,6 +839,8 @@ const uncachedWatermark = -1
 func computeFetchRange(
 	ctx context.Context,
 	cache *MetricsCache,
+	step time.Duration,
+	fn string,
 	start int64,
 	timeseries map[[16]byte]labels.Labels,
 ) (watermarks map[[16]byte]int64, globalFetchFrom int64, stats cacheStats) {
@@ -611,9 +849,15 @@ func computeFetchRange(
 		hasAnyMiss = false
 		minHitTS   int64
 	)
+	stepMs := step.Milliseconds()
 	for hash := range timeseries {
 		watermarks[hash] = uncachedWatermark
-		entry, ok := cache.cache.Get(hash)
+		key := MetricsCacheKey{
+			Hash: hash,
+			Step: stepMs,
+			Fn:   fn,
+		}
+		entry, ok := cache.cache.Get(key)
 		if ok {
 			entry.mu.RLock()
 			entryMinTS := entry.minTS
@@ -629,14 +873,7 @@ func computeFetchRange(
 				continue
 			}
 
-			// Record only first partial hit: don't spam events.
-			if stats.misses == 0 {
-				trace.SpanFromContext(ctx).AddEvent("chstorage.metrics_cache.partial_hit", trace.WithAttributes(
-					attribute.Int64("chstorage.metrics_cache.entry_min_ts", entryMinTS),
-					attribute.Int64("chstorage.metrics_cache.entry_max_ts", entryMaxTS),
-					attribute.Int64("chstorage.metrics_cache.requested_start", start),
-				))
-			}
+			stats.partialHits++
 		}
 		stats.misses++
 		hasAnyMiss = true
@@ -649,6 +886,10 @@ func computeFetchRange(
 		globalFetchFrom = minHitTS + 1
 	}
 
+	opt := cacheTypeOpt(step)
+	cache.stats.SeriesHits.Add(ctx, int64(stats.hits), opt)
+	cache.stats.SeriesMisses.Add(ctx, int64(stats.misses), opt)
+
 	return watermarks, globalFetchFrom, stats
 }
 
@@ -659,24 +900,97 @@ func canUseSampledPoints(stepDuration time.Duration, fn string) (pointsSampler, 
 	switch fn {
 	case "":
 		return pointsSampler{
-			pointExpr:  chsql.LastValue,
+			pointExpr:  chsql.AnyLast,
 			needPoints: true,
+			agg:        anyLastAggregator,
+			fn:         "",
+		}, true
+	case "sum", "sum_over_time":
+		return pointsSampler{
+			pointExpr:  chsql.Sum,
+			needPoints: true,
+			agg:        sumAggregator,
+			fn:         "sum",
+		}, true
+	case "avg", "avg_over_time":
+		return pointsSampler{
+			pointExpr:  chsql.Avg,
+			needPoints: true,
+			agg:        avgAggregator,
+			fn:         "avg",
+		}, true
+	case "min", "min_over_time":
+		return pointsSampler{
+			pointExpr:  chsql.Min,
+			needPoints: true,
+			agg:        minAggregator,
+			fn:         "min",
+		}, true
+	case "max", "max_over_time":
+		return pointsSampler{
+			pointExpr:  chsql.Max,
+			needPoints: true,
+			agg:        maxAggregator,
+			fn:         "max",
 		}, true
 	case "count":
+		// count (vector aggregation) counts series, not values, so PromQL must
+		// see all individual series. We still benefit from the sampled path
+		// (fewer raw points fetched per window), but skip client-side grouping.
 		return pointsSampler{
-			pointExpr: func(column chsql.Expr) chsql.Expr {
-				return column
+			pointExpr: func(chsql.Expr) chsql.Expr {
+				return chsql.Count()
 			},
-			needPoints: false,
+			needPoints:       true,
+			agg:              sumAggregator,
+			fn:               "count",
+			noClientGrouping: true,
+		}, true
+	case "count_over_time":
+		return pointsSampler{
+			pointExpr: func(chsql.Expr) chsql.Expr {
+				return chsql.Count()
+			},
+			needPoints: true,
+			agg:        sumAggregator,
+			fn:         "count_over_time",
 		}, true
 	default:
 		return pointsSampler{}, false
 	}
 }
 
+// samplerAggregator defines how per-series pre-aggregated values are combined
+// during client-side grouping in aggregateSampledPoints.
+type samplerAggregator struct {
+	// combine merges a new per-series value v into the running accumulator acc.
+	// Called only after the first value (which seeds acc directly).
+	combine func(acc, v float64) float64
+	// finalize converts the accumulated value to the final result given the
+	// number of series that contributed to it.
+	finalize func(acc float64, n int) float64
+}
+
+var (
+	sumAggregator     = samplerAggregator{func(a, b float64) float64 { return a + b }, func(a float64, _ int) float64 { return a }}
+	avgAggregator     = samplerAggregator{func(a, b float64) float64 { return a + b }, func(a float64, n int) float64 { return a / float64(n) }}
+	minAggregator     = samplerAggregator{math.Min, func(a float64, _ int) float64 { return a }}
+	maxAggregator     = samplerAggregator{math.Max, func(a float64, _ int) float64 { return a }}
+	anyLastAggregator = samplerAggregator{func(_, b float64) float64 { return b }, func(a float64, _ int) float64 { return a }}
+)
+
 type pointsSampler struct {
 	pointExpr  func(column chsql.Expr) chsql.Expr
 	needPoints bool
+	agg        samplerAggregator
+	// fn is the canonical function name used as part of the cache key to prevent
+	// different aggregators from sharing a cache entry for the same (hash, step).
+	fn string
+	// noClientGrouping disables the client-side aggregateSampledPoints step so
+	// all per-series results are returned as-is for PromQL to aggregate.
+	// Required for "count": PromQL counts the number of series, not their values,
+	// so pre-collapsing series would make PromQL count 1 instead of N.
+	noClientGrouping bool
 }
 
 func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (_ map[[16]byte]*series[pointData], rerr error) {
@@ -721,26 +1035,38 @@ func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end 
 		Query:         query,
 		ExternalTable: "timeseries_hashes",
 		ExternalData: []proto.InputColumn{
-			{Name: "name", Data: &inputData},
+			{Name: "hash", Data: &inputData},
 		},
 		OnResult: func(ctx context.Context, block proto.Block) error {
+			var (
+				lastHash   [16]byte
+				lastSeries *series[pointData]
+			)
 			for i := 0; i < c.timestamp.Rows(); i++ {
 				var (
 					hash      = c.hash.Row(i)
 					value     = c.value.Row(i)
 					timestamp = c.timestamp.Row(i)
 				)
-				s, ok := set[hash]
-				if !ok {
-					lb, ok := timeseries[hash]
+				var s *series[pointData]
+				if lastSeries != nil && hash == lastHash {
+					s = lastSeries
+				} else {
+					var ok bool
+					s, ok = set[hash]
 					if !ok {
-						zctx.From(ctx).Error("Can't find labels for requested series")
-						continue
+						lb, ok := timeseries[hash]
+						if !ok {
+							zctx.From(ctx).Error("Can't find labels for requested series")
+							continue
+						}
+						s = &series[pointData]{
+							labels: lb,
+						}
+						set[hash] = s
 					}
-					s = &series[pointData]{
-						labels: lb,
-					}
-					set[hash] = s
+					lastHash = hash
+					lastSeries = s
 				}
 
 				s.data.values = append(s.data.values, value)
@@ -814,15 +1140,36 @@ func (p *promQuerier) querySampledPoints(
 	step time.Duration,
 	timeseries map[[16]byte]labels.Labels,
 ) (_ []*series[pointData], rerr error) {
+	set, err := p.querySampledPointsPerSeries(ctx, sampler, start, end, step, timeseries)
+	if err != nil {
+		return nil, err
+	}
+
+	if sampler.noClientGrouping || (!on && len(groupBy) == 0) {
+		result := make([]*series[pointData], 0, len(set))
+		for _, s := range set {
+			result = append(result, s)
+		}
+		return result, nil
+	}
+
+	return p.aggregateSampledPoints(ctx, set, on, groupBy, sampler, step), nil
+}
+
+func (p *promQuerier) querySampledPointsPerSeries(
+	ctx context.Context,
+	sampler pointsSampler,
+	start, end time.Time,
+	step time.Duration,
+	timeseries map[[16]byte]labels.Labels,
+) (_ map[[16]byte]*series[pointData], rerr error) {
 	table := p.tables.Points
 
-	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.querySampledPoints",
+	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.querySampledPointsPerSeries",
 		trace.WithAttributes(
 			xattribute.UnixNano("chstorage.range.start", start),
 			xattribute.UnixNano("chstorage.range.end", end),
 			attribute.Stringer("chstorage.step", step),
-			attribute.Bool("chstorage.group.on", on),
-			attribute.StringSlice("chstorage.group.by", groupBy),
 			attribute.Bool("chstorage.sampler.need_points", sampler.needPoints),
 			attribute.String("chstorage.table", table),
 		),
@@ -836,30 +1183,32 @@ func (p *promQuerier) querySampledPoints(
 
 	var (
 		inputTable = "timeseries_hashes"
-		mapping    = makeGroupMapping(on, groupBy, timeseries)
+		// We query per-series, so we use empty groupBy.
+		mapping = makeGroupMapping(false, nil, timeseries)
 
-		group     = new(proto.ColUInt64).LowCardinality()
-		timestamp = new(proto.ColDateTime)
-		value     proto.ColFloat64
-		results   = []chsql.ResultColumn{
+		groupCol     = new(proto.ColUInt64).LowCardinality()
+		timestampCol = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
+		valueCol     proto.ColFloat64
+
+		results = []chsql.ResultColumn{
 			{
 				Name: "group",
 				Expr: chsql.PrefixedIdent(inputTable, "grouping"),
-				Data: group,
+				Data: groupCol,
 			},
 			{
 				Name: "step_ts",
 				Expr: chsql.Ident("window_end"),
-				Data: timestamp,
+				Data: timestampCol,
 			},
 		}
 	)
 	if sampler.needPoints {
-		expr := sampler.pointExpr(chsql.Ident("value"))
+		expr := chsql.ToFloat64(sampler.pointExpr(chsql.Ident("value")))
 		results = append(results, chsql.ResultColumn{
 			Name: "agg",
 			Expr: expr,
-			Data: &value,
+			Data: &valueCol,
 		})
 
 		printer := chsql.GetPrinter()
@@ -879,13 +1228,16 @@ func (p *promQuerier) querySampledPoints(
 
 		query = chsql.Select(table, results...).
 			With("step", chsql.Interval(step)).
-			With("window_start", chsql.TumbleStart(datetime, step)).
-			With("window_end", chsql.TumbleEnd(datetime, step)).
+			With("window_start", chsql.ToDateTime64(chsql.TumbleStart(datetime, step), proto.PrecisionMilli)).
+			With("window_end", chsql.ToDateTime64(chsql.TumbleEnd(datetime, step), proto.PrecisionMilli)).
 			InnerJoin(inputTable, "", joinExpr).
-			Where(chsql.In(
-				chsql.Ident("hash"),
-				chsql.SubQuery(hashQuery),
-			)).
+			Where(
+				chsql.InTimeRange("timestamp", start, end, proto.PrecisionMilli),
+				chsql.In(
+					chsql.Ident("hash"),
+					chsql.SubQuery(hashQuery),
+				),
+			).
 			GroupBy(
 				chsql.Ident("group"),
 				chsql.Ident("window_start"),
@@ -894,21 +1246,17 @@ func (p *promQuerier) querySampledPoints(
 			Order(chsql.Ident("group"), chsql.Asc).
 			Order(chsql.Ident("window_end"), chsql.Asc)
 	)
-	if !start.IsZero() {
-		query.Where(chsql.Gte(
-			chsql.Ident("timestamp"),
-			chsql.DateTime(start),
-		))
-	}
-	if !end.IsZero() {
-		query.Where(chsql.Lte(
-			chsql.Ident("timestamp"),
-			chsql.DateTime(end),
-		))
+
+	// Since we used empty groupBy, mapping.groups[i] is the labels of i-th timeseries.
+	// We need to map i back to its hash.
+	// We'll reconstruct the hash map from the inputHash column.
+	hashes := make(map[uint64][16]byte, len(timeseries))
+	for i := 0; i < mapping.inputHash.Rows(); i++ {
+		hashes[uint64(i)] = mapping.inputHash.Row(i)
 	}
 
 	var (
-		set         = map[uint64]*series[pointData]{}
+		set         = map[[16]byte]*series[pointData]{}
 		totalPoints int
 	)
 	if err := p.do(ctx, selectQuery{
@@ -919,26 +1267,44 @@ func (p *promQuerier) querySampledPoints(
 			{Name: "grouping", Data: mapping.inputGrouping},
 		},
 		OnResult: func(ctx context.Context, block proto.Block) error {
-			for i := 0; i < timestamp.Rows(); i++ {
+			var (
+				lastGroup  uint64
+				hasGroup   bool
+				lastSeries *series[pointData]
+			)
+			for i := 0; i < timestampCol.Rows(); i++ {
 				var (
-					group     = group.Row(i)
-					timestamp = timestamp.Row(i)
+					group     = groupCol.Row(i)
+					timestamp = timestampCol.Row(i)
 				)
-				s, ok := set[group]
-				if !ok {
-					lb, ok := mapping.groups[group]
+				var s *series[pointData]
+				if hasGroup && group == lastGroup {
+					s = lastSeries
+				} else {
+					hash, ok := hashes[group]
 					if !ok {
-						zctx.From(ctx).Error("Can't find labels for requested series")
-						continue
+						return errors.Errorf("can't find hash for requested group %d", group)
 					}
-					s = &series[pointData]{
-						labels: lb,
+
+					var ok2 bool
+					s, ok2 = set[hash]
+					if !ok2 {
+						lb, ok := mapping.groups[group]
+						if !ok {
+							return errors.Errorf("can't find labels for requested series %d", group)
+						}
+						s = &series[pointData]{
+							labels: lb,
+						}
+						set[hash] = s
 					}
-					set[group] = s
+					lastGroup = group
+					hasGroup = true
+					lastSeries = s
 				}
 
 				if sampler.needPoints {
-					s.data.values = append(s.data.values, value.Row(i))
+					s.data.values = append(s.data.values, valueCol.Row(i))
 				} else {
 					s.data.values = append(s.data.values, 1)
 				}
@@ -953,18 +1319,198 @@ func (p *promQuerier) querySampledPoints(
 		Signal: "metrics",
 		Table:  table,
 	}); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "query sampled points per series")
 	}
 	span.AddEvent("points_fetched", trace.WithAttributes(
 		attribute.Int("chstorage.total_series", len(set)),
 		attribute.Int("chstorage.total_points", totalPoints),
 	))
 
-	result := make([]*series[pointData], 0, len(set))
+	return set, nil
+}
+
+func (p *promQuerier) aggregateSampledPoints(
+	ctx context.Context,
+	set map[[16]byte]*series[pointData],
+	on bool, groupBy []string,
+	sampler pointsSampler,
+	step time.Duration,
+) []*series[pointData] {
+	_, span := p.tracer.Start(ctx, "chstorage.metrics.aggregateSampledPoints",
+		trace.WithAttributes(
+			attribute.Bool("chstorage.group.on", on),
+			attribute.StringSlice("chstorage.group.by", groupBy),
+			attribute.Int("chstorage.total_series", len(set)),
+		),
+	)
+	defer span.End()
+
+	if len(set) == 0 {
+		return nil
+	}
+
+	stepMs := step.Milliseconds()
+	span.SetAttributes(attribute.Int64("chstorage.aggregate.step_ms", stepMs))
+	// TumbleEnd(ts, step) = (floor(ts/step) + 1) * step
+	// The timestamps from ClickHouse are aligned to step boundaries.
+	// We can use a slice if we know the range.
+	var (
+		minTS   int64 = math.MaxInt64
+		maxTS   int64 = math.MinInt64
+		aligned       = true
+	)
 	for _, s := range set {
+		for _, t := range s.ts {
+			if t < minTS {
+				minTS = t
+			}
+			if t > maxTS {
+				maxTS = t
+			}
+			if t%stepMs != 0 {
+				aligned = false
+			}
+		}
+	}
+
+	if minTS == math.MaxInt64 {
+		return nil
+	}
+
+	// Safety check for crazy ranges and misaligned timestamps.
+	numSteps := int((maxTS-minTS)/stepMs) + 1
+	if !aligned || numSteps > 100_000 {
+		// Fallback to map-based aggregation if range is too large or timestamps are misaligned.
+		return p.aggregateSampledPointsMap(ctx, set, on, groupBy, sampler)
+	}
+
+	type groupKey struct {
+		hash uint64
+	}
+	type groupData struct {
+		labels labels.Labels
+		values []float64
+		counts []int
+	}
+	groups := map[groupKey]*groupData{}
+
+	agg := sampler.agg
+	for _, s := range set {
+		lb := s.labels
+		if len(groupBy) > 0 {
+			lb = s.labels.MatchLabels(on, groupBy...)
+		}
+		key := groupKey{hash: lb.Hash()}
+		g, ok := groups[key]
+		if !ok {
+			g = &groupData{
+				labels: lb,
+				values: make([]float64, numSteps),
+				counts: make([]int, numSteps),
+			}
+			groups[key] = g
+		}
+
+		for i, ts := range s.ts {
+			idx := (ts - minTS) / stepMs
+			if idx < 0 || idx >= int64(numSteps) {
+				continue
+			}
+			v := s.data.values[i]
+			if g.counts[idx] == 0 {
+				g.values[idx] = v
+			} else {
+				g.values[idx] = agg.combine(g.values[idx], v)
+			}
+			g.counts[idx]++
+		}
+	}
+
+	result := make([]*series[pointData], 0, len(groups))
+	for _, g := range groups {
+		s := &series[pointData]{
+			labels: g.labels,
+		}
+		for i, count := range g.counts {
+			if count == 0 {
+				continue
+			}
+			s.ts = append(s.ts, minTS+int64(i)*stepMs)
+			s.data.values = append(s.data.values, agg.finalize(g.values[i], count))
+		}
 		result = append(result, s)
 	}
-	return result, nil
+	span.SetAttributes(attribute.Int("chstorage.grouped_series", len(result)))
+	return result
+}
+
+func (p *promQuerier) aggregateSampledPointsMap(
+	_ context.Context,
+	set map[[16]byte]*series[pointData],
+	on bool, groupBy []string,
+	sampler pointsSampler,
+) []*series[pointData] {
+	// Group series by requested labels.
+	type groupKey struct {
+		hash uint64
+	}
+	type groupData struct {
+		labels labels.Labels
+		// ts -> accumulated value
+		points map[int64]float64
+		// ts -> number of series that contributed (for finalize)
+		counts map[int64]int
+	}
+	groups := map[groupKey]*groupData{}
+
+	agg := sampler.agg
+	for _, s := range set {
+		lb := s.labels
+		if len(groupBy) > 0 {
+			lb = s.labels.MatchLabels(on, groupBy...)
+		}
+		key := groupKey{hash: lb.Hash()}
+		g, ok := groups[key]
+		if !ok {
+			g = &groupData{
+				labels: lb,
+				points: map[int64]float64{},
+				counts: map[int64]int{},
+			}
+			groups[key] = g
+		}
+
+		for i, ts := range s.ts {
+			v := s.data.values[i]
+			if n := g.counts[ts]; n == 0 {
+				// First value seeds the accumulator directly.
+				g.points[ts] = v
+			} else {
+				g.points[ts] = agg.combine(g.points[ts], v)
+			}
+			g.counts[ts]++
+		}
+	}
+
+	result := make([]*series[pointData], 0, len(groups))
+	for _, g := range groups {
+		s := &series[pointData]{
+			labels: g.labels,
+		}
+		// Sort points by timestamp.
+		timestamps := make([]int64, 0, len(g.points))
+		for ts := range g.points {
+			timestamps = append(timestamps, ts)
+		}
+		slices.Sort(timestamps)
+
+		for _, ts := range timestamps {
+			s.ts = append(s.ts, ts)
+			s.data.values = append(s.data.values, agg.finalize(g.points[ts], g.counts[ts]))
+		}
+		result = append(result, s)
+	}
+	return result
 }
 
 func (p *promQuerier) queryExpHistograms(ctx context.Context, table string, start, end time.Time, timeseries map[[16]byte]labels.Labels) (_ []*series[expHistData], rerr error) {
@@ -1009,7 +1555,7 @@ func (p *promQuerier) queryExpHistograms(ctx context.Context, table string, star
 		Query:         query,
 		ExternalTable: "timeseries_hashes",
 		ExternalData: []proto.InputColumn{
-			{Name: "name", Data: &inputData},
+			{Name: "hash", Data: &inputData},
 		},
 		OnResult: func(ctx context.Context, block proto.Block) error {
 			for i := 0; i < c.timestamp.Rows(); i++ {

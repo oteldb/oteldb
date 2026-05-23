@@ -71,8 +71,13 @@ func setupCH(
 	querier, err := chstorage.NewQuerier(c, chstorage.QuerierOptions{
 		Tables:     tables,
 		CHLogLevel: cfg.CHLogLevel,
+
+		MaxResultRows:    cfg.MaxResultRows,
+		MaxResultBytes:   int(cfg.MaxResultBytes),
+		MaxExecutionTime: cfg.MaxExecutionTime,
+
 		MetricsCacheOptions: chstorage.MetricsCacheOptions{
-			MaxBytes:  cfg.Prometheus.Cache.MaxBytes,
+			MaxBytes:  int64(cfg.Prometheus.Cache.MaxBytes),
 			SafetyLag: cfg.Prometheus.Cache.SafetyLag,
 		},
 		MeterProvider:     m.MeterProvider(),
