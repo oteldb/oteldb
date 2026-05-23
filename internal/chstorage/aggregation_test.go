@@ -22,7 +22,7 @@ func TestPromQuerier_AggregateSampledPoints(t *testing.T) {
 
 	h1 := [16]byte{1}
 	h2 := [16]byte{2}
-	
+
 	// Use label matches that will actually match 'by (job)'
 	lb1 := labels.FromStrings("job", "test", "instance", "1")
 	lb2 := labels.FromStrings("job", "test", "instance", "2")
@@ -31,7 +31,7 @@ func TestPromQuerier_AggregateSampledPoints(t *testing.T) {
 	step := 15 * time.Second
 	stepMs := step.Milliseconds()
 	minTS := int64(1000 * 1000)
-	
+
 	set := map[[16]byte]*series[pointData]{
 		h1: {
 			labels: lb1,
@@ -48,7 +48,7 @@ func TestPromQuerier_AggregateSampledPoints(t *testing.T) {
 	t.Run("Slice", func(t *testing.T) {
 		res := p.aggregateSampledPoints(ctx, set, true, []string{"job"}, sampler, step)
 		require.Len(t, res, 1)
-		
+
 		s := res[0]
 		assert.Equal(t, commonLabels.String(), s.labels.String())
 		assert.Equal(t, []int64{minTS, minTS + stepMs, minTS + 2*stepMs}, s.ts)
@@ -58,7 +58,7 @@ func TestPromQuerier_AggregateSampledPoints(t *testing.T) {
 	t.Run("MapFallback", func(t *testing.T) {
 		res := p.aggregateSampledPointsMap(ctx, set, true, []string{"job"}, sampler)
 		require.Len(t, res, 1)
-		
+
 		s := res[0]
 		assert.Equal(t, commonLabels.String(), s.labels.String())
 		assert.Equal(t, []int64{minTS, minTS + stepMs, minTS + 2*stepMs}, s.ts)
@@ -78,7 +78,7 @@ func TestPromQuerier_AggregateSampledPoints(t *testing.T) {
 		assert.Equal(t, set[h1].ts, res[0].ts)
 		assert.Equal(t, set[h1].data.values, res[0].data.values)
 	})
-	
+
 	t.Run("Gaps", func(t *testing.T) {
 		gapSet := map[[16]byte]*series[pointData]{
 			h1: {
@@ -106,12 +106,12 @@ func TestPromQuerier_AggregateSampledPoints_LargeRange(t *testing.T) {
 	}
 	sampler, _ := canUseSampledPoints(15*time.Second, "sum")
 	step := 15 * time.Second
-	
+
 	h1 := [16]byte{1}
 	// 200,000 steps range.
 	minTS := int64(0)
 	maxTS := int64(200_000 * 15 * 1000)
-	
+
 	set := map[[16]byte]*series[pointData]{
 		h1: {
 			labels: labels.FromStrings("job", "test"),
@@ -119,7 +119,7 @@ func TestPromQuerier_AggregateSampledPoints_LargeRange(t *testing.T) {
 			data:   pointData{values: []float64{1, 2}},
 		},
 	}
-	
+
 	// Should fallback to map to avoid huge slice allocation.
 	res := p.aggregateSampledPoints(ctx, set, true, []string{"job"}, sampler, step)
 	require.Len(t, res, 1)
@@ -135,19 +135,19 @@ func TestPromQuerier_AggregateSampledPoints_Misaligned(t *testing.T) {
 	sampler, _ := canUseSampledPoints(15*time.Second, "sum")
 	step := 15 * time.Second
 	stepMs := step.Milliseconds()
-	
+
 	h1 := [16]byte{1}
 	minTS := int64(1000 * 1000)
-	
+
 	set := map[[16]byte]*series[pointData]{
 		h1: {
 			labels: labels.FromStrings("job", "test"),
 			// Second point is misaligned (not a multiple of 15s).
-			ts:     []int64{minTS, minTS + stepMs + 1},
-			data:   pointData{values: []float64{1, 2}},
+			ts:   []int64{minTS, minTS + stepMs + 1},
+			data: pointData{values: []float64{1, 2}},
 		},
 	}
-	
+
 	// Should fallback to map.
 	res := p.aggregateSampledPoints(ctx, set, true, []string{"job"}, sampler, step)
 	require.Len(t, res, 1)

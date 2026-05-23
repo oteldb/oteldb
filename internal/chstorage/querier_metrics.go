@@ -1445,7 +1445,7 @@ func (p *promQuerier) aggregateSampledPoints(
 }
 
 func (p *promQuerier) aggregateSampledPointsMap(
-	ctx context.Context,
+	_ context.Context,
 	set map[[16]byte]*series[pointData],
 	on bool, groupBy []string,
 	sampler pointsSampler,

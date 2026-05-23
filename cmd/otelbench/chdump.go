@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -30,7 +31,7 @@ func newChDumpCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "chdump",
 		Short: "Dump raw points from ClickHouse using PromQL",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 
 			client, err := chstorage.Dial(ctx, dsn, chstorage.DialOptions{})
@@ -83,11 +84,13 @@ func newChDumpCommand() *cobra.Command {
 				return errors.Wrap(res.Err, "query execution")
 			}
 
-			f, err := os.Create(output)
+			f, err := os.Create(filepath.Clean(output))
 			if err != nil {
 				return errors.Wrap(err, "create file")
 			}
-			defer f.Close()
+			defer func() {
+				_ = f.Close()
+			}()
 
 			enc := json.NewEncoder(f)
 			if err := enc.Encode(capturer.points); err != nil {
