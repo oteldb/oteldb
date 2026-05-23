@@ -36,6 +36,7 @@ func (p *promQuerier) fetchAndMergeCache(
 	)
 
 	span.SetAttributes(
+		attribute.String("chstorage.metrics_cache.function", fn),
 		attribute.Int64("chstorage.metrics_cache.cache_end", cacheEnd.UnixMilli()),
 		attribute.Int64("chstorage.metrics_cache.global_fetch_from", globalFetchFrom),
 		attribute.Int("chstorage.metrics_cache.hits", stats.hits),
@@ -67,7 +68,7 @@ func (p *promQuerier) fetchAndMergeCache(
 		bigQuery := p.metricsCache.IsBigQuery(totalPoints)
 		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
 		if bigQuery {
-			p.metricsCache.stats.BigQueries.Add(ctx, 1, cacheTypeOpt(step))
+			p.metricsCache.stats.BigQueries.Add(ctx, 1, cacheTypeOpt(fn, step))
 		}
 		for hash := range timeseries {
 			var (
@@ -82,7 +83,7 @@ func (p *promQuerier) fetchAndMergeCache(
 		}
 	} else {
 		span.AddEvent("chstorage.fully_covered_by_cache")
-		p.metricsCache.stats.FullyCovered.Add(ctx, 1, cacheTypeOpt(step))
+		p.metricsCache.stats.FullyCovered.Add(ctx, 1, cacheTypeOpt(fn, step))
 	}
 
 	// 4. Merge per series: cached[start..watermark] ++ fetched(watermark, end]

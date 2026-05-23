@@ -455,6 +455,10 @@ func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params
 	}
 	if samplePoints {
 		if kind, ok := funcNameToRateKind(params.Function); ok {
+			span.AddEvent("chstorage.use_rate_offloading", trace.WithAttributes(
+				attribute.String("promql.function", params.Function),
+			))
+
 			var (
 				points []*series[pointData]
 				err    error
@@ -657,7 +661,7 @@ func (p *promQuerier) upsertCache(ctx context.Context, hash [16]byte, step time.
 	entry, ok := p.metricsCache.cache.Get(key)
 	if !ok {
 		if onlyIfExists {
-			p.metricsCache.stats.SkippedInserts.Add(ctx, 1, cacheTypeOpt(step))
+			p.metricsCache.stats.SkippedInserts.Add(ctx, 1, cacheTypeOpt(fn, step))
 			return
 		}
 		entry = newMetricsCacheEntry()
@@ -673,11 +677,15 @@ func (p *promQuerier) upsertCache(ctx context.Context, hash [16]byte, step time.
 var (
 	cacheTypeRaw        = metric.WithAttributes(attribute.String("cache_type", "raw"))
 	cacheTypeAggregated = metric.WithAttributes(attribute.String("cache_type", "aggregated"))
+	cacheTypeRate       = metric.WithAttributes(attribute.String("cache_type", "rate"))
 )
 
-func cacheTypeOpt(step time.Duration) metric.MeasurementOption {
+func cacheTypeOpt(fn string, step time.Duration) metric.MeasurementOption {
 	if step == 0 {
 		return cacheTypeRaw
+	}
+	if _, ok := funcNameToRateKind(fn); ok {
+		return cacheTypeRate
 	}
 	return cacheTypeAggregated
 }
@@ -740,8 +748,9 @@ func computeFetchRange(
 		globalFetchFrom = minHitTS + 1
 	}
 
-	opt := cacheTypeOpt(step)
+	opt := cacheTypeOpt(fn, step)
 	cache.stats.SeriesHits.Add(ctx, int64(stats.hits), opt)
+	cache.stats.SeriesPartialHits.Add(ctx, int64(stats.partialHits), opt)
 	cache.stats.SeriesMisses.Add(ctx, int64(stats.misses), opt)
 
 	return watermarks, globalFetchFrom, stats

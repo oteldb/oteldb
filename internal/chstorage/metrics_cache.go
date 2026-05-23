@@ -187,11 +187,12 @@ type MetricsCacheKey struct {
 }
 
 type metricsCacheStats struct {
-	SeriesHits     metric.Int64Counter `name:"metrics_cache.series_hits" description:"Series with a cache watermark covering the full query range." unit:"{series}"`
-	SeriesMisses   metric.Int64Counter `name:"metrics_cache.series_misses" description:"Series that required a ClickHouse fetch." unit:"{series}"`
-	BigQueries     metric.Int64Counter `name:"metrics_cache.big_queries" description:"Queries where fetched data exceeded maxBytes and the big-query guard fired." unit:"{queries}"`
-	SkippedInserts metric.Int64Counter `name:"metrics_cache.skipped_inserts" description:"Series not inserted into cache because a big-query guard was active." unit:"{series}"`
-	FullyCovered   metric.Int64Counter `name:"metrics_cache.fully_covered_queries" description:"Queries fully covered by cache with no ClickHouse fetch." unit:"{queries}"`
+	SeriesHits        metric.Int64Counter `name:"metrics_cache.series_hits" description:"Series with a cache watermark covering the full query range." unit:"{series}"`
+	SeriesPartialHits metric.Int64Counter `name:"metrics_cache.series_partial_hits" description:"Series with a cache watermark covering only part of the query range." unit:"{series}"`
+	SeriesMisses      metric.Int64Counter `name:"metrics_cache.series_misses" description:"Series that required a ClickHouse fetch." unit:"{series}"`
+	BigQueries        metric.Int64Counter `name:"metrics_cache.big_queries" description:"Queries where fetched data exceeded maxBytes and the big-query guard fired." unit:"{queries}"`
+	SkippedInserts    metric.Int64Counter `name:"metrics_cache.skipped_inserts" description:"Series not inserted into cache because a big-query guard was active." unit:"{series}"`
+	FullyCovered      metric.Int64Counter `name:"metrics_cache.fully_covered_queries" description:"Queries fully covered by cache with no ClickHouse fetch." unit:"{queries}"`
 }
 
 func (s *metricsCacheStats) Init(meter metric.Meter) error {
