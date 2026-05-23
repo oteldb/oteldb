@@ -320,12 +320,13 @@ func (p *promQuerier) queryRatePointsByHash(
 	}
 
 	var (
-		firstStepMSIdent = chsql.Ident("first_step_ms")
-		lastStepMSIdent  = chsql.Ident("last_step_ms")
-		stepMSIdent      = chsql.Ident("step_ms")
-		windowMSIdent    = chsql.Ident("window_ms")
-		offsetMSIdent    = chsql.Ident("offset_ms")
-		pointMSIdent     = chsql.Ident("point_ms")
+		firstStepMSIdent     = chsql.Ident("first_step_ms")
+		lastStepMSIdent      = chsql.Ident("last_step_ms")
+		stepMSIdent          = chsql.Ident("step_ms")
+		windowMSIdent        = chsql.Ident("window_ms")
+		pointOffsetMSIdent   = chsql.Ident("point_offset_ms")
+		firstSampleStepIdent = chsql.Ident("first_sample_step_ms")
+		numStepsIdent        = chsql.Ident("num_steps")
 	)
 
 	var (
@@ -334,29 +335,15 @@ func (p *promQuerier) queryRatePointsByHash(
 	)
 
 	var (
-		pointOffsetMS = chsql.Add(pointMSIdent, offsetMSIdent)
-		// offset Expr: greatest(0, point_ms + offset_ms - first_step_ms + step_ms - 1)
-		offsetFromStart = chsql.Greatest(
-			chsql.ToInt64(chsql.Integer(0)),
-			chsql.Sub(
-				chsql.Add(pointOffsetMS, chsql.Sub(stepMSIdent, chsql.Integer(1))),
-				firstStepMSIdent,
-			),
-		)
-		// first_step_ms + intDiv(offsetFromStart, step_ms) * step_ms
-		firstSampleStepMS = chsql.Add(
-			firstStepMSIdent,
-			chsql.Mul(chsql.IntDiv(offsetFromStart, stepMSIdent), stepMSIdent),
-		)
 		mapLambda = chsql.Lambda([]string{"i"},
-			chsql.Add(firstSampleStepMS, chsql.Mul(chsql.ColumnToInt64("i"), stepMSIdent)),
+			chsql.Add(firstSampleStepIdent, chsql.Mul(chsql.ColumnToInt64("i"), stepMSIdent)),
 		)
-		rangeExpr = chsql.Range(chsql.ToUInt64(chsql.Add(chsql.IntDiv(windowMSIdent, stepMSIdent), chsql.Integer(1))))
+		rangeExpr = chsql.Range(numStepsIdent)
 
 		filterLambda = chsql.Lambda([]string{"s"}, chsql.JoinAnd(
 			chsql.Gte(chsql.Ident("s"), firstStepMSIdent),
 			chsql.Lte(chsql.Ident("s"), lastStepMSIdent),
-			chsql.Lt(chsql.Ident("s"), chsql.Add(pointOffsetMS, windowMSIdent)),
+			chsql.Lt(chsql.Ident("s"), chsql.Add(pointOffsetMSIdent, windowMSIdent)),
 		))
 
 		stepExpr = chsql.ArrayJoin(
@@ -367,19 +354,65 @@ func (p *promQuerier) queryRatePointsByHash(
 		)
 	)
 
-	// Subquery 1: Filter points and map each point to the set of steps it belongs to.
+	// Subquery 1: Fan out each raw sample into every step bucket whose range window covers it.
+	//
+	// Each step S covers the range (S-window, S] (adjusted for offset). A single sample near
+	// the boundary of two windows belongs to both, so one input row may produce multiple output rows.
+	//
+	//  time ──────────────────────────────────────────────────────►
+	//
+	//  steps     │   S1    │   S2    │   S3    │   S4    │
+	//            ├─────────┼─────────┼─────────┼─────────┤
+	//  S1 window [◄──────window──────]
+	//  S2 window          [◄──────window──────]
+	//  S3 window                    [◄──────window──────]
+	//
+	//  sample A ─────────────────────┼  (falls in S2 and S3)
+	//  sample B ──────────┼            (falls in S1 and S2)
+	//
+	//  input row (A) ──► output rows (A, S2), (A, S3)
+	//  input row (B) ──► output rows (B, S1), (B, S2)
+	//
+	// arrayMap generates candidate step timestamps starting from first_sample_step_ms,
+	// arrayFilter discards those outside [first_step_ms, last_step_ms] or past the sample,
+	// arrayJoin materialises one row per surviving step.
 	expanded := chsql.Select(table,
 		chsql.Column("hash", nil),
 		chsql.Column("timestamp", nil),
 		chsql.Column("value", nil),
 		chsql.ResultColumn{Name: "step_ms_val", Expr: stepExpr},
 	).
+		// Query start/end aligned to step boundaries.
 		With("first_step_ms", toInt64(start.UnixMilli())).
 		With("last_step_ms", toInt64(end.UnixMilli())).
+		// Step and range window sizes.
 		With("step_ms", toInt64(stepMS)).
 		With("window_ms", toInt64(windowMS)).
+		// PromQL offset: the query window is shifted back by this amount.
 		With("offset_ms", toInt64(offsetMS)).
+		// Raw sample timestamp in milliseconds.
 		With("point_ms", chsql.ToUnixTimestamp64Milli(chsql.Ident("timestamp"))).
+		// point_ms + offset_ms: because offset shifts the query window back by offset_ms,
+		// adding it to the sample time is equivalent — a sample at T belongs to step S if
+		// S - window_ms <= point_offset_ms < S, which avoids carrying offset through every check.
+		With("point_offset_ms", chsql.Add(chsql.Ident("point_ms"), chsql.Ident("offset_ms"))).
+		// ceil((point_offset_ms - first_step_ms) / step_ms) * step_ms, clamped to 0:
+		// distance in ms from first_step_ms to the earliest step this sample could belong to.
+		With("offset_from_start", chsql.Greatest(
+			chsql.ToInt64(chsql.Integer(0)),
+			chsql.Sub(
+				chsql.Add(chsql.Ident("point_offset_ms"), chsql.Sub(chsql.Ident("step_ms"), chsql.Integer(1))),
+				chsql.Ident("first_step_ms"),
+			),
+		)).
+		// floor(window_ms / step_ms) + 1: max steps a single sample can fall into.
+		With("num_steps", chsql.ToUInt64(chsql.Add(chsql.IntDiv(chsql.Ident("window_ms"), chsql.Ident("step_ms")), chsql.Integer(1)))).
+		// first_step_ms + intDiv(offset_from_start, step_ms) * step_ms:
+		// timestamp of the earliest step this sample belongs to, snapped to the step grid.
+		With("first_sample_step_ms", chsql.Add(
+			chsql.Ident("first_step_ms"),
+			chsql.Mul(chsql.IntDiv(chsql.Ident("offset_from_start"), chsql.Ident("step_ms")), chsql.Ident("step_ms")),
+		)).
 		Where(
 			chsql.Gt(chsql.Ident("timestamp"), chsql.DateTime64(rawStart, proto.PrecisionMilli)),
 			chsql.Lte(chsql.Ident("timestamp"), chsql.DateTime64(rawEnd, proto.PrecisionMilli)),
@@ -387,8 +420,20 @@ func (p *promQuerier) queryRatePointsByHash(
 			chsql.NotEq(chsql.ReinterpretAsUInt64(chsql.Ident("value")), chsql.Integer(promStaleNaNBits)),
 		)
 
-	// Subquery 2: Annotate each row with the previous value in the same (hash, step_ms_val) window,
-	// ordered by timestamp. This avoids groupArray+arraySort for reset detection.
+	// Subquery 2: Attach prev_value to each row using a window function.
+	//
+	// Partitioned by (hash, step_ms_val) and ordered by timestamp, lagInFrame looks one row
+	// back within each partition. This is used in subquery 3 to detect counter resets without
+	// materialising per-group arrays.
+	//
+	//  partition (hash=A, step=S2), ordered by timestamp:
+	//
+	//   timestamp │ value │ prev_value
+	//   ──────────┼───────┼───────────
+	//      t=10   │  100  │  100   ← first row, default = value itself
+	//      t=20   │  150  │  100
+	//      t=30   │   20  │  150   ← value < prev_value: reset detected
+	//      t=40   │   80  │   20
 	withPrev := chsql.SelectFrom(expanded,
 		chsql.Column("hash", nil),
 		chsql.Column("step_ms_val", nil),
@@ -404,7 +449,22 @@ func (p *promQuerier) queryRatePointsByHash(
 		},
 	)
 
-	// Subquery 3: Group by series and step, computing rate components without materializing per-group arrays.
+	// Subquery 3: Aggregate per (hash, step) into the four scalars needed for rate calculation.
+	//
+	// Using argMin/argMax for first/last avoids sorting; sumIf accumulates pre-reset values
+	// so Go only needs: resultValue = last_v - first_v + reset_sum.
+	//
+	//  partition (hash=A, step=S2):
+	//
+	//   timestamp │ value │ prev_value │ contributes to
+	//   ──────────┼───────┼────────────┼───────────────────────────────────────────
+	//      t=10   │  100  │  100       │ first_pair=(t10,100)
+	//      t=20   │  150  │  100       │ (middle)
+	//      t=30   │   20  │  150       │ reset_sum += 150  (value 20 < prev 150)
+	//      t=40   │   80  │   20       │ last_pair=(t40,80)
+	//
+	//   → first_pair=(t10,100)  last_pair=(t40,80)  samples=4  reset_sum=150
+	//   → resultValue = 80 - 100 + 150 = 130  (true counter delta across the reset)
 	aggregated := chsql.SelectFrom(withPrev,
 		chsql.Column("hash", nil),
 		chsql.Column("step_ms_val", nil),
@@ -416,7 +476,8 @@ func (p *promQuerier) queryRatePointsByHash(
 		GroupBy(chsql.Ident("hash"), chsql.Ident("step_ms_val")).
 		Having(chsql.Gt(chsql.Ident("samples"), chsql.Integer(1)))
 
-	// Final query: Select and map columns to their respective Go types for processing.
+	// Final query: Unwrap tuple columns and attach Go column buffers for scanning.
+	// Go then calls extrapolatedRateValue per row to apply Prometheus' extrapolation formula.
 	rateQuery := chsql.SelectFrom(aggregated,
 		chsql.ResultColumn{Name: "hash", Expr: chsql.Ident("hash"), Data: hash},
 		chsql.ResultColumn{Name: "step_ts", Expr: chsql.ToDateTime64(chsql.Div(chsql.Ident("step_ms_val"), chsql.Float(1000.0)), proto.PrecisionMilli), Data: stepTS},
