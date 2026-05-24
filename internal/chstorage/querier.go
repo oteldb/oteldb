@@ -21,6 +21,7 @@ import (
 	"github.com/oteldb/oteldb/internal/chstorage/chsql"
 	"github.com/oteldb/oteldb/internal/globalmetric"
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/metricscache"
 	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
@@ -39,7 +40,7 @@ type Querier struct {
 	maxExecutionTime time.Duration
 
 	timeseries   *timeseriesQuerier
-	metricsCache *MetricsCache
+	metricsCache *metricscache.Cache
 	metricsSg    *singleflight.Group[xxh3.Uint128, metricSelectResult]
 
 	chLogLevel                 zapcore.LevelEnabler
@@ -126,14 +127,14 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "create clickhouse.request histogram metric")
 	}
-	var metricsCache *MetricsCache
+	var metricsCache *metricscache.Cache
 	if opts.MetricsCacheOptions.MaxBytes > 0 {
 		var err error
 		cacheOpts := opts.MetricsCacheOptions
 		if cacheOpts.MeterProvider == nil {
 			cacheOpts.MeterProvider = opts.MeterProvider
 		}
-		metricsCache, err = newMetricsCache(cacheOpts)
+		metricsCache, err = metricscache.New(cacheOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "create metrics cache")
 		}

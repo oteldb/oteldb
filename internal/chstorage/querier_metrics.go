@@ -23,6 +23,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/oteldb/oteldb/internal/chstorage/chsql"
+	"github.com/oteldb/oteldb/internal/metricscache"
 	"github.com/oteldb/oteldb/internal/promapi"
 	"github.com/oteldb/oteldb/internal/xattribute"
 )
@@ -60,7 +61,7 @@ type promQuerier struct {
 	labelLimit      int
 	timeseriesLimit int
 
-	metricsCache                    *MetricsCache
+	metricsCache                    *metricscache.Cache
 	queryTimeseries                 queryMetricsTimeseriesFunc
 	queryPointsFunc                 queryPointsFunc
 	querySampledPointsPerSeriesFunc querySampledPointsPerSeriesFunc
@@ -653,25 +654,25 @@ func (p *promQuerier) querySampledPointsCached(
 // If onlyIfExists is true and the entry is not yet in the cache, the call is a no-op:
 // this prevents a large query from evicting warm entries belonging to other series.
 func (p *promQuerier) upsertCache(ctx context.Context, hash [16]byte, step time.Duration, fn string, fetchFrom int64, ts []int64, vals []float64, untilMs int64, onlyIfExists bool) {
-	key := MetricsCacheKey{
+	key := metricscache.Key{
 		Hash: hash,
 		Step: step.Milliseconds(),
 		Fn:   fn,
 	}
-	entry, ok := p.metricsCache.cache.Get(key)
+	entry, ok := p.metricsCache.Get(key)
 	if !ok {
 		if onlyIfExists {
-			p.metricsCache.stats.SkippedInserts.Add(ctx, 1, cacheTypeOpt(fn, step))
+			p.metricsCache.Stats.SkippedInserts.Add(ctx, 1, cacheTypeOpt(fn, step))
 			return
 		}
-		entry = newMetricsCacheEntry()
+		entry = metricscache.NewEntry()
 	}
 
 	entry.Append(ts, vals, untilMs)
 	// Always advance the watermark so series with no data in the fetched range
 	// are treated as cache hits on the next query (skipping the ClickHouse round-trip).
 	entry.MarkFetched(fetchFrom, untilMs)
-	p.metricsCache.cache.Set(key, entry)
+	p.metricsCache.Set(key, entry)
 }
 
 var (
@@ -700,7 +701,7 @@ const uncachedWatermark = -1
 
 func computeFetchRange(
 	ctx context.Context,
-	cache *MetricsCache,
+	cache *metricscache.Cache,
 	step time.Duration,
 	fn string,
 	start int64,
@@ -714,17 +715,14 @@ func computeFetchRange(
 	stepMs := step.Milliseconds()
 	for hash := range timeseries {
 		watermarks[hash] = uncachedWatermark
-		key := MetricsCacheKey{
+		key := metricscache.Key{
 			Hash: hash,
 			Step: stepMs,
 			Fn:   fn,
 		}
-		entry, ok := cache.cache.Get(key)
+		entry, ok := cache.Get(key)
 		if ok {
-			entry.mu.RLock()
-			entryMinTS := entry.minTS
-			entryMaxTS := entry.maxTS
-			entry.mu.RUnlock()
+			entryMinTS, entryMaxTS := entry.Watermarks()
 
 			if entryMinTS <= start && entryMaxTS >= start {
 				stats.hits++
@@ -749,9 +747,9 @@ func computeFetchRange(
 	}
 
 	opt := cacheTypeOpt(fn, step)
-	cache.stats.SeriesHits.Add(ctx, int64(stats.hits), opt)
-	cache.stats.SeriesPartialHits.Add(ctx, int64(stats.partialHits), opt)
-	cache.stats.SeriesMisses.Add(ctx, int64(stats.misses), opt)
+	cache.Stats.SeriesHits.Add(ctx, int64(stats.hits), opt)
+	cache.Stats.SeriesPartialHits.Add(ctx, int64(stats.partialHits), opt)
+	cache.Stats.SeriesMisses.Add(ctx, int64(stats.misses), opt)
 
 	return watermarks, globalFetchFrom, stats
 }

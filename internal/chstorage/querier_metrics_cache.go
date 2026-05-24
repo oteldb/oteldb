@@ -7,6 +7,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/go-faster/oteldb/internal/metricscache"
 )
 
 type fetchPointsFunc func(ctx context.Context, fetchStart, fetchEnd time.Time) (map[[16]byte]*series[pointData], error)
@@ -20,7 +22,7 @@ func (p *promQuerier) fetchAndMergeCache(
 	timeseries map[[16]byte]labels.Labels,
 	fetch fetchPointsFunc,
 ) (map[[16]byte]*series[pointData], error) {
-	cacheEnd := time.Now().Add(-p.metricsCache.safetyLag)
+	cacheEnd := time.Now().Add(-p.metricsCache.SafetyLag())
 	if end.Before(cacheEnd) {
 		cacheEnd = end
 	}
@@ -68,7 +70,7 @@ func (p *promQuerier) fetchAndMergeCache(
 		bigQuery := p.metricsCache.IsBigQuery(totalPoints)
 		span.SetAttributes(attribute.Bool("chstorage.metrics_cache.big_query", bigQuery))
 		if bigQuery {
-			p.metricsCache.stats.BigQueries.Add(ctx, 1, cacheTypeOpt(fn, step))
+			p.metricsCache.Stats.BigQueries.Add(ctx, 1, cacheTypeOpt(fn, step))
 		}
 		for hash := range timeseries {
 			var (
@@ -83,7 +85,7 @@ func (p *promQuerier) fetchAndMergeCache(
 		}
 	} else {
 		span.AddEvent("chstorage.fully_covered_by_cache")
-		p.metricsCache.stats.FullyCovered.Add(ctx, 1, cacheTypeOpt(fn, step))
+		p.metricsCache.Stats.FullyCovered.Add(ctx, 1, cacheTypeOpt(fn, step))
 	}
 
 	// 4. Merge per series: cached[start..watermark] ++ fetched(watermark, end]
@@ -93,8 +95,8 @@ func (p *promQuerier) fetchAndMergeCache(
 		watermark := seriesWatermark[hash]
 
 		if watermark >= start.UnixMilli() {
-			key := MetricsCacheKey{Hash: hash, Step: step.Milliseconds(), Fn: fn}
-			if entry, ok := p.metricsCache.cache.Get(key); ok {
+			key := metricscache.Key{Hash: hash, Step: step.Milliseconds(), Fn: fn}
+			if entry, ok := p.metricsCache.Get(key); ok {
 				cachedTS, cachedVals := entry.Slice(start.UnixMilli(), min(watermark, end.UnixMilli()))
 				s.ts = append(s.ts, cachedTS...)
 				s.data.values = append(s.data.values, cachedVals...)
