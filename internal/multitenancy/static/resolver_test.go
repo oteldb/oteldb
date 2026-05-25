@@ -33,7 +33,7 @@ func TestResolver(t *testing.T) {
 	})
 
 	t.Run("ReadAuthorized", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.Header.Set("Authorization", "Bearer token1")
 		decision, err := resolver.Resolve(ctx, req, multitenancy.OperationRead)
 		require.NoError(t, err)
@@ -41,7 +41,7 @@ func TestResolver(t *testing.T) {
 	})
 
 	t.Run("WriteAuthorized", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/", nil)
+		req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 		req.Header.Set("Authorization", "token1")
 		decision, err := resolver.Resolve(ctx, req, multitenancy.OperationWrite)
 		require.NoError(t, err)
@@ -49,14 +49,14 @@ func TestResolver(t *testing.T) {
 	})
 
 	t.Run("Unauthorized", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.Header.Set("Authorization", "unknown")
 		_, err := resolver.Resolve(ctx, req, multitenancy.OperationRead)
 		require.Error(t, err)
 	})
 
 	t.Run("MissingCredential", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		_, err := resolver.Resolve(ctx, req, multitenancy.OperationRead)
 		require.Error(t, err)
 	})

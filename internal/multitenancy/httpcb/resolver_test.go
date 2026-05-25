@@ -51,7 +51,7 @@ func TestResolver(t *testing.T) {
 	})
 
 	t.Run("Authorized", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.Header.Set("Authorization", "Bearer valid-token")
 		decision, err := resolver.Resolve(ctx, req, multitenancy.OperationRead)
 		require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestResolver(t *testing.T) {
 	})
 
 	t.Run("Unauthorized", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.Header.Set("Authorization", "Bearer invalid-token")
 		_, err := resolver.Resolve(ctx, req, multitenancy.OperationRead)
 		require.Error(t, err)

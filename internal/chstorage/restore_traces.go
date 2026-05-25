@@ -59,6 +59,7 @@ func (r *tracesRestore) restoreSpans(ctx context.Context, dir string) error {
 		File: "traces",
 		NewColumns: func() ([]proto.Input, Columns, func(), func() int) {
 			var (
+				tenantID   = new(proto.ColStr).LowCardinality()
 				traceID    proto.ColRawOf[otelstorage.TraceID]
 				spanID     proto.ColRawOf[otelstorage.SpanID]
 				traceState proto.ColStr
@@ -89,6 +90,7 @@ func (r *tracesRestore) restoreSpans(ctx context.Context, dir string) error {
 
 				columns = MergeColumns(
 					Columns{
+						{Name: "tenant_id", Data: tenantID},
 						{Name: "trace_id", Data: &traceID},
 						{Name: "span_id", Data: &spanID},
 						{Name: "trace_state", Data: &traceState},
@@ -164,10 +166,10 @@ func (r *tracesRestore) restoreSpans(ctx context.Context, dir string) error {
 						s.ScopeVersion = scopeVersion.Row(i)
 						s.ScopeAttrs = scope.Row(i)
 
-						sc.AddRow(s, "") // Empty tenant_id for restore operations
-						tags.AddAttrs("", traceql.ScopeSpan, s.Attrs)
-						tags.AddAttrs("", traceql.ScopeResource, s.ResourceAttrs)
-						tags.AddAttrs("", traceql.ScopeInstrumentation, s.ScopeAttrs)
+						sc.AddRow(s, tenantID.Row(i))
+						tags.AddAttrs(tenantID.Row(i), traceql.ScopeSpan, s.Attrs)
+						tags.AddAttrs(tenantID.Row(i), traceql.ScopeResource, s.ResourceAttrs)
+						tags.AddAttrs(tenantID.Row(i), traceql.ScopeInstrumentation, s.ScopeAttrs)
 					}
 				}
 				rows = func() int {

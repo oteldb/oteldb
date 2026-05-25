@@ -40,7 +40,7 @@ func TestMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		req := httptest.NewRequest(http.MethodGet, "http://localhost/query", nil)
+		req := httptest.NewRequest(http.MethodGet, "http://localhost/query", http.NoBody)
 		req.Header.Set("Authorization", "Bearer token-1")
 		rec := httptest.NewRecorder()
 
@@ -58,7 +58,7 @@ func TestMiddleware(t *testing.T) {
 			t.Error("should not reach next handler")
 		})
 
-		req := httptest.NewRequest(http.MethodGet, "http://localhost/query", nil)
+		req := httptest.NewRequest(http.MethodGet, "http://localhost/query", http.NoBody)
 		rec := httptest.NewRecorder()
 
 		mw(next).ServeHTTP(rec, req)
@@ -79,7 +79,7 @@ func TestMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		req := httptest.NewRequest(http.MethodGet, "http://localhost/query", nil)
+		req := httptest.NewRequest(http.MethodGet, "http://localhost/query", http.NoBody)
 		rec := httptest.NewRecorder()
 
 		mw(next).ServeHTTP(rec, req)
@@ -102,7 +102,7 @@ func TestMiddleware(t *testing.T) {
 			t.Error("should not reach next handler")
 		})
 
-		req := httptest.NewRequest(http.MethodGet, "http://localhost/query", nil)
+		req := httptest.NewRequest(http.MethodGet, "http://localhost/query", http.NoBody)
 		req.Header.Set("Authorization", "Bearer invalid")
 		rec := httptest.NewRecorder()
 

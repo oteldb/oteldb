@@ -24,7 +24,7 @@ func (e *multitenancyAuthExtension) Shutdown(context.Context) error {
 }
 
 func (e *multitenancyAuthExtension) Authenticate(ctx context.Context, headers map[string][]string) (context.Context, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "/", nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "/", http.NoBody)
 	for k, vs := range headers {
 		for _, v := range vs {
 			req.Header.Add(k, v)
