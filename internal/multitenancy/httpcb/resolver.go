@@ -42,7 +42,7 @@ func (r *Resolver) Resolve(ctx context.Context, req *http.Request, op multitenan
 	if headerName == "" {
 		headerName = "Authorization"
 	}
-	
+
 	cred := req.Header.Get(headerName)
 	if cred == "" {
 		return multitenancy.Decision{}, errors.New("missing credential")

@@ -43,11 +43,11 @@ func Benchmark_metricsBatch(b *testing.B) {
 	var stats inserterStats
 	require.NoError(b, stats.Init(meterProvider.Meter("test")))
 
-	batch := newMetricBatch(&Inserter{
+	batch := newMetricBatch(b.Context(), &Inserter{
 		chLogLevel: zapcore.PanicLevel,
 		stats:      stats,
 		tracker:    globalmetric.NewNoopTracker(),
-	}, b.Context())
+	})
 	b.SetBytes(int64(len(raw)))
 	b.ResetTimer()
 	for b.Loop() {

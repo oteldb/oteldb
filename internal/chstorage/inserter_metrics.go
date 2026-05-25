@@ -49,7 +49,7 @@ func (i *Inserter) insertBatch(ctx context.Context, b *metricsBatch) (rerr error
 
 // ConsumeMetrics inserts given metrics.
 func (i *Inserter) ConsumeMetrics(ctx context.Context, metrics pmetric.Metrics) error {
-	b := newMetricBatch(i, ctx)
+	b := newMetricBatch(ctx, i)
 	if err := b.mapMetrics(metrics); err != nil {
 		return errors.Wrap(err, "map metrics")
 	}
@@ -82,7 +82,7 @@ func (b *metricsBatch) Reset() {
 	clear(b.labels)
 }
 
-func newMetricBatch(inserter *Inserter, ctx context.Context) *metricsBatch {
+func newMetricBatch(ctx context.Context, inserter *Inserter) *metricsBatch {
 	return &metricsBatch{
 		timeseries:     newTimeseriesColumns(),
 		seenTimeseries: map[[16]byte]struct{}{},

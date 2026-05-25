@@ -130,9 +130,13 @@ func (r *metricsRestore) restorePoints(ctx context.Context, dir string) error {
 
 				mapping proto.ColEnum8
 				flags   proto.ColUInt8
+				hash    = proto.NewLowCardinality(&proto.ColFixedStr16{})
+
+				tenantID = new(proto.ColStr).LowCardinality()
 
 				columns = MergeColumns(
 					Columns{
+						{Name: "hash", Data: hash},
 						{Name: "timestamp", Data: timestamp},
 						{Name: "value", Data: &value},
 
@@ -140,6 +144,7 @@ func (r *metricsRestore) restorePoints(ctx context.Context, dir string) error {
 						{Name: "flags", Data: &flags},
 					},
 					Columns{
+						{Name: "tenant_id", Data: tenantID},
 						{Name: "name", Data: name},
 						{Name: "unit", Data: unit},
 						{Name: "description", Data: &description},
@@ -214,9 +219,13 @@ func (r *metricsRestore) restoreExpHistograms(ctx context.Context, dir string) e
 				negativeBucketCounts = new(proto.ColUInt64).Array()
 
 				flags proto.ColUInt8
+				hash  proto.ColFixedStr16
+
+				tenantID = new(proto.ColStr).LowCardinality()
 
 				columns = MergeColumns(
 					Columns{
+						{Name: "hash", Data: &hash},
 						{Name: "timestamp", Data: timestamp},
 						{Name: "exp_histogram_count", Data: &count},
 						{Name: "exp_histogram_sum", Data: sum},
@@ -232,6 +241,7 @@ func (r *metricsRestore) restoreExpHistograms(ctx context.Context, dir string) e
 						{Name: "flags", Data: &flags},
 					},
 					Columns{
+						{Name: "tenant_id", Data: tenantID},
 						{Name: "name", Data: name},
 						{Name: "unit", Data: unit},
 						{Name: "description", Data: &description},
@@ -307,6 +317,8 @@ func (r *metricsRestore) restoreExemplars(ctx context.Context, dir string) error
 				spanID             proto.ColFixedStr8
 				traceID            proto.ColFixedStr16
 
+				tenantID = new(proto.ColStr).LowCardinality()
+
 				columns = MergeColumns(
 					Columns{
 						{Name: "timestamp", Data: timestamp},
@@ -318,6 +330,7 @@ func (r *metricsRestore) restoreExemplars(ctx context.Context, dir string) error
 						{Name: "trace_id", Data: &traceID},
 					},
 					Columns{
+						{Name: "tenant_id", Data: tenantID},
 						{Name: "name", Data: name},
 						{Name: "unit", Data: unit},
 						{Name: "description", Data: &description},

@@ -85,7 +85,7 @@ func (q *Querier) LabelNames(ctx context.Context, opts logstorage.LabelsOptions)
 		}
 	)
 	if err := q.do(ctx, selectQuery{
-		Query: newSelectFrom(ctx, 
+		Query: newSelectFrom(ctx,
 			// Select deduplicated resources from subquery.
 			resourceQuery,
 			chsql.ResultColumn{
@@ -203,7 +203,7 @@ func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logsto
 		}
 		var (
 			value proto.ColStr
-			query = newSelectFrom(ctx, 
+			query = newSelectFrom(ctx,
 				// Select deduplicated resources from subquery.
 				resourceQuery,
 				chsql.ResultColumn{

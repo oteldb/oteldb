@@ -22,7 +22,7 @@ func TestDecisionWriteValidator(t *testing.T) {
 
 	t.Run("WithDecisionInContext", func(t *testing.T) {
 		validator := &decisionWriteValidator{}
-		
+
 		decision := multitenancy.Decision{
 			Enabled:   true,
 			TenantIDs: []string{"tenant-a", "tenant-b"},
@@ -47,7 +47,7 @@ func TestDecisionWriteValidator(t *testing.T) {
 
 	t.Run("EmptyDecisionTenantList", func(t *testing.T) {
 		validator := &decisionWriteValidator{}
-		
+
 		decision := multitenancy.Decision{
 			Enabled:   true,
 			TenantIDs: []string{},

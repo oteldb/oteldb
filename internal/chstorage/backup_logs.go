@@ -75,7 +75,7 @@ func (b *logsBackup) backupLogs(ctx context.Context, dir string, start, end time
 	defer func() { _ = w.Close() }()
 
 	var (
-		tenantID = new(proto.ColStr).LowCardinality()
+		tenantID  = new(proto.ColStr).LowCardinality()
 		timestamp = new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano)
 
 		severityNumber proto.ColUInt8

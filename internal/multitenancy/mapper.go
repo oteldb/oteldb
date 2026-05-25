@@ -183,14 +183,14 @@ func (m *TenantMapper) Resolve(resourceAttrs otelstorage.Attrs) (string, bool) {
 func (m *TenantMapper) resolveExplicit(resourceAttrs otelstorage.Attrs) (string, bool) {
 	// Build a lookup key from the resource attributes
 	attrs := resourceAttrs.AsMap()
-	
+
 	// Try each tenant rule
 	for _, rule := range m.tenants {
 		if m.matchesRule(attrs, rule.keyAttributes) {
 			return rule.id, true
 		}
 	}
-	
+
 	return "", false
 }
 

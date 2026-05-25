@@ -107,7 +107,7 @@ func (b *metricsBackup) backupPoints(ctx context.Context, dir string, start, end
 		_ = w.Close()
 	}()
 	columns := backupColumns{
-		{Name: "hash", Data: new(proto.ColFixedStr16)},
+		{Name: "hash", Data: proto.NewLowCardinality(&proto.ColFixedStr16{})},
 		{Name: "timestamp", Data: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)},
 		{Name: "value", Data: new(proto.ColFloat64)},
 
