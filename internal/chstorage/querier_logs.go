@@ -509,7 +509,7 @@ func (q *Querier) getLabelMapping(ctx context.Context, labels []string) (_ map[s
 		inputData.Append(label)
 	}
 	if err := q.do(ctx, selectQuery{
-		Query: newSelectQuery(ctx, q.tables.LogAttrs, attrs.ChsqlResult()...).
+		Query: chsql.Select(q.tables.LogAttrs, attrs.ChsqlResult()...).
 			Where(chsql.In(
 				chsql.Ident("name"),
 				chsql.Ident("labels"),

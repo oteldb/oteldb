@@ -71,9 +71,5 @@ func newSelectQuery(ctx context.Context, table string, result ...chsql.ResultCol
 }
 
 func newSelectFrom(ctx context.Context, subquery *chsql.SelectQuery, result ...chsql.ResultColumn) *chsql.SelectQuery {
-	query := chsql.SelectFrom(subquery, result...)
-	if filters := decisionFilters(ctx); len(filters) > 0 {
-		query.Prewhere(filters...)
-	}
-	return query
+	return chsql.SelectFrom(subquery, result...)
 }
