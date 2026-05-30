@@ -3,7 +3,7 @@ package logqlmetric
 import (
 	"regexp"
 
-	"github.com/go-faster/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql"
 )
 
 // LabelReplace returns new step iterator performing label replacement.

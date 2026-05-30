@@ -4,7 +4,7 @@ import (
 	"github.com/go-faster/jx"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 func decodeAttributes(s []byte) (otelstorage.Attrs, error) {

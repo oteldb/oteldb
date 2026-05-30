@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/go-faster/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql"
 )
 
 // SelectorTree is a simple prefix tree of selectors. Efficient for matching multiple JSON paths.

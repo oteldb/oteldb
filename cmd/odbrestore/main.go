@@ -11,7 +11,7 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/chstorage"
 )
 
 func run(ctx context.Context) error {

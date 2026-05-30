@@ -13,12 +13,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/maps"
 
-	"github.com/go-faster/oteldb/internal/chstorage/chsql"
-	"github.com/go-faster/oteldb/internal/iterators"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine"
-	"github.com/go-faster/oteldb/internal/logstorage"
-	"github.com/go-faster/oteldb/internal/otelstorage"
-	"github.com/go-faster/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/chstorage/chsql"
+	"github.com/oteldb/oteldb/internal/iterators"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/logstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/xattribute"
 )
 
 var (

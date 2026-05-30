@@ -6,7 +6,7 @@ This file provides guidance to Claude Code, Copilot, Gemini and other coding age
 
 **oteldb** is an OpenTelemetry-first aggregation system for metrics, traces, and logs backed by ClickHouse. It provides PromQL, TraceQL, and LogQL query compatibility and ingests data via OTLP (gRPC) and Prometheus remote write.
 
-Go module: `github.com/go-faster/oteldb`
+Go module: `github.com/oteldb/oteldb`
 
 Do not load generated files in directories:
 
@@ -51,13 +51,13 @@ E2E tests verify the entire system, including ClickHouse storage. They are skipp
 
 ```bash
 # Prometheus/PromQL
-E2E='1' go test -timeout 1h -v github.com/go-faster/oteldb/integration/prome2e
+E2E='1' go test -timeout 1h -v github.com/oteldb/oteldb/integration/prome2e
 # Loki/LogQL
-E2E='1' go test -timeout 1h -v github.com/go-faster/oteldb/integration/lokie2e
+E2E='1' go test -timeout 1h -v github.com/oteldb/oteldb/integration/lokie2e
 # Tempo/TraceQL
-E2E='1' go test -timeout 1h -v github.com/go-faster/oteldb/integration/tempoe2e
+E2E='1' go test -timeout 1h -v github.com/oteldb/oteldb/integration/tempoe2e
 # chotel
-E2E='1' go test -timeout 1h -v github.com/go-faster/oteldb/integration/chotele2e
+E2E='1' go test -timeout 1h -v github.com/oteldb/oteldb/integration/chotele2e
 ```
 
 #### Compliance tests

@@ -22,9 +22,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-faster/oteldb/internal/chstorage/chsql"
-	"github.com/go-faster/oteldb/internal/promapi"
-	"github.com/go-faster/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/chstorage/chsql"
+	"github.com/oteldb/oteldb/internal/promapi"
+	"github.com/oteldb/oteldb/internal/xattribute"
 )
 
 var _ storage.Queryable = (*Querier)(nil)

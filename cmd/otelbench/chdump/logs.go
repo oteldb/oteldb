@@ -6,7 +6,7 @@ import (
 
 	"github.com/ClickHouse/ch-go/proto"
 
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 // Logs is a parsed dump of logs.

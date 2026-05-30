@@ -17,6 +17,6 @@ keywords:
   - observability
   - opentelemetry
   - golang
-repository-code: "https://github.com/go-faster/oteldb"
+repository-code: "https://github.com/oteldb/oteldb"
 type: software
-message: "Available at https://github.com/go-faster/oteldb"
+message: "Available at https://github.com/oteldb/oteldb"

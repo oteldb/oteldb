@@ -6,9 +6,9 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/logql"
-	"github.com/go-faster/oteldb/internal/logql/lexer"
-	"github.com/go-faster/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql/lexer"
+	"github.com/oteldb/oteldb/internal/lokiapi"
 )
 
 func evalErr(err error, msg string) error {

@@ -24,7 +24,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 
-	"github.com/go-faster/oteldb/integration"
+	"github.com/oteldb/oteldb/integration"
 )
 
 type testHandler struct{}

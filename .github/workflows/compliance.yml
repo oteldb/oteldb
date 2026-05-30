@@ -63,7 +63,7 @@ jobs:
       - name: Run
         working-directory: dev/local/ch-compliance
         run: |
-          go run github.com/go-faster/oteldb/cmd/promql-compliance-tester \
+          go run github.com/oteldb/oteldb/cmd/promql-compliance-tester \
           -config-file promql-test-queries.yml -config-file test-oteldb.yml \
           -output-format json \
           -end 1m -range 1m > result.oteldb.json || true
@@ -129,7 +129,7 @@ jobs:
       - name: Run
         working-directory: dev/local/ch-logql-compliance
         run: |
-          go run github.com/go-faster/oteldb/cmd/logql-compliance-tester \
+          go run github.com/oteldb/oteldb/cmd/logql-compliance-tester \
           -end 1m -range 1m \
           -config-file logql-test-queries.yml -config-file test-oteldb.yml \
           -output-format json -output-file result.oteldb.json \

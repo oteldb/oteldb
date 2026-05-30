@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/go-faster/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/chstorage"
 )
 
 // Config defines [Exporter] config.

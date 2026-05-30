@@ -1,4 +1,4 @@
-module github.com/go-faster/oteldb
+module github.com/oteldb/oteldb
 
 go 1.26.1
 

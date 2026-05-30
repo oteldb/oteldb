@@ -8,7 +8,7 @@ import (
 	"github.com/go-faster/jx"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-faster/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql"
 )
 
 func parseExprs(t require.TestingT, exprs ...string) map[logql.Label]Path {

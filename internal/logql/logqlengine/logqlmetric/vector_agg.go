@@ -6,9 +6,9 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/iterators"
-	"github.com/go-faster/oteldb/internal/logql"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine/logqlabels"
+	"github.com/oteldb/oteldb/internal/iterators"
+	"github.com/oteldb/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlabels"
 )
 
 // VectorAggregation creates new Vector aggregation step iterator.

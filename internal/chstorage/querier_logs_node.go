@@ -3,10 +3,10 @@ package chstorage
 import (
 	"context"
 
-	"github.com/go-faster/oteldb/internal/logql"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine/logqlabels"
-	"github.com/go-faster/oteldb/internal/logstorage"
+	"github.com/oteldb/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlabels"
+	"github.com/oteldb/oteldb/internal/logstorage"
 )
 
 var _ logqlengine.Querier = (*Querier)(nil)

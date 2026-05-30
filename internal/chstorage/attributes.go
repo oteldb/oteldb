@@ -5,9 +5,9 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
 
-	"github.com/go-faster/oteldb/internal/chstorage/chsql"
-	"github.com/go-faster/oteldb/internal/ddl"
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/chstorage/chsql"
+	"github.com/oteldb/oteldb/internal/ddl"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 type Attributes struct {

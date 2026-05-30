@@ -13,7 +13,7 @@ A simple Docker CLI plugin to run LogQL queries over docker container logs.
 Or use `make install`, it would build and add plugin to `~/.docker/cli-plugins` directory.
 
 ```console
-git clone --depth 1 https://github.com/go-faster/oteldb
+git clone --depth 1 https://github.com/oteldb/oteldb
 cd oteldb/cmd/docker-logql
 make install
 ```

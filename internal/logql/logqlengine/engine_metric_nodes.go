@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/go-faster/oteldb/internal/logql"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine/logqlmetric"
+	"github.com/oteldb/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlmetric"
 )
 
 var (

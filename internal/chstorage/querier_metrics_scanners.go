@@ -27,9 +27,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/go-faster/oteldb/internal/metricstorage"
-	"github.com/go-faster/oteldb/internal/promql"
-	"github.com/go-faster/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/metricstorage"
+	"github.com/oteldb/oteldb/internal/promql"
+	"github.com/oteldb/oteldb/internal/xattribute"
 )
 
 type promScanners struct {

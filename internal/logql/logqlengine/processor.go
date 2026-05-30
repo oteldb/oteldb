@@ -5,10 +5,10 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/logql"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine/logqlabels"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine/logqlerrors"
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlabels"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlerrors"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 // Processor is a log record processor.

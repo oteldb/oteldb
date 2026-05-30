@@ -19,14 +19,14 @@ $ BENCH_QUERIES=bench-series.yml ./run.sh
 Then save result in benchstat format:
 
 ```console
-$ go run github.com/go-faster/oteldb/cmd/otelbench promql analyze -f 'benchstat' -i report.yml | tee bench.old.txt
+$ go run github.com/oteldb/oteldb/cmd/otelbench promql analyze -f 'benchstat' -i report.yml | tee bench.old.txt
 ```
 
 ### Run benchmark on changes
 
 ```console
 $ BENCH_QUERIES=bench-series.yml ./run.sh
-$ go run github.com/go-faster/oteldb/cmd/otelbench promql analyze -f 'benchstat' -i report.yml | tee bench.new.txt
+$ go run github.com/oteldb/oteldb/cmd/otelbench promql analyze -f 'benchstat' -i report.yml | tee bench.new.txt
 ```
 
 ### Compare results

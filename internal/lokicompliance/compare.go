@@ -12,7 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 
-	"github.com/go-faster/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/lokiapi"
 )
 
 const (

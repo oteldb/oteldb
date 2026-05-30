@@ -16,9 +16,9 @@ import (
 	"github.com/spf13/pflag"
 	"golang.org/x/exp/maps"
 
-	"github.com/go-faster/oteldb/internal/dockerlog"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine"
-	"github.com/go-faster/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/dockerlog"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/lokiapi"
 )
 
 func queryCmd(dcli command.Cli) *cobra.Command {

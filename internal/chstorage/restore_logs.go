@@ -11,8 +11,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/internal/logstorage"
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/logstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 type logsRestore struct {

@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-faster/oteldb/internal/iterators"
-	"github.com/go-faster/oteldb/internal/otelstorage"
-	"github.com/go-faster/oteldb/internal/traceql"
-	"github.com/go-faster/oteldb/internal/tracestorage"
+	"github.com/oteldb/oteldb/internal/iterators"
+	"github.com/oteldb/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/traceql"
+	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
 // Trace is set of span grouped by trace ID.

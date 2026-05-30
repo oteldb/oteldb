@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-faster/oteldb/internal/httpmiddleware"
+	"github.com/oteldb/oteldb/internal/httpmiddleware"
 )
 
 func TestBasicAuth(t *testing.T) {

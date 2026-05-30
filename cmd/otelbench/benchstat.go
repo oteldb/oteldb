@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/perf/benchfmt"
 
-	"github.com/go-faster/oteldb/cmd/otelbench/chtracker"
+	"github.com/oteldb/oteldb/cmd/otelbench/chtracker"
 )
 
 // appendChValues returns sum values of metrics of traced Clickhouse queries.

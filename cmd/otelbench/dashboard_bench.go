@@ -16,9 +16,9 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 
-	"github.com/go-faster/oteldb/internal/lokiapi"
-	"github.com/go-faster/oteldb/internal/promapi"
-	"github.com/go-faster/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/promapi"
+	"github.com/oteldb/oteldb/internal/tempoapi"
 )
 
 type DashboardBenchmark struct {

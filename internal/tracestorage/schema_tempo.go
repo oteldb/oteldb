@@ -8,8 +8,8 @@ import (
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 
-	"github.com/go-faster/oteldb/internal/otelstorage"
-	"github.com/go-faster/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/tempoapi"
 )
 
 // FillTraceMetadata files TraceSearchMetadata fields using span.

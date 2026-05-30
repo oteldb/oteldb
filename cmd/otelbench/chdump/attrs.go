@@ -4,7 +4,7 @@ import (
 	"github.com/ClickHouse/ch-go/proto"
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 type Attributes struct {

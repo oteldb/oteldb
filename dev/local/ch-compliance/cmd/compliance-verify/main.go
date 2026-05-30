@@ -10,7 +10,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/ogen-go/ogen/json"
 
-	"github.com/go-faster/oteldb/internal/promcompliance/output"
+	"github.com/oteldb/oteldb/internal/promcompliance/output"
 )
 
 func main() {

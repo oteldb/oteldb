@@ -3,7 +3,7 @@ package chstorage
 import (
 	"context"
 
-	"github.com/go-faster/oteldb/internal/metricstorage"
+	"github.com/oteldb/oteldb/internal/metricstorage"
 )
 
 var _ metricstorage.MetadataQuerier = (*Querier)(nil)

@@ -14,15 +14,15 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-faster/oteldb/internal/httpmiddleware"
-	"github.com/go-faster/oteldb/internal/lokiapi"
-	"github.com/go-faster/oteldb/internal/lokiproxy"
-	"github.com/go-faster/oteldb/internal/promapi"
-	"github.com/go-faster/oteldb/internal/promproxy"
-	"github.com/go-faster/oteldb/internal/pyroproxy"
-	"github.com/go-faster/oteldb/internal/pyroscopeapi"
-	"github.com/go-faster/oteldb/internal/tempoapi"
-	"github.com/go-faster/oteldb/internal/tempoproxy"
+	"github.com/oteldb/oteldb/internal/httpmiddleware"
+	"github.com/oteldb/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/lokiproxy"
+	"github.com/oteldb/oteldb/internal/promapi"
+	"github.com/oteldb/oteldb/internal/promproxy"
+	"github.com/oteldb/oteldb/internal/pyroproxy"
+	"github.com/oteldb/oteldb/internal/pyroscopeapi"
+	"github.com/oteldb/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/tempoproxy"
 )
 
 type service struct {

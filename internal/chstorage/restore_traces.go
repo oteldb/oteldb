@@ -10,9 +10,9 @@ import (
 	"github.com/go-faster/errors"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/internal/otelstorage"
-	"github.com/go-faster/oteldb/internal/traceql"
-	"github.com/go-faster/oteldb/internal/tracestorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/traceql"
+	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
 type tracesRestore struct {

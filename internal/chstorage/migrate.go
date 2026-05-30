@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/internal/ddl"
+	"github.com/oteldb/oteldb/internal/ddl"
 )
 
 // Migrator provides migration tool for oteldb.

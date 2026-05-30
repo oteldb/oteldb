@@ -4,7 +4,7 @@ import (
 	"regexp/syntax"
 	"strings"
 
-	"github.com/go-faster/oteldb/internal/traceql/lexer"
+	"github.com/oteldb/oteldb/internal/traceql/lexer"
 )
 
 // Autocomplete is a AND set of spanset matchers.

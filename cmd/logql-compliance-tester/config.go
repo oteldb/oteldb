@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/lokicompliance"
-	"github.com/go-faster/oteldb/internal/lokihandler"
+	"github.com/oteldb/oteldb/internal/lokicompliance"
+	"github.com/oteldb/oteldb/internal/lokihandler"
 )
 
 type Config struct {

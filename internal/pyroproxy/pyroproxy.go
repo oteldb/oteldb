@@ -9,7 +9,7 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/internal/pyroscopeapi"
+	"github.com/oteldb/oteldb/internal/pyroscopeapi"
 )
 
 var _ pyroscopeapi.Handler = &Server{}

@@ -19,7 +19,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 // Note: this file contains stats functions from Prometheus.

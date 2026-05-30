@@ -18,7 +18,7 @@ package opentelemetry.proto.resource.v1;
 
 import "common/v1/common.proto";
 
-option go_package = "github.com/go-faster/oteldb/internal/tempopb/resource/v1;resourcev1";
+option go_package = "github.com/oteldb/oteldb/internal/tempopb/resource/v1;resourcev1";
 
 // Resource information.
 message Resource {

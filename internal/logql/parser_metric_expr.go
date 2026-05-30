@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/logql/lexer"
+	"github.com/oteldb/oteldb/internal/logql/lexer"
 )
 
 func (p *parser) parseMetricExpr() (MetricExpr, error) {

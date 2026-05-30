@@ -9,7 +9,7 @@ labels: bug
 ### What version of go-faster/oteldb are you using?
 
 ```bash
-$ go list -m github.com/go-faster/oteldb
+$ go list -m github.com/oteldb/oteldb
 ```
 
 ### Can this issue be reproduced with the latest version?

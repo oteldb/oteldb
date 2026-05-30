@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-faster/jx"
 
-	"github.com/go-faster/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql"
 )
 
 // Extract extracts values from given paths using extract callback.

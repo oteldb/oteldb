@@ -14,9 +14,9 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/logparser"
-	"github.com/go-faster/oteldb/internal/logstorage"
-	"github.com/go-faster/oteldb/internal/tracestorage"
+	"github.com/oteldb/oteldb/internal/logparser"
+	"github.com/oteldb/oteldb/internal/logstorage"
+	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
 const (

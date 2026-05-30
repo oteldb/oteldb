@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/promhandler"
-	"github.com/go-faster/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/promhandler"
+	"github.com/oteldb/oteldb/internal/tempoapi"
 )
 
 func parseTagsTimeRange(

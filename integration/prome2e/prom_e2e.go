@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
-	"github.com/go-faster/oteldb/internal/metricstorage"
+	"github.com/oteldb/oteldb/internal/metricstorage"
 )
 
 // BatchSet is a set of batches.

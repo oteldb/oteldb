@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/go-faster/oteldb/internal/promcompliance/comparer"
-	"github.com/go-faster/oteldb/internal/promcompliance/config"
+	"github.com/oteldb/oteldb/internal/promcompliance/comparer"
+	"github.com/oteldb/oteldb/internal/promcompliance/config"
 )
 
 // JSONResult is the JSON output format.

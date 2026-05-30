@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/logql/lexer"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine/logqlpattern"
+	"github.com/oteldb/oteldb/internal/logql/lexer"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlpattern"
 )
 
 func (p *parser) parsePipeline(allowUnwrap bool) (stages []PipelineStage, err error) {

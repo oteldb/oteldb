@@ -14,8 +14,8 @@ import (
 	"github.com/golang/snappy"
 	"github.com/valyala/bytebufferpool"
 
-	"github.com/go-faster/oteldb/internal/prompb"
-	"github.com/go-faster/oteldb/internal/xsync"
+	"github.com/oteldb/oteldb/internal/prompb"
+	"github.com/oteldb/oteldb/internal/xsync"
 )
 
 // Settings defines translation settings.

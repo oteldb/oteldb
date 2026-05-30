@@ -12,8 +12,8 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/internal/lokiapi"
-	"github.com/go-faster/oteldb/internal/lokicompliance"
+	"github.com/oteldb/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/lokicompliance"
 )
 
 func setup(ctx context.Context, cfg Config) (*lokicompliance.Comparer, error) {

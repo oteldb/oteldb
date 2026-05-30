@@ -1,7 +1,7 @@
 package traceql
 
 import (
-	"github.com/go-faster/oteldb/internal/traceql/lexer"
+	"github.com/oteldb/oteldb/internal/traceql/lexer"
 )
 
 func (p *parser) parsePipeline() (stages []PipelineStage, rerr error) {

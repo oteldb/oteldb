@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/pyroscope-go/upstream/remote"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-faster/oteldb/internal/pyroscopeapi"
+	"github.com/oteldb/oteldb/internal/pyroscopeapi"
 )
 
 type ingestInput struct {

@@ -1,6 +1,6 @@
 package xattribute
 
-import "github.com/go-faster/oteldb/internal/xsync"
+import "github.com/oteldb/oteldb/internal/xsync"
 
 type stringSlice struct {
 	val []string

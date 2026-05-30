@@ -7,7 +7,7 @@ import (
 	"github.com/go-faster/sdk/gold"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-faster/oteldb/internal/ddl"
+	"github.com/oteldb/oteldb/internal/ddl"
 )
 
 func TestGenerateDDL(t *testing.T) {

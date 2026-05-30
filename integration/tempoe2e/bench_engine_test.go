@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/go-faster/oteldb/internal/tempoapi"
-	"github.com/go-faster/oteldb/internal/traceql/traceqlengine"
+	"github.com/oteldb/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
 
 	"github.com/stretchr/testify/require"
 )

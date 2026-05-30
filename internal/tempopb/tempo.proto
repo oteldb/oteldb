@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package tempopb;
 
-option go_package = "github.com/go-faster/oteldb/internal/tempopb";
+option go_package = "github.com/oteldb/oteldb/internal/tempopb";
 
 import "trace/v1/trace.proto";
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/go-faster/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/tempoapi"
 )
 
 func validationErr(err error, msg string) error {

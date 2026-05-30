@@ -10,14 +10,14 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/internal/chstorage"
-	"github.com/go-faster/oteldb/internal/globalmetric"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine"
-	"github.com/go-faster/oteldb/internal/logstorage"
-	"github.com/go-faster/oteldb/internal/metricstorage"
-	"github.com/go-faster/oteldb/internal/promql"
-	"github.com/go-faster/oteldb/internal/traceql/traceqlengine"
-	"github.com/go-faster/oteldb/internal/tracestorage"
+	"github.com/oteldb/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/globalmetric"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/logstorage"
+	"github.com/oteldb/oteldb/internal/metricstorage"
+	"github.com/oteldb/oteldb/internal/promql"
+	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
+	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
 type otelStorage struct {

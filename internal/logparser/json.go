@@ -7,7 +7,7 @@ import (
 	"github.com/go-faster/jx"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 // GenericJSONParser can parse generic json into [Line].

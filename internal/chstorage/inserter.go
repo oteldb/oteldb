@@ -15,9 +15,9 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/go-faster/oteldb/internal/globalmetric"
-	"github.com/go-faster/oteldb/internal/semconv"
-	"github.com/go-faster/oteldb/internal/tracestorage"
+	"github.com/oteldb/oteldb/internal/globalmetric"
+	"github.com/oteldb/oteldb/internal/semconv"
+	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
 var _ tracestorage.Inserter = (*Inserter)(nil)

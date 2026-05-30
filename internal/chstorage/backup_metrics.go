@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-faster/oteldb/internal/chstorage/chsql"
+	"github.com/oteldb/oteldb/internal/chstorage/chsql"
 )
 
 type metricsBackup struct {

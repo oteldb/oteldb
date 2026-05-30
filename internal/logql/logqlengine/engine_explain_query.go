@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/go-faster/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/lokiapi"
 )
 
 type (

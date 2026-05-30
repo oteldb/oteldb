@@ -13,10 +13,10 @@ import (
 	noopmeter "go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/go-faster/oteldb/internal/globalmetric"
-	"github.com/go-faster/oteldb/internal/otelbench"
-	"github.com/go-faster/oteldb/internal/prompb"
-	prw "github.com/go-faster/oteldb/prometheusremotewrite"
+	"github.com/oteldb/oteldb/internal/globalmetric"
+	"github.com/oteldb/oteldb/internal/otelbench"
+	"github.com/oteldb/oteldb/internal/prompb"
+	prw "github.com/oteldb/oteldb/prometheusremotewrite"
 )
 
 func Benchmark_metricsBatch(b *testing.B) {

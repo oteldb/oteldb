@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/lexerql"
+	"github.com/oteldb/oteldb/internal/lexerql"
 )
 
 // Label is a LogQL identifier.

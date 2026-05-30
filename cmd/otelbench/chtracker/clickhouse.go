@@ -9,7 +9,7 @@ import (
 	"github.com/go-faster/errors"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"github.com/go-faster/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/tempoapi"
 )
 
 // QueryReport is a Clickhouse query stats retrieved from trace.

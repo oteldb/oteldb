@@ -16,8 +16,8 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"sigs.k8s.io/yaml"
 
-	"github.com/go-faster/oteldb/integration/lokie2e"
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/integration/lokie2e"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 func appendAttributes(target pcommon.Map, attrs []attribute.KeyValue) {

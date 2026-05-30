@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql"
 )
 
 // Aggregator is a stateful streaming aggregator.

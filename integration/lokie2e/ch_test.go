@@ -8,9 +8,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-faster/oteldb/integration"
-	"github.com/go-faster/oteldb/integration/lokie2e"
-	"github.com/go-faster/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/integration"
+	"github.com/oteldb/oteldb/integration/lokie2e"
+	"github.com/oteldb/oteldb/internal/chstorage"
 )
 
 func TestCH(t *testing.T) {

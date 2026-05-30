@@ -5,8 +5,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-faster/oteldb/internal/iterators"
-	"github.com/go-faster/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/iterators"
+	"github.com/oteldb/oteldb/internal/logql"
 )
 
 // Querier is a logs storage query interface.

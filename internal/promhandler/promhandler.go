@@ -20,10 +20,10 @@ import (
 	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-faster/oteldb/internal/chstorage"
-	"github.com/go-faster/oteldb/internal/metricstorage"
-	"github.com/go-faster/oteldb/internal/promapi"
-	"github.com/go-faster/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/metricstorage"
+	"github.com/oteldb/oteldb/internal/promapi"
+	"github.com/oteldb/oteldb/internal/xattribute"
 )
 
 // Engine is a Prometheus engine interface.

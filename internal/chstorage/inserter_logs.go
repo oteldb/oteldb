@@ -9,9 +9,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-faster/oteldb/internal/logstorage"
-	"github.com/go-faster/oteldb/internal/semconv"
-	"github.com/go-faster/oteldb/internal/xsync"
+	"github.com/oteldb/oteldb/internal/logstorage"
+	"github.com/oteldb/oteldb/internal/semconv"
+	"github.com/oteldb/oteldb/internal/xsync"
 )
 
 type recordWriter struct {

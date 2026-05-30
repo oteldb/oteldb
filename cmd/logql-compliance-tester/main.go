@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-faster/oteldb/internal/lokicompliance"
+	"github.com/oteldb/oteldb/internal/lokicompliance"
 )
 
 func run(ctx context.Context) error {

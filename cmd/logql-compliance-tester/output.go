@@ -12,7 +12,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/lokicompliance"
+	"github.com/oteldb/oteldb/internal/lokicompliance"
 )
 
 func printOutput(results []*lokicompliance.Result, cfg OutputConfig) error {

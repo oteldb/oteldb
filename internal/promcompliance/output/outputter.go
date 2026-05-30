@@ -1,8 +1,8 @@
 package output
 
 import (
-	"github.com/go-faster/oteldb/internal/promcompliance/comparer"
-	"github.com/go-faster/oteldb/internal/promcompliance/config"
+	"github.com/oteldb/oteldb/internal/promcompliance/comparer"
+	"github.com/oteldb/oteldb/internal/promcompliance/config"
 )
 
 // An Outputter outputs a number of test results.

@@ -19,8 +19,8 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-faster/oteldb/internal/metricstorage"
-	"github.com/go-faster/oteldb/internal/semconv"
+	"github.com/oteldb/oteldb/internal/metricstorage"
+	"github.com/oteldb/oteldb/internal/semconv"
 )
 
 func (i *Inserter) insertBatch(ctx context.Context, b *metricsBatch) (rerr error) {

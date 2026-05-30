@@ -5,8 +5,8 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 
-	"github.com/go-faster/oteldb/internal/logql"
-	"github.com/go-faster/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/lokiapi"
 )
 
 // EmptyAggregatedLabels returns empty set of aggregated labels.

@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/go-faster/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/chstorage"
 )
 
 func chFlag() (set func(*cobra.Command), dial func(ctx context.Context) (chstorage.ClickHouseClient, error)) {

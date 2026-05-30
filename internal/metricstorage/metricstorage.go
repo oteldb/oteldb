@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/go-faster/oteldb/internal/promapi"
+	"github.com/oteldb/oteldb/internal/promapi"
 )
 
 // MetricName is a special label name that represent a metric name.

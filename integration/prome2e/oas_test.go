@@ -18,8 +18,8 @@ import (
 	testcontainerslog "github.com/testcontainers/testcontainers-go/log"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/go-faster/oteldb/integration"
-	"github.com/go-faster/oteldb/internal/promapi"
+	"github.com/oteldb/oteldb/integration"
+	"github.com/oteldb/oteldb/internal/promapi"
 )
 
 type jxEncode interface {

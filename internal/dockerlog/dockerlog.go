@@ -13,10 +13,10 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-faster/oteldb/internal/iterators"
-	"github.com/go-faster/oteldb/internal/logql"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine"
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/iterators"
+	"github.com/oteldb/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 // Querier implements LogQL querier.

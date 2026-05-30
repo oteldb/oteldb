@@ -6,7 +6,7 @@ import (
 
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"github.com/go-faster/oteldb/internal/traceql/lexer"
+	"github.com/oteldb/oteldb/internal/traceql/lexer"
 )
 
 func (p *parser) parseFieldExpr() (FieldExpr, error) {

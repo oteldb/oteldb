@@ -20,10 +20,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/go-faster/oteldb/integration"
-	"github.com/go-faster/oteldb/integration/prome2e"
-	"github.com/go-faster/oteldb/internal/chstorage"
-	"github.com/go-faster/oteldb/internal/promapi"
+	"github.com/oteldb/oteldb/integration"
+	"github.com/oteldb/oteldb/integration/prome2e"
+	"github.com/oteldb/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/promapi"
 )
 
 func TestCH(t *testing.T) {

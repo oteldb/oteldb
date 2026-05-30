@@ -25,7 +25,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/internal/prompb"
+	"github.com/oteldb/oteldb/internal/prompb"
 )
 
 // FromTimeSeries converts TimeSeries to OTLP metrics.

@@ -1,6 +1,6 @@
 package logql
 
-import "github.com/go-faster/oteldb/internal/logql/lexer"
+import "github.com/oteldb/oteldb/internal/logql/lexer"
 
 func (p *parser) parseRangeExpr() (e LogRangeExpr, err error) {
 	e.Sel, err = p.parseSelector()

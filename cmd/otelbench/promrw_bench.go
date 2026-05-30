@@ -26,7 +26,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-faster/oteldb/internal/promapi"
+	"github.com/oteldb/oteldb/internal/promapi"
 )
 
 type Bench struct {

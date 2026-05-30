@@ -18,8 +18,8 @@ import (
 	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-faster/oteldb/internal/otelbench"
-	"github.com/go-faster/oteldb/internal/prompb"
+	"github.com/oteldb/oteldb/internal/otelbench"
+	"github.com/oteldb/oteldb/internal/prompb"
 )
 
 type Record struct {

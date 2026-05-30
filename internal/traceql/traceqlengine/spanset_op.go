@@ -5,9 +5,9 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/otelstorage"
-	"github.com/go-faster/oteldb/internal/traceql"
-	"github.com/go-faster/oteldb/internal/tracestorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/traceql"
+	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
 func mergeSpansetsBy[L, R Processor, Op SpansetOp](sets []Spanset, left L, op Op, right R) (output []Spanset, _ error) {

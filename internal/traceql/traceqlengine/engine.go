@@ -11,10 +11,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/go-faster/oteldb/internal/tempoapi"
-	"github.com/go-faster/oteldb/internal/traceql"
-	"github.com/go-faster/oteldb/internal/tracestorage"
-	"github.com/go-faster/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/traceql"
+	"github.com/oteldb/oteldb/internal/tracestorage"
+	"github.com/oteldb/oteldb/internal/xattribute"
 )
 
 // Engine is a TraceQL evaluation engine.

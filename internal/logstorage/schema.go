@@ -1,6 +1,6 @@
 package logstorage
 
-import "github.com/go-faster/oteldb/internal/logparser"
+import "github.com/oteldb/oteldb/internal/logparser"
 
 // Labels to use where prometheus compatible labels are required, e.g. loki.
 const (

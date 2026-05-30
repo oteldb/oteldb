@@ -3,7 +3,7 @@ package traceqlengine
 import (
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/traceql"
+	"github.com/oteldb/oteldb/internal/traceql"
 )
 
 // ScalarFilter filters Scalars by field expression.

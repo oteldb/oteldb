@@ -13,13 +13,13 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/go-faster/oteldb/internal/chstorage/chsql"
-	"github.com/go-faster/oteldb/internal/iterators"
-	"github.com/go-faster/oteldb/internal/otelstorage"
-	"github.com/go-faster/oteldb/internal/traceql"
-	"github.com/go-faster/oteldb/internal/traceql/traceqlengine"
-	"github.com/go-faster/oteldb/internal/tracestorage"
-	"github.com/go-faster/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/chstorage/chsql"
+	"github.com/oteldb/oteldb/internal/iterators"
+	"github.com/oteldb/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/traceql"
+	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
+	"github.com/oteldb/oteldb/internal/tracestorage"
+	"github.com/oteldb/oteldb/internal/xattribute"
 )
 
 // SearchTags performs search by given tags.
