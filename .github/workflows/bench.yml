@@ -70,16 +70,16 @@ jobs:
       - name: Load data
         run: |
           wget https://storage.yandexcloud.net/faster-public/oteldb/req.rwq
-          go run github.com/go-faster/oteldb/cmd/otelbench promrw replay -i req.rwq
+          go run github.com/oteldb/oteldb/cmd/otelbench promrw replay -i req.rwq
 
       - name: Warmup
         working-directory: ${{ env.WORKDIR }}
-        run: go run github.com/go-faster/oteldb/cmd/otelbench promql bench -i testdata/node-exporter-selected.promql.yml --warmup 10
+        run: go run github.com/oteldb/oteldb/cmd/otelbench promql bench -i testdata/node-exporter-selected.promql.yml --warmup 10
 
       - name: Test
         if: ${{ env.TEST_BROKEN != 'true' }}
         working-directory: ${{ env.WORKDIR }}
-        run: go run github.com/go-faster/oteldb/cmd/otelbench promql bench -o report.yml -i testdata/node-exporter-selected.promql.yml --allow-empty=false --warmup 5
+        run: go run github.com/oteldb/oteldb/cmd/otelbench promql bench -o report.yml -i testdata/node-exporter-selected.promql.yml --allow-empty=false --warmup 5
 
       - name: Dump Clickhouse logs
         if: ${{ always() }}
@@ -103,7 +103,7 @@ jobs:
       - name: Analyze report
         if: ${{ env.TEST_BROKEN != 'true' }}
         working-directory: ${{ env.WORKDIR }}
-        run: go run github.com/go-faster/oteldb/cmd/otelbench promql analyze -i report.yml
+        run: go run github.com/oteldb/oteldb/cmd/otelbench promql analyze -i report.yml
 
       - name: Cleanup
         working-directory: ${{ env.WORKDIR }}

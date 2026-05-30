@@ -287,7 +287,7 @@ const file_tempo_proto_rawDesc = "" +
 	"\x0einspectedBytes\x18\x01 \x01(\x04R\x0einspectedBytes**\n" +
 	"\rPartialStatus\x12\f\n" +
 	"\bCOMPLETE\x10\x00\x12\v\n" +
-	"\aPARTIAL\x10\x01B.Z,github.com/oteldb/oteldb/internal/tempopbb\x06proto3"
+	"\aPARTIAL\x10\x01B+Z)github.com/oteldb/oteldb/internal/tempopbb\x06proto3"
 
 var (
 	file_tempo_proto_rawDescOnce sync.Once
