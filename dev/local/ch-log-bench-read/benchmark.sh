@@ -7,7 +7,7 @@ end_time="2024-12-01T00:00:00Z"
 queries_file="${BENCH_QUERIES:-testdata/logql.yml}"
 benchmark_runs="${BENCH_RUNS:-15}"
 
-OTEL_EXPORTER_OTLP_INSECURE="true" go run github.com/go-faster/oteldb/cmd/otelbench logql bench \
+OTEL_EXPORTER_OTLP_INSECURE="true" go run github.com/oteldb/oteldb/cmd/otelbench logql bench \
     --start "$start_time" \
     --end "$end_time" \
     -i "$queries_file" \
@@ -17,7 +17,7 @@ OTEL_EXPORTER_OTLP_INSECURE="true" go run github.com/go-faster/oteldb/cmd/otelbe
     --count "$benchmark_runs"
 
 echo ">> Analyze"
-go run github.com/go-faster/oteldb/cmd/otelbench logql analyze \
+go run github.com/oteldb/oteldb/cmd/otelbench logql analyze \
     --input report.yml \
     --format benchstat >benchstat.report.txt
 

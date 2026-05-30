@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptrace "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/go-faster/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/chstorage"
 )
 
 // SetupCHOptions defines options [SetupCH].

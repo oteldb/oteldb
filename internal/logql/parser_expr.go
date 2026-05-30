@@ -1,7 +1,7 @@
 package logql
 
 import (
-	"github.com/go-faster/oteldb/internal/logql/lexer"
+	"github.com/oteldb/oteldb/internal/logql/lexer"
 )
 
 func (p *parser) parseExpr() (Expr, error) {

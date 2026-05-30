@@ -7,7 +7,7 @@ import (
 
 	"github.com/ClickHouse/ch-go/proto"
 
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 // Spans is a parsed dump of traces_spans.

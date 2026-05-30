@@ -5,7 +5,7 @@ import (
 
 	"go.uber.org/multierr"
 
-	"github.com/go-faster/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine"
 )
 
 type iterHeapElem struct {

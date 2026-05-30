@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-faster/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/lokiapi"
 )
 
 func (p *LogQLBenchmark) sendAndRecord(ctx context.Context, q Query) (rerr error) {

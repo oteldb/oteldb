@@ -1,6 +1,6 @@
 package logqlmetric
 
-import "github.com/go-faster/oteldb/internal/logql/logqlengine/logqlabels"
+import "github.com/oteldb/oteldb/internal/logql/logqlengine/logqlabels"
 
 func emptyLabels() logqlabels.AggregatedLabels {
 	return logqlabels.EmptyAggregatedLabels()

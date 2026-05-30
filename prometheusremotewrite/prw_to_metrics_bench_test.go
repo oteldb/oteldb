@@ -10,8 +10,8 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-faster/oteldb/internal/otelbench"
-	"github.com/go-faster/oteldb/internal/prompb"
+	"github.com/oteldb/oteldb/internal/otelbench"
+	"github.com/oteldb/oteldb/internal/prompb"
 )
 
 func BenchmarkFromTimeSeries(b *testing.B) {

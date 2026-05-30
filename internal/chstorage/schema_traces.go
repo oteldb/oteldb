@@ -3,7 +3,7 @@ package chstorage
 import (
 	"github.com/ClickHouse/ch-go/proto"
 
-	"github.com/go-faster/oteldb/internal/ddl"
+	"github.com/oteldb/oteldb/internal/ddl"
 )
 
 const (

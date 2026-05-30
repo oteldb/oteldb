@@ -12,8 +12,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/go-faster/oteldb/internal/logparser"
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/logparser"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 // Consumer consumes given logs and inserts them using given Inserter.

@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
-	"github.com/go-faster/oteldb/internal/promproxy"
+	"github.com/oteldb/oteldb/internal/promproxy"
 )
 
 type PromQLConvert struct{}

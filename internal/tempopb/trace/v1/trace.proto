@@ -19,7 +19,7 @@ package opentelemetry.proto.trace.v1;
 import "common/v1/common.proto";
 import "resource/v1/resource.proto";
 
-option go_package = "github.com/go-faster/oteldb/internal/tempopb/trace/v1;tracev1";
+option go_package = "github.com/oteldb/oteldb/internal/tempopb/trace/v1;tracev1";
 
 // TracesData represents the traces data that can be stored in a persistent storage,
 // OR can be embedded by other protocols that transfer OTLP traces data but do

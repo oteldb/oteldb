@@ -9,7 +9,7 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/tempoapi"
 )
 
 var _ tempoapi.Handler = &Server{}

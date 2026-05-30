@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/spf13/cobra"
 
-	"github.com/go-faster/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/chstorage"
 )
 
 func newChDumpCommand() *cobra.Command {

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-faster/oteldb/internal/prompb"
+	"github.com/oteldb/oteldb/internal/prompb"
 )
 
 func equalWriteRequest(t *testing.T, a nativeprompb.WriteRequest, b prompb.WriteRequest) {

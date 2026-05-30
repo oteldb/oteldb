@@ -11,7 +11,7 @@ import (
 	"github.com/go-faster/errors"
 	"golang.org/x/exp/maps"
 
-	"github.com/go-faster/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/lokiapi"
 )
 
 var (

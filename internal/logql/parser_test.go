@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-faster/oteldb/internal/logql/logqlengine/logqlpattern"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlpattern"
 )
 
 func ptrTo[T any](v T) *T {

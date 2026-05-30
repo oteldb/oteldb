@@ -21,15 +21,15 @@ import (
 	"golang.org/x/exp/maps"
 	"sigs.k8s.io/yaml"
 
-	"github.com/go-faster/oteldb/integration/lokie2e"
-	"github.com/go-faster/oteldb/integration/requirex"
-	"github.com/go-faster/oteldb/internal/chstorage"
-	"github.com/go-faster/oteldb/internal/logql"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine"
-	"github.com/go-faster/oteldb/internal/logstorage"
-	"github.com/go-faster/oteldb/internal/lokiapi"
-	"github.com/go-faster/oteldb/internal/lokihandler"
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/integration/lokie2e"
+	"github.com/oteldb/oteldb/integration/requirex"
+	"github.com/oteldb/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/logstorage"
+	"github.com/oteldb/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/lokihandler"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 func TestMain(m *testing.M) {

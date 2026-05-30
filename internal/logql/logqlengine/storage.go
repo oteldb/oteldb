@@ -3,7 +3,7 @@ package logqlengine
 import (
 	"context"
 
-	"github.com/go-faster/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql"
 )
 
 // SupportedOps is a bitset defining ops supported by Querier.

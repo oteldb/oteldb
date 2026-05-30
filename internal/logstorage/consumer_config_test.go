@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-faster/oteldb/internal/logstorage"
+	"github.com/oteldb/oteldb/internal/logstorage"
 )
 
 func TestParseAttributeRef(t *testing.T) {

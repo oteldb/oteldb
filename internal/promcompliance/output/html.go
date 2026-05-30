@@ -6,8 +6,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/go-faster/oteldb/internal/promcompliance/comparer"
-	"github.com/go-faster/oteldb/internal/promcompliance/config"
+	"github.com/oteldb/oteldb/internal/promcompliance/comparer"
+	"github.com/oteldb/oteldb/internal/promcompliance/config"
 )
 
 var funcMap = map[string]interface{}{

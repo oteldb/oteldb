@@ -18,13 +18,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/maps"
 
-	"github.com/go-faster/oteldb/integration/prome2e"
-	"github.com/go-faster/oteldb/integration/requirex"
-	"github.com/go-faster/oteldb/internal/httpmiddleware"
-	"github.com/go-faster/oteldb/internal/metricstorage"
-	"github.com/go-faster/oteldb/internal/promapi"
-	"github.com/go-faster/oteldb/internal/promhandler"
-	"github.com/go-faster/oteldb/internal/promql"
+	"github.com/oteldb/oteldb/integration/prome2e"
+	"github.com/oteldb/oteldb/integration/requirex"
+	"github.com/oteldb/oteldb/internal/httpmiddleware"
+	"github.com/oteldb/oteldb/internal/metricstorage"
+	"github.com/oteldb/oteldb/internal/promapi"
+	"github.com/oteldb/oteldb/internal/promhandler"
+	"github.com/oteldb/oteldb/internal/promql"
 )
 
 // MetricsConsumer is metrics consumer.

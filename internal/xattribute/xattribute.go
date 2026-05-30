@@ -8,7 +8,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/go-faster/oteldb/internal/xsync"
+	"github.com/oteldb/oteldb/internal/xsync"
 )
 
 // StringerSlice creates a string slice attribute from slice of [fmt.Stringer] implementations.

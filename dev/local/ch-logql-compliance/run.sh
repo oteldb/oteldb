@@ -15,7 +15,7 @@ docker compose up -d --remove-orphans --build --force-recreate
 echo ">> Testing oteldb implementation"
 RANGE="1m"
 END="5s"
-go run github.com/go-faster/oteldb/cmd/logql-compliance-tester \
+go run github.com/oteldb/oteldb/cmd/logql-compliance-tester \
   -end "${END}" -range "${RANGE}" \
   -config-file logql-test-queries.yml -config-file test-oteldb.yml \
   -output-format json -output-file result.oteldb.json \

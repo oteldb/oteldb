@@ -3,8 +3,8 @@ package output
 import (
 	"fmt"
 
-	"github.com/go-faster/oteldb/internal/promcompliance/comparer"
-	"github.com/go-faster/oteldb/internal/promcompliance/config"
+	"github.com/oteldb/oteldb/internal/promcompliance/comparer"
+	"github.com/oteldb/oteldb/internal/promcompliance/config"
 )
 
 // TSV produces tab separated values output for a number of query results.

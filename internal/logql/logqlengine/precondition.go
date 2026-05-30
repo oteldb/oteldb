@@ -1,7 +1,7 @@
 package logqlengine
 
 import (
-	"github.com/go-faster/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql"
 )
 
 type queryConditions struct {

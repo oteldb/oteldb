@@ -32,7 +32,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/prometheusremotewrite"
+	"github.com/oteldb/oteldb/prometheusremotewrite"
 )
 
 const receiverFormat = "protobuf"

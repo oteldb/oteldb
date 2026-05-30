@@ -10,7 +10,7 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/internal/autozpages"
+	"github.com/oteldb/oteldb/internal/autozpages"
 )
 
 func main() {

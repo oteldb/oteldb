@@ -31,7 +31,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/go-faster/oteldb/internal/chtrace"
+	"github.com/oteldb/oteldb/internal/chtrace"
 )
 
 func main() {

@@ -17,8 +17,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/integration"
-	"github.com/go-faster/oteldb/internal/chtrace"
+	"github.com/oteldb/oteldb/integration"
+	"github.com/oteldb/oteldb/internal/chtrace"
 )
 
 func discardResult() proto.Result {

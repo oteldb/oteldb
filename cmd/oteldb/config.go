@@ -8,8 +8,8 @@ import (
 	"github.com/go-faster/yaml"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/go-faster/oteldb/internal/httpmiddleware"
-	"github.com/go-faster/oteldb/internal/xbytes"
+	"github.com/oteldb/oteldb/internal/httpmiddleware"
+	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
 func loadConfig(name string) (cfg Config, _ error) {

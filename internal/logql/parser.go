@@ -9,8 +9,8 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/lexerql"
-	"github.com/go-faster/oteldb/internal/logql/lexer"
+	"github.com/oteldb/oteldb/internal/lexerql"
+	"github.com/oteldb/oteldb/internal/logql/lexer"
 )
 
 // ParseOptions is LogQL parser options.

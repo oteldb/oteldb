@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"slices"
 
-	"github.com/go-faster/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/lokiapi"
 )
 
 func sortResponse(data *lokiapi.QueryResponseData) {

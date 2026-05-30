@@ -1,6 +1,6 @@
 package logqlbench
 
-import "github.com/go-faster/oteldb/cmd/otelbench/chtracker"
+import "github.com/oteldb/oteldb/cmd/otelbench/chtracker"
 
 type LogQLReport struct {
 	Queries []LogQLReportQuery `json:"queries"`

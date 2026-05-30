@@ -27,10 +27,10 @@ import (
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"go.uber.org/atomic"
 
-	"github.com/go-faster/oteldb/internal/promcompliance/comparer"
-	"github.com/go-faster/oteldb/internal/promcompliance/config"
-	"github.com/go-faster/oteldb/internal/promcompliance/output"
-	"github.com/go-faster/oteldb/internal/promcompliance/testcases"
+	"github.com/oteldb/oteldb/internal/promcompliance/comparer"
+	"github.com/oteldb/oteldb/internal/promcompliance/config"
+	"github.com/oteldb/oteldb/internal/promcompliance/output"
+	"github.com/oteldb/oteldb/internal/promcompliance/testcases"
 )
 
 func newPromAPI(targetConfig config.TargetConfig) (v1.API, error) {

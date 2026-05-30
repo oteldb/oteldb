@@ -21,10 +21,10 @@ import (
 	"golang.org/x/sync/errgroup"
 	"sigs.k8s.io/yaml"
 
-	"github.com/go-faster/oteldb/cmd/otelbench/chtracker"
-	"github.com/go-faster/oteldb/internal/logparser"
-	"github.com/go-faster/oteldb/internal/promapi"
-	"github.com/go-faster/oteldb/internal/promproxy"
+	"github.com/oteldb/oteldb/cmd/otelbench/chtracker"
+	"github.com/oteldb/oteldb/internal/logparser"
+	"github.com/oteldb/oteldb/internal/promapi"
+	"github.com/oteldb/oteldb/internal/promproxy"
 )
 
 type promQLQuery struct {

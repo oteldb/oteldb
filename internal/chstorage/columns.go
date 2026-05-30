@@ -5,7 +5,7 @@ import (
 
 	"github.com/ClickHouse/ch-go/proto"
 
-	"github.com/go-faster/oteldb/internal/chstorage/chsql"
+	"github.com/oteldb/oteldb/internal/chstorage/chsql"
 )
 
 // Column is a column with name and data that can be used in INSERT or SELECT query.

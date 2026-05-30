@@ -35,8 +35,8 @@ import (
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/oteldb/internal/otelreceiver/oteldbexporter"
-	"github.com/go-faster/oteldb/internal/otelreceiver/prometheusremotewritereceiver"
+	"github.com/oteldb/oteldb/internal/otelreceiver/oteldbexporter"
+	"github.com/oteldb/oteldb/internal/otelreceiver/prometheusremotewritereceiver"
 )
 
 func receiverFactoryMap() (map[component.Type]receiver.Factory, error) {

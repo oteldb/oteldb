@@ -21,8 +21,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/go-faster/oteldb/internal/lokicompliance"
-	"github.com/go-faster/oteldb/internal/lokihandler"
+	"github.com/oteldb/oteldb/internal/lokicompliance"
+	"github.com/oteldb/oteldb/internal/lokihandler"
 )
 
 type LogsBench struct {

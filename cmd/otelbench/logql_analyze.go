@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/perf/benchfmt"
 
-	"github.com/go-faster/oteldb/cmd/otelbench/logqlbench"
+	"github.com/oteldb/oteldb/cmd/otelbench/logqlbench"
 )
 
 type LogQLAnalyze struct {

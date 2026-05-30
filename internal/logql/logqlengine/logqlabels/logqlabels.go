@@ -4,8 +4,8 @@ package logqlabels
 import (
 	"regexp"
 
-	"github.com/go-faster/oteldb/internal/logql"
-	"github.com/go-faster/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/lokiapi"
 )
 
 // GroupingKey is a key to group metrics by label.

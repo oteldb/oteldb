@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/logparser"
+	"github.com/oteldb/oteldb/internal/logparser"
 )
 
 // ConsumerOptions defines options for telemetry pre-processing.

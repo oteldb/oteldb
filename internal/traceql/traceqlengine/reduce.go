@@ -1,7 +1,7 @@
 package traceqlengine
 
 import (
-	"github.com/go-faster/oteldb/internal/traceql"
+	"github.com/oteldb/oteldb/internal/traceql"
 )
 
 // ReduceExpr evaluates constant expressions and simplifies expression.

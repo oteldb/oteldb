@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	nooptrace "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/go-faster/oteldb/internal/chstorage/chsql"
+	"github.com/oteldb/oteldb/internal/chstorage/chsql"
 )
 
 // testEpoch is a fixed point in the past so safety-lag never interferes.

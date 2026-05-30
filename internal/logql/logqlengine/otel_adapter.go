@@ -4,8 +4,8 @@ import (
 	"github.com/go-faster/jx"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 
-	"github.com/go-faster/oteldb/internal/logql"
-	"github.com/go-faster/oteldb/internal/logstorage"
+	"github.com/oteldb/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logstorage"
 )
 
 // LineFromEntry returns a JSON line from a log record.

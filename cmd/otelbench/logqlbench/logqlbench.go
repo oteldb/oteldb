@@ -15,9 +15,9 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 
-	"github.com/go-faster/oteldb/cmd/otelbench/chtracker"
-	"github.com/go-faster/oteldb/internal/lokiapi"
-	"github.com/go-faster/oteldb/internal/lokihandler"
+	"github.com/oteldb/oteldb/cmd/otelbench/chtracker"
+	"github.com/oteldb/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/lokihandler"
 )
 
 type LogQLBenchmark struct {

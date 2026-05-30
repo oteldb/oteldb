@@ -9,7 +9,7 @@ import (
 
 	"github.com/prometheus/prometheus/util/strutil"
 
-	"github.com/go-faster/oteldb/internal/lexerql"
+	"github.com/oteldb/oteldb/internal/lexerql"
 )
 
 type lexer struct {

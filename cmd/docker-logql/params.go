@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/spf13/pflag"
 
-	"github.com/go-faster/oteldb/internal/logql/logqlengine"
-	"github.com/go-faster/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/lokiapi"
 )
 
 // APIFlag is [pflag.Value] wrapping ogen optional.

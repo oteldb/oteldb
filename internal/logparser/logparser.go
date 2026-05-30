@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-faster/jx"
 
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 var formatRegistry = new(sync.Map)

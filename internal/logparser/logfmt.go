@@ -6,7 +6,7 @@ import (
 	"github.com/go-faster/jx"
 	"github.com/kr/logfmt"
 
-	"github.com/go-faster/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
 // LogFmtParser parses logfmt lines.

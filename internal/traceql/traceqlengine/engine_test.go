@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-faster/oteldb/internal/otelstorage"
-	"github.com/go-faster/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/tempoapi"
 
 	"github.com/stretchr/testify/require"
 )

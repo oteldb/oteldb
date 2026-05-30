@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/oteldb/internal/lexerql"
-	"github.com/go-faster/oteldb/internal/traceql/lexer"
+	"github.com/oteldb/oteldb/internal/lexerql"
+	"github.com/oteldb/oteldb/internal/traceql/lexer"
 )
 
 // Parse parses TraceQL query from string.
