@@ -198,9 +198,9 @@ func NewLogEntry(r *rand.Rand, ts time.Time) LogEntry {
 			plog.SeverityNumberFatal,
 		}),
 		Protocol: randomElement(r, []string{
-			semconv.HTTPFlavorHTTP10.Value.Emit(),
-			semconv.HTTPFlavorHTTP11.Value.Emit(),
-			semconv.HTTPFlavorHTTP20.Value.Emit(),
+			semconv.HTTPFlavorHTTP10.Value.String(),
+			semconv.HTTPFlavorHTTP11.Value.String(),
+			semconv.HTTPFlavorHTTP20.Value.String(),
 		}),
 		Method: randomElement(r, []string{
 			http.MethodGet,
