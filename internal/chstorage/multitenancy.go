@@ -70,6 +70,6 @@ func newSelectQuery(ctx context.Context, table string, result ...chsql.ResultCol
 	return query
 }
 
-func newSelectFrom(ctx context.Context, subquery *chsql.SelectQuery, result ...chsql.ResultColumn) *chsql.SelectQuery {
+func newSelectFrom(subquery *chsql.SelectQuery, result ...chsql.ResultColumn) *chsql.SelectQuery {
 	return chsql.SelectFrom(subquery, result...)
 }

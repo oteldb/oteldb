@@ -412,7 +412,11 @@ func (p *promQuerier) querySeriesSingleflight(ctx context.Context, samplePoints 
 		parentLink = trace.LinkFromContext(ctx)
 		hash       = params.Hash(ctx, samplePoints)
 	)
+	dec, decOk := multitenancy.DecisionFromContext(ctx)
 	resultCh := p.metricsSg.DoChanContext(ctx, hash, func(ctx context.Context) (_ metricSelectResult, rerr error) {
+		if decOk {
+			ctx = multitenancy.WithDecision(ctx, dec)
+		}
 		ctx, span := p.tracer.Start(ctx, "chstorage.metrics.singelflight.querySeries",
 			trace.WithLinks(parentLink),
 		)

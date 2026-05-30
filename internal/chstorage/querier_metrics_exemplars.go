@@ -80,7 +80,7 @@ func (q *exemplarQuerier) Select(startMs, endMs int64, matcherSets ...[]*labels.
 
 	var (
 		c     = newExemplarColumns()
-		query = newSelectQuery(ctx, table, c.ChsqlResult()...).
+		query = chsql.Select(table, c.ChsqlResult()...).
 			Where(
 				chsql.InTimeRange("timestamp", start, end, c.exemplarTimestamp.Precision),
 				chsql.In(

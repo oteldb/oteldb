@@ -130,9 +130,13 @@ func (q *timeseriesQuerier) Query(ctx context.Context, start, end time.Time, mat
 		parentLink   = trace.LinkFromContext(ctx)
 		matchersHash = q.hashMatchers(ctx, start, end, matcherSets)
 	)
+	dec, decOk := multitenancy.DecisionFromContext(ctx)
 	resultCh := q.hashSg.DoChan(matchersHash, func() (metricsTimeseries, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
+		if decOk {
+			ctx = multitenancy.WithDecision(ctx, dec)
+		}
 
 		return q.queryTimeseries(ctx, parentSpan, parentLink, start, end, matcherSets)
 	})
@@ -302,9 +306,13 @@ func (q *timeseriesQuerier) QueryMetadata(ctx context.Context, params metricstor
 		parentLink = trace.LinkFromContext(ctx)
 		hash       = q.hashMetadataOptions(params)
 	)
+	dec, decOk := multitenancy.DecisionFromContext(ctx)
 	resultCh := q.metadataSg.DoChan(hash, func() (metricstorage.Metadata, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
+		if decOk {
+			ctx = multitenancy.WithDecision(ctx, dec)
+		}
 
 		return q.queryMetadata(ctx, parentSpan, parentLink, params)
 	})
