@@ -67,4 +67,3 @@ func resourceSelectorExpr(key string) chsql.Expr {
 		return attrSelector(colResource, key)
 	}
 }
-

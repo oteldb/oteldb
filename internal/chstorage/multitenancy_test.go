@@ -121,4 +121,3 @@ func TestDecisionFilters_InvalidOp(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported resource selector op")
 }
-

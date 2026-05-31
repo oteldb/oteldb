@@ -293,7 +293,7 @@ func (m *Migrator) drop(ctx context.Context, ifExists bool, log func(database, t
 		return nil
 	}
 
-	migrationTable := "migration"
+	migrationTable := m.opts.Tables.Migration
 	delete(existingHashes, migrationTable)
 	for table := range existingHashes {
 		if err := drop(table); err != nil {
@@ -681,7 +681,7 @@ func (m *Migrator) Inspect(ctx context.Context) ([]TableInfo, error) {
 		if err := m.client.Do(ctx, ch.Query{
 			Logger: zctx.From(ctx).Named("ch"),
 			Body: fmt.Sprintf(
-				"SELECT name, engine FROM system.tables WHERE database = currentDatabase() AND name IN (%s)",
+				"SELECT name, engine FROM system.tables WHERE database = currentDatabase() AND is_temporary = 0 AND name IN (%s)",
 				inList,
 			),
 			Result: proto.Results{

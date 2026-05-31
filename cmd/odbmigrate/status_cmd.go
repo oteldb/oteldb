@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
@@ -73,11 +74,11 @@ func newStatusCmd() *cobra.Command {
 			}
 
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Engine:  %s\n\n", detectEngineSummary(ir.info))
+			_, _ = fmt.Fprintf(out, "Engine:  %s\n\n", detectEngineSummary(ir.info))
 
 			w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-			fmt.Fprintf(w, "%-30s\t%-22s\t%-10s\t%s\n", "TABLE", "ENGINE", "TENANT_ID", "STATUS")
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+			_, _ = fmt.Fprintf(w, "%-30s\t%-22s\t%-10s\t%s\n", "TABLE", "ENGINE", "TENANT_ID", "STATUS")
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
 				strings.Repeat("-", 30),
 				strings.Repeat("-", 22),
 				strings.Repeat("-", 10),
@@ -92,7 +93,7 @@ func newStatusCmd() *cobra.Command {
 				if d, ok := diffByTable[t.Name]; ok {
 					status = d.Status.ColorString()
 				}
-				fmt.Fprintf(w, "%-30s\t%-22s\t%-10s\t%s\n",
+				_, _ = fmt.Fprintf(w, "%-30s\t%-22s\t%-10s\t%s\n",
 					t.Name, engine, yesNo(t.HasTenantID), status,
 				)
 			}
@@ -103,7 +104,7 @@ func newStatusCmd() *cobra.Command {
 					if d.Diff == "" {
 						continue
 					}
-					fmt.Fprintf(out, "\n--- %s ---\n%s\n", d.Table, d.Diff)
+					_, _ = fmt.Fprintf(out, "\n--- %s ---\n%s\n", d.Table, d.Diff)
 				}
 			}
 
@@ -139,5 +140,6 @@ func detectEngineSummary(info []chstorage.TableInfo) string {
 	for e := range counts {
 		parts = append(parts, e)
 	}
+	slices.Sort(parts)
 	return strings.Join(parts, ", ") + " (mixed)"
 }

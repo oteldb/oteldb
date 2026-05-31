@@ -26,56 +26,22 @@ func newCleanupCmd() *cobra.Command {
 			if err != nil {
 				return errors.Wrap(err, "dial clickhouse")
 			}
+			migrator := chstorage.NewMigrator(client, opts)
 
-			tables := opts.Tables
-			if tables == (chstorage.Tables{}) {
-				tables = chstorage.DefaultTables()
+			backups, err := migrator.ListBackups(ctx)
+			if err != nil {
+				return errors.Wrap(err, "list backups")
 			}
 
-			// Collect candidate backup table names from the known table set.
-			var candidates []string
-			_ = tables.Each(func(name *string) error {
-				if *name != "" {
-					base := *name + "_backup"
-					candidates = append(candidates, base)
-					if opts.Replicated {
-						candidates = append(candidates, *name+"_replicated_backup")
-						candidates = append(candidates, *name+"_distributed_backup")
-					}
-				}
-				return nil
-			})
-
-			type backupTable struct {
-				name string
-				rows uint64
-			}
-			var found []backupTable
-
-			for _, candidate := range candidates {
-				exists, err := tableExists(ctx, client, candidate)
-				if err != nil {
-					return errors.Wrapf(err, "check %s", candidate)
-				}
-				if !exists {
-					continue
-				}
-				rows, err := getRowCount(ctx, client, candidate)
-				if err != nil {
-					return errors.Wrapf(err, "count rows in %s", candidate)
-				}
-				found = append(found, backupTable{name: candidate, rows: rows})
-			}
-
-			if len(found) == 0 {
+			if len(backups) == 0 {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "cleanup: no backup tables found")
 				return nil
 			}
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 7, 7, 1, ' ', tabwriter.TabIndent)
 			_, _ = fmt.Fprintf(w, "%s \t%s \t\n", "TABLE", "ROWS")
-			for _, t := range found {
-				_, _ = fmt.Fprintf(w, "%s \t%d \t\n", t.name, t.rows)
+			for _, b := range backups {
+				_, _ = fmt.Fprintf(w, "%s \t%d \t\n", b.Name, b.Rows)
 			}
 			_ = w.Flush()
 
@@ -84,19 +50,15 @@ func newCleanupCmd() *cobra.Command {
 				return nil
 			}
 
-			// Extract base names for DropBackups (it appends _backup itself).
-			// For replicated/distributed variants we pass the full name and use the
-			// Migrator's cluster-aware dropTable via DropBackups with the suffixed names.
-			// Simpler: just drop each found table by its full name directly.
-			baseNames := make([]string, len(found))
-			for i, t := range found {
-				// Strip the _backup suffix to get the base name.
-				baseNames[i] = t.name[:len(t.name)-len("_backup")]
+			// Strip _backup suffix to get base names for DropBackups.
+			const suffix = "_backup"
+			baseNames := make([]string, len(backups))
+			for i, b := range backups {
+				baseNames[i] = b.Name[:len(b.Name)-len(suffix)]
 			}
-
-			migrator := chstorage.NewMigrator(client, opts)
+			out := cmd.OutOrStdout()
 			if err := migrator.DropBackups(ctx, baseNames, func(table string) {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "dropped %s\n", table)
+				_, _ = fmt.Fprintf(out, "dropped %s\n", table)
 			}); err != nil {
 				return errors.Wrap(err, "drop backup tables")
 			}
@@ -105,7 +67,6 @@ func newCleanupCmd() *cobra.Command {
 			return nil
 		},
 	}
-
 	opts.AddFlags(cmd.Flags())
 	setChFlag(cmd)
 	cmd.Flags().BoolVar(&yes, "yes", false, "Drop the backup tables (default is dry-run)")

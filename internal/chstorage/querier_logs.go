@@ -622,11 +622,9 @@ func (q *Querier) Series(ctx context.Context, opts logstorage.SeriesOptions) (re
 	if err != nil {
 		return nil, errors.Wrap(err, "build query")
 	}
-	var (
-		series = proto.NewMap(
-			new(proto.ColStr),
-			new(proto.ColStr),
-		)
+	series := proto.NewMap(
+		new(proto.ColStr),
+		new(proto.ColStr),
 	)
 	query := chsql.Select(table, chsql.ResultColumn{
 		Name: "series",
