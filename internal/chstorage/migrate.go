@@ -234,7 +234,6 @@ func (m *Migrator) DropBackups(ctx context.Context, tables []string, log func(ta
 		return errors.Wrap(err, "query current database")
 	}
 
-	var dropped []string
 	for _, table := range tables {
 		backup := table + "_backup"
 		if err := m.dropTable(ctx, database, backup, true); err != nil {
@@ -242,13 +241,6 @@ func (m *Migrator) DropBackups(ctx context.Context, tables []string, log func(ta
 		}
 		if log != nil {
 			log(backup)
-		}
-		dropped = append(dropped, backup)
-	}
-
-	if len(dropped) > 0 {
-		if err := m.ClearHashes(ctx, dropped); err != nil {
-			return errors.Wrap(err, "clear backup hashes from migration table")
 		}
 	}
 	return nil

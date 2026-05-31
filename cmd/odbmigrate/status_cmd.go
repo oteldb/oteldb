@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/oteldb/oteldb/internal/chstorage"
 )
@@ -36,45 +37,32 @@ func newStatusCmd() *cobra.Command {
 			}
 			migrator := chstorage.NewMigrator(client, opts)
 
-			// Run inspect and diff concurrently.
-			type inspectResult struct {
-				info []chstorage.TableInfo
-				err  error
-			}
-			type diffResult struct {
-				diff []chstorage.MigrationDiff
-				err  error
-			}
-
-			inspectCh := make(chan inspectResult, 1)
-			diffCh := make(chan diffResult, 1)
-
-			go func() {
-				info, err := migrator.Inspect(ctx)
-				inspectCh <- inspectResult{info, err}
-			}()
-			go func() {
-				diff, err := migrator.Diff(ctx)
-				diffCh <- diffResult{diff, err}
-			}()
-
-			ir := <-inspectCh
-			if ir.err != nil {
-				return errors.Wrap(ir.err, "inspect schema")
-			}
-			dr := <-diffCh
-			if dr.err != nil {
-				return errors.Wrap(dr.err, "diff schema")
+			// Run inspect and diff concurrently; cancel both if either fails.
+			var info []chstorage.TableInfo
+			var diff []chstorage.MigrationDiff
+			g, gctx := errgroup.WithContext(ctx)
+			g.Go(func() error {
+				var err error
+				info, err = migrator.Inspect(gctx)
+				return errors.Wrap(err, "inspect schema")
+			})
+			g.Go(func() error {
+				var err error
+				diff, err = migrator.Diff(gctx)
+				return errors.Wrap(err, "diff schema")
+			})
+			if err := g.Wait(); err != nil {
+				return err
 			}
 
 			// Index diff by table name for O(1) lookup.
-			diffByTable := make(map[string]chstorage.MigrationDiff, len(dr.diff))
-			for _, d := range dr.diff {
+			diffByTable := make(map[string]chstorage.MigrationDiff, len(diff))
+			for _, d := range diff {
 				diffByTable[d.Table] = d
 			}
 
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Engine:  %s\n\n", detectEngineSummary(ir.info))
+			_, _ = fmt.Fprintf(out, "Engine:  %s\n\n", detectEngineSummary(info))
 
 			w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 			_, _ = fmt.Fprintf(w, "%-30s\t%-22s\t%-10s\t%s\n", "TABLE", "ENGINE", "TENANT_ID", "STATUS")
@@ -84,7 +72,7 @@ func newStatusCmd() *cobra.Command {
 				strings.Repeat("-", 10),
 				strings.Repeat("-", 6),
 			)
-			for _, t := range ir.info {
+			for _, t := range info {
 				engine := t.Engine
 				if engine == "" {
 					engine = "(absent)"
@@ -100,7 +88,7 @@ func newStatusCmd() *cobra.Command {
 			_ = w.Flush()
 
 			if showDiff {
-				for _, d := range dr.diff {
+				for _, d := range diff {
 					if d.Diff == "" {
 						continue
 					}
