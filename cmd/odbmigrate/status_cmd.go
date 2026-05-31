@@ -44,12 +44,18 @@ func newStatusCmd() *cobra.Command {
 			g.Go(func() error {
 				var err error
 				info, err = migrator.Inspect(gctx)
-				return errors.Wrap(err, "inspect schema")
+				if err != nil {
+					return errors.Wrap(err, "inspect schema")
+				}
+				return nil
 			})
 			g.Go(func() error {
 				var err error
 				diff, err = migrator.Diff(gctx)
-				return errors.Wrap(err, "diff schema")
+				if err != nil {
+					return errors.Wrap(err, "diff schema")
+				}
+				return nil
 			})
 			if err := g.Wait(); err != nil {
 				return err
