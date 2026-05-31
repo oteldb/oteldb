@@ -61,3 +61,30 @@ func TestResolver(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestResolver_CustomCredentialHeader(t *testing.T) {
+	ctx := context.Background()
+
+	resolver := NewResolver(Config{
+		CredentialHeader: "X-Tenant-Token",
+		ReadDecisions: map[string]multitenancy.Decision{
+			"secret": {Enabled: true, TenantIDs: []string{"acme"}},
+		},
+	})
+
+	t.Run("CustomHeaderPresent", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		req.Header.Set("X-Tenant-Token", "secret")
+		d, err := resolver.Resolve(ctx, req, multitenancy.OperationRead)
+		require.NoError(t, err)
+		require.Equal(t, []string{"acme"}, d.TenantIDs)
+	})
+
+	t.Run("DefaultAuthorizationIgnored", func(t *testing.T) {
+		// Setting Authorization should have no effect when a custom header is configured.
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		req.Header.Set("Authorization", "Bearer secret")
+		_, err := resolver.Resolve(ctx, req, multitenancy.OperationRead)
+		require.Error(t, err, "credential must come from the configured header, not Authorization")
+	})
+}

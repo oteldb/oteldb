@@ -4,13 +4,13 @@ import (
 	"cmp"
 	"context"
 	"encoding/binary"
-	"errors"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ClickHouse/ch-go/proto"
+	"github.com/go-faster/errors"
 	singleflight "github.com/go-faster/sdk/singleflightx"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/zeebo/xxh3"
@@ -46,14 +46,14 @@ type (
 	queryMetricsTimeseriesFunc = func(ctx context.Context, start, end time.Time, matcherSets [][]*labels.Matcher) (metricsTimeseries, error)
 )
 
-func (q *timeseriesQuerier) hashMatchers(ctx context.Context, start, end time.Time, sets [][]*labels.Matcher) xxh3.Uint128 {
+func (q *timeseriesQuerier) hashMatchers(dec multitenancy.Decision, start, end time.Time, sets [][]*labels.Matcher) xxh3.Uint128 {
 	h := xxh3.New()
-	if d, ok := multitenancy.DecisionFromContext(ctx); ok && d.Enabled {
-		for _, t := range d.TenantIDs {
+	if dec.Enabled {
+		for _, t := range dec.TenantIDs {
 			_, _ = h.WriteString(t)
 			_, _ = h.WriteString(",")
 		}
-		for _, sel := range d.ResourceSelectors {
+		for _, sel := range dec.ResourceSelectors {
 			_, _ = h.WriteString(sel.Key)
 			_, _ = h.WriteString(",")
 			_, _ = h.WriteString(string(sel.Op))
@@ -125,18 +125,17 @@ func (q *timeseriesQuerier) Query(ctx context.Context, start, end time.Time, mat
 		span.End()
 	}()
 
+	dec, _ := multitenancy.DecisionFromContext(ctx)
+
 	var (
 		parentSpan   = span
 		parentLink   = trace.LinkFromContext(ctx)
-		matchersHash = q.hashMatchers(ctx, start, end, matcherSets)
+		matchersHash = q.hashMatchers(dec, start, end, matcherSets)
 	)
-	dec, decOk := multitenancy.DecisionFromContext(ctx)
 	resultCh := q.hashSg.DoChan(matchersHash, func() (metricsTimeseries, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		if decOk {
-			ctx = multitenancy.WithDecision(ctx, dec)
-		}
+		ctx = multitenancy.WithDecision(ctx, dec)
 
 		return q.queryTimeseries(ctx, parentSpan, parentLink, start, end, matcherSets)
 	})
@@ -200,10 +199,15 @@ func (q *timeseriesQuerier) queryTimeseries(ctx context.Context, parentSpan trac
 		Data: c.hash,
 	})
 
-	var (
-		query = newSelectQuery(ctx, table, selectExprs...)
-		sets  = make([]chsql.Expr, 0, len(matcherSets))
-	)
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	query := chsql.Select(table, selectExprs...)
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	sets := make([]chsql.Expr, 0, len(matcherSets))
 	for _, set := range matcherSets {
 		matchers := make([]chsql.Expr, 0, len(set))
 		for _, m := range set {
@@ -277,8 +281,22 @@ func (q *timeseriesQuerier) queryTimeseries(ctx context.Context, parentSpan trac
 	return set, nil
 }
 
-func (q *timeseriesQuerier) hashMetadataOptions(opts metricstorage.MetadataParams) xxh3.Uint128 {
+func (q *timeseriesQuerier) hashMetadataOptions(dec multitenancy.Decision, opts metricstorage.MetadataParams) xxh3.Uint128 {
 	h := xxh3.New()
+	if dec.Enabled {
+		for _, t := range dec.TenantIDs {
+			_, _ = h.WriteString(t)
+			_, _ = h.WriteString(",")
+		}
+		for _, sel := range dec.ResourceSelectors {
+			_, _ = h.WriteString(sel.Key)
+			_, _ = h.WriteString(",")
+			_, _ = h.WriteString(string(sel.Op))
+			_, _ = h.WriteString(",")
+			_, _ = h.WriteString(sel.Value)
+			_, _ = h.WriteString(",")
+		}
+	}
 	_, _ = h.WriteString(opts.MetricName)
 	_, _ = h.WriteString(";")
 	buf := make([]byte, 0, 32)
@@ -301,18 +319,17 @@ func (q *timeseriesQuerier) QueryMetadata(ctx context.Context, params metricstor
 		span.End()
 	}()
 
+	dec, _ := multitenancy.DecisionFromContext(ctx)
+
 	var (
 		parentSpan = span
 		parentLink = trace.LinkFromContext(ctx)
-		hash       = q.hashMetadataOptions(params)
+		hash       = q.hashMetadataOptions(dec, params)
 	)
-	dec, decOk := multitenancy.DecisionFromContext(ctx)
 	resultCh := q.metadataSg.DoChan(hash, func() (metricstorage.Metadata, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		if decOk {
-			ctx = multitenancy.WithDecision(ctx, dec)
-		}
+		ctx = multitenancy.WithDecision(ctx, dec)
 
 		return q.queryMetadata(ctx, parentSpan, parentLink, params)
 	})
@@ -373,7 +390,14 @@ func (q *timeseriesQuerier) queryMetadata(
 			{Name: "description", Data: c.description, Expr: chsql.Function("any", chsql.Ident("description"))},
 		}
 	)
-	query := newSelectQuery(ctx, table, selectExprs...)
+	metaFilters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	query := chsql.Select(table, selectExprs...)
+	if len(metaFilters) > 0 {
+		query.Prewhere(metaFilters...)
+	}
 	if name := params.MetricName; name != "" {
 		query.Where(chsql.Eq(
 			chsql.Ident("name"),

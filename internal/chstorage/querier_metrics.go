@@ -309,7 +309,7 @@ type metricSelectParams struct {
 	Grouping        []string
 }
 
-func (p *metricSelectParams) Hash(ctx context.Context, samplePoints bool) xxh3.Uint128 {
+func (p *metricSelectParams) Hash(dec multitenancy.Decision, samplePoints bool) xxh3.Uint128 {
 	const sep = ","
 	writeBool := func(h *xxh3.Hasher, val bool) {
 		if val {
@@ -338,9 +338,9 @@ func (p *metricSelectParams) Hash(ctx context.Context, samplePoints bool) xxh3.U
 	}
 
 	h := xxh3.New()
-	if d, ok := multitenancy.DecisionFromContext(ctx); ok && d.Enabled {
-		writeStrings(h, d.TenantIDs)
-		for _, sel := range d.ResourceSelectors {
+	if dec.Enabled {
+		writeStrings(h, dec.TenantIDs)
+		for _, sel := range dec.ResourceSelectors {
 			writeString(h, sel.Key)
 			writeInt64(h, int64(sel.Op))
 			writeString(h, sel.Value)
@@ -407,16 +407,15 @@ func (p *promQuerier) querySeriesSingleflight(ctx context.Context, samplePoints 
 		span.End()
 	}()
 
+	dec, _ := multitenancy.DecisionFromContext(ctx)
+
 	var (
 		parentSpan = span
 		parentLink = trace.LinkFromContext(ctx)
-		hash       = params.Hash(ctx, samplePoints)
+		hash       = params.Hash(dec, samplePoints)
 	)
-	dec, decOk := multitenancy.DecisionFromContext(ctx)
 	resultCh := p.metricsSg.DoChanContext(ctx, hash, func(ctx context.Context) (_ metricSelectResult, rerr error) {
-		if decOk {
-			ctx = multitenancy.WithDecision(ctx, dec)
-		}
+		ctx = multitenancy.WithDecision(ctx, dec)
 		ctx, span := p.tracer.Start(ctx, "chstorage.metrics.singelflight.querySeries",
 			trace.WithLinks(parentLink),
 		)
@@ -891,21 +890,26 @@ func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end 
 		span.End()
 	}()
 
-	var (
-		c     = newPointColumns()
-		query = newSelectQuery(ctx, table, c.ChsqlResult()...).
-			Where(
-				chsql.InTimeRange("timestamp", start, end, c.timestamp.Precision),
-				chsql.In(
-					chsql.Ident("hash"),
-					chsql.Ident("timeseries_hashes"),
-				),
-			).
-			Order(chsql.Ident("hash"), chsql.Asc).
-			Order(chsql.Ident("timestamp"), chsql.Asc)
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	c := newPointColumns()
+	query := chsql.Select(table, c.ChsqlResult()...)
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Where(
+		chsql.InTimeRange("timestamp", start, end, c.timestamp.Precision),
+		chsql.In(
+			chsql.Ident("hash"),
+			chsql.Ident("timeseries_hashes"),
+		),
+	).
+		Order(chsql.Ident("hash"), chsql.Asc).
+		Order(chsql.Ident("timestamp"), chsql.Asc)
 
-		inputData proto.ColFixedStr16
-	)
+	var inputData proto.ColFixedStr16
 	for hash := range timeseries {
 		inputData.Append(hash)
 	}
@@ -1101,34 +1105,45 @@ func (p *promQuerier) querySampledPointsPerSeries(
 		chsql.PutPrinter(printer)
 	}
 
-	var (
-		datetime  = chsql.ToDateTime(chsql.Ident("timestamp"))
-		hashQuery = newSelectQuery(ctx, inputTable, chsql.Column("hash", nil))
-		joinExpr  = chsql.Eq(
-			chsql.PrefixedIdent(inputTable, "hash"),
-			chsql.PrefixedIdent(table, "hash"),
-		)
+	sampledFilters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
 
-		query = newSelectQuery(ctx, table, results...).
-			With("step", chsql.Interval(step)).
-			With("window_start", chsql.ToDateTime64(chsql.TumbleStart(datetime, step), proto.PrecisionMilli)).
-			With("window_end", chsql.ToDateTime64(chsql.TumbleEnd(datetime, step), proto.PrecisionMilli)).
-			InnerJoin(inputTable, "", joinExpr).
-			Where(
-				chsql.InTimeRange("timestamp", start, end, proto.PrecisionMilli),
-				chsql.In(
-					chsql.Ident("hash"),
-					chsql.SubQuery(hashQuery),
-				),
-			).
-			GroupBy(
-				chsql.Ident("group"),
-				chsql.Ident("window_start"),
-				chsql.Ident("window_end"),
-			).
-			Order(chsql.Ident("group"), chsql.Asc).
-			Order(chsql.Ident("window_end"), chsql.Asc)
+	datetime := chsql.ToDateTime(chsql.Ident("timestamp"))
+
+	hashQuery := chsql.Select(inputTable, chsql.Column("hash", nil))
+	if len(sampledFilters) > 0 {
+		hashQuery.Prewhere(sampledFilters...)
+	}
+
+	joinExpr := chsql.Eq(
+		chsql.PrefixedIdent(inputTable, "hash"),
+		chsql.PrefixedIdent(table, "hash"),
 	)
+
+	query := chsql.Select(table, results...)
+	if len(sampledFilters) > 0 {
+		query.Prewhere(sampledFilters...)
+	}
+	query.With("step", chsql.Interval(step)).
+		With("window_start", chsql.ToDateTime64(chsql.TumbleStart(datetime, step), proto.PrecisionMilli)).
+		With("window_end", chsql.ToDateTime64(chsql.TumbleEnd(datetime, step), proto.PrecisionMilli)).
+		InnerJoin(inputTable, "", joinExpr).
+		Where(
+			chsql.InTimeRange("timestamp", start, end, proto.PrecisionMilli),
+			chsql.In(
+				chsql.Ident("hash"),
+				chsql.SubQuery(hashQuery),
+			),
+		).
+		GroupBy(
+			chsql.Ident("group"),
+			chsql.Ident("window_start"),
+			chsql.Ident("window_end"),
+		).
+		Order(chsql.Ident("group"), chsql.Asc).
+		Order(chsql.Ident("window_end"), chsql.Asc)
 
 	// Since we used empty groupBy, mapping.groups[i] is the labels of i-th timeseries.
 	// We need to map i back to its hash.
@@ -1411,21 +1426,26 @@ func (p *promQuerier) queryExpHistograms(ctx context.Context, table string, star
 		span.End()
 	}()
 
-	var (
-		c     = newExpHistogramColumns()
-		query = newSelectQuery(ctx, table, c.ChsqlResult()...).
-			Where(
-				chsql.InTimeRange("timestamp", start, end, c.timestamp.Precision),
-				chsql.In(
-					chsql.Ident("hash"),
-					chsql.Ident("timeseries_hashes"),
-				),
-			).
-			Order(chsql.Ident("hash"), chsql.Asc).
-			Order(chsql.Ident("timestamp"), chsql.Asc)
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	c := newExpHistogramColumns()
+	query := chsql.Select(table, c.ChsqlResult()...)
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Where(
+		chsql.InTimeRange("timestamp", start, end, c.timestamp.Precision),
+		chsql.In(
+			chsql.Ident("hash"),
+			chsql.Ident("timeseries_hashes"),
+		),
+	).
+		Order(chsql.Ident("hash"), chsql.Asc).
+		Order(chsql.Ident("timestamp"), chsql.Asc)
 
-		inputData proto.ColFixedStr16
-	)
+	var inputData proto.ColFixedStr16
 	for hash := range timeseries {
 		inputData.Append(hash)
 	}

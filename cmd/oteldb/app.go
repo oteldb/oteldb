@@ -446,11 +446,14 @@ func (app *App) setupMultitenancy() error {
 		if err != nil {
 			return errors.Wrap(err, "create multitenancy client")
 		}
-		app.resolver = httpcb.NewResolver(httpcb.ResolverConfig{
+		app.resolver, err = httpcb.NewResolver(httpcb.ResolverConfig{
 			Client:           client,
 			CredentialHeader: cfg.Resolver.HTTP.CredentialHeader,
 			CacheTTL:         cfg.Resolver.HTTP.CacheTTL,
 		})
+		if err != nil {
+			return errors.Wrap(err, "create multitenancy resolver")
+		}
 	case "":
 		// Multi-tenancy enabled but no resolver?
 		// This might be fine if we only use TenantMapper for data classification

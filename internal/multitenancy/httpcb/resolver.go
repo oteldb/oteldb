@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"github.com/maypok86/otter"
 
 	"github.com/oteldb/oteldb/internal/multitenancy"
 	"github.com/oteldb/oteldb/internal/multitenancyapi"
@@ -16,28 +17,50 @@ import (
 type Resolver struct {
 	client           *multitenancyapi.Client
 	credentialHeader string
-	cacheTTL         time.Duration
+	cache            *otter.Cache[decisionKey, multitenancy.Decision]
+}
+
+type decisionKey struct {
+	credential string
+	op         multitenancy.Operation
 }
 
 // ResolverConfig configures the HTTP callback resolver.
 type ResolverConfig struct {
 	Client           *multitenancyapi.Client
 	CredentialHeader string
-	CacheTTL         time.Duration
+	// CacheTTL is how long a resolved Decision is cached per credential.
+	// Zero or negative disables caching.
+	CacheTTL time.Duration
+	// CacheCapacity is the maximum number of cached decisions.
+	// Defaults to 1024.
+	CacheCapacity int
 }
 
 // NewResolver creates a new HTTP callback resolver.
-func NewResolver(cfg ResolverConfig) *Resolver {
-	return &Resolver{
+func NewResolver(cfg ResolverConfig) (*Resolver, error) {
+	r := &Resolver{
 		client:           cfg.Client,
 		credentialHeader: cfg.CredentialHeader,
-		cacheTTL:         cfg.CacheTTL,
 	}
+	if cfg.CacheTTL > 0 {
+		capacity := cfg.CacheCapacity
+		if capacity <= 0 {
+			capacity = 1024
+		}
+		cache, err := otter.MustBuilder[decisionKey, multitenancy.Decision](capacity).
+			WithTTL(cfg.CacheTTL).
+			Build()
+		if err != nil {
+			return nil, errors.Wrap(err, "build decision cache")
+		}
+		r.cache = &cache
+	}
+	return r, nil
 }
 
 // Resolve returns the authorization Decision for the given request and operation.
 func (r *Resolver) Resolve(ctx context.Context, req *http.Request, op multitenancy.Operation) (multitenancy.Decision, error) {
-	// Extract credential
 	headerName := r.credentialHeader
 	if headerName == "" {
 		headerName = "Authorization"
@@ -48,11 +71,27 @@ func (r *Resolver) Resolve(ctx context.Context, req *http.Request, op multitenan
 		return multitenancy.Decision{}, errors.New("missing credential")
 	}
 
-	// Strip "Bearer " if present
-	if strings.HasPrefix(strings.ToLower(cred), "bearer ") {
-		cred = cred[7:]
+	cred, _ = strings.CutPrefix(cred, "Bearer ")
+
+	key := decisionKey{cred, op}
+	if r.cache != nil {
+		if d, ok := r.cache.Get(key); ok {
+			return d, nil
+		}
 	}
 
+	d, err := r.resolve(ctx, cred, op)
+	if err != nil {
+		return multitenancy.Decision{}, err
+	}
+
+	if r.cache != nil {
+		r.cache.Set(key, d)
+	}
+	return d, nil
+}
+
+func (r *Resolver) resolve(ctx context.Context, cred string, op multitenancy.Operation) (multitenancy.Decision, error) {
 	opStr := multitenancyapi.AuthorizeRequestOperationRead
 	if op == multitenancy.OperationWrite {
 		opStr = multitenancyapi.AuthorizeRequestOperationWrite

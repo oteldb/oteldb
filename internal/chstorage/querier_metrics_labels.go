@@ -82,13 +82,19 @@ func (p *promQuerier) getLabelValues(ctx context.Context, labelName string, matc
 		span.End()
 	}()
 
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
 	var (
 		value       proto.ColStr
 		valueColumn = "value"
 	)
-
-	query := newSelectQuery(ctx, table, chsql.Column(valueColumn, &value)).
-		Distinct(true).
+	query := chsql.Select(table, chsql.Column(valueColumn, &value))
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Distinct(true).
 		Where(chsql.ColumnEq("name", labelName))
 	for _, m := range matchers {
 		if m.Name != labelName {
@@ -154,12 +160,19 @@ func (p *promQuerier) getMatchingLabelValues(ctx context.Context, labelName stri
 		value = &proto.ColStr{}
 	}
 
-	query := newSelectQuery(ctx, table, chsql.ResultColumn{
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	query := chsql.Select(table, chsql.ResultColumn{
 		Name: "value",
 		Expr: columnExpr,
 		Data: value,
-	}).
-		Distinct(true)
+	})
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Distinct(true)
 
 	for _, m := range matchers {
 		selector := chsql.Ident("name")
@@ -268,12 +281,17 @@ func (p *promQuerier) getLabelNames(ctx context.Context) (result []string, rerr 
 		span.End()
 	}()
 
-	var (
-		value = new(proto.ColStr).LowCardinality()
-		query = newSelectQuery(ctx, table, chsql.Column("name", value)).
-			Distinct(true).
-			Order(chsql.Ident("name"), chsql.Asc)
-	)
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	value := new(proto.ColStr).LowCardinality()
+	query := chsql.Select(table, chsql.Column("name", value))
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Distinct(true).
+		Order(chsql.Ident("name"), chsql.Asc)
 	if err := p.do(ctx, selectQuery{
 		Query: query,
 		OnResult: func(ctx context.Context, block proto.Block) error {
@@ -308,22 +326,26 @@ func (p *promQuerier) getMatchingLabelNames(ctx context.Context, matchers []*lab
 		span.End()
 	}()
 
-	var (
-		value proto.ColStr
-
-		query = newSelectQuery(ctx, table, chsql.ResultColumn{
-			Name: "values",
-			Expr: chsql.ArrayJoin(
-				chsql.ArrayConcat(
-					attrKeys(colAttrs),
-					attrKeys(colScope),
-					attrKeys(colResource),
-				),
+	matchingFilters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	var value proto.ColStr
+	query := chsql.Select(table, chsql.ResultColumn{
+		Name: "values",
+		Expr: chsql.ArrayJoin(
+			chsql.ArrayConcat(
+				attrKeys(colAttrs),
+				attrKeys(colScope),
+				attrKeys(colResource),
 			),
-			Data: &value,
-		}).
-			Distinct(true)
-	)
+		),
+		Data: &value,
+	})
+	if len(matchingFilters) > 0 {
+		query.Prewhere(matchingFilters...)
+	}
+	query.Distinct(true)
 	for _, m := range matchers {
 		selector := chsql.Ident("name")
 		if name := m.Name; name != metricstorage.MetricName {

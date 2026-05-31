@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,10 +16,11 @@ import (
 	"github.com/oteldb/oteldb/internal/multitenancyapi"
 )
 
-func TestResolver(t *testing.T) {
-	ctx := context.Background()
-
+func makeTestServer(t *testing.T) (*httptest.Server, *atomic.Int64) {
+	t.Helper()
+	var calls atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
 		var req multitenancyapi.AuthorizeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -41,14 +44,22 @@ func TestResolver(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(data)
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
+	return srv, &calls
+}
+
+func TestResolver(t *testing.T) {
+	ctx := context.Background()
+
+	srv, _ := makeTestServer(t)
 
 	client, err := multitenancyapi.NewClient(srv.URL)
 	require.NoError(t, err)
 
-	resolver := NewResolver(ResolverConfig{
+	resolver, err := NewResolver(ResolverConfig{
 		Client: client,
 	})
+	require.NoError(t, err)
 
 	t.Run("Authorized", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
@@ -63,6 +74,97 @@ func TestResolver(t *testing.T) {
 	t.Run("Unauthorized", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.Header.Set("Authorization", "Bearer invalid-token")
+		_, err := resolver.Resolve(ctx, req, multitenancy.OperationRead)
+		require.Error(t, err)
+	})
+}
+
+func TestResolver_Cache(t *testing.T) {
+	ctx := context.Background()
+
+	srv, calls := makeTestServer(t)
+
+	client, err := multitenancyapi.NewClient(srv.URL)
+	require.NoError(t, err)
+
+	resolver, err := NewResolver(ResolverConfig{
+		Client:   client,
+		CacheTTL: time.Hour,
+	})
+	require.NoError(t, err)
+
+	makeReq := func() *http.Request {
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		req.Header.Set("Authorization", "Bearer valid-token")
+		return req
+	}
+
+	// First call hits the server.
+	d1, err := resolver.Resolve(ctx, makeReq(), multitenancy.OperationRead)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), calls.Load())
+
+	// Second call must be served from cache without hitting the server.
+	d2, err := resolver.Resolve(ctx, makeReq(), multitenancy.OperationRead)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), calls.Load(), "cache should absorb the second call")
+
+	assert.Equal(t, d1.TenantIDs, d2.TenantIDs)
+}
+
+func TestResolver_NoCaching(t *testing.T) {
+	ctx := context.Background()
+
+	srv, calls := makeTestServer(t)
+
+	client, err := multitenancyapi.NewClient(srv.URL)
+	require.NoError(t, err)
+
+	// Zero CacheTTL disables caching; every call must reach the server.
+	resolver, err := NewResolver(ResolverConfig{
+		Client: client,
+		// CacheTTL not set — caching disabled.
+	})
+	require.NoError(t, err)
+
+	makeReq := func() *http.Request {
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		req.Header.Set("Authorization", "Bearer valid-token")
+		return req
+	}
+
+	_, err = resolver.Resolve(ctx, makeReq(), multitenancy.OperationRead)
+	require.NoError(t, err)
+	_, err = resolver.Resolve(ctx, makeReq(), multitenancy.OperationRead)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), calls.Load(), "each call should reach the server when caching is disabled")
+}
+
+func TestResolver_CustomHeader(t *testing.T) {
+	ctx := context.Background()
+
+	srv, _ := makeTestServer(t)
+
+	client, err := multitenancyapi.NewClient(srv.URL)
+	require.NoError(t, err)
+
+	resolver, err := NewResolver(ResolverConfig{
+		Client:           client,
+		CredentialHeader: "X-API-Token",
+	})
+	require.NoError(t, err)
+
+	t.Run("WithCustomHeader", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		req.Header.Set("X-API-Token", "valid-token")
+		decision, err := resolver.Resolve(ctx, req, multitenancy.OperationRead)
+		require.NoError(t, err)
+		assert.True(t, decision.Enabled)
+	})
+
+	t.Run("WrongHeader", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		req.Header.Set("Authorization", "Bearer valid-token") // wrong header
 		_, err := resolver.Resolve(ctx, req, multitenancy.OperationRead)
 		require.Error(t, err)
 	})

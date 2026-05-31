@@ -133,7 +133,11 @@ func (p *promQuerier) buildSeriesQuery(
 	start, end time.Time,
 	matcherSets [][]*labels.Matcher,
 ) (*chsql.SelectQuery, error) {
-	query := newSelectQuery(ctx, table,
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	query := chsql.Select(table,
 		chsql.ResultColumn{
 			Name: "series",
 			Expr: chsql.MapConcat(
@@ -143,8 +147,11 @@ func (p *promQuerier) buildSeriesQuery(
 				attrStringMap(colScope),
 			),
 			Data: column,
-		}).
-		Distinct(true)
+		})
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Distinct(true)
 
 	sets := make([]chsql.Expr, 0, len(matcherSets))
 	for _, set := range matcherSets {

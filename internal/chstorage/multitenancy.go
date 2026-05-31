@@ -3,6 +3,7 @@ package chstorage
 import (
 	"context"
 
+	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/oteldb/oteldb/internal/chstorage/chsql"
@@ -11,10 +12,10 @@ import (
 
 // decisionFilters returns PREWHERE expressions derived from the authorization
 // Decision: one for tenant_id and zero or more for resource attribute selectors.
-func decisionFilters(ctx context.Context) []chsql.Expr {
+func decisionFilters(ctx context.Context) ([]chsql.Expr, error) {
 	d, ok := multitenancy.DecisionFromContext(ctx)
 	if !ok || !d.Enabled {
-		return nil
+		return nil, nil
 	}
 	var exprs []chsql.Expr
 	// Tenant filter.
@@ -41,12 +42,17 @@ func decisionFilters(ctx context.Context) []chsql.Expr {
 			op = labels.MatchRegexp
 		case multitenancy.OpNotRe:
 			op = labels.MatchNotRegexp
+		default:
+			return nil, errors.Errorf("unsupported resource selector op %d", sel.Op)
 		}
 
-		expr, _ := promQLLabelMatcher([]chsql.Expr{col}, op, sel.Value)
+		expr, err := promQLLabelMatcher([]chsql.Expr{col}, op, sel.Value)
+		if err != nil {
+			return nil, errors.Wrap(err, "build resource selector filter")
+		}
 		exprs = append(exprs, expr)
 	}
-	return exprs
+	return exprs, nil
 }
 
 func resourceSelectorExpr(key string) chsql.Expr {
@@ -62,14 +68,3 @@ func resourceSelectorExpr(key string) chsql.Expr {
 	}
 }
 
-func newSelectQuery(ctx context.Context, table string, result ...chsql.ResultColumn) *chsql.SelectQuery {
-	query := chsql.Select(table, result...)
-	if filters := decisionFilters(ctx); len(filters) > 0 {
-		query.Prewhere(filters...)
-	}
-	return query
-}
-
-func newSelectFrom(subquery *chsql.SelectQuery, result ...chsql.ResultColumn) *chsql.SelectQuery {
-	return chsql.SelectFrom(subquery, result...)
-}
