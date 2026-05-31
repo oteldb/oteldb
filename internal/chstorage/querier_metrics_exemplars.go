@@ -93,6 +93,9 @@ func (q *exemplarQuerier) Select(startMs, endMs int64, matcherSets ...[]*labels.
 
 		inputData proto.ColFixedStr16
 	)
+	if filters, err := decisionFilters(ctx); err == nil && len(filters) > 0 {
+		query.Where(filters...)
+	}
 	if q.exemplarsLimit > 0 {
 		query.Limit(q.exemplarsLimit)
 	}

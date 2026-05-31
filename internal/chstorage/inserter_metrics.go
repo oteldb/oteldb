@@ -617,6 +617,7 @@ func (b *metricsBatch) addExemplar(p exemplarSeries, e pmetric.Exemplar, bucketK
 
 	hash := b.addHash(p.Timestamp, p.Name, p.Description, p.Unit, p.Resource, p.Scope, p.Attributes, bucketKey...)
 
+	c.tenantID.Append(b.tenantID)
 	c.hash.Append(hash)
 	c.timestamp.Append(p.Timestamp)
 

@@ -127,9 +127,9 @@ func (r *logsRestore) restoreLogs(ctx context.Context, dir string) error {
 						rec.ObservedTimestamp = rec.Timestamp
 
 						lc.AddRow(rec, tenantID.Row(i))
-						ac.AddAttrs(rec.Attrs)
-						ac.AddAttrs(rec.ScopeAttrs)
-						ac.AddAttrs(rec.ResourceAttrs)
+						ac.AddAttrs(tenantID.Row(i), rec.Attrs)
+						ac.AddAttrs(tenantID.Row(i), rec.ScopeAttrs)
+						ac.AddAttrs(tenantID.Row(i), rec.ResourceAttrs)
 					}
 				}
 				rows = func() int {

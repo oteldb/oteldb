@@ -525,12 +525,17 @@ func (q *Querier) getLabelMapping(ctx context.Context, labels []string) (_ map[s
 	for _, label := range labels {
 		inputData.Append(label)
 	}
+	query := chsql.Select(q.tables.LogAttrs, attrs.ChsqlResult()...).
+		Where(chsql.In(
+			chsql.Ident("name"),
+			chsql.Ident("labels"),
+		))
+	if filters, err := decisionFilters(ctx); err == nil && len(filters) > 0 {
+		query.Where(filters...)
+	}
+
 	if err := q.do(ctx, selectQuery{
-		Query: chsql.Select(q.tables.LogAttrs, attrs.ChsqlResult()...).
-			Where(chsql.In(
-				chsql.Ident("name"),
-				chsql.Ident("labels"),
-			)),
+		Query: query,
 		OnResult: func(ctx context.Context, block proto.Block) error {
 			attrs.ForEach(func(name, key string) {
 				out[name] = key

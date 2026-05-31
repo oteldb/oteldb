@@ -407,6 +407,8 @@ func (c *labelsColumns) DDL() ddl.Table {
 }
 
 type exemplarColumns struct {
+	tenantID *proto.ColLowCardinality[string]
+
 	hash      proto.ColFixedStr16
 	timestamp *proto.ColDateTime64
 
@@ -419,6 +421,7 @@ type exemplarColumns struct {
 
 func newExemplarColumns() *exemplarColumns {
 	return &exemplarColumns{
+		tenantID:          new(proto.ColStr).LowCardinality(),
 		timestamp:         new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli),
 		exemplarTimestamp: new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli),
 	}
@@ -427,6 +430,7 @@ func newExemplarColumns() *exemplarColumns {
 func (c *exemplarColumns) Columns() Columns {
 	return MergeColumns(
 		Columns{
+			{Name: "tenant_id", Data: c.tenantID},
 			{Name: "hash", Data: &c.hash},
 			{Name: "timestamp", Data: c.timestamp},
 
@@ -447,8 +451,12 @@ func (c *exemplarColumns) DDL() ddl.Table {
 	table := ddl.Table{
 		Engine:      ddl.Engine{Type: "MergeTree"},
 		PartitionBy: "toYYYYMMDD(timestamp)",
-		OrderBy:     []string{"hash", "timestamp"},
+		OrderBy:     []string{"tenant_id", "hash", "timestamp"},
 		Columns: []ddl.Column{
+			{
+				Name: "tenant_id",
+				Type: c.tenantID.Type(),
+			},
 			{
 				Name: "hash",
 				Type: c.hash.Type(),

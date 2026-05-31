@@ -48,9 +48,9 @@ func (w *recordWriter) Add(record logstorage.Record) error {
 	}
 
 	w.logs.AddRow(record, tenantID)
-	w.attrs.AddAttrs(record.Attrs)
-	w.attrs.AddAttrs(record.ResourceAttrs)
-	w.attrs.AddAttrs(record.ScopeAttrs)
+	w.attrs.AddAttrs(tenantID, record.Attrs)
+	w.attrs.AddAttrs(tenantID, record.ResourceAttrs)
+	w.attrs.AddAttrs(tenantID, record.ScopeAttrs)
 	return nil
 }
 

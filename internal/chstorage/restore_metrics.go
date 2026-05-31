@@ -359,6 +359,7 @@ func (r *metricsRestore) restoreExemplars(ctx context.Context, dir string) error
 						)
 						r.collectLabels(name, noMapping, resource, scope, attributes)
 
+						exemplars.tenantID.Append(tenantID.Row(i))
 						exemplars.hash.Append(hash)
 						exemplars.timestamp.Append(timestamp)
 						exemplars.filteredAttributes.Append(filteredAttributes.Row(i))
@@ -370,7 +371,7 @@ func (r *metricsRestore) restoreExemplars(ctx context.Context, dir string) error
 					exemplars.traceID.AppendArr(traceID)
 				}
 				rows = func() int {
-					return exemplars.hash.Rows()
+					return exemplars.tenantID.Rows()
 				}
 			)
 			return []proto.Input{exemplars.Input()}, columns, add, rows

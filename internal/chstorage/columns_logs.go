@@ -302,8 +302,9 @@ func (c *logColumns) ChsqlResult() []chsql.ResultColumn { return c.columns().Chs
 func (c *logColumns) Reset()                            { c.columns().Reset() }
 
 type logAttrMapColumns struct {
-	name proto.ColStr // http_method
-	key  proto.ColStr // http.method
+	tenantID *proto.ColLowCardinality[string]
+	name     proto.ColStr // http_method
+	key      proto.ColStr // http.method
 
 	columns func() Columns
 	Input   func() proto.Input
@@ -311,9 +312,12 @@ type logAttrMapColumns struct {
 }
 
 func newLogAttrMapColumns() *logAttrMapColumns {
-	c := &logAttrMapColumns{}
+	c := &logAttrMapColumns{
+		tenantID: new(proto.ColStr).LowCardinality(),
+	}
 	c.columns = sync.OnceValue(func() Columns {
 		return []Column{
+			{Name: "tenant_id", Data: c.tenantID},
 			{Name: "name", Data: &c.name},
 			{Name: "key", Data: &c.key},
 		}
@@ -337,24 +341,29 @@ func (c *logAttrMapColumns) ForEach(f func(name, key string)) {
 	}
 }
 
-func (c *logAttrMapColumns) AddAttrs(attrs otelstorage.Attrs) {
+func (c *logAttrMapColumns) AddAttrs(tenantID string, attrs otelstorage.Attrs) {
 	buf := make([]byte, 0, 128)
 	attrs.AsMap().Range(func(k string, _ pcommon.Value) bool {
-		c.AddRow(otelstorage.AppendKeyToLabel(buf, k), k)
+		c.AddRow(tenantID, otelstorage.AppendKeyToLabel(buf, k), k)
 		return true
 	})
 }
 
-func (c *logAttrMapColumns) AddRow(name []byte, key string) {
+func (c *logAttrMapColumns) AddRow(tenantID string, name []byte, key string) {
+	c.tenantID.Append(tenantID)
 	c.name.AppendBytes(name)
 	c.key.Append(key)
 }
 
 func (c *logAttrMapColumns) DDL() ddl.Table {
 	return ddl.Table{
-		OrderBy: []string{"name"},
+		OrderBy: []string{"tenant_id", "name"},
 		Engine:  ddl.Engine{Type: "ReplacingMergeTree"},
 		Columns: []ddl.Column{
+			{
+				Name: "tenant_id",
+				Type: c.tenantID.Type(),
+			},
 			{
 				Name:    "name",
 				Type:    c.name.Type(),
