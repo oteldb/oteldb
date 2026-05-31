@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/go-faster/errors"
@@ -10,32 +11,100 @@ import (
 	"github.com/oteldb/oteldb/internal/chstorage"
 )
 
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
 func newStatusCmd() *cobra.Command {
 	setChFlag, dial := chFlag()
 	var opts chstorage.MigratorOptions
+	var showDiff bool
 
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Check connection and migration status.",
 		Long:  "Verify ClickHouse connectivity and show applied/available migrations.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, err := dial(cmd.Context())
+			ctx := cmd.Context()
+			client, err := dial(ctx)
 			if err != nil {
 				return errors.Wrap(err, "dial clickhouse")
 			}
 			migrator := chstorage.NewMigrator(client, opts)
-			diff, err := migrator.Diff(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("diff: %w", err)
+
+			// Run inspect and diff concurrently.
+			type inspectResult struct {
+				info []chstorage.TableInfo
+				err  error
+			}
+			type diffResult struct {
+				diff []chstorage.MigrationDiff
+				err  error
 			}
 
-			w := tabwriter.NewWriter(cmd.OutOrStdout(), 7, 7, 1, ' ', tabwriter.TabIndent)
-			defer func() {
-				_ = w.Flush()
+			inspectCh := make(chan inspectResult, 1)
+			diffCh := make(chan diffResult, 1)
+
+			go func() {
+				info, err := migrator.Inspect(ctx)
+				inspectCh <- inspectResult{info, err}
 			}()
-			_, _ = fmt.Fprintf(w, "%s \t%s \t\n", "TABLE", "STATUS")
-			for _, d := range diff {
-				_, _ = fmt.Fprintf(w, "%s \t%s \t\n", d.Table, d.Status.ColorString())
+			go func() {
+				diff, err := migrator.Diff(ctx)
+				diffCh <- diffResult{diff, err}
+			}()
+
+			ir := <-inspectCh
+			if ir.err != nil {
+				return errors.Wrap(ir.err, "inspect schema")
+			}
+			dr := <-diffCh
+			if dr.err != nil {
+				return errors.Wrap(dr.err, "diff schema")
+			}
+
+			// Index diff by table name for O(1) lookup.
+			diffByTable := make(map[string]chstorage.MigrationDiff, len(dr.diff))
+			for _, d := range dr.diff {
+				diffByTable[d.Table] = d
+			}
+
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "Engine:  %s\n\n", detectEngineSummary(ir.info))
+
+			w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+			fmt.Fprintf(w, "%-30s\t%-22s\t%-10s\t%s\n", "TABLE", "ENGINE", "TENANT_ID", "STATUS")
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+				strings.Repeat("-", 30),
+				strings.Repeat("-", 22),
+				strings.Repeat("-", 10),
+				strings.Repeat("-", 6),
+			)
+			for _, t := range ir.info {
+				engine := t.Engine
+				if engine == "" {
+					engine = "(absent)"
+				}
+				status := chstorage.MigrationCreate.ColorString() // table is missing
+				if d, ok := diffByTable[t.Name]; ok {
+					status = d.Status.ColorString()
+				}
+				fmt.Fprintf(w, "%-30s\t%-22s\t%-10s\t%s\n",
+					t.Name, engine, yesNo(t.HasTenantID), status,
+				)
+			}
+			_ = w.Flush()
+
+			if showDiff {
+				for _, d := range dr.diff {
+					if d.Diff == "" {
+						continue
+					}
+					fmt.Fprintf(out, "\n--- %s ---\n%s\n", d.Table, d.Diff)
+				}
 			}
 
 			return nil
@@ -43,5 +112,32 @@ func newStatusCmd() *cobra.Command {
 	}
 	opts.AddFlags(cmd.Flags())
 	setChFlag(cmd)
+	cmd.Flags().BoolVar(&showDiff, "diff", false, "Print SQL diff for tables in UPGRADE state")
 	return cmd
+}
+
+// detectEngineSummary derives a one-line engine description from the live tables.
+func detectEngineSummary(info []chstorage.TableInfo) string {
+	counts := map[string]int{}
+	for _, t := range info {
+		if t.Engine != "" {
+			counts[t.Engine]++
+		}
+	}
+	if len(counts) == 0 {
+		return "(no tables)"
+	}
+	if len(counts) == 1 {
+		for e := range counts {
+			if strings.Contains(e, "Replicated") {
+				return e + " (replicated)"
+			}
+			return e + " (standalone)"
+		}
+	}
+	parts := make([]string, 0, len(counts))
+	for e := range counts {
+		parts = append(parts, e)
+	}
+	return strings.Join(parts, ", ") + " (mixed)"
 }

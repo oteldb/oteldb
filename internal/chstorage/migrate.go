@@ -225,6 +225,35 @@ func (m *Migrator) distributedTableSchema(database, name string, schema ddl.Tabl
 	return name, schema, nil
 }
 
+// DropBackups drops tables with a "_backup" suffix that were created by a migrate run.
+// tables is the list of base table names (without the suffix); only existing backup tables are dropped.
+// log is called for each table before it is dropped; pass nil to suppress output.
+func (m *Migrator) DropBackups(ctx context.Context, tables []string, log func(table string)) error {
+	database, err := queryCurrentDatabase(ctx, m.client)
+	if err != nil {
+		return errors.Wrap(err, "query current database")
+	}
+
+	var dropped []string
+	for _, table := range tables {
+		backup := table + "_backup"
+		if err := m.dropTable(ctx, database, backup, true); err != nil {
+			return errors.Wrapf(err, "drop %q", backup)
+		}
+		if log != nil {
+			log(backup)
+		}
+		dropped = append(dropped, backup)
+	}
+
+	if len(dropped) > 0 {
+		if err := m.ClearHashes(ctx, dropped); err != nil {
+			return errors.Wrap(err, "clear backup hashes from migration table")
+		}
+	}
+	return nil
+}
+
 // Drop drops all known tables. This will remove data.
 func (m *Migrator) Drop(ctx context.Context, log func(database, table string)) error {
 	return m.drop(ctx, false, log)
@@ -364,7 +393,6 @@ func (m *Migrator) Diff(ctx context.Context) ([]MigrationDiff, error) {
 		if latest.DDLHash != existing.DDLHash {
 			dmp := diffmatchpatch.New()
 			diffs := dmp.DiffMain(latest.DDL, existing.DDL, false)
-			fmt.Println(dmp.DiffPrettyText(diffs))
 
 			r = append(r, MigrationDiff{
 				Table:  table,
@@ -600,4 +628,137 @@ func queryCurrentDatabase(ctx context.Context, c ClickHouseClient) (string, erro
 		return "", errors.New("currentDatabase() returned empty result")
 	}
 	return col.First(), nil
+}
+
+// TableInfo holds live schema information for one data table as it actually
+// exists in ClickHouse, independent of what the current code expects.
+type TableInfo struct {
+	// Name is the table name as it appears in ClickHouse.
+	Name string
+	// Engine is the ClickHouse table engine, e.g. "MergeTree" or "ReplicatedMergeTree".
+	// Empty when the table does not exist.
+	Engine string
+	// HasTenantID is true when tenant_id is present as a column in the live table.
+	HasTenantID bool
+	// Exists is false when the table is not present in ClickHouse at all.
+	Exists bool
+}
+
+// Inspect returns live schema information for all known data tables.
+// It queries system.tables and system.columns directly, so the result reflects
+// what is actually in ClickHouse rather than what the current code expects.
+func (m *Migrator) Inspect(ctx context.Context) ([]TableInfo, error) {
+	// Collect the table names as they should appear in ClickHouse.
+	// When Replicated is set, tableSchema appends "_replicated".
+	type entry struct {
+		name string
+	}
+	var entries []entry
+	for t := range m.opts.Tables.each() {
+		if !t.IsData {
+			continue
+		}
+		tableName, _, err := m.tableSchema(*t.Name, t.DDL)
+		if err != nil {
+			// Table doesn't support replication; use base name.
+			tableName = *t.Name
+		}
+		entries = append(entries, entry{name: tableName})
+	}
+
+	// Build quoted IN list for SQL.
+	quotedNames := make([]string, len(entries))
+	for i, e := range entries {
+		quotedNames[i] = "'" + strings.ReplaceAll(e.name, "'", "''") + "'"
+	}
+	inList := strings.Join(quotedNames, ", ")
+
+	// Query engine from system.tables.
+	engineByTable := map[string]string{}
+	{
+		var nameCol proto.ColStr
+		var engineCol proto.ColStr
+		if err := m.client.Do(ctx, ch.Query{
+			Logger: zctx.From(ctx).Named("ch"),
+			Body: fmt.Sprintf(
+				"SELECT name, engine FROM system.tables WHERE database = currentDatabase() AND name IN (%s)",
+				inList,
+			),
+			Result: proto.Results{
+				{Name: "name", Data: &nameCol},
+				{Name: "engine", Data: &engineCol},
+			},
+		}); err != nil {
+			return nil, errors.Wrap(err, "query system.tables")
+		}
+		for i := 0; i < nameCol.Rows(); i++ {
+			engineByTable[nameCol.Row(i)] = engineCol.Row(i)
+		}
+	}
+
+	// Query which tables have a tenant_id column.
+	hasTenantID := map[string]bool{}
+	{
+		var tableCol proto.ColStr
+		if err := m.client.Do(ctx, ch.Query{
+			Logger: zctx.From(ctx).Named("ch"),
+			Body: fmt.Sprintf(
+				"SELECT DISTINCT table FROM system.columns WHERE database = currentDatabase() AND table IN (%s) AND name = 'tenant_id'",
+				inList,
+			),
+			Result: proto.Results{
+				{Name: "table", Data: &tableCol},
+			},
+		}); err != nil {
+			return nil, errors.Wrap(err, "query system.columns")
+		}
+		for i := 0; i < tableCol.Rows(); i++ {
+			hasTenantID[tableCol.Row(i)] = true
+		}
+	}
+
+	result := make([]TableInfo, 0, len(entries))
+	for _, e := range entries {
+		engine, exists := engineByTable[e.name]
+		result = append(result, TableInfo{
+			Name:        e.name,
+			Engine:      engine,
+			HasTenantID: hasTenantID[e.name],
+			Exists:      exists,
+		})
+	}
+	return result, nil
+}
+
+// ClearHashes deletes migration tracking records for the specified tables.
+func (m *Migrator) ClearHashes(ctx context.Context, tables []string) error {
+	if len(tables) == 0 {
+		return nil
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "ALTER TABLE %s", m.migrationTableName())
+	if cluster := m.opts.Cluster; cluster != "" && m.opts.Replicated {
+		fmt.Fprintf(&sb, " ON CLUSTER '%s'", cluster)
+	}
+	sb.WriteString(" DELETE WHERE table IN (")
+	for i, table := range tables {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		fmt.Fprintf(&sb, "'%s'", table)
+	}
+	sb.WriteString(")")
+
+	return m.client.Do(ctx, ch.Query{
+		Logger: zctx.From(ctx).Named("ch"),
+		Body:   sb.String(),
+		// Ensure mutation runs synchronously
+		Settings: []ch.Setting{
+			{
+				Key:   "mutations_sync",
+				Value: "1",
+			},
+		},
+	})
 }
