@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/go-faster/errors"
 	"github.com/spf13/cobra"
@@ -70,12 +69,24 @@ func newStatusCmd() *cobra.Command {
 			out := cmd.OutOrStdout()
 			_, _ = fmt.Fprintf(out, "Engine:  %s\n\n", detectEngineSummary(info))
 
-			w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintf(w, "%-30s\t%-22s\t%-10s\t%s\n", "TABLE", "ENGINE", "TENANT_ID", "STATUS")
-			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-				strings.Repeat("-", 30),
-				strings.Repeat("-", 22),
-				strings.Repeat("-", 10),
+			const (
+				colTable    = 30
+				colEngine   = 22
+				colTenantID = 10
+				colStatus   = 10
+			)
+			_, _ = fmt.Fprintf(out, "%-*s  %-*s  %-*s  %-*s  %s\n",
+				colTable, "TABLE",
+				colEngine, "ENGINE",
+				colTenantID, "TENANT_ID",
+				colStatus, "STATUS",
+				"REASON",
+			)
+			_, _ = fmt.Fprintf(out, "%s  %s  %s  %s  %s\n",
+				strings.Repeat("-", colTable),
+				strings.Repeat("-", colEngine),
+				strings.Repeat("-", colTenantID),
+				strings.Repeat("-", colStatus),
 				strings.Repeat("-", 6),
 			)
 			for _, t := range info {
@@ -83,15 +94,20 @@ func newStatusCmd() *cobra.Command {
 				if engine == "" {
 					engine = "(absent)"
 				}
-				status := chstorage.MigrationCreate.ColorString() // table is missing
+				status := chstorage.MigrationCreate // table is missing
+				var reason string
 				if d, ok := diffByTable[t.Name]; ok {
-					status = d.Status.ColorString()
+					status = d.Status
+					reason = d.Reason
 				}
-				_, _ = fmt.Fprintf(w, "%-30s\t%-22s\t%-10s\t%s\n",
-					t.Name, engine, yesNo(t.HasTenantID), status,
+				_, _ = fmt.Fprintf(out, "%-*s  %-*s  %-*s  %s  %s\n",
+					colTable, t.Name,
+					colEngine, engine,
+					colTenantID, yesNo(t.HasTenantID),
+					status.ColorPaddedString(colStatus),
+					reason,
 				)
 			}
-			_ = w.Flush()
 
 			if showDiff {
 				for _, d := range diff {

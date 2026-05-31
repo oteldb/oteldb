@@ -389,6 +389,7 @@ func (m *Migrator) Diff(ctx context.Context) ([]MigrationDiff, error) {
 			r = append(r, MigrationDiff{
 				Table:  table,
 				Diff:   dmp.DiffPrettyText(diffs),
+				Reason: summarizeDiff(latest.DDL, existing.DDL),
 				Status: MigrationUpgrade,
 			})
 			continue
@@ -401,9 +402,31 @@ func (m *Migrator) Diff(ctx context.Context) ([]MigrationDiff, error) {
 
 // MigrationDiff is result of comparison of existing table and latest schema version.
 type MigrationDiff struct {
-	Table  string
-	Diff   string
+	Table string
+	Diff  string
+	// Reason is a short human-readable summary of what changed, populated for
+	// MigrationUpgrade entries. Empty for all other statuses.
+	Reason string
 	Status MigrationStatus
+}
+
+// summarizeDiff produces a short explanation of what changed between two DDL strings.
+func summarizeDiff(latestDDL, existingDDL string) string {
+	var reasons []string
+
+	latestHasTenant := strings.Contains(latestDDL, "tenant_id")
+	existingHasTenant := strings.Contains(existingDDL, "tenant_id")
+	switch {
+	case latestHasTenant && !existingHasTenant:
+		reasons = append(reasons, "tenant_id added")
+	case !latestHasTenant && existingHasTenant:
+		reasons = append(reasons, "tenant_id removed")
+	}
+
+	if len(reasons) == 0 {
+		return "schema changed"
+	}
+	return strings.Join(reasons, ", ")
 }
 
 // MigrationStatus defines status of table.
@@ -453,6 +476,23 @@ func (s MigrationStatus) ColorString() string {
 		c = color.GreenString
 	}
 	return c("%s", s.String())
+}
+
+// ColorPaddedString returns a colored, left-padded string that occupies exactly
+// width visible characters. Padding is applied inside the ANSI escape sequences so
+// callers that count raw bytes (e.g. fmt.Fprintf) see the correct visual width.
+func (s MigrationStatus) ColorPaddedString(width int) string {
+	c := fmt.Sprintf
+	switch s {
+	case MigrationUnknown:
+	case MigrationDelete, MigrationUpgrade:
+		c = color.RedString
+	case MigrationCreate:
+		c = color.YellowString
+	case MigrationOK:
+		c = color.GreenString
+	}
+	return c("%-*s", width, s.String())
 }
 
 func (m *Migrator) generateQuery(name string, schema ddl.Table, ifNotExists bool) (string, error) {
