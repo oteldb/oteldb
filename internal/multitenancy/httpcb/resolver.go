@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	singleflight "github.com/go-faster/sdk/singleflightx"
 	"github.com/maypok86/otter"
 
 	"github.com/oteldb/oteldb/internal/multitenancy"
@@ -18,6 +19,7 @@ type Resolver struct {
 	client           *multitenancyapi.Client
 	credentialHeader string
 	cache            *otter.Cache[decisionKey, multitenancy.Decision]
+	sg               singleflight.Group[decisionKey, multitenancy.Decision]
 }
 
 type decisionKey struct {
@@ -80,15 +82,17 @@ func (r *Resolver) Resolve(ctx context.Context, req *http.Request, op multitenan
 		}
 	}
 
-	d, err := r.resolve(ctx, cred, op)
-	if err != nil {
-		return multitenancy.Decision{}, err
-	}
-
-	if r.cache != nil {
-		r.cache.Set(key, d)
-	}
-	return d, nil
+	d, err, _ := r.sg.Do(key, func() (multitenancy.Decision, error) {
+		d, err := r.resolve(ctx, cred, op)
+		if err != nil {
+			return multitenancy.Decision{}, err
+		}
+		if r.cache != nil {
+			r.cache.Set(key, d)
+		}
+		return d, nil
+	})
+	return d, err
 }
 
 func (r *Resolver) resolve(ctx context.Context, cred string, op multitenancy.Operation) (multitenancy.Decision, error) {

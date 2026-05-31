@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -110,6 +111,60 @@ func TestResolver_Cache(t *testing.T) {
 	assert.Equal(t, int64(1), calls.Load(), "cache should absorb the second call")
 
 	assert.Equal(t, d1.TenantIDs, d2.TenantIDs)
+}
+
+func TestResolver_Singleflight(t *testing.T) {
+	ctx := context.Background()
+
+	// Gate lets us hold all goroutines inside the server handler simultaneously.
+	var gate sync.WaitGroup
+	gate.Add(1)
+
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		gate.Wait() // block until the test releases the gate
+		var req multitenancyapi.AuthorizeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		resp := multitenancyapi.AuthorizeResponse{TenantIds: []string{"tenant-1"}}
+		data, _ := resp.MarshalJSON()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(data)
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := multitenancyapi.NewClient(srv.URL)
+	require.NoError(t, err)
+
+	resolver, err := NewResolver(ResolverConfig{Client: client})
+	require.NoError(t, err)
+
+	const n = 10
+	results := make([]multitenancy.Decision, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := range n {
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+			req.Header.Set("Authorization", "Bearer valid-token")
+			results[i], errs[i] = resolver.Resolve(ctx, req, multitenancy.OperationRead)
+		}()
+	}
+
+	// Release all goroutines blocked in the handler.
+	gate.Done()
+	wg.Wait()
+
+	for i, err := range errs {
+		require.NoError(t, err, "goroutine %d", i)
+		assert.Equal(t, []string{"tenant-1"}, results[i].TenantIDs)
+	}
+	assert.Equal(t, int64(1), calls.Load(), "singleflight should collapse concurrent requests into one")
 }
 
 func TestResolver_NoCaching(t *testing.T) {
