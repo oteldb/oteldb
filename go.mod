@@ -58,7 +58,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.153.0
 	github.com/oteldb/promql-engine v0.6.0-alpha.0
 	github.com/prometheus/client_golang v1.23.2
-	github.com/prometheus/common v0.67.5
+	github.com/prometheus/common v0.68.0
 	github.com/prometheus/prometheus v0.309.1
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/sergi/go-diff v1.4.0
