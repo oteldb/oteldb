@@ -39,6 +39,9 @@ type Querier struct {
 	maxResultBytes   int
 	maxExecutionTime time.Duration
 
+	disableRateOffloading   bool
+	disableMetricOffloading bool
+
 	timeseries   *timeseriesQuerier
 	metricsCache *metricscache.Cache
 	metricsSg    *singleflight.Group[xxh3.Uint128, metricSelectResult]
@@ -66,6 +69,11 @@ type QuerierOptions struct {
 	MaxResultBytes int
 	// MaxExecutionTime defines max execution time for ClickHouse query.
 	MaxExecutionTime time.Duration
+
+	// DisableRateOffloading disables rate/increase/delta/etc. offloading to ClickHouse.
+	DisableRateOffloading bool
+	// DisableMetricOffloading disables all metric offloading to ClickHouse.
+	DisableMetricOffloading bool
 
 	// MetricsCacheOptions configures metrics cache.
 	MetricsCacheOptions MetricsCacheOptions
@@ -150,6 +158,9 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 		maxResultRows:    opts.MaxResultRows,
 		maxResultBytes:   opts.MaxResultBytes,
 		maxExecutionTime: opts.MaxExecutionTime,
+
+		disableRateOffloading:   opts.DisableRateOffloading,
+		disableMetricOffloading: opts.DisableMetricOffloading,
 
 		metricsCache: metricsCache,
 		metricsSg:    new(singleflight.Group[xxh3.Uint128, metricSelectResult]),

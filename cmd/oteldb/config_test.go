@@ -11,6 +11,8 @@ import (
 func TestLoadConfig(t *testing.T) {
 	data := `
 prometheus:
+  disable_rate_offloading: true
+  disable_metric_offloading: true
   cache:
     max_bytes: 100MiB
 max_result_bytes: 1GB
@@ -28,4 +30,6 @@ max_result_bytes: 1GB
 
 	assert.Equal(t, int64(100*1024*1024), int64(cfg.Prometheus.Cache.MaxBytes))
 	assert.Equal(t, int64(1000*1000*1000), int64(cfg.MaxResultBytes))
+	assert.True(t, cfg.Prometheus.DisableRateOffloading)
+	assert.True(t, cfg.Prometheus.DisableMetricOffloading)
 }

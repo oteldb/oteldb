@@ -133,7 +133,7 @@ func (s *promScanners) NewMatrixSelector(
 		hints.ProjectionLabels = vs.Projection.Labels
 		hints.ProjectionInclude = vs.Projection.Include
 	}
-	if kind, ok := funcNameToRateKind(call.Func.Name); ok {
+	if kind, ok := funcNameToRateKind(call.Func.Name); ok && !s.storage.disableRateOffloading && !s.storage.disableMetricOffloading {
 		q := s.storage.metricsQuerier(hints.Start, hints.End)
 		op := newRateSelector(
 			q,

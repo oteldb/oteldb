@@ -76,6 +76,9 @@ func setupCH(
 		MaxResultBytes:   int(cfg.MaxResultBytes),
 		MaxExecutionTime: cfg.MaxExecutionTime,
 
+		DisableRateOffloading:   cfg.Prometheus.DisableRateOffloading,
+		DisableMetricOffloading: cfg.Prometheus.DisableMetricOffloading,
+
 		MetricsCacheOptions: chstorage.MetricsCacheOptions{
 			MaxBytes:  int64(cfg.Prometheus.Cache.MaxBytes),
 			SafetyLag: cfg.Prometheus.Cache.SafetyLag,

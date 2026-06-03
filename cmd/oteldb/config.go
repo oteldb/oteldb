@@ -139,6 +139,11 @@ type PrometheusConfig struct {
 	EnableNegativeOffset *bool         `json:"enable_negative_offset" yaml:"enable_negative_offset"`
 	EnablePerStepStats   bool          `json:"enable_per_step_stats" yaml:"enable_per_step_stats"`
 
+	// DisableRateOffloading disables PromQL rate offloading.
+	DisableRateOffloading bool `json:"disable_rate_offloading" yaml:"disable_rate_offloading"`
+	// DisableMetricOffloading disables all PromQL offloading.
+	DisableMetricOffloading bool `json:"disable_metric_offloading" yaml:"disable_metric_offloading"`
+
 	Cache MetricsCacheConfig `json:"cache" yaml:"cache"`
 }
 

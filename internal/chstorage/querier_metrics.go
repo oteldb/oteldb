@@ -69,6 +69,9 @@ type promQuerier struct {
 	metricsSg                       *singleflight.Group[xxh3.Uint128, metricSelectResult]
 	do                              func(ctx context.Context, s selectQuery) error
 
+	disableRateOffloading   bool
+	disableMetricOffloading bool
+
 	tracer trace.Tracer
 }
 
@@ -91,6 +94,9 @@ func (q *Querier) metricsQuerier(mint, maxt int64) *promQuerier {
 		tables:          q.tables,
 		labelLimit:      q.labelLimit,
 		timeseriesLimit: q.timeseriesLimit,
+
+		disableRateOffloading:   q.disableRateOffloading,
+		disableMetricOffloading: q.disableMetricOffloading,
 
 		metricsCache:    q.metricsCache,
 		metricsSg:       q.metricsSg,
@@ -368,6 +374,9 @@ func (r *metricSelectResult) Set(sortSeries bool) *seriesSet[storage.Series] {
 }
 
 func (p *promQuerier) querySeriesSingleflight(ctx context.Context, samplePoints bool, params metricSelectParams) (_ metricSelectResult, rerr error) {
+	if p.disableMetricOffloading {
+		samplePoints = false
+	}
 	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.querySeriesSingleflight",
 		trace.WithAttributes(
 			xattribute.StringerSlice("promql.matchers", params.Matchers),
@@ -454,7 +463,7 @@ func (p *promQuerier) querySeries(ctx context.Context, samplePoints bool, params
 		trace.SpanFromContext(ctx).AddEvent("chstorage.too_many_timeseries")
 		return result, errors.Wrapf(ErrMetricsTooManySeries, "%d > %d series requested", len(timeseries), p.timeseriesLimit)
 	}
-	if samplePoints {
+	if samplePoints && !p.disableRateOffloading {
 		if kind, ok := funcNameToRateKind(params.Function); ok {
 			span.AddEvent("chstorage.use_rate_offloading", trace.WithAttributes(
 				attribute.String("promql.function", params.Function),
