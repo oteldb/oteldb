@@ -106,7 +106,6 @@ linters:
         text: method Seek
         source: func.+Seek\(.+int64\).+chunkenc\.ValueType
 
-
       # Our AST packages contain a lot of interface-based sum types.
       # Defining methods in one place next to the interface is better for readability.
       - linters:
@@ -120,7 +119,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/go-faster/oteldb
+        - github.com/oteldb/oteldb
   exclusions:
     generated: lax
     paths:

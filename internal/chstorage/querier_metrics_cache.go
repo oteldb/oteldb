@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/go-faster/oteldb/internal/metricscache"
+	"github.com/oteldb/oteldb/internal/metricscache"
 )
 
 type fetchPointsFunc func(ctx context.Context, fetchStart, fetchEnd time.Time) (map[[16]byte]*series[pointData], error)

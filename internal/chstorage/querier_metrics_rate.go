@@ -17,8 +17,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/go-faster/oteldb/internal/chstorage/chsql"
-	"github.com/go-faster/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/chstorage/chsql"
+	"github.com/oteldb/oteldb/internal/xattribute"
 )
 
 const promStaleNaNBits uint64 = 0x7ff0000000000002

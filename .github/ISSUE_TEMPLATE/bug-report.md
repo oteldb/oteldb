@@ -6,7 +6,7 @@ labels: bug
 
 <!-- Please answer these questions before submitting your issue. Thanks! -->
 
-### What version of go-faster/oteldb are you using?
+### What version of oteldb/oteldb are you using?
 
 ```bash
 $ go list -m github.com/oteldb/oteldb
