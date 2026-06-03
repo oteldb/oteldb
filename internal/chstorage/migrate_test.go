@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-faster/oteldb/internal/ddl"
+	"github.com/oteldb/oteldb/internal/ddl"
 )
 
 func TestMigratorOptions_AddFlags(t *testing.T) {

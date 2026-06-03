@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-faster/oteldb/internal/chstorage/chsql"
-	"github.com/go-faster/oteldb/internal/multitenancy"
+	"github.com/oteldb/oteldb/internal/chstorage/chsql"
+	"github.com/oteldb/oteldb/internal/multitenancy"
 )
 
 // renderExpr renders a chsql expression to a SQL string for assertion.

@@ -15,16 +15,16 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"golang.org/x/exp/maps"
 
-	"github.com/go-faster/oteldb/integration"
-	"github.com/go-faster/oteldb/integration/tempoe2e"
-	"github.com/go-faster/oteldb/internal/chstorage"
-	"github.com/go-faster/oteldb/internal/multitenancy"
-	"github.com/go-faster/oteldb/internal/multitenancy/static"
-	"github.com/go-faster/oteldb/internal/otelstorage"
-	"github.com/go-faster/oteldb/internal/tempoapi"
-	"github.com/go-faster/oteldb/internal/tempohandler"
-	"github.com/go-faster/oteldb/internal/traceql/traceqlengine"
-	"github.com/go-faster/oteldb/internal/tracestorage"
+	"github.com/oteldb/oteldb/integration"
+	"github.com/oteldb/oteldb/integration/tempoe2e"
+	"github.com/oteldb/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/multitenancy"
+	"github.com/oteldb/oteldb/internal/multitenancy/static"
+	"github.com/oteldb/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/tempohandler"
+	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
+	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
 type authRoundTripper struct {

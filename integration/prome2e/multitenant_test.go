@@ -14,15 +14,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/maps"
 
-	"github.com/go-faster/oteldb/integration"
-	"github.com/go-faster/oteldb/integration/prome2e"
-	"github.com/go-faster/oteldb/internal/chstorage"
-	"github.com/go-faster/oteldb/internal/httpmiddleware"
-	"github.com/go-faster/oteldb/internal/multitenancy"
-	"github.com/go-faster/oteldb/internal/multitenancy/static"
-	"github.com/go-faster/oteldb/internal/promapi"
-	"github.com/go-faster/oteldb/internal/promhandler"
-	"github.com/go-faster/oteldb/internal/promql"
+	"github.com/oteldb/oteldb/integration"
+	"github.com/oteldb/oteldb/integration/prome2e"
+	"github.com/oteldb/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/httpmiddleware"
+	"github.com/oteldb/oteldb/internal/multitenancy"
+	"github.com/oteldb/oteldb/internal/multitenancy/static"
+	"github.com/oteldb/oteldb/internal/promapi"
+	"github.com/oteldb/oteldb/internal/promhandler"
+	"github.com/oteldb/oteldb/internal/promql"
 )
 
 type authRoundTripper struct {

@@ -14,16 +14,16 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"golang.org/x/exp/maps"
 
-	"github.com/go-faster/oteldb/integration"
-	"github.com/go-faster/oteldb/integration/lokie2e"
-	"github.com/go-faster/oteldb/internal/chstorage"
-	"github.com/go-faster/oteldb/internal/logql"
-	"github.com/go-faster/oteldb/internal/logql/logqlengine"
-	"github.com/go-faster/oteldb/internal/logstorage"
-	"github.com/go-faster/oteldb/internal/lokiapi"
-	"github.com/go-faster/oteldb/internal/lokihandler"
-	"github.com/go-faster/oteldb/internal/multitenancy"
-	"github.com/go-faster/oteldb/internal/multitenancy/static"
+	"github.com/oteldb/oteldb/integration"
+	"github.com/oteldb/oteldb/integration/lokie2e"
+	"github.com/oteldb/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/logstorage"
+	"github.com/oteldb/oteldb/internal/lokiapi"
+	"github.com/oteldb/oteldb/internal/lokihandler"
+	"github.com/oteldb/oteldb/internal/multitenancy"
+	"github.com/oteldb/oteldb/internal/multitenancy/static"
 )
 
 type authRoundTripper struct {
