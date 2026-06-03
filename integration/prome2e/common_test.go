@@ -793,6 +793,47 @@ func runTest(
 				a.GreaterOrEqualf(minVals[i], 0.0, "min >= 0 at index %d", i)
 			}
 		})
+		t.Run("RateFunctions", func(t *testing.T) {
+			// Exercises the rate offloading path in chstorage (rateSelector + queryRatePoints*).
+			// When run via TestCHBackupOldOteldb against an old container, this compares
+			// (indirectly) offloaded results vs the legacy non-offloaded Go path.
+			a := require.New(t)
+
+			params := func(q string) promapi.GetQueryRangeParams {
+				return promapi.GetQueryRangeParams{
+					Query: q,
+					Start: getPromTS(set.Start),
+					End:   getPromTS(set.End),
+					Step:  promapi.NewOptString("30s"),
+				}
+			}
+
+			for _, tc := range []struct {
+				name  string
+				query string
+				check func(float64)
+			}{
+				{"rate", `rate(prometheus_http_requests_total[1m])`, func(v float64) { a.GreaterOrEqual(v, 0.0) }},
+				{"increase", `increase(prometheus_http_requests_total[5m])`, func(v float64) { a.GreaterOrEqual(v, 0.0) }},
+				{"delta", `delta(prometheus_http_requests_total[2m])`, func(v float64) { /* delta can be negative for gauges, but this counter is non-decreasing */
+					a.GreaterOrEqual(v, 0.0)
+				}},
+				{"irate", `irate(prometheus_http_requests_total[1m])`, func(v float64) { a.GreaterOrEqual(v, 0.0) }},
+			} {
+				tc := tc
+				t.Run(tc.name, func(t *testing.T) {
+					r, err := c.GetQueryRange(ctx, params(tc.query))
+					a.NoError(err)
+					a.Equal(promapi.MatrixData, r.Data.Type)
+					a.NotEmpty(r.Data.Matrix.Result, "expected at least one series for %s", tc.query)
+					for _, series := range r.Data.Matrix.Result {
+						for _, pt := range series.Values {
+							tc.check(pt.V)
+						}
+					}
+				})
+			}
+		})
 		t.Run("Histogram", func(t *testing.T) {
 			a := require.New(t)
 
