@@ -21,6 +21,7 @@ import (
 	"github.com/oteldb/oteldb/internal/chstorage/chsql"
 	"github.com/oteldb/oteldb/internal/globalmetric"
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/metricscache"
 	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
@@ -38,8 +39,11 @@ type Querier struct {
 	maxResultBytes   int
 	maxExecutionTime time.Duration
 
+	disableRateOffloading   bool
+	disableMetricOffloading bool
+
 	timeseries   *timeseriesQuerier
-	metricsCache *MetricsCache
+	metricsCache *metricscache.Cache
 	metricsSg    *singleflight.Group[xxh3.Uint128, metricSelectResult]
 
 	chLogLevel                 zapcore.LevelEnabler
@@ -65,6 +69,11 @@ type QuerierOptions struct {
 	MaxResultBytes int
 	// MaxExecutionTime defines max execution time for ClickHouse query.
 	MaxExecutionTime time.Duration
+
+	// DisableRateOffloading disables rate/increase/delta/etc. offloading to ClickHouse.
+	DisableRateOffloading bool
+	// DisableMetricOffloading disables all metric offloading to ClickHouse.
+	DisableMetricOffloading bool
 
 	// MetricsCacheOptions configures metrics cache.
 	MetricsCacheOptions MetricsCacheOptions
@@ -126,14 +135,14 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "create clickhouse.request histogram metric")
 	}
-	var metricsCache *MetricsCache
+	var metricsCache *metricscache.Cache
 	if opts.MetricsCacheOptions.MaxBytes > 0 {
 		var err error
 		cacheOpts := opts.MetricsCacheOptions
 		if cacheOpts.MeterProvider == nil {
 			cacheOpts.MeterProvider = opts.MeterProvider
 		}
-		metricsCache, err = newMetricsCache(cacheOpts)
+		metricsCache, err = metricscache.New(cacheOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "create metrics cache")
 		}
@@ -149,6 +158,9 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 		maxResultRows:    opts.MaxResultRows,
 		maxResultBytes:   opts.MaxResultBytes,
 		maxExecutionTime: opts.MaxExecutionTime,
+
+		disableRateOffloading:   opts.DisableRateOffloading,
+		disableMetricOffloading: opts.DisableMetricOffloading,
 
 		metricsCache: metricsCache,
 		metricsSg:    new(singleflight.Group[xxh3.Uint128, metricSelectResult]),

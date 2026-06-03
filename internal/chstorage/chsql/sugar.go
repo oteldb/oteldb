@@ -172,6 +172,21 @@ func ColumnEq[V litValue](column string, right V) Expr {
 	return binaryOp(Ident(column), "=", Value(right))
 }
 
+// ToInt64Val returns `toInt64(<v>)` function call expression.
+func ToInt64Val[I litInt](v I) Expr {
+	return ToInt64(Integer(v))
+}
+
+// ColumnToInt64 returns `toInt64(Ident(<column>))` function call expression.
+func ColumnToInt64(column string) Expr {
+	return ToInt64(Ident(column))
+}
+
+// ColumnTupleElement returns `tupleElement(Ident(<column>), <index>)` function call expression.
+func ColumnTupleElement(column string, index int) Expr {
+	return TupleElement(Ident(column), index)
+}
+
 // Contains returns boolean expression to filter strings containing needle.
 func Contains(column, needle string) Expr {
 	return Gt(

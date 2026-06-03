@@ -62,6 +62,31 @@ func Minus(left, right Expr) Expr {
 	return binaryOp(left, "-", right)
 }
 
+// Sub returns new `-` operation.
+func Sub(left, right Expr) Expr {
+	return Minus(left, right)
+}
+
+// Add returns new `+` operation.
+func Add(left, right Expr) Expr {
+	return binaryOp(left, "+", right)
+}
+
+// Mul returns new `*` operation.
+func Mul(left, right Expr) Expr {
+	return binaryOp(left, "*", right)
+}
+
+// Div returns new `/` operation.
+func Div(left, right Expr) Expr {
+	return binaryOp(left, "/", right)
+}
+
+// Mod returns new `%` operation.
+func Mod(left, right Expr) Expr {
+	return binaryOp(left, "%", right)
+}
+
 // In returns new `IN` operation.
 func In(left, right Expr) Expr {
 	return binaryOp(left, "IN", right)

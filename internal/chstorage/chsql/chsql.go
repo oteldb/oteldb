@@ -3,6 +3,7 @@ package chsql
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/go-faster/errors"
@@ -169,6 +170,14 @@ func (p *Printer) WriteExpr(e Expr) error {
 		p.CloseParen()
 
 		return nil
+	case exprLambda:
+		p.Ident(e.tok)
+		p.Ident("->")
+		if err := p.WriteExpr(e.args[0]); err != nil {
+			return err
+		}
+
+		return nil
 	case exprSubQuery:
 		if e.subQuery == nil {
 			return errors.New("subquery is nil")
@@ -180,6 +189,55 @@ func (p *Printer) WriteExpr(e Expr) error {
 		}
 		p.CloseParen()
 
+		return nil
+	case exprWindowFunc:
+		// args layout: [fn, part_0..part_n, order_0..order_m]
+		// tok = strconv.Itoa(n) where n = len(partitionBy)
+		if len(e.args) < 1 {
+			return errors.New("window function: missing function argument")
+		}
+		if err := p.WriteExpr(e.args[0]); err != nil {
+			return err
+		}
+		p.Ident("OVER")
+		p.OpenParen()
+		nParts, _ := strconv.Atoi(e.tok)
+		if nParts > 0 {
+			p.Ident("PARTITION")
+			p.By()
+			for i := range nParts {
+				if i != 0 {
+					p.Comma()
+				}
+				if err := p.WriteExpr(e.args[1+i]); err != nil {
+					return errors.Wrapf(err, "window partition by %d", i)
+				}
+			}
+		}
+		orderExprs := e.args[1+nParts:]
+		if len(orderExprs) > 0 {
+			p.Order()
+			p.By()
+			for i, o := range orderExprs {
+				if i != 0 {
+					p.Comma()
+				}
+				if err := p.WriteExpr(o); err != nil {
+					return errors.Wrapf(err, "window order by %d", i)
+				}
+			}
+		}
+		p.CloseParen()
+		return nil
+	case exprSortDir:
+		// args[0] = expression, tok = "ASC" or "DESC"
+		if len(e.args) != 1 {
+			return errors.Errorf("sort direction expression must have exactly one arg, got %d", len(e.args))
+		}
+		if err := p.WriteExpr(e.args[0]); err != nil {
+			return err
+		}
+		p.Ident(e.tok)
 		return nil
 	default:
 		return errors.Errorf("unexpected expression type %v", e.typ)

@@ -16,19 +16,21 @@ import (
 	nooptrace "go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/oteldb/oteldb/internal/chstorage/chsql"
+	"github.com/oteldb/oteldb/internal/metricscache"
 )
 
 // testEpoch is a fixed point in the past so safety-lag never interferes.
 var testEpoch = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 
 func TestMetricsCacheEntry(t *testing.T) {
-	e := newMetricsCacheEntry()
+	e := metricscache.NewEntry()
 
 	// Initial append.
 	cost := e.Append([]int64{10, 20, 30}, []float64{1.1, 2.2, 3.3}, 100)
-	require.Equal(t, metricsCacheCost(3), cost)
-	require.Equal(t, int64(10), e.minTS)
-	require.Equal(t, int64(30), e.maxTS)
+	require.Equal(t, metricscache.EntryCost(3), cost)
+	minTS, maxTS := e.Watermarks()
+	require.Equal(t, int64(10), minTS)
+	require.Equal(t, int64(30), maxTS)
 
 	// Slice part of data.
 	ts, vals := e.Slice(15, 25)
@@ -42,9 +44,10 @@ func TestMetricsCacheEntry(t *testing.T) {
 
 	// Append overlapping and new data.
 	cost = e.Append([]int64{20, 30, 40, 50}, []float64{2.2, 3.3, 4.4, 5.5}, 45)
-	require.Equal(t, metricsCacheCost(4), cost)
-	require.Equal(t, int64(10), e.minTS)
-	require.Equal(t, int64(40), e.maxTS)
+	require.Equal(t, metricscache.EntryCost(4), cost)
+	minTS, maxTS = e.Watermarks()
+	require.Equal(t, int64(10), minTS)
+	require.Equal(t, int64(40), maxTS)
 
 	ts, vals = e.Slice(0, 100)
 	require.Equal(t, []int64{10, 20, 30, 40}, ts)
@@ -52,20 +55,22 @@ func TestMetricsCacheEntry(t *testing.T) {
 
 	// Append with untilMs filter.
 	e.Append([]int64{50, 60}, []float64{5.5, 6.6}, 55)
-	require.Equal(t, int64(50), e.maxTS)
+	_, maxTS = e.Watermarks()
+	require.Equal(t, int64(50), maxTS)
 }
 
 // TestMetricsCacheEntry_Prepend reproduces the bug where querying a wider historical
 // range after a shorter query would leave a stale cache that only covered the shorter
 // range. Append must prepend older points rather than silently dropping them.
 func TestMetricsCacheEntry_Prepend(t *testing.T) {
-	e := newMetricsCacheEntry()
+	e := metricscache.NewEntry()
 
 	// Simulate first query: 30-minute window [100, 300].
 	e.Append([]int64{100, 200, 300}, []float64{1.0, 2.0, 3.0}, 300)
 	e.MarkFetched(100, 300)
-	require.Equal(t, int64(100), e.minTS)
-	require.Equal(t, int64(300), e.maxTS)
+	minTS, maxTS := e.Watermarks()
+	require.Equal(t, int64(100), minTS)
+	require.Equal(t, int64(300), maxTS)
 
 	// Simulate second query: 24-hour window [1, 300].
 	// The caller fetches [1, 300] from ClickHouse and calls Append with all results.
@@ -73,8 +78,9 @@ func TestMetricsCacheEntry_Prepend(t *testing.T) {
 	e.Append([]int64{1, 50, 100, 200, 300}, []float64{0.1, 0.5, 1.0, 2.0, 3.0}, 300)
 	e.MarkFetched(1, 300)
 
-	require.Equal(t, int64(1), e.minTS, "minTS must be updated to the oldest new point")
-	require.Equal(t, int64(300), e.maxTS)
+	minTS, maxTS = e.Watermarks()
+	require.Equal(t, int64(1), minTS, "minTS must be updated to the oldest new point")
+	require.Equal(t, int64(300), maxTS)
 
 	// Full slice must include the prepended points.
 	ts, vals := e.Slice(0, 400)
@@ -88,7 +94,7 @@ func TestMetricsCacheEntry_Prepend(t *testing.T) {
 }
 
 func TestMetricsCacheEntry_Concurrency(t *testing.T) {
-	e := newMetricsCacheEntry()
+	e := metricscache.NewEntry()
 	var wg sync.WaitGroup
 
 	for i := range 10 {
@@ -107,43 +113,78 @@ func TestMetricsCacheEntry_Concurrency(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	require.Greater(t, len(e.deltaTS), 0)
+	require.Greater(t, e.Len(), 0)
 }
 
 // TestMetricsCacheEntry_MarkFetched verifies that MarkFetched advances the
 // watermark for ranges with no data, enabling hit detection in computeFetchRange.
 func TestMetricsCacheEntry_MarkFetched(t *testing.T) {
-	e := newMetricsCacheEntry()
+	e := metricscache.NewEntry()
 
 	e.MarkFetched(1000, 5000)
-	require.Equal(t, int64(1000), e.minTS)
-	require.Equal(t, int64(5000), e.maxTS)
+	minTS, maxTS := e.Watermarks()
+	require.Equal(t, int64(1000), minTS)
+	require.Equal(t, int64(5000), maxTS)
 
 	// Appending actual points within the range must not shrink the watermark bounds.
 	e.Append([]int64{2000, 3000}, []float64{1, 2}, 5000)
-	require.Equal(t, int64(1000), e.minTS, "minTS should remain at fetchFrom")
-	require.Equal(t, int64(5000), e.maxTS, "maxTS should remain at untilMs")
+	minTS, maxTS = e.Watermarks()
+	require.Equal(t, int64(1000), minTS, "minTS should remain at fetchFrom")
+	require.Equal(t, int64(5000), maxTS, "maxTS should remain at untilMs")
 
 	// Advancing to a later window should extend maxTS.
 	e.MarkFetched(1000, 8000)
-	require.Equal(t, int64(8000), e.maxTS)
+	_, maxTS = e.Watermarks()
+	require.Equal(t, int64(8000), maxTS)
 }
 
 func TestMetricsCacheEntry_DeltaRange(t *testing.T) {
-	e := newMetricsCacheEntry()
+	e := metricscache.NewEntry()
 
-	// 24 hour range delta in ms: 24 * 60 * 60 * 1000 = 86,400,000.
-	// This fits in int32 comfortably without overflow.
+	// 30 day range delta in ms: 30 * 24 * 60 * 60 * 1000 = 2_592_000_000 > math.MaxInt32.
+	// This would have overflowed the old int32 deltaTS.
 	startTS := int64(100000000000)
-	endTS := startTS + 24*3600*1000
+	endTS := startTS + 30*24*3600*1000
 
 	e.Append([]int64{startTS, endTS}, []float64{1.1, 2.2}, endTS)
-	require.Equal(t, startTS, e.minTS)
-	require.Equal(t, endTS, e.maxTS)
+	minTS, maxTS := e.Watermarks()
+	require.Equal(t, startTS, minTS)
+	require.Equal(t, endTS, maxTS)
 
 	tss, vals := e.Slice(startTS, endTS)
 	require.Equal(t, []int64{startTS, endTS}, tss)
 	require.Equal(t, []float64{1.1, 2.2}, vals)
+}
+
+func TestMetricsCacheEntry_DeltaRange_PrependShift(t *testing.T) {
+	e := metricscache.NewEntry()
+
+	// Use a range that exceeds int32, and test prepend which does shift on deltas.
+	startTS := int64(1_000_000_000_000)
+	// 40 days > 24.9d
+	span := 40 * 24 * time.Hour
+	endTS := startTS + span.Milliseconds()
+
+	// First populate with recent data.
+	e.Append([]int64{startTS + 20*24*time.Hour.Milliseconds(), endTS}, []float64{10, 20}, endTS)
+
+	// Now prepend older data; this exercises shift := oldMin-newMin and += shift on []int64.
+	e.Append([]int64{startTS, startTS + 10*24*time.Hour.Milliseconds()}, []float64{1, 5}, endTS)
+
+	minTS, maxTS := e.Watermarks()
+	require.Equal(t, startTS, minTS)
+	require.Equal(t, endTS, maxTS)
+
+	tss, vals := e.Slice(startTS, endTS)
+	require.Equal(t, []int64{startTS, startTS + 10*24*time.Hour.Milliseconds(), startTS + 20*24*time.Hour.Milliseconds(), endTS}, tss)
+	require.Equal(t, []float64{1, 5, 10, 20}, vals)
+}
+
+func newTestCache(t *testing.T, opts metricscache.Options) *metricscache.Cache {
+	t.Helper()
+	mc, err := metricscache.New(opts)
+	require.NoError(t, err)
+	return mc
 }
 
 func TestComputeFetchRange(t *testing.T) {
@@ -154,7 +195,7 @@ func TestComputeFetchRange(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
 		timeseries     map[[16]byte]labels.Labels
-		setup          func(*MetricsCache)
+		setup          func(*metricscache.Cache)
 		wantFetchFrom  int64
 		wantHits       int
 		wantMisses     int
@@ -177,11 +218,11 @@ func TestComputeFetchRange(t *testing.T) {
 				h1: labels.FromStrings("a", "b"),
 				h2: labels.FromStrings("c", "d"),
 			},
-			setup: func(mc *MetricsCache) {
+			setup: func(mc *metricscache.Cache) {
 				// h1 is a hit at 2000 covering start (1000); h2 has no entry.
-				e := newMetricsCacheEntry()
+				e := metricscache.NewEntry()
 				e.Append([]int64{1000, 2000}, []float64{1, 1}, 3000)
-				mc.cache.Set(MetricsCacheKey{Hash: h1, Step: 0}, e)
+				mc.Set(metricscache.Key{Hash: h1, Step: 0}, e)
 			},
 			wantFetchFrom:  start, // h2 is a miss — must fetch from start
 			wantHits:       1,
@@ -194,14 +235,14 @@ func TestComputeFetchRange(t *testing.T) {
 				h1: labels.FromStrings("a", "b"),
 				h2: labels.FromStrings("c", "d"),
 			},
-			setup: func(mc *MetricsCache) {
-				e1 := newMetricsCacheEntry()
+			setup: func(mc *metricscache.Cache) {
+				e1 := metricscache.NewEntry()
 				e1.Append([]int64{1000, 2000}, []float64{1, 1}, 3000)
-				mc.cache.Set(MetricsCacheKey{Hash: h1, Step: 0}, e1)
+				mc.Set(metricscache.Key{Hash: h1, Step: 0}, e1)
 
-				e2 := newMetricsCacheEntry()
+				e2 := metricscache.NewEntry()
 				e2.Append([]int64{1000, 1500}, []float64{2, 2}, 3000)
-				mc.cache.Set(MetricsCacheKey{Hash: h2, Step: 0}, e2)
+				mc.Set(metricscache.Key{Hash: h2, Step: 0}, e2)
 			},
 			wantFetchFrom:  1501, // min(2000, 1500) + 1
 			wantHits:       2,
@@ -213,11 +254,11 @@ func TestComputeFetchRange(t *testing.T) {
 			timeseries: map[[16]byte]labels.Labels{
 				h1: labels.FromStrings("a", "b"),
 			},
-			setup: func(mc *MetricsCache) {
+			setup: func(mc *metricscache.Cache) {
 				// maxTS (500) < start (1000): entry exists but doesn't cover start.
-				e := newMetricsCacheEntry()
+				e := metricscache.NewEntry()
 				e.Append([]int64{500}, []float64{3}, 1000)
-				mc.cache.Set(MetricsCacheKey{Hash: h1, Step: 0}, e)
+				mc.Set(metricscache.Key{Hash: h1, Step: 0}, e)
 			},
 			wantFetchFrom:  start,
 			wantHits:       0,
@@ -226,8 +267,7 @@ func TestComputeFetchRange(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mc, err := newMetricsCache(MetricsCacheOptions{MaxBytes: 1024 * 1024})
-			require.NoError(t, err)
+			mc := newTestCache(t, MetricsCacheOptions{MaxBytes: 1024 * 1024})
 			if tc.setup != nil {
 				tc.setup(mc)
 			}
@@ -265,18 +305,18 @@ func TestQueryPointsCached(t *testing.T) {
 	}
 
 	// populateRaw fills the cache with 1 point per minute for [start, end].
-	populateRaw := func(mc *MetricsCache, start, end time.Time) {
-		e := newMetricsCacheEntry()
+	populateRaw := func(mc *metricscache.Cache, start, end time.Time) {
+		e := metricscache.NewEntry()
 		for t := start.UnixMilli(); t <= end.UnixMilli(); t += stepMs {
 			e.Append([]int64{t}, []float64{1.0}, end.UnixMilli())
 		}
-		mc.cache.Set(MetricsCacheKey{Hash: hash, Step: 0}, e)
+		mc.Set(metricscache.Key{Hash: hash, Step: 0}, e)
 	}
 
 	epoch := testEpoch
 	for _, tc := range []struct {
 		name           string
-		setup          func(*MetricsCache)
+		setup          func(*metricscache.Cache)
 		mockFn         queryPointsFunc
 		queryStart     time.Time
 		queryEnd       time.Time
@@ -295,7 +335,7 @@ func TestQueryPointsCached(t *testing.T) {
 			// Cache covers [epoch, epoch+5min]; query end extends beyond — only the gap
 			// [epoch+5min+1ms, epoch+10min] is fetched.  Merged result: 11 points.
 			name: "PartialHit_NewerGap",
-			setup: func(mc *MetricsCache) {
+			setup: func(mc *metricscache.Cache) {
 				populateRaw(mc, epoch, epoch.Add(5*time.Minute))
 			},
 			mockFn:         linearMock,
@@ -308,7 +348,7 @@ func TestQueryPointsCached(t *testing.T) {
 			// Cache covers [epoch, epoch+5min]; query starts before that range.
 			// entryMinTS (epoch) > queryStart (epoch-5min) → full miss → full fetch.
 			name: "PartialHit_OlderGap",
-			setup: func(mc *MetricsCache) {
+			setup: func(mc *metricscache.Cache) {
 				populateRaw(mc, epoch, epoch.Add(5*time.Minute))
 			},
 			mockFn:         linearMock,
@@ -320,7 +360,7 @@ func TestQueryPointsCached(t *testing.T) {
 		{
 			// Cache covers the entire query range; ClickHouse must not be called.
 			name: "TotalHit",
-			setup: func(mc *MetricsCache) {
+			setup: func(mc *metricscache.Cache) {
 				populateRaw(mc, epoch, epoch.Add(10*time.Minute))
 			},
 			mockFn:         mustNotCall,
@@ -331,11 +371,10 @@ func TestQueryPointsCached(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mc, err := newMetricsCache(MetricsCacheOptions{
+			mc := newTestCache(t, MetricsCacheOptions{
 				MaxBytes:  1024 * 1024,
 				SafetyLag: time.Minute,
 			})
-			require.NoError(t, err)
 			if tc.setup != nil {
 				tc.setup(mc)
 			}
@@ -366,8 +405,7 @@ func TestQueryPointsCached(t *testing.T) {
 // TestQueryPointsCached_AbsentSeries verifies that a series with no data from
 // ClickHouse is cached as empty so subsequent queries skip the round-trip.
 func TestQueryPointsCached_AbsentSeries(t *testing.T) {
-	mc, err := newMetricsCache(MetricsCacheOptions{MaxBytes: 1024 * 1024, SafetyLag: time.Second})
-	require.NoError(t, err)
+	mc := newTestCache(t, MetricsCacheOptions{MaxBytes: 1024 * 1024, SafetyLag: time.Second})
 
 	lb := labels.FromStrings("__name__", "absent")
 	hash := labelHash(lb.Hash())
@@ -428,14 +466,13 @@ func TestQueryPointsCached_BigQuery(t *testing.T) {
 
 	// MaxBytes is between one-series cost (100*16+128=1728) and two-series cost (3200)
 	// so that the guard fires (3200 > 2048) but a single updated entry still fits.
-	mc, err := newMetricsCache(MetricsCacheOptions{MaxBytes: 2048, SafetyLag: time.Second})
-	require.NoError(t, err)
+	mc := newTestCache(t, MetricsCacheOptions{MaxBytes: 2048, SafetyLag: time.Second})
 
 	// Pre-warm only hash1 in the cache.
-	warm := newMetricsCacheEntry()
+	warm := metricscache.NewEntry()
 	warm.Append([]int64{epoch.UnixMilli()}, []float64{0.0}, epoch.UnixMilli())
 	warm.MarkFetched(epoch.UnixMilli(), epoch.UnixMilli())
-	mc.cache.Set(MetricsCacheKey{Hash: hash1}, warm)
+	mc.Set(metricscache.Key{Hash: hash1}, warm)
 
 	p := &promQuerier{
 		metricsCache:    mc,
@@ -449,13 +486,13 @@ func TestQueryPointsCached_BigQuery(t *testing.T) {
 	require.NotEmpty(t, pts, "results should still be returned even for a big query")
 
 	// hash1 was already cached: its entry must have been updated.
-	e1, ok := mc.cache.Get(MetricsCacheKey{Hash: hash1})
+	e1, ok := mc.Get(metricscache.Key{Hash: hash1})
 	require.True(t, ok, "pre-warmed hash1 must still be in cache after big query")
 	ts1, _ := e1.Slice(epoch.UnixMilli(), epoch.Add(99*time.Minute).UnixMilli())
 	require.NotEmpty(t, ts1, "hash1 cache entry must have been refreshed with new points")
 
 	// hash2 was NOT cached before the query: the guard must have prevented its insertion.
-	_, ok = mc.cache.Get(MetricsCacheKey{Hash: hash2})
+	_, ok = mc.Get(metricscache.Key{Hash: hash2})
 	require.False(t, ok, "uncached hash2 must NOT be inserted during a big query")
 }
 
@@ -524,13 +561,13 @@ func TestQuerySampledPointsCached(t *testing.T) {
 	}
 
 	// populateSampled fills the cache for all three series with step-aligned points.
-	populateSampled := func(mc *MetricsCache, start, end time.Time) {
+	populateSampled := func(mc *metricscache.Cache, start, end time.Time) {
 		for _, h := range allHashes {
-			e := newMetricsCacheEntry()
+			e := metricscache.NewEntry()
 			for t := start.UnixMilli(); t <= end.UnixMilli(); t += stepMs {
 				e.Append([]int64{t}, []float64{1.0}, end.UnixMilli())
 			}
-			mc.cache.Set(MetricsCacheKey{Hash: h, Step: stepMs, Fn: "sum"}, e)
+			mc.Set(metricscache.Key{Hash: h, Step: stepMs, Fn: "sum"}, e)
 		}
 	}
 
@@ -548,7 +585,7 @@ func TestQuerySampledPointsCached(t *testing.T) {
 
 	type cacheScenario struct {
 		name           string
-		setup          func(*MetricsCache)
+		setup          func(*metricscache.Cache)
 		mockFn         querySampledPointsPerSeriesFunc
 		queryStart     time.Time
 		queryEnd       time.Time
@@ -568,7 +605,7 @@ func TestQuerySampledPointsCached(t *testing.T) {
 			// Cache covers [epoch, epoch+5min]; query extends to epoch+10min.
 			// Only the newer gap is fetched.
 			name: "PartialHit_NewerGap",
-			setup: func(mc *MetricsCache) {
+			setup: func(mc *metricscache.Cache) {
 				populateSampled(mc, epoch, epoch.Add(5*time.Minute))
 			},
 			mockFn:         sampledMock,
@@ -581,7 +618,7 @@ func TestQuerySampledPointsCached(t *testing.T) {
 			// Cache covers [epoch, epoch+5min]; query starts before that.
 			// entryMinTS (epoch) > queryStart (epoch-5min) → full miss.
 			name: "PartialHit_OlderGap",
-			setup: func(mc *MetricsCache) {
+			setup: func(mc *metricscache.Cache) {
 				populateSampled(mc, epoch, epoch.Add(5*time.Minute))
 			},
 			mockFn:         sampledMock,
@@ -593,7 +630,7 @@ func TestQuerySampledPointsCached(t *testing.T) {
 		{
 			// Cache covers the full query range; ClickHouse must not be called.
 			name: "TotalHit",
-			setup: func(mc *MetricsCache) {
+			setup: func(mc *metricscache.Cache) {
 				populateSampled(mc, epoch, epoch.Add(10*time.Minute))
 			},
 			mockFn:         mustNotCall,
@@ -684,11 +721,10 @@ func TestQuerySampledPointsCached(t *testing.T) {
 		for _, gs := range groupingScenarios {
 			cs, gs := cs, gs
 			t.Run(cs.name+"/"+gs.name, func(t *testing.T) {
-				mc, err := newMetricsCache(MetricsCacheOptions{
+				mc := newTestCache(t, MetricsCacheOptions{
 					MaxBytes:  1024 * 1024,
 					SafetyLag: time.Minute,
 				})
-				require.NoError(t, err)
 				if cs.setup != nil {
 					cs.setup(mc)
 				}
@@ -733,8 +769,7 @@ func TestQuerySampledPointsCached(t *testing.T) {
 // TestCacheKeyStepIsolation verifies that cached data for one step value is never
 // served for a query with a different step value.
 func TestCacheKeyStepIsolation(t *testing.T) {
-	mc, err := newMetricsCache(MetricsCacheOptions{MaxBytes: 1024 * 1024})
-	require.NoError(t, err)
+	mc := newTestCache(t, MetricsCacheOptions{MaxBytes: 1024 * 1024})
 
 	lb := labels.FromStrings("__name__", "m")
 	hash := labelHash(lb.Hash())
@@ -747,11 +782,11 @@ func TestCacheKeyStepIsolation(t *testing.T) {
 	step5Min := 5 * time.Minute
 
 	// Populate cache at step=1min.
-	entry := newMetricsCacheEntry()
+	entry := metricscache.NewEntry()
 	for i := range 11 {
 		entry.Append([]int64{epoch.Add(time.Duration(i) * time.Minute).UnixMilli()}, []float64{float64(i)}, end.UnixMilli())
 	}
-	mc.cache.Set(MetricsCacheKey{Hash: hash, Step: stepMin.Milliseconds()}, entry)
+	mc.Set(metricscache.Key{Hash: hash, Step: stepMin.Milliseconds()}, entry)
 
 	callCount := 0
 	p := &promQuerier{
@@ -764,7 +799,7 @@ func TestCacheKeyStepIsolation(t *testing.T) {
 	}
 
 	sampler := pointsSampler{needPoints: true, pointExpr: chsql.LastValue}
-	_, err = p.querySampledPointsCached(context.Background(), sampler, false, nil, start, end, step5Min, timeseries)
+	_, err := p.querySampledPointsCached(context.Background(), sampler, false, nil, start, end, step5Min, timeseries)
 	require.NoError(t, err)
 	require.Equal(t, 1, callCount, "step=5min cache is empty: ClickHouse must be called")
 
@@ -772,6 +807,128 @@ func TestCacheKeyStepIsolation(t *testing.T) {
 	_, err = p.querySampledPointsCached(context.Background(), sampler, false, nil, start, end, stepMin, timeseries)
 	require.NoError(t, err)
 	require.Equal(t, 0, callCount, "step=1min is fully cached: ClickHouse must not be called")
+}
+
+// TestQueryRatePointsCached covers the four cache-state scenarios for queryRatePointsCached.
+// Each case is independent (own cache instance).
+func TestQueryRatePointsCached(t *testing.T) {
+	lb := labels.FromStrings("__name__", "m")
+	hash := labelHash(lb.Hash())
+	timeseries := map[[16]byte]labels.Labels{hash: lb}
+
+	epoch := testEpoch
+	step := time.Minute
+	stepMs := step.Milliseconds()
+	window := 5 * time.Minute
+
+	// rateMock returns one pre-computed rate value per step starting from fetchStart.
+	rateMock := func(_ context.Context, s, e time.Time, _, _, _ time.Duration, _ map[[16]byte]labels.Labels, _ rateKind) (map[[16]byte]*series[pointData], error) {
+		ser := &series[pointData]{labels: lb}
+		for t := s.UnixMilli(); t <= e.UnixMilli(); t += stepMs {
+			ser.ts = append(ser.ts, t)
+			ser.data.values = append(ser.data.values, 1.0)
+		}
+		return map[[16]byte]*series[pointData]{hash: ser}, nil
+	}
+	mustNotCall := func(_ context.Context, _, _ time.Time, _, _, _ time.Duration, _ map[[16]byte]labels.Labels, _ rateKind) (map[[16]byte]*series[pointData], error) {
+		return nil, errors.New("unexpected ClickHouse query")
+	}
+
+	// populateRate fills the cache for the series with step-aligned rate values.
+	populateRate := func(mc *metricscache.Cache, start, end time.Time) {
+		e := metricscache.NewEntry()
+		for t := start.UnixMilli(); t <= end.UnixMilli(); t += stepMs {
+			e.Append([]int64{t}, []float64{1.0}, end.UnixMilli())
+		}
+		mc.Set(metricscache.Key{Hash: hash, Step: stepMs, Fn: "rate"}, e)
+	}
+
+	for _, tc := range []struct {
+		name           string
+		setup          func(*metricscache.Cache)
+		mockFn         queryRatePointsByHashFunc
+		queryStart     time.Time
+		queryEnd       time.Time
+		wantCallCount  int
+		wantPointCount int
+	}{
+		{
+			name:           "NoHit",
+			mockFn:         rateMock,
+			queryStart:     epoch,
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  1,
+			wantPointCount: 11, // epoch+0..+10min inclusive
+		},
+		{
+			// Cache covers [epoch, epoch+5min]; query extends to epoch+10min.
+			// Only the newer gap is fetched.
+			name: "PartialHit_NewerGap",
+			setup: func(mc *metricscache.Cache) {
+				populateRate(mc, epoch, epoch.Add(5*time.Minute))
+			},
+			mockFn:         rateMock,
+			queryStart:     epoch,
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  1,
+			wantPointCount: 11, // 6 from cache + 5 fetched
+		},
+		{
+			// Cache covers [epoch, epoch+5min]; query starts before that.
+			// entryMinTS (epoch) > queryStart (epoch-5min) → full miss.
+			name: "PartialHit_OlderGap",
+			setup: func(mc *metricscache.Cache) {
+				populateRate(mc, epoch, epoch.Add(5*time.Minute))
+			},
+			mockFn:         rateMock,
+			queryStart:     epoch.Add(-5 * time.Minute),
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  1,
+			wantPointCount: 16, // epoch-5min..+10min inclusive
+		},
+		{
+			// Cache covers the full query range; ClickHouse must not be called.
+			name: "TotalHit",
+			setup: func(mc *metricscache.Cache) {
+				populateRate(mc, epoch, epoch.Add(10*time.Minute))
+			},
+			mockFn:         mustNotCall,
+			queryStart:     epoch,
+			queryEnd:       epoch.Add(10 * time.Minute),
+			wantCallCount:  0,
+			wantPointCount: 11,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mc := newTestCache(t, MetricsCacheOptions{
+				MaxBytes:  1024 * 1024,
+				SafetyLag: time.Minute,
+			})
+			if tc.setup != nil {
+				tc.setup(mc)
+			}
+
+			callCount := 0
+			p := &promQuerier{
+				metricsCache: mc,
+				tracer:       nooptrace.NewTracerProvider().Tracer("test"),
+				queryRatePointsByHashFunc: func(ctx context.Context, s, e time.Time, step, window, offset time.Duration, ts map[[16]byte]labels.Labels, kind rateKind) (map[[16]byte]*series[pointData], error) {
+					callCount++
+					return tc.mockFn(ctx, s, e, step, window, offset, ts, kind)
+				},
+			}
+
+			pts, err := p.queryRatePointsCached(context.Background(), tc.queryStart, tc.queryEnd, step, window, 0, timeseries, rateKindRate)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantCallCount, callCount, "ClickHouse call count")
+			if tc.wantPointCount == 0 {
+				require.Empty(t, pts)
+			} else {
+				require.Len(t, pts, 1)
+				require.Len(t, pts[0].ts, tc.wantPointCount, "point count")
+			}
+		})
+	}
 }
 
 func labelHash(v uint64) (r [16]byte) {
@@ -967,33 +1124,31 @@ func TestMetricsCache_Metrics(t *testing.T) {
 	reader := metric.NewManualReader()
 	meterProvider := metric.NewMeterProvider(metric.WithReader(reader))
 
-	opts := MetricsCacheOptions{
+	mc := newTestCache(t, MetricsCacheOptions{
 		MaxBytes:      100 * 1024,
 		MeterProvider: meterProvider,
-	}
-	mc, err := newMetricsCache(opts)
-	require.NoError(t, err)
+	})
 
 	ctx := context.Background()
 
 	// Perform some operations to generate stats.
-	key := MetricsCacheKey{Hash: [16]byte{1}}
-	entry := newMetricsCacheEntry()
-	// Cost will be metricsCacheCost(1).
+	key := metricscache.Key{Hash: [16]byte{1}}
+	entry := metricscache.NewEntry()
+	// Cost will be metricscache.EntryCost(1).
 	entry.Append([]int64{1000}, []float64{1.0}, 2000)
-	mc.cache.Set(key, entry)
+	mc.Set(key, entry)
 
 	// Hit.
-	_, ok := mc.cache.Get(key)
+	_, ok := mc.Get(key)
 	require.True(t, ok)
 
 	// Miss.
-	_, ok = mc.cache.Get(MetricsCacheKey{Hash: [16]byte{2}})
+	_, ok = mc.Get(metricscache.Key{Hash: [16]byte{2}})
 	require.False(t, ok)
 
 	// Collect metrics.
 	var rm metricdata.ResourceMetrics
-	err = reader.Collect(ctx, &rm)
+	err := reader.Collect(ctx, &rm)
 	require.NoError(t, err)
 
 	found := make(map[string]bool)
@@ -1013,6 +1168,9 @@ func TestMetricsCache_Metrics(t *testing.T) {
 			case "chstorage.metrics_cache.capacity_bytes":
 				data := m.Data.(metricdata.Gauge[int64])
 				require.Equal(t, int64(100*1024), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.disk_size_bytes":
+				data := m.Data.(metricdata.Gauge[int64])
+				require.Equal(t, int64(0), data.DataPoints[0].Value)
 			case "chstorage.metrics_cache.evicted_count":
 				// Should be 0 initially.
 				data := m.Data.(metricdata.Sum[int64])
@@ -1033,6 +1191,7 @@ func TestMetricsCache_Metrics(t *testing.T) {
 	require.True(t, found["chstorage.metrics_cache.misses"])
 	require.True(t, found["chstorage.metrics_cache.size"])
 	require.True(t, found["chstorage.metrics_cache.capacity_bytes"])
+	require.True(t, found["chstorage.metrics_cache.disk_size_bytes"])
 	require.True(t, found["chstorage.metrics_cache.ratio"])
 	require.True(t, found["chstorage.metrics_cache.evicted_count"])
 	require.True(t, found["chstorage.metrics_cache.evicted_cost"])
