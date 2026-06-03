@@ -141,10 +141,10 @@ func TestMetricsCacheEntry_MarkFetched(t *testing.T) {
 func TestMetricsCacheEntry_DeltaRange(t *testing.T) {
 	e := metricscache.NewEntry()
 
-	// 24 hour range delta in ms: 24 * 60 * 60 * 1000 = 86,400,000.
-	// This fits in int32 comfortably without overflow.
+	// 30 day range delta in ms: 30 * 24 * 60 * 60 * 1000 = 2_592_000_000 > math.MaxInt32.
+	// This would have overflowed the old int32 deltaTS.
 	startTS := int64(100000000000)
-	endTS := startTS + 24*3600*1000
+	endTS := startTS + 30*24*3600*1000
 
 	e.Append([]int64{startTS, endTS}, []float64{1.1, 2.2}, endTS)
 	minTS, maxTS := e.Watermarks()
@@ -154,6 +154,30 @@ func TestMetricsCacheEntry_DeltaRange(t *testing.T) {
 	tss, vals := e.Slice(startTS, endTS)
 	require.Equal(t, []int64{startTS, endTS}, tss)
 	require.Equal(t, []float64{1.1, 2.2}, vals)
+}
+
+func TestMetricsCacheEntry_DeltaRange_PrependShift(t *testing.T) {
+	e := metricscache.NewEntry()
+
+	// Use a range that exceeds int32, and test prepend which does shift on deltas.
+	startTS := int64(1_000_000_000_000)
+	// 40 days > 24.9d
+	span := 40 * 24 * time.Hour
+	endTS := startTS + span.Milliseconds()
+
+	// First populate with recent data.
+	e.Append([]int64{startTS + 20*24*time.Hour.Milliseconds(), endTS}, []float64{10, 20}, endTS)
+
+	// Now prepend older data; this exercises shift := oldMin-newMin and += shift on []int64.
+	e.Append([]int64{startTS, startTS + 10*24*time.Hour.Milliseconds()}, []float64{1, 5}, endTS)
+
+	minTS, maxTS := e.Watermarks()
+	require.Equal(t, startTS, minTS)
+	require.Equal(t, endTS, maxTS)
+
+	tss, vals := e.Slice(startTS, endTS)
+	require.Equal(t, []int64{startTS, startTS + 10*24*time.Hour.Milliseconds(), startTS + 20*24*time.Hour.Milliseconds(), endTS}, tss)
+	require.Equal(t, []float64{1, 5, 10, 20}, vals)
 }
 
 func newTestCache(t *testing.T, opts metricscache.Options) *metricscache.Cache {
@@ -1144,6 +1168,9 @@ func TestMetricsCache_Metrics(t *testing.T) {
 			case "chstorage.metrics_cache.capacity_bytes":
 				data := m.Data.(metricdata.Gauge[int64])
 				require.Equal(t, int64(100*1024), data.DataPoints[0].Value)
+			case "chstorage.metrics_cache.disk_size_bytes":
+				data := m.Data.(metricdata.Gauge[int64])
+				require.Equal(t, int64(0), data.DataPoints[0].Value)
 			case "chstorage.metrics_cache.evicted_count":
 				// Should be 0 initially.
 				data := m.Data.(metricdata.Sum[int64])
@@ -1164,6 +1191,7 @@ func TestMetricsCache_Metrics(t *testing.T) {
 	require.True(t, found["chstorage.metrics_cache.misses"])
 	require.True(t, found["chstorage.metrics_cache.size"])
 	require.True(t, found["chstorage.metrics_cache.capacity_bytes"])
+	require.True(t, found["chstorage.metrics_cache.disk_size_bytes"])
 	require.True(t, found["chstorage.metrics_cache.ratio"])
 	require.True(t, found["chstorage.metrics_cache.evicted_count"])
 	require.True(t, found["chstorage.metrics_cache.evicted_cost"])

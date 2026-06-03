@@ -92,6 +92,18 @@ func funcNameToRateKind(name string) (rateKind, bool) {
 	}
 }
 
+// rateSelector is a VectorOperator that returns pre-computed rate values for
+// rate-family functions (rate, increase, delta, irate, idelta).
+//
+// It works by calling querySeriesSingleflight(ctx, samplePoints=true, ...).
+// Because samplePoints is true, querySeries sees a rate-kind Function and
+// delegates to queryRatePoints* (the offloaded path), so the returned "points"
+// are already the extrapolated results — not raw samples.
+// Next() then performs exact-timestamp lookups via selectExactPoint on those
+// pre-computed per-step values.
+//
+// This makes rateSelector look like a "selector" but it is actually a
+// specialized operator returning offloaded function results.
 type rateSelector struct {
 	telemetry telemetry.OperatorTelemetry
 

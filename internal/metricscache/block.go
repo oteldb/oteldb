@@ -17,8 +17,6 @@ import (
 // The Data field contains an lz4-framed payload with the following uncompressed layout:
 //
 //	[ 4B uint32] count
-//	[ 8B int64 ] minTS (watermark, may differ from ts[0])
-//	[ 8B int64 ] maxTS (watermark)
 //	if count >= 1:
 //	  [ 8B int64 ] ts[0]
 //	if count >= 2:
@@ -26,6 +24,10 @@ import (
 //	  [uvarint*(count-2)] zigzag-encoded double-deltas for ts[2:]:
 //	    dd = (ts[i]-ts[i-1]) - (ts[i-1]-ts[i-2])
 //	[8B*count] float64 values (little-endian IEEE 754)
+//
+// Note: minTS/maxTS watermarks are stored in the outer Block struct (and disk
+// metadata), not inside the compressed payload. They were removed from the
+// header to avoid redundant ignored reads in Decode.
 type Block struct {
 	Data  []byte // lz4-framed compressed payload
 	MinTS int64
@@ -35,7 +37,7 @@ type Block struct {
 
 // ByteSize returns the approximate size of the block in bytes.
 func (b Block) ByteSize() int {
-	return len(b.Data) + 24
+	return len(b.Data) + 4 // count header (minTS/maxTS live in outer Block)
 }
 
 var lz4WriterPool = sync.Pool{
@@ -54,13 +56,11 @@ func EncodeBlock(ts []int64, vals []float64, minTS, maxTS int64) (Block, error) 
 
 	// Build uncompressed payload.
 	var payload bytes.Buffer
-	// Reserve space: header (20B) + first_interval (8B) + varints (≤10B*n) + values (8B*n).
-	payload.Grow(20 + 8 + 10*n + 8*n)
+	// Reserve space: header (4B) + first_interval (8B) + varints (≤10B*n) + values (8B*n).
+	payload.Grow(4 + 8 + 10*n + 8*n)
 
-	var hdr [20]byte
+	var hdr [4]byte
 	binary.LittleEndian.PutUint32(hdr[0:], uint32(n))
-	binary.LittleEndian.PutUint64(hdr[4:], uint64(minTS))
-	binary.LittleEndian.PutUint64(hdr[12:], uint64(maxTS))
 	payload.Write(hdr[:])
 
 	if n >= 1 {
@@ -120,7 +120,7 @@ func (b Block) Decode() (ts []int64, vals []float64, err error) {
 
 	r := bytes.NewReader(payload)
 
-	var hdr [20]byte
+	var hdr [4]byte
 	if _, err := io.ReadFull(r, hdr[:]); err != nil {
 		return nil, nil, errors.Wrap(err, "read header")
 	}
@@ -128,10 +128,6 @@ func (b Block) Decode() (ts []int64, vals []float64, err error) {
 	if n == 0 {
 		return nil, nil, nil
 	}
-	// minTS and maxTS are in the header but callers have them from Block fields.
-	// Read them for format consistency but don't use.
-	// minTS := int64(binary.LittleEndian.Uint64(hdr[4:]))
-	// maxTS := int64(binary.LittleEndian.Uint64(hdr[12:]))
 
 	ts = make([]int64, n)
 

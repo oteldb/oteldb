@@ -135,11 +135,31 @@ func (s *DiskStore) Size() int {
 	return len(s.idx)
 }
 
-// Stats returns current stats. DiskStore only tracks Size and RejectedSets.
+// diskSize walks the store directory and sums sizes of all files.
+// It is approximate and intended for Stats() monitoring only.
+func (s *DiskStore) diskSize() int64 {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return 0
+	}
+	var total int64
+	for _, de := range entries {
+		if de.IsDir() {
+			continue
+		}
+		if fi, err := de.Info(); err == nil {
+			total += fi.Size()
+		}
+	}
+	return total
+}
+
+// Stats returns current stats. DiskStore tracks Size, RejectedSets and DiskSize.
 func (s *DiskStore) Stats() StoreStats {
 	return StoreStats{
 		Size:         s.Size(),
 		RejectedSets: s.rejected.Load(),
+		DiskSize:     s.diskSize(),
 	}
 }
 
@@ -229,6 +249,11 @@ func (s *DiskStore) readMetaFull(path string) (diskMeta, Key, error) {
 }
 
 // deleteEntry removes the .json and .bin files for the given base path.
+//
+// It is intentionally not locked: concurrent calls (e.g. two Get calls
+// concurrently discovering a corrupt entry for the same key) may both
+// invoke os.Remove on the same paths. This is harmless — the second
+// Remove returns "file not found" which is ignored.
 func (s *DiskStore) deleteEntry(base string) {
 	_ = os.Remove(base + ".json")
 	_ = os.Remove(base + ".bin")

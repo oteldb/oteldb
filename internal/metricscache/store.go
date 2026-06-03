@@ -14,6 +14,11 @@ type StoreStats struct {
 	RejectedSets int64
 	Size         int
 	Ratio        float64
+
+	// DiskSize is the approximate total size of on-disk files (.json + .bin)
+	// for DiskStore. It is zero for MemoryStore. Useful for monitoring
+	// unbounded growth (DiskStore has no eviction in v1).
+	DiskSize int64
 }
 
 // Store is a pluggable backend for the metrics cache.
@@ -81,6 +86,7 @@ func (s *MemoryStore) Stats() StoreStats {
 		RejectedSets: st.RejectedSets(),
 		Size:         s.cache.Size(),
 		Ratio:        st.Ratio(),
+		DiskSize:     0,
 	}
 }
 

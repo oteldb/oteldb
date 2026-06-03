@@ -1,7 +1,6 @@
 package metricscache
 
 import (
-	"cmp"
 	"math"
 	"slices"
 	"sync"
@@ -9,7 +8,8 @@ import (
 
 const (
 	// PointCost is the estimated memory cost per cached point in bytes.
-	PointCost = 12
+	// 8 (int64 delta) + 8 (float64) = 16.
+	PointCost = 16
 	// EntryOverhead is the fixed overhead per cache entry in bytes.
 	EntryOverhead = 128
 )
@@ -22,7 +22,7 @@ func EntryCost(points int) uint32 {
 // Entry is per-series cached sample data.
 type Entry struct {
 	mu      sync.RWMutex
-	deltaTS []int32   // ms deltas from minTS; replaces timestamps []int64
+	deltaTS []int64   // ms deltas from minTS; replaces timestamps []int64
 	values  []float64 // parallel to deltaTS
 	minTS   int64
 	maxTS   int64 // watermark
@@ -69,10 +69,8 @@ func (e *Entry) Slice(fromMs, toMs int64) (tss []int64, vals []float64) {
 	fromDelta := fromMs - e.minTS
 	toDelta := toMs - e.minTS
 
-	start, _ := slices.BinarySearchFunc(e.deltaTS, fromDelta,
-		func(d int32, target int64) int { return cmp.Compare(int64(d), target) })
-	end, ok := slices.BinarySearchFunc(e.deltaTS, toDelta,
-		func(d int32, target int64) int { return cmp.Compare(int64(d), target) })
+	start, _ := slices.BinarySearch(e.deltaTS, fromDelta)
+	end, ok := slices.BinarySearch(e.deltaTS, toDelta)
 	if ok {
 		// Include toMs.
 		end++
@@ -84,7 +82,7 @@ func (e *Entry) Slice(fromMs, toMs int64) (tss []int64, vals []float64) {
 
 	tss = make([]int64, end-start)
 	for i, d := range e.deltaTS[start:end] {
-		tss[i] = e.minTS + int64(d)
+		tss[i] = e.minTS + d
 	}
 	vals = e.values[start:end]
 	return tss, vals
@@ -114,7 +112,7 @@ func (e *Entry) Append(ts []int64, vals []float64, untilMs int64) uint32 {
 			if e.minTS == math.MinInt64 {
 				e.minTS = t
 			}
-			e.deltaTS = append(e.deltaTS, int32(t-e.minTS))
+			e.deltaTS = append(e.deltaTS, t-e.minTS)
 			e.values = append(e.values, vals[i])
 			if t > e.maxTS {
 				e.maxTS = t
@@ -136,15 +134,15 @@ func (e *Entry) Append(ts []int64, vals []float64, untilMs int64) uint32 {
 
 		oldMinTS := e.minTS
 		newMinTS := prTS[0]
-		shift := int32(oldMinTS - newMinTS)
+		shift := oldMinTS - newMinTS
 		for i := range e.deltaTS {
 			e.deltaTS[i] += shift
 		}
 		e.minTS = newMinTS
 
-		newDelta := make([]int32, len(prTS)+len(e.deltaTS))
+		newDelta := make([]int64, len(prTS)+len(e.deltaTS))
 		for i, t := range prTS {
-			newDelta[i] = int32(t - newMinTS)
+			newDelta[i] = t - newMinTS
 		}
 		copy(newDelta[len(prTS):], e.deltaTS)
 		e.deltaTS = newDelta
@@ -164,7 +162,7 @@ func (e *Entry) Append(ts []int64, vals []float64, untilMs int64) uint32 {
 		if t > untilMs {
 			break
 		}
-		e.deltaTS = append(e.deltaTS, int32(t-e.minTS))
+		e.deltaTS = append(e.deltaTS, t-e.minTS)
 		e.values = append(e.values, vals[splitIdx+i])
 		if t > e.maxTS {
 			e.maxTS = t
@@ -185,7 +183,7 @@ func (e *Entry) MarkFetched(fetchFrom, untilMs int64) {
 	if e.minTS == math.MinInt64 {
 		e.minTS = fetchFrom
 	} else if fetchFrom < e.minTS {
-		shift := int32(e.minTS - fetchFrom)
+		shift := e.minTS - fetchFrom
 		for i := range e.deltaTS {
 			e.deltaTS[i] += shift
 		}
@@ -204,7 +202,7 @@ func (e *Entry) ToBlock() (Block, error) {
 	// Decode deltaTS to full timestamps.
 	ts := make([]int64, len(e.deltaTS))
 	for i, d := range e.deltaTS {
-		ts[i] = e.minTS + int64(d)
+		ts[i] = e.minTS + d
 	}
 
 	return EncodeBlock(ts, e.values, e.minTS, e.maxTS)

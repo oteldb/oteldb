@@ -150,6 +150,12 @@ func (c *Cache) registerObservableMetrics(meter metric.Meter) error {
 	if err != nil {
 		return err
 	}
+	diskSize, err := meter.Int64ObservableGauge("chstorage.metrics_cache.disk_size_bytes",
+		metric.WithDescription("Approximate on-disk size for DiskStore (zero for MemoryStore)."),
+		metric.WithUnit("By"))
+	if err != nil {
+		return err
+	}
 	evictedCount, err := meter.Int64ObservableCounter("chstorage.metrics_cache.evicted_count",
 		metric.WithDescription("Cumulative number of evicted entries."))
 	if err != nil {
@@ -174,10 +180,11 @@ func (c *Cache) registerObservableMetrics(meter metric.Meter) error {
 		observer.ObserveInt64(size, int64(st.Size))
 		observer.ObserveFloat64(ratio, st.Ratio)
 		observer.ObserveInt64(capacity, c.maxBytes)
+		observer.ObserveInt64(diskSize, st.DiskSize)
 		observer.ObserveInt64(evictedCount, st.EvictedCount)
 		observer.ObserveInt64(evictedCost, st.EvictedCost)
 		observer.ObserveInt64(rejectedSets, st.RejectedSets)
 		return nil
-	}, ratio, hits, misses, size, capacity, evictedCount, evictedCost, rejectedSets)
+	}, ratio, hits, misses, size, capacity, diskSize, evictedCount, evictedCost, rejectedSets)
 	return err
 }
