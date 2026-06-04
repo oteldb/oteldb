@@ -70,6 +70,7 @@ func (p *promQuerier) selectOnlySeries(
 		}
 	)
 	query, err := p.buildSeriesQuery(
+		ctx,
 		table,
 		&series,
 		start, end,
@@ -126,11 +127,16 @@ func (p *promQuerier) selectOnlySeries(
 }
 
 func (p *promQuerier) buildSeriesQuery(
+	ctx context.Context,
 	table string,
 	column proto.ColResult,
 	start, end time.Time,
 	matcherSets [][]*labels.Matcher,
 ) (*chsql.SelectQuery, error) {
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
 	query := chsql.Select(table,
 		chsql.ResultColumn{
 			Name: "series",
@@ -141,8 +147,11 @@ func (p *promQuerier) buildSeriesQuery(
 				attrStringMap(colScope),
 			),
 			Data: column,
-		}).
-		Distinct(true)
+		})
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Distinct(true)
 
 	sets := make([]chsql.Expr, 0, len(matcherSets))
 	for _, set := range matcherSets {

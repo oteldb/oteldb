@@ -44,8 +44,15 @@ func (q *Querier) SearchTags(ctx context.Context, tags map[string]string, opts t
 		span.End()
 	}()
 
-	subquery := chsql.Select(table, chsql.Column("trace_id", nil)).
-		Distinct(true).
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	subquery := chsql.Select(table, chsql.Column("trace_id", nil))
+	if len(filters) > 0 {
+		subquery.Prewhere(filters...)
+	}
+	subquery.Distinct(true).
 		Where(traceInTimeRange(opts.Start, opts.End))
 	{
 		durationExpr := chsql.Ident("duration_ns")
@@ -82,16 +89,17 @@ func (q *Querier) SearchTags(ctx context.Context, tags map[string]string, opts t
 		subquery.Where(chsql.JoinOr(exprs...))
 	}
 
-	var (
-		c     = newSpanColumns()
-		query = chsql.Select(table, c.ChsqlResult()...).
-			Where(chsql.In(
-				chsql.Ident("trace_id"),
-				chsql.SubQuery(subquery),
-			))
+	c := newSpanColumns()
+	query := chsql.Select(table, c.ChsqlResult()...)
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Where(chsql.In(
+		chsql.Ident("trace_id"),
+		chsql.SubQuery(subquery),
+	))
 
-		r []tracestorage.Span
-	)
+	var r []tracestorage.Span
 	if err := q.do(ctx, selectQuery{
 		Query: query,
 		OnResult: func(ctx context.Context, block proto.Block) (err error) {
@@ -128,16 +136,22 @@ func (q *Querier) TagNames(ctx context.Context, opts tracestorage.TagNamesOption
 		span.End()
 	}()
 
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return r, errors.Wrap(err, "build query")
+	}
 	var (
 		name  = new(proto.ColStr).LowCardinality()
 		scope proto.ColEnum8
-
-		query = chsql.Select(table,
-			chsql.Column("name", name),
-			chsql.Column("scope", &scope),
-		).
-			Distinct(true)
 	)
+	query := chsql.Select(table,
+		chsql.Column("name", name),
+		chsql.Column("scope", &scope),
+	)
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Distinct(true)
 	switch scope := opts.Scope; scope {
 	case traceql.ScopeNone:
 	case traceql.ScopeResource:
@@ -260,15 +274,20 @@ func (q *Querier) spanNames(ctx context.Context, tag traceql.Attribute, opts tra
 		span.End()
 	}()
 
-	var (
-		name  = new(proto.ColStr).LowCardinality()
-		query = chsql.Select(table, chsql.Column("name", name)).
-			// Select deduplicated column by using GROUP BY, since DISTINCT is not optimized by Clickhouse.
-			//
-			// See https://github.com/ClickHouse/ClickHouse/issues/4670
-			Distinct(true).GroupBy(chsql.Ident("name")).
-			Where(traceInTimeRange(opts.Start, opts.End))
-	)
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	name := new(proto.ColStr).LowCardinality()
+	// Select deduplicated column by using GROUP BY, since DISTINCT is not optimized by Clickhouse.
+	//
+	// See https://github.com/ClickHouse/ClickHouse/issues/4670
+	query := chsql.Select(table, chsql.Column("name", name))
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Distinct(true).GroupBy(chsql.Ident("name")).
+		Where(traceInTimeRange(opts.Start, opts.End))
 	{
 		if tag.Prop == traceql.RootSpanName {
 			query.Where(spanIsRoot())
@@ -330,17 +349,23 @@ func (q *Querier) attributeValues(ctx context.Context, tag traceql.Attribute, op
 	}()
 
 	// FIXME(tdakkota): respect time range parameters.
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
 	var (
 		value     proto.ColStr
 		valueType proto.ColEnum8
-
-		query = chsql.Select(table,
-			chsql.Column("value", &value),
-			chsql.Column("value_type", proto.Wrap(&valueType, valueTypeDDL)),
-		).
-			Distinct(true).
-			Where(chsql.ColumnEq("name", tag.Name))
 	)
+	query := chsql.Select(table,
+		chsql.Column("value", &value),
+		chsql.Column("value_type", proto.Wrap(&valueType, valueTypeDDL)),
+	)
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Distinct(true).
+		Where(chsql.ColumnEq("name", tag.Name))
 	switch scope := tag.Scope; scope {
 	case traceql.ScopeNone:
 	case traceql.ScopeResource:
@@ -408,16 +433,21 @@ func (q *Querier) TraceByID(ctx context.Context, id otelstorage.TraceID, opts tr
 		span.End()
 	}()
 
-	var (
-		c     = newSpanColumns()
-		query = chsql.Select(table, c.ChsqlResult()...).
-			Where(
-				chsql.Eq(
-					chsql.Ident("trace_id"),
-					chsql.Unhex(chsql.String(id.Hex())),
-				),
-				traceInTimeRange(opts.Start, opts.End),
-			)
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	c := newSpanColumns()
+	query := chsql.Select(table, c.ChsqlResult()...)
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Where(
+		chsql.Eq(
+			chsql.Ident("trace_id"),
+			chsql.Unhex(chsql.String(id.Hex())),
+		),
+		traceInTimeRange(opts.Start, opts.End),
 	)
 
 	var r []tracestorage.Span
@@ -464,19 +494,28 @@ func (q *Querier) SelectSpansets(ctx context.Context, params traceqlengine.Selec
 		span.End()
 	}()
 
-	var (
-		c     = newSpanColumns()
-		query = chsql.Select(table, c.ChsqlResult()...).
-			Where(
-				chsql.In(
-					chsql.Ident("trace_id"),
-					chsql.SubQuery(q.buildSpansetsQuery(table, span, params)),
-				),
-			).
-			Order(chsql.Ident("start"), chsql.Asc)
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	spansetsQuery, err := q.buildSpansetsQuery(ctx, table, span, params)
+	if err != nil {
+		return nil, errors.Wrap(err, "build spansets query")
+	}
+	c := newSpanColumns()
+	query := chsql.Select(table, c.ChsqlResult()...)
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Where(
+		chsql.In(
+			chsql.Ident("trace_id"),
+			chsql.SubQuery(spansetsQuery),
+		),
+	).
+		Order(chsql.Ident("start"), chsql.Asc)
 
-		traces = map[otelstorage.TraceID][]tracestorage.Span{}
-	)
+	traces := map[otelstorage.TraceID][]tracestorage.Span{}
 	if err := q.do(ctx, selectQuery{
 		Query: query,
 		OnResult: func(ctx context.Context, block proto.Block) error {
@@ -516,7 +555,12 @@ func (q *Querier) SelectSpansets(ctx context.Context, params traceqlengine.Selec
 	return iterators.Slice(result), nil
 }
 
-func (q *Querier) buildSpansetsQuery(table string, span trace.Span, params traceqlengine.SelectSpansetsParams) *chsql.SelectQuery {
+func (q *Querier) buildSpansetsQuery(ctx context.Context, table string, span trace.Span, params traceqlengine.SelectSpansetsParams) (*chsql.SelectQuery, error) {
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+
 	var (
 		dropped    int
 		matchExprs = make([]chsql.Expr, 0, len(params.Matchers))
@@ -534,9 +578,11 @@ func (q *Querier) buildSpansetsQuery(table string, span trace.Span, params trace
 		attribute.String("chstorage.table", table),
 	)
 
-	query := chsql.Select(table,
-		chsql.Column("trace_id", nil)).
-		Distinct(true).
+	query := chsql.Select(table, chsql.Column("trace_id", nil))
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Distinct(true).
 		Where(traceInTimeRange(params.Start, params.End))
 
 	if len(matchExprs) > 0 {
@@ -546,7 +592,7 @@ func (q *Querier) buildSpansetsQuery(table string, span trace.Span, params trace
 			query.Where(chsql.JoinOr(matchExprs...))
 		}
 	}
-	return query
+	return query, nil
 }
 
 func spanIsRoot() chsql.Expr {

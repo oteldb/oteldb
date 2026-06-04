@@ -35,6 +35,7 @@ import (
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 
+	"github.com/oteldb/oteldb/internal/multitenancy"
 	"github.com/oteldb/oteldb/internal/otelreceiver/oteldbexporter"
 	"github.com/oteldb/oteldb/internal/otelreceiver/prometheusremotewritereceiver"
 )
@@ -57,18 +58,32 @@ func processorFactoryMap() (map[component.Type]processor.Factory, error) {
 	)
 }
 
-func exporterFactoryMap() (map[component.Type]exporter.Factory, error) {
+func exporterFactoryMap(
+	tenantMapper *multitenancy.TenantMapper,
+	resolver multitenancy.Resolver,
+) (map[component.Type]exporter.Factory, error) {
 	return otelcol.MakeFactoryMap(
-		oteldbexporter.NewFactory(),
+		oteldbexporter.NewFactory(oteldbexporter.Options{
+			TenantMapper: tenantMapper,
+			Resolver:     resolver,
+		}),
 	)
 }
 
-func extensionFactoryMap() (map[component.Type]extension.Factory, error) {
-	return otelcol.MakeFactoryMap(
+func extensionFactoryMap(resolver multitenancy.Resolver) (map[component.Type]extension.Factory, error) {
+	m, err := otelcol.MakeFactoryMap(
 		basicauthextension.NewFactory(),
 		bearertokenauthextension.NewFactory(),
 		oidcauthextension.NewFactory(),
 	)
+	if err != nil {
+		return nil, err
+	}
+	if resolver != nil {
+		f := newMultitenancyAuthFactory(resolver)
+		m[f.Type()] = f
+	}
+	return m, nil
 }
 
 func connectorFactoryMap() (map[component.Type]connector.Factory, error) {
@@ -89,6 +104,9 @@ type TelemetrySettings struct {
 	LoggerProvider log.LoggerProvider
 	MeterProvider  metric.MeterProvider
 	TracerProvider trace.TracerProvider
+
+	TenantMapper *multitenancy.TenantMapper
+	Resolver     multitenancy.Resolver
 }
 
 func (s *TelemetrySettings) setDefaults() {
@@ -120,12 +138,12 @@ func Factories(settings TelemetrySettings) func() (f otelcol.Factories, _ error)
 			return f, errors.Wrap(err, "get processor factory map")
 		}
 
-		exporters, err := exporterFactoryMap()
+		exporters, err := exporterFactoryMap(settings.TenantMapper, settings.Resolver)
 		if err != nil {
 			return f, errors.Wrap(err, "get exporter factory map")
 		}
 
-		extensions, err := extensionFactoryMap()
+		extensions, err := extensionFactoryMap(settings.Resolver)
 		if err != nil {
 			return f, errors.Wrap(err, "get extension factory map")
 		}

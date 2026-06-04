@@ -60,6 +60,7 @@ func (r *logsRestore) restoreLogs(ctx context.Context, dir string) error {
 		File: "logs",
 		NewColumns: func() ([]proto.Input, Columns, func(), func() int) {
 			var (
+				tenantID  = new(proto.ColStr).LowCardinality()
 				timestamp = new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano)
 
 				severityNumber proto.ColUInt8
@@ -80,6 +81,7 @@ func (r *logsRestore) restoreLogs(ctx context.Context, dir string) error {
 
 				columns = MergeColumns(
 					Columns{
+						{Name: "tenant_id", Data: tenantID},
 						{Name: "timestamp", Data: timestamp},
 
 						{Name: "severity_number", Data: &severityNumber},
@@ -124,10 +126,10 @@ func (r *logsRestore) restoreLogs(ctx context.Context, dir string) error {
 
 						rec.ObservedTimestamp = rec.Timestamp
 
-						lc.AddRow(rec)
-						ac.AddAttrs(rec.Attrs)
-						ac.AddAttrs(rec.ScopeAttrs)
-						ac.AddAttrs(rec.ResourceAttrs)
+						lc.AddRow(rec, tenantID.Row(i))
+						ac.AddAttrs(tenantID.Row(i), rec.Attrs)
+						ac.AddAttrs(tenantID.Row(i), rec.ScopeAttrs)
+						ac.AddAttrs(tenantID.Row(i), rec.ResourceAttrs)
 					}
 				}
 				rows = func() int {

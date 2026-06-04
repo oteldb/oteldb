@@ -20,6 +20,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/oteldb/oteldb/internal/metricstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 	"github.com/oteldb/oteldb/internal/semconv"
 )
 
@@ -48,7 +49,7 @@ func (i *Inserter) insertBatch(ctx context.Context, b *metricsBatch) (rerr error
 
 // ConsumeMetrics inserts given metrics.
 func (i *Inserter) ConsumeMetrics(ctx context.Context, metrics pmetric.Metrics) error {
-	b := newMetricBatch(i)
+	b := newMetricBatch(ctx, i)
 	if err := b.mapMetrics(metrics); err != nil {
 		return errors.Wrap(err, "map metrics")
 	}
@@ -66,7 +67,10 @@ type metricsBatch struct {
 	exemplars      *exemplarColumns
 	labels         map[[2]string]labelScope
 
-	inserter *Inserter
+	inserter    *Inserter
+	tenantID    string          // resolved tenant_id for this batch
+	droppedRows int             // count of rows dropped due to tenant validation
+	ctx         context.Context // context for tenant resolution
 }
 
 func (b *metricsBatch) Reset() {
@@ -78,7 +82,7 @@ func (b *metricsBatch) Reset() {
 	clear(b.labels)
 }
 
-func newMetricBatch(inserter *Inserter) *metricsBatch {
+func newMetricBatch(ctx context.Context, inserter *Inserter) *metricsBatch {
 	return &metricsBatch{
 		timeseries:     newTimeseriesColumns(),
 		seenTimeseries: map[[16]byte]struct{}{},
@@ -87,6 +91,7 @@ func newMetricBatch(inserter *Inserter) *metricsBatch {
 		exemplars:      newExemplarColumns(),
 		labels:         map[[2]string]labelScope{},
 		inserter:       inserter,
+		ctx:            ctx,
 	}
 }
 
@@ -103,7 +108,7 @@ func (b *metricsBatch) Insert(ctx context.Context, tables Tables, client ClickHo
 	lg := zctx.From(ctx)
 
 	labelColumns := newLabelsColumns()
-	labelColumns.AppendMap(b.labels)
+	labelColumns.AppendMap(b.tenantID, b.labels)
 
 	grp, grpCtx := errgroup.WithContext(ctx)
 	type columns interface {
@@ -210,6 +215,7 @@ func (b *metricsBatch) addPoints(name, desc, unit string, res, scope lazyAttribu
 
 		hash := b.addHash(ts, name, desc, unit, res, scope, attrs)
 
+		c.tenantID.Append(b.tenantID)
 		c.hash.Append(hash)
 		c.timestamp.Append(ts)
 		c.mapping.Append(proto.Enum8(noMapping))
@@ -446,6 +452,7 @@ func (b *metricsBatch) addExpHistogramPoints(name, desc, unit string, res, scope
 		}
 		hash := b.addHash(ts, name, desc, unit, res, scope, attrs)
 
+		c.tenantID.Append(b.tenantID)
 		c.hash.Append(hash)
 		c.timestamp.Append(ts)
 		c.count.Append(count)
@@ -513,7 +520,7 @@ func (b *metricsBatch) addSummaryPoints(name, desc, unit string, res, scope lazy
 }
 
 func (b *metricsBatch) addHash(ts time.Time, name, desc, unit string, res, scope, attrs lazyAttributes, bucketKey ...[2]string) [16]byte {
-	hash := hashTimeseries(name,
+	hash := hashTimeseries(b.tenantID, name,
 		res.Attributes(),
 		scope.Attributes(),
 		attrs.Attributes(bucketKey...),
@@ -523,6 +530,7 @@ func (b *metricsBatch) addHash(ts time.Time, name, desc, unit string, res, scope
 	}
 	b.seenTimeseries[hash] = struct{}{}
 
+	b.timeseries.tenantID.Append(b.tenantID)
 	b.timeseries.name.Append(name)
 	b.timeseries.description.Append(desc)
 	b.timeseries.unit.Append(unit)
@@ -563,6 +571,7 @@ func (b *metricsBatch) addMappedSample(
 	)
 
 	b.addName(name)
+	c.tenantID.Append(b.tenantID)
 	c.hash.Append(hash)
 	c.timestamp.Append(series.Timestamp)
 	c.mapping.Append(proto.Enum8(mapping))
@@ -608,6 +617,7 @@ func (b *metricsBatch) addExemplar(p exemplarSeries, e pmetric.Exemplar, bucketK
 
 	hash := b.addHash(p.Timestamp, p.Name, p.Description, p.Unit, p.Resource, p.Scope, p.Attributes, bucketKey...)
 
+	c.tenantID.Append(b.tenantID)
 	c.hash.Append(hash)
 	c.timestamp.Append(p.Timestamp)
 
@@ -644,6 +654,27 @@ func (b *metricsBatch) mapMetrics(metrics pmetric.Metrics) error {
 				orig: resMetric.Resource().Attributes(),
 			}
 		)
+
+		// Resolve tenant_id from resource attributes once per ResourceMetrics batch
+		if mapper := b.inserter.tenantMapper; mapper != nil {
+			tenantID, ok := mapper.Resolve(otelstorage.Attrs(resAttrs.orig))
+			if !ok {
+				b.droppedRows++
+				continue
+			}
+			b.tenantID = tenantID
+		} else {
+			b.tenantID = ""
+		}
+
+		// Validate tenant_id against write Decision if enabled
+		if validator := b.inserter.writeValidator; validator != nil {
+			if !validator.IsAuthorized(b.ctx, b.tenantID) {
+				b.droppedRows++
+				continue // Skip entire resource batch if tenant_id not authorized
+			}
+		}
+
 		b.addLabels(labelScopeResource, resAttrs)
 
 		scopeMetrics := resMetric.ScopeMetrics()

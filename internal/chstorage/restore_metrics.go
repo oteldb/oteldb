@@ -97,7 +97,7 @@ func (r *metricsRestore) restore(ctx context.Context, dir string) error {
 	}
 	{
 		lc := newLabelsColumns()
-		lc.AppendMap(r.labels)
+		lc.AppendMap("", r.labels) // Empty tenant_id for restore operations
 
 		input := lc.Input()
 		if err := r.client.Do(ctx, ch.Query{
@@ -130,9 +130,13 @@ func (r *metricsRestore) restorePoints(ctx context.Context, dir string) error {
 
 				mapping proto.ColEnum8
 				flags   proto.ColUInt8
+				hash    = proto.NewLowCardinality(&proto.ColFixedStr16{})
+
+				tenantID = new(proto.ColStr).LowCardinality()
 
 				columns = MergeColumns(
 					Columns{
+						{Name: "hash", Data: hash},
 						{Name: "timestamp", Data: timestamp},
 						{Name: "value", Data: &value},
 
@@ -140,6 +144,7 @@ func (r *metricsRestore) restorePoints(ctx context.Context, dir string) error {
 						{Name: "flags", Data: &flags},
 					},
 					Columns{
+						{Name: "tenant_id", Data: tenantID},
 						{Name: "name", Data: name},
 						{Name: "unit", Data: unit},
 						{Name: "description", Data: &description},
@@ -169,6 +174,7 @@ func (r *metricsRestore) restorePoints(ctx context.Context, dir string) error {
 						)
 						r.collectLabels(name, mapping, resource, scope, attributes)
 
+						points.tenantID.Append("") // Empty tenant_id for restore operations
 						points.timestamp.Append(timestamp)
 						points.hash.Append(hash)
 					}
@@ -213,9 +219,13 @@ func (r *metricsRestore) restoreExpHistograms(ctx context.Context, dir string) e
 				negativeBucketCounts = new(proto.ColUInt64).Array()
 
 				flags proto.ColUInt8
+				hash  proto.ColFixedStr16
+
+				tenantID = new(proto.ColStr).LowCardinality()
 
 				columns = MergeColumns(
 					Columns{
+						{Name: "hash", Data: &hash},
 						{Name: "timestamp", Data: timestamp},
 						{Name: "exp_histogram_count", Data: &count},
 						{Name: "exp_histogram_sum", Data: sum},
@@ -231,6 +241,7 @@ func (r *metricsRestore) restoreExpHistograms(ctx context.Context, dir string) e
 						{Name: "flags", Data: &flags},
 					},
 					Columns{
+						{Name: "tenant_id", Data: tenantID},
 						{Name: "name", Data: name},
 						{Name: "unit", Data: unit},
 						{Name: "description", Data: &description},
@@ -259,6 +270,7 @@ func (r *metricsRestore) restoreExpHistograms(ctx context.Context, dir string) e
 						)
 						r.collectLabels(name, noMapping, resource, scope, attributes)
 
+						histograms.tenantID.Append("") // Empty tenant_id for restore operations
 						histograms.hash.Append(hash)
 						histograms.timestamp.Append(timestamp)
 						histograms.sum.Append(sum.Row(i))
@@ -305,6 +317,8 @@ func (r *metricsRestore) restoreExemplars(ctx context.Context, dir string) error
 				spanID             proto.ColFixedStr8
 				traceID            proto.ColFixedStr16
 
+				tenantID = new(proto.ColStr).LowCardinality()
+
 				columns = MergeColumns(
 					Columns{
 						{Name: "timestamp", Data: timestamp},
@@ -316,6 +330,7 @@ func (r *metricsRestore) restoreExemplars(ctx context.Context, dir string) error
 						{Name: "trace_id", Data: &traceID},
 					},
 					Columns{
+						{Name: "tenant_id", Data: tenantID},
 						{Name: "name", Data: name},
 						{Name: "unit", Data: unit},
 						{Name: "description", Data: &description},
@@ -344,6 +359,7 @@ func (r *metricsRestore) restoreExemplars(ctx context.Context, dir string) error
 						)
 						r.collectLabels(name, noMapping, resource, scope, attributes)
 
+						exemplars.tenantID.Append(tenantID.Row(i))
 						exemplars.hash.Append(hash)
 						exemplars.timestamp.Append(timestamp)
 						exemplars.filteredAttributes.Append(filteredAttributes.Row(i))
@@ -355,7 +371,7 @@ func (r *metricsRestore) restoreExemplars(ctx context.Context, dir string) error
 					exemplars.traceID.AppendArr(traceID)
 				}
 				rows = func() int {
-					return exemplars.hash.Rows()
+					return exemplars.tenantID.Rows()
 				}
 			)
 			return []proto.Input{exemplars.Input()}, columns, add, rows
@@ -374,6 +390,7 @@ func (r *metricsRestore) collectTimeseries(
 	defer r.timeseriesMux.Unlock()
 
 	hash := hashTimeseries(
+		"", // Empty tenant_id for restore operations
 		name,
 		res,
 		scope,
@@ -384,6 +401,7 @@ func (r *metricsRestore) collectTimeseries(
 	}
 	r.seenTimeseries[hash] = struct{}{}
 
+	r.timeseries.tenantID.Append("") // Empty tenant_id for restore operations
 	r.timeseries.hash.Append(hash)
 	r.timeseries.name.Append(name)
 	r.timeseries.unit.Append(unit)

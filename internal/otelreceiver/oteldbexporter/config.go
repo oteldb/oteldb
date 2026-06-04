@@ -79,7 +79,7 @@ type MetricsConfig struct {
 	Exemplars SamplingConfig `mapstructure:"exemplars"`
 }
 
-func (c *Config) connect(ctx context.Context, settings exporter.Settings) (*chstorage.Inserter, error) {
+func (c *Config) connect(ctx context.Context, settings exporter.Settings, opts Options) (*chstorage.Inserter, error) {
 	pool, err := chstorage.Dial(ctx, c.DSN, chstorage.DialOptions{
 		MeterProvider:  settings.MeterProvider,
 		TracerProvider: settings.TracerProvider,
@@ -94,6 +94,8 @@ func (c *Config) connect(ctx context.Context, settings exporter.Settings) (*chst
 		CHLogLevel:     c.CHLogLevel,
 		MeterProvider:  settings.MeterProvider,
 		TracerProvider: settings.TracerProvider,
+		TenantMapper:   opts.TenantMapper,
+		WriteValidator: chstorage.NewDecisionWriteValidator(),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "create inserter")

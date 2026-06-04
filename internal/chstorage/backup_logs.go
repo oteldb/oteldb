@@ -75,6 +75,7 @@ func (b *logsBackup) backupLogs(ctx context.Context, dir string, start, end time
 	defer func() { _ = w.Close() }()
 
 	var (
+		tenantID  = new(proto.ColStr).LowCardinality()
 		timestamp = new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano)
 
 		severityNumber proto.ColUInt8
@@ -96,6 +97,7 @@ func (b *logsBackup) backupLogs(ctx context.Context, dir string, start, end time
 
 	columns := MergeColumns(
 		Columns{
+			{Name: "tenant_id", Data: tenantID},
 			{Name: "timestamp", Data: timestamp},
 
 			{Name: "severity_number", Data: &severityNumber},
@@ -120,6 +122,7 @@ func (b *logsBackup) backupLogs(ctx context.Context, dir string, start, end time
 	var buf proto.Buffer
 
 	q := fmt.Sprintf(`SELECT
+	tenant_id,
 	timestamp,
 	severity_number,
 	severity_text,

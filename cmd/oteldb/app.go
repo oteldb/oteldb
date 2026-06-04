@@ -30,6 +30,10 @@ import (
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
 	"github.com/oteldb/oteldb/internal/lokiapi"
 	"github.com/oteldb/oteldb/internal/lokihandler"
+	"github.com/oteldb/oteldb/internal/multitenancy"
+	"github.com/oteldb/oteldb/internal/multitenancy/httpcb"
+	"github.com/oteldb/oteldb/internal/multitenancy/static"
+	"github.com/oteldb/oteldb/internal/multitenancyapi"
 	"github.com/oteldb/oteldb/internal/otelreceiver"
 	"github.com/oteldb/oteldb/internal/promapi"
 	"github.com/oteldb/oteldb/internal/promhandler"
@@ -46,6 +50,9 @@ type App struct {
 	services map[string]func(context.Context) error
 	shutdown func()
 	otelStorage
+
+	tenantMapper *multitenancy.TenantMapper
+	resolver     multitenancy.Resolver
 
 	lg        *zap.Logger
 	telemetry *sdkapp.Telemetry
@@ -96,6 +103,9 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 
 	if err := app.setupHealthCheck(); err != nil {
 		return nil, errors.Wrap(err, "healthcheck")
+	}
+	if err := app.setupMultitenancy(); err != nil {
+		return nil, errors.Wrap(err, "multitenancy")
 	}
 	if err := app.setupCollector(); err != nil {
 		return nil, errors.Wrap(err, "otelcol")
@@ -150,6 +160,14 @@ func addOgen[
 				httpmiddleware.LogRequests(routeFinder),
 			}
 		)
+
+		if app.resolver != nil {
+			lg.Info("Enabling multitenancy middleware")
+			middlewares = append(middlewares, multitenancy.NewMiddleware(multitenancy.MiddlewareConfig{
+				Resolver:         app.resolver,
+				CredentialHeader: app.cfg.Multitenancy.Resolver.HTTP.CredentialHeader,
+			}))
+		}
 
 		auth, err := makeAuthMiddlewares(authCfg)
 		if err != nil {
@@ -341,6 +359,112 @@ func (app *App) trySetupProm() error {
 	return nil
 }
 
+func (app *App) setupMultitenancy() error {
+	cfg := app.cfg.Multitenancy
+	if !cfg.Enabled {
+		return nil
+	}
+
+	// Setup TenantMapper
+	var mapperRules []multitenancy.TenantRule
+	for key, id := range cfg.TenantMapper.Tenants {
+		attrs := make(map[string]string)
+		for part := range strings.SplitSeq(key, ",") {
+			k, v, ok := strings.Cut(part, "=")
+			if ok {
+				attrs[k] = strings.TrimSpace(v)
+			}
+		}
+		mapperRules = append(mapperRules, multitenancy.TenantRule{
+			ID:            id,
+			KeyAttributes: attrs,
+		})
+	}
+
+	app.tenantMapper = multitenancy.NewTenantMapper(multitenancy.TenantMapperConfig{
+		Tenants:          mapperRules,
+		TenantIDTemplate: cfg.TenantMapper.Template,
+		DefaultTenant:    cfg.TenantMapper.DefaultTenant,
+	})
+	if err := app.tenantMapper.RegisterMetrics(app.telemetry.MeterProvider().Meter("oteldb")); err != nil {
+		return errors.Wrap(err, "register tenant mapper metrics")
+	}
+
+	// Setup Resolver
+	switch cfg.Resolver.Type {
+	case "static":
+		readDecisions := make(map[string]multitenancy.Decision)
+		writeDecisions := make(map[string]multitenancy.Decision)
+
+		for _, t := range cfg.Resolver.Static {
+			d := multitenancy.Decision{
+				Enabled:   true,
+				Username:  t.Username,
+				TenantIDs: t.ReadTenantIDs,
+				QuotaKey:  t.QuotaKey,
+				Restrictions: multitenancy.QueryRestrictions{
+					MaxMemoryUsageBytes: app.cfg.Multitenancy.DefaultRestrictions.MaxMemoryUsageBytes,
+					MaxExecutionTime:    time.Duration(app.cfg.Multitenancy.DefaultRestrictions.MaxExecutionTimeMS) * time.Millisecond,
+					MaxResultRows:       app.cfg.Multitenancy.DefaultRestrictions.MaxResultRows,
+				},
+			}
+			for _, sel := range t.ReadResourceSelectors {
+				var op multitenancy.MatchOp
+				switch sel.Op {
+				case "eq":
+					op = multitenancy.OpEq
+				case "neq":
+					op = multitenancy.OpNotEq
+				case "re":
+					op = multitenancy.OpRe
+				case "nre":
+					op = multitenancy.OpNotRe
+				default:
+					return errors.Errorf("unknown resource selector op %q", sel.Op)
+				}
+				d.ResourceSelectors = append(d.ResourceSelectors, multitenancy.ResourceSelector{
+					Key:   sel.Key,
+					Op:    op,
+					Value: sel.Value,
+				})
+			}
+			readDecisions[t.Token] = d
+
+			writeDecisions[t.Token] = multitenancy.Decision{
+				Enabled:   true,
+				Username:  t.Username,
+				TenantIDs: t.WriteTenantIDs,
+			}
+		}
+
+		app.resolver = static.NewResolver(static.Config{
+			ReadDecisions:  readDecisions,
+			WriteDecisions: writeDecisions,
+		})
+	case "http":
+		client, err := multitenancyapi.NewClient(cfg.Resolver.HTTP.URL)
+		if err != nil {
+			return errors.Wrap(err, "create multitenancy client")
+		}
+		app.resolver, err = httpcb.NewResolver(httpcb.ResolverConfig{
+			Client:           client,
+			CredentialHeader: cfg.Resolver.HTTP.CredentialHeader,
+			CacheTTL:         cfg.Resolver.HTTP.CacheTTL,
+		})
+		if err != nil {
+			return errors.Wrap(err, "create multitenancy resolver")
+		}
+	case "":
+		// Multi-tenancy enabled but no resolver?
+		// This might be fine if we only use TenantMapper for data classification
+		// without query-side authorization.
+	default:
+		return errors.Errorf("unknown multitenancy resolver type %q", cfg.Resolver.Type)
+	}
+
+	return nil
+}
+
 func (app *App) setupHealthCheck() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/readiness", app.handleReadinessProbe)
@@ -397,7 +521,10 @@ func (app *App) handleStartupProbe(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (app *App) setupCollector() error {
-	var telemetry otelreceiver.TelemetrySettings
+	telemetry := otelreceiver.TelemetrySettings{
+		TenantMapper: app.tenantMapper,
+		Resolver:     app.resolver,
+	}
 	{
 		sig := app.cfg.CollectorSignals
 		if sig["logs"] {

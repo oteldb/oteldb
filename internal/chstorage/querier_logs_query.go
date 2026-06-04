@@ -64,12 +64,17 @@ func (v *LogsQuery[E]) Execute(ctx context.Context, q *Querier) (_ iterators.Ite
 		return nil, errors.Wrap(err, "get label mapping")
 	}
 
-	var (
-		out   = newLogColumns()
-		query = chsql.Select(table, out.ChsqlResult()...).
-			Where(
-				chsql.InTimeRange("timestamp", v.Start, v.End, out.timestamp.Precision),
-			)
+	logsFilters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	out := newLogColumns()
+	query := chsql.Select(table, out.ChsqlResult()...)
+	if len(logsFilters) > 0 {
+		query.Prewhere(logsFilters...)
+	}
+	query.Where(
+		chsql.InTimeRange("timestamp", v.Start, v.End, out.timestamp.Precision),
 	)
 	v.Sel.addPredicates(ctx, query, mapping, q)
 
@@ -236,31 +241,36 @@ func (v *SampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlengine.Sa
 		)
 	}
 
-	var (
-		columns = sampleQueryColumns{
-			Timestamp: proto.ColDateTime64{},
-			Sample:    proto.ColFloat64{},
-			Labels: proto.NewMap(
-				new(proto.ColStr),
-				new(proto.ColStr).LowCardinality(),
-			),
-		}
-
-		query = chsql.Select(table,
-			chsql.Column("timestamp", &columns.Timestamp),
-			chsql.ResultColumn{
-				Name: "sample",
-				Expr: chsql.ToFloat64(sampleExpr),
-				Data: &columns.Sample,
-			},
-			chsql.ResultColumn{
-				Name: "labels",
-				Expr: chsql.Map(entries...),
-				Data: columns.Labels,
-			},
-		).Where(
-			chsql.InTimeRange("timestamp", v.Start, v.End, columns.Timestamp.Precision),
-		)
+	sampledFilters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	columns := sampleQueryColumns{
+		Timestamp: proto.ColDateTime64{},
+		Sample:    proto.ColFloat64{},
+		Labels: proto.NewMap(
+			new(proto.ColStr),
+			new(proto.ColStr).LowCardinality(),
+		),
+	}
+	query := chsql.Select(table,
+		chsql.Column("timestamp", &columns.Timestamp),
+		chsql.ResultColumn{
+			Name: "sample",
+			Expr: chsql.ToFloat64(sampleExpr),
+			Data: &columns.Sample,
+		},
+		chsql.ResultColumn{
+			Name: "labels",
+			Expr: chsql.Map(entries...),
+			Data: columns.Labels,
+		},
+	)
+	if len(sampledFilters) > 0 {
+		query.Prewhere(sampledFilters...)
+	}
+	query.Where(
+		chsql.InTimeRange("timestamp", v.Start, v.End, columns.Timestamp.Precision),
 	)
 	v.Sel.addPredicates(ctx, query, mapping, q)
 	query.Order(chsql.Ident("timestamp"), chsql.Asc)

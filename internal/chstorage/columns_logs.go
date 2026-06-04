@@ -21,6 +21,8 @@ var (
 )
 
 type logColumns struct {
+	tenantID *proto.ColLowCardinality[string]
+
 	serviceInstanceID *proto.ColLowCardinality[string]
 	serviceName       *proto.ColLowCardinality[string]
 	serviceNamespace  *proto.ColLowCardinality[string]
@@ -49,6 +51,7 @@ type logColumns struct {
 
 func newLogColumns() *logColumns {
 	c := &logColumns{
+		tenantID:          new(proto.ColStr).LowCardinality(),
 		serviceName:       new(proto.ColStr).LowCardinality(),
 		serviceInstanceID: new(proto.ColStr).LowCardinality(),
 		serviceNamespace:  new(proto.ColStr).LowCardinality(),
@@ -62,6 +65,7 @@ func newLogColumns() *logColumns {
 	}
 	c.columns = sync.OnceValue(func() Columns {
 		return MergeColumns(Columns{
+			{Name: "tenant_id", Data: c.tenantID},
 			{Name: "service_instance_id", Data: c.serviceInstanceID},
 			{Name: "service_name", Data: c.serviceName},
 			{Name: "service_namespace", Data: c.serviceNamespace},
@@ -99,8 +103,8 @@ func (c *logColumns) DDL() ddl.Table {
 	table := ddl.Table{
 		Engine:      ddl.Engine{Type: "MergeTree"},
 		PartitionBy: "toYYYYMMDD(timestamp)",
-		PrimaryKey:  []string{"severity_number", "service_namespace", "service_name", "resource"},
-		OrderBy:     []string{"severity_number", "service_namespace", "service_name", "resource", "timestamp"},
+		PrimaryKey:  []string{"tenant_id", "severity_number", "service_namespace", "service_name", "resource"},
+		OrderBy:     []string{"tenant_id", "severity_number", "service_namespace", "service_name", "resource", "timestamp"},
 		TTL:         ddl.TTL{Field: "timestamp"},
 		Indexes: []ddl.Index{
 			{
@@ -125,6 +129,10 @@ func (c *logColumns) DDL() ddl.Table {
 			},
 		},
 		Columns: []ddl.Column{
+			{
+				Name: "tenant_id",
+				Type: c.tenantID.Type(),
+			},
 			{
 				Name:    "service_instance_id",
 				Type:    c.serviceInstanceID.Type(),
@@ -255,7 +263,8 @@ func (c *logColumns) ForEach(f func(r logstorage.Record) error) error {
 	return nil
 }
 
-func (c *logColumns) AddRow(r logstorage.Record) {
+func (c *logColumns) AddRow(r logstorage.Record, tenantID string) {
+	c.tenantID.Append(tenantID)
 	{
 		m := r.ResourceAttrs.AsMap()
 		setStrOrEmpty(c.serviceInstanceID, m, string(semconv.ServiceInstanceIDKey))
@@ -293,8 +302,9 @@ func (c *logColumns) ChsqlResult() []chsql.ResultColumn { return c.columns().Chs
 func (c *logColumns) Reset()                            { c.columns().Reset() }
 
 type logAttrMapColumns struct {
-	name proto.ColStr // http_method
-	key  proto.ColStr // http.method
+	tenantID *proto.ColLowCardinality[string]
+	name     proto.ColStr // http_method
+	key      proto.ColStr // http.method
 
 	columns func() Columns
 	Input   func() proto.Input
@@ -302,9 +312,12 @@ type logAttrMapColumns struct {
 }
 
 func newLogAttrMapColumns() *logAttrMapColumns {
-	c := &logAttrMapColumns{}
+	c := &logAttrMapColumns{
+		tenantID: new(proto.ColStr).LowCardinality(),
+	}
 	c.columns = sync.OnceValue(func() Columns {
 		return []Column{
+			{Name: "tenant_id", Data: c.tenantID},
 			{Name: "name", Data: &c.name},
 			{Name: "key", Data: &c.key},
 		}
@@ -328,24 +341,29 @@ func (c *logAttrMapColumns) ForEach(f func(name, key string)) {
 	}
 }
 
-func (c *logAttrMapColumns) AddAttrs(attrs otelstorage.Attrs) {
+func (c *logAttrMapColumns) AddAttrs(tenantID string, attrs otelstorage.Attrs) {
 	buf := make([]byte, 0, 128)
 	attrs.AsMap().Range(func(k string, _ pcommon.Value) bool {
-		c.AddRow(otelstorage.AppendKeyToLabel(buf, k), k)
+		c.AddRow(tenantID, otelstorage.AppendKeyToLabel(buf, k), k)
 		return true
 	})
 }
 
-func (c *logAttrMapColumns) AddRow(name []byte, key string) {
+func (c *logAttrMapColumns) AddRow(tenantID string, name []byte, key string) {
+	c.tenantID.Append(tenantID)
 	c.name.AppendBytes(name)
 	c.key.Append(key)
 }
 
 func (c *logAttrMapColumns) DDL() ddl.Table {
 	return ddl.Table{
-		OrderBy: []string{"name"},
+		OrderBy: []string{"tenant_id", "name"},
 		Engine:  ddl.Engine{Type: "ReplacingMergeTree"},
 		Columns: []ddl.Column{
+			{
+				Name: "tenant_id",
+				Type: c.tenantID.Type(),
+			},
 			{
 				Name:    "name",
 				Type:    c.name.Type(),

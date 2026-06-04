@@ -15,7 +15,7 @@ func run(ctx context.Context) error {
 		Short: "ClickHouse schema migrator for oteldb",
 		Long:  "Tooling to create, drop and migrate ClickHouse schema used by oteldb.",
 	}
-	cmd.AddCommand(newCreateCmd(), newStatusCmd(), newDropCmd())
+	cmd.AddCommand(newCreateCmd(), newStatusCmd(), newDropCmd(), newMigrateCmd(), newCleanupCmd())
 	return cmd.ExecuteContext(ctx)
 }
 

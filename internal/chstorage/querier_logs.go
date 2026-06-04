@@ -66,7 +66,10 @@ func (q *Querier) LabelNames(ctx context.Context, opts logstorage.LabelsOptions)
 	if err != nil {
 		return nil, errors.Wrap(err, "get label mapping")
 	}
-	resourceQuery := q.deduplicatedResource(table, opts.Start, opts.End)
+	resourceQuery, err := q.deduplicatedResource(ctx, table, opts.Start, opts.End)
+	if err != nil {
+		return nil, errors.Wrap(err, "deduplicated resource")
+	}
 	for _, m := range opts.Query.Matchers {
 		resourceQuery.Where(q.logQLLabelMatcher(m, mapping))
 	}
@@ -197,7 +200,10 @@ func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logsto
 			labelName = key
 		}
 
-		resourceQuery := q.deduplicatedResource(table, opts.Start, opts.End)
+		resourceQuery, err := q.deduplicatedResource(ctx, table, opts.Start, opts.End)
+		if err != nil {
+			return nil, errors.Wrap(err, "deduplicated resource")
+		}
 		for _, m := range opts.Query.Matchers {
 			resourceQuery.Where(q.logQLLabelMatcher(m, mapping))
 		}
@@ -279,10 +285,14 @@ func (q *Querier) DetectedLabels(ctx context.Context, opts logstorage.LabelsOpti
 	if err != nil {
 		return nil, errors.Wrap(err, "get label mapping")
 	}
-	subQuery := q.deduplicatedResource(
+	subQuery, err := q.deduplicatedResource(
+		ctx,
 		table,
 		opts.Start, opts.End,
 	)
+	if err != nil {
+		return nil, errors.Wrap(err, "deduplicated resource")
+	}
 	for _, m := range opts.Query.Matchers {
 		subQuery.Where(q.logQLLabelMatcher(m, mapping))
 	}
@@ -398,6 +408,10 @@ func (q *Querier) DetectedFields(ctx context.Context, opts logstorage.LabelsOpti
 	// Deduplicate by resource first (LowCardinality — few distinct values), then explode
 	// key-value pairs using arrayZip so each key stays paired with its value.
 	// WITH defines the tuple alias once and re-uses it in both SELECT columns.
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
 	innerQuery := chsql.Select(table,
 		chsql.ResultColumn{
 			Name: "pairs",
@@ -406,7 +420,11 @@ func (q *Querier) DetectedFields(ctx context.Context, opts logstorage.LabelsOpti
 				attrStringMap(colResource),
 			),
 		},
-	).GroupBy(
+	)
+	if len(filters) > 0 {
+		innerQuery.Prewhere(filters...)
+	}
+	innerQuery.GroupBy(
 		chsql.Ident(colResource),
 		chsql.Ident("service_name"),
 		chsql.Ident("service_instance_id"),
@@ -507,12 +525,17 @@ func (q *Querier) getLabelMapping(ctx context.Context, labels []string) (_ map[s
 	for _, label := range labels {
 		inputData.Append(label)
 	}
+	query := chsql.Select(q.tables.LogAttrs, attrs.ChsqlResult()...).
+		Where(chsql.In(
+			chsql.Ident("name"),
+			chsql.Ident("labels"),
+		))
+	if filters, err := decisionFilters(ctx); err == nil && len(filters) > 0 {
+		query.Where(filters...)
+	}
+
 	if err := q.do(ctx, selectQuery{
-		Query: chsql.Select(q.tables.LogAttrs, attrs.ChsqlResult()...).
-			Where(chsql.In(
-				chsql.Ident("name"),
-				chsql.Ident("labels"),
-			)),
+		Query: query,
 		OnResult: func(ctx context.Context, block proto.Block) error {
 			attrs.ForEach(func(name, key string) {
 				out[name] = key
@@ -600,23 +623,27 @@ func (q *Querier) Series(ctx context.Context, opts logstorage.SeriesOptions) (re
 		span.End()
 	}()
 
-	var (
-		series = proto.NewMap(
-			new(proto.ColStr),
-			new(proto.ColStr),
-		)
-
-		query = chsql.Select(table, chsql.ResultColumn{
-			Name: "series",
-			Expr: chsql.MapConcat(
-				q.getMaterializedLabelMap(),
-				attrStringMap(colResource),
-			),
-			Data: series,
-		}).
-			Distinct(true).
-			Where(chsql.InTimeRange("timestamp", opts.Start, opts.End, proto.PrecisionNano))
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	series := proto.NewMap(
+		new(proto.ColStr),
+		new(proto.ColStr),
 	)
+	query := chsql.Select(table, chsql.ResultColumn{
+		Name: "series",
+		Expr: chsql.MapConcat(
+			q.getMaterializedLabelMap(),
+			attrStringMap(colResource),
+		),
+		Data: series,
+	})
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.Distinct(true).
+		Where(chsql.InTimeRange("timestamp", opts.Start, opts.End, proto.PrecisionNano))
 	if sels := opts.Selectors; len(sels) > 0 {
 		// Gather all labels for mapping fetch.
 		labels := make([]string, 0, len(sels))
@@ -669,13 +696,21 @@ func (q *Querier) Series(ctx context.Context, opts logstorage.SeriesOptions) (re
 	return result, nil
 }
 
-func (q *Querier) deduplicatedResource(table string, start, end time.Time) *chsql.SelectQuery {
+func (q *Querier) deduplicatedResource(ctx context.Context, table string, start, end time.Time) (*chsql.SelectQuery, error) {
 	// Select deduplicated resource by using GROUP BY, since DISTINCT is not optimized by Clickhouse.
 	//
 	// See https://github.com/ClickHouse/ClickHouse/issues/4670
-	return chsql.Select(table, chsql.Column(colResource, nil)).
-		GroupBy(chsql.Ident(colResource)).
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "build query")
+	}
+	query := chsql.Select(table, chsql.Column(colResource, nil))
+	if len(filters) > 0 {
+		query.Prewhere(filters...)
+	}
+	query.GroupBy(chsql.Ident(colResource)).
 		Where(chsql.InTimeRange("timestamp", start, end, proto.PrecisionNano))
+	return query, nil
 }
 
 func forEachColMap[K comparable, V any](c *proto.ColMap[K, V], row int, cb func(K, V)) {

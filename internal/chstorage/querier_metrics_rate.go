@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/ch-go/proto"
+	"github.com/go-faster/errors"
 	"github.com/oteldb/promql-engine/execution/model"
 	"github.com/oteldb/promql-engine/execution/telemetry"
 	"github.com/oteldb/promql-engine/extlabels"
@@ -380,6 +381,11 @@ func (p *promQuerier) queryRatePointsByHash(
 		return nil, nil
 	}
 
+	filters, err := decisionFilters(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "decision filters")
+	}
+
 	stepMS := step.Milliseconds()
 	if stepMS <= 0 {
 		stepMS = window.Milliseconds()
@@ -497,6 +503,10 @@ func (p *promQuerier) queryRatePointsByHash(
 			chsql.In(chsql.Ident("hash"), chsql.Ident(inputTable)),
 			chsql.NotEq(chsql.ReinterpretAsUInt64(chsql.Ident("value")), chsql.Integer(promStaleNaNBits)),
 		)
+
+	if len(filters) > 0 {
+		expanded.Prewhere(filters...)
+	}
 
 	if kind.isInstant() {
 		return p.queryInstantPointsByHash(ctx, span, table, inputTable, &inputData, expanded, timeseries, kind)
