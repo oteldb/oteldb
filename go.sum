@@ -645,6 +645,8 @@ github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.154.0
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.154.0/go.mod h1:iVnoGSVXYhnyuQ6TQNhBIHqtu7h0LTXbSyWy584eBjg=
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/sampling v0.154.0 h1:zZXI6LOoFaAhO2Nt7vwRx1km9kSB2r1qkY6rStbaaQo=
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/sampling v0.154.0/go.mod h1:sIxBOGnG8R4opXmwcBRgWzh5zzaZ9q6sTTFjZiOsf68=
+github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.154.0 h1:qjySjXFIxVWnlU6PrFToePpOFctpO7dl8WwrrOTR0bc=
+github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.154.0/go.mod h1:J5i92hjT8xMCBE5n7PLRhcnjbRga6nsewBMTg+eYzLA=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.154.0 h1:7efxhM3tWiZwX7j0Wg3Pc9Bu/Y5O9/WpnPOrRm8Ko88=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.154.0/go.mod h1:1QrSTFZyvcQS6HCn99mV2gWX61++op6xai4T8tJ1w84=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.154.0 h1:q1KaNN3bdu6U3H54IAFo9jcMH1xnj7kPru0wEl8sRnE=

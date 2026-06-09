@@ -51,6 +51,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v0.154.0
