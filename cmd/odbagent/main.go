@@ -13,8 +13,8 @@ import (
 	"go.opentelemetry.io/collector/confmap/provider/yamlprovider"
 	"go.opentelemetry.io/collector/otelcol"
 
-	_ "github.com/oteldb/oteldb/odbagent/odblogparser"
-	_ "github.com/oteldb/oteldb/odbagent/odbsafety"
+	_ "github.com/oteldb/oteldb/odblogparser"
+	_ "github.com/oteldb/oteldb/odbsafety"
 )
 
 var version = "dev"

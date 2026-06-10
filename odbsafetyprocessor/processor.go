@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/collector/processor"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/oteldb/oteldb/odbagent/internal/odbsafety"
+	"github.com/oteldb/oteldb/internal/odbsafety"
 )
 
 type logsProcessor struct {

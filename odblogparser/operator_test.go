@@ -14,7 +14,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/logparser"
 	"github.com/oteldb/oteldb/internal/otelstorage"
-	"github.com/oteldb/oteldb/odbagent/internal/stanzatest"
+	"github.com/oteldb/oteldb/internal/stanzatest"
 )
 
 func TestConfigBuild(t *testing.T) {

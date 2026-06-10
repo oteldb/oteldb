@@ -11,8 +11,8 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.uber.org/zap/zaptest"
 
-	safetyconfig "github.com/oteldb/oteldb/odbagent/internal/odbsafety"
-	"github.com/oteldb/oteldb/odbagent/internal/stanzatest"
+	safetyconfig "github.com/oteldb/oteldb/internal/odbsafety"
+	"github.com/oteldb/oteldb/internal/stanzatest"
 )
 
 func TestConfigBuild(t *testing.T) {

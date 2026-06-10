@@ -7,7 +7,7 @@
 Import the package for side-effect registration in a custom collector distribution:
 
 ```go
-import _ "github.com/oteldb/oteldb/odbagent/odbsafety"
+import _ "github.com/oteldb/oteldb/odbsafety"
 ```
 
 For an explicit registry, call `odbsafety.Register(registry)`.

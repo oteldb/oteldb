@@ -7,7 +7,7 @@
 Import the package for side-effect registration in a custom collector distribution:
 
 ```go
-import _ "github.com/oteldb/oteldb/odbagent/odblogparser"
+import _ "github.com/oteldb/oteldb/odblogparser"
 ```
 
 For an explicit registry, call `odblogparser.Register(registry)`.

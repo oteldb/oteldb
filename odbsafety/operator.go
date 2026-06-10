@@ -13,7 +13,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 	"go.uber.org/multierr"
 
-	safetyconfig "github.com/oteldb/oteldb/odbagent/internal/odbsafety"
+	safetyconfig "github.com/oteldb/oteldb/internal/odbsafety"
 )
 
 // Transformer is a stanza operator that applies oteldb log safety limiting.

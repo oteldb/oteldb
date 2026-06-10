@@ -6,7 +6,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 	"go.opentelemetry.io/collector/component"
 
-	safetyconfig "github.com/oteldb/oteldb/odbagent/internal/odbsafety"
+	safetyconfig "github.com/oteldb/oteldb/internal/odbsafety"
 )
 
 // Type is the stanza operator type registered by this package.

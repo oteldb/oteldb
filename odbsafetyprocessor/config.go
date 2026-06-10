@@ -4,7 +4,7 @@ package odbsafetyprocessor
 import (
 	"go.opentelemetry.io/collector/component"
 
-	"github.com/oteldb/oteldb/odbagent/internal/odbsafety"
+	"github.com/oteldb/oteldb/internal/odbsafety"
 )
 
 const (

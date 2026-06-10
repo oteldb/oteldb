@@ -37,7 +37,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/otelreceiver/oteldbexporter"
 	"github.com/oteldb/oteldb/internal/otelreceiver/prometheusremotewritereceiver"
-	"github.com/oteldb/oteldb/odbagent/odbsafetyprocessor"
+	"github.com/oteldb/oteldb/odbsafetyprocessor"
 )
 
 func receiverFactoryMap() (map[component.Type]receiver.Factory, error) {

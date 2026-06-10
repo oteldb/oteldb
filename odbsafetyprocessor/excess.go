@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 
-	"github.com/oteldb/oteldb/odbagent/internal/odbsafety"
+	"github.com/oteldb/oteldb/internal/odbsafety"
 )
 
 type processBatch struct {
