@@ -13,18 +13,19 @@ import (
 	"go.opentelemetry.io/collector/confmap/provider/yamlprovider"
 	"go.opentelemetry.io/collector/otelcol"
 
+	"github.com/oteldb/oteldb/internal/cliversion"
+
 	_ "github.com/oteldb/oteldb/odblogparser"
 	_ "github.com/oteldb/oteldb/odbsafety"
 )
 
-var version = "dev"
-
 func main() {
+	info, _ := cliversion.GetInfo("github.com/oteldb/oteldb")
 	settings := otelcol.CollectorSettings{
 		BuildInfo: component.BuildInfo{
 			Command:     "odbagent",
 			Description: "oteldb OpenTelemetry Collector agent distribution.",
-			Version:     version,
+			Version:     info.Version,
 		},
 		Factories: components,
 		ConfigProviderSettings: otelcol.ConfigProviderSettings{

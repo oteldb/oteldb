@@ -76,8 +76,6 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
     flags:
       - -trimpath
-    ldflags:
-      - -s -w -X main.version={{ .Version }}
 
   - id: docker-logql
     binary: "docker-logql{{ .Ext }}"
