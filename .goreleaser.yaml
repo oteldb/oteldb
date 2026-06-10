@@ -156,7 +156,7 @@ dockers_v2:
     labels:
       "io.artifacthub.package.readme-url": "https://github.com/oteldb/oteldb/blob/main/README.md"
       "io.artifacthub.package.logo-url": "https://avatars.githubusercontent.com/u/131437363"
-      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"}]'
+      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"},{"name":"tdakkota","email":"oteldb@tdakkota.dev"}]'
       "io.artifacthub.package.license": "Apache 2.0"
 
       "org.opencontainers.image.description": "OpenTelemetry signal storage"
@@ -187,7 +187,7 @@ dockers_v2:
     labels:
       "io.artifacthub.package.readme-url": "https://github.com/oteldb/oteldb/blob/main/README.md"
       "io.artifacthub.package.logo-url": "https://avatars.githubusercontent.com/u/131437363"
-      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"}]'
+      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"},{"name":"tdakkota","email":"oteldb@tdakkota.dev"}]'
       "io.artifacthub.package.license": "Apache 2.0"
 
       "org.opencontainers.image.description": "OpenTelemetry signal storage"
@@ -220,7 +220,7 @@ dockers_v2:
     labels:
       "io.artifacthub.package.readme-url": "https://github.com/oteldb/oteldb/blob/main/README.md"
       "io.artifacthub.package.logo-url": "https://avatars.githubusercontent.com/u/131437363"
-      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"}]'
+      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"},{"name":"tdakkota","email":"oteldb@tdakkota.dev"}]'
       "io.artifacthub.package.license": "Apache 2.0"
 
       "org.opencontainers.image.description": "OpenTelemetry signal storage"
@@ -253,7 +253,7 @@ dockers_v2:
     labels:
       "io.artifacthub.package.readme-url": "https://github.com/oteldb/oteldb/blob/main/README.md"
       "io.artifacthub.package.logo-url": "https://avatars.githubusercontent.com/u/131437363"
-      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"}]'
+      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"},{"name":"tdakkota","email":"oteldb@tdakkota.dev"}]'
       "io.artifacthub.package.license": "Apache 2.0"
 
       "org.opencontainers.image.description": "OpenTelemetry Collector agent for oteldb"
