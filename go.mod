@@ -40,22 +40,22 @@ require (
 	github.com/moby/moby/api v1.54.2
 	github.com/moby/moby/client v0.4.1
 	github.com/ogen-go/ogen v1.20.3
-	github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/connector/failoverconnector v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/connector/roundrobinconnector v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/connector/servicegraphconnector v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/connector/signaltometricsconnector v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/connector/sumconnector v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/extension/basicauthextension v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.153.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.153.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/connector/failoverconnector v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/connector/roundrobinconnector v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/connector/servicegraphconnector v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/connector/signaltometricsconnector v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/connector/sumconnector v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/extension/basicauthextension v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.154.0
 	github.com/oteldb/promql-engine v0.6.0-alpha.0
 	github.com/pierrec/lz4/v4 v4.1.27
 	github.com/prometheus/client_golang v1.23.2
@@ -181,7 +181,7 @@ require (
 	github.com/edsrzf/mmap-go v1.2.0 // indirect
 	github.com/efficientgo/core v1.0.0-rc.2 // indirect
 	github.com/elastic/go-grok v0.3.1 // indirect
-	github.com/elastic/lunes v0.2.0 // indirect
+	github.com/elastic/lunes v0.2.2 // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
@@ -244,13 +244,13 @@ require (
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/morikuni/aec v1.1.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/extension/internal/basicauth v0.153.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/extension/internal/credentialsfile v0.153.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal v0.153.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/internal/filter v0.153.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/internal/pdatautil v0.153.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.153.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/sampling v0.153.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/extension/internal/basicauth v0.154.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/extension/internal/credentialsfile v0.154.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal v0.154.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/filter v0.154.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/pdatautil v0.154.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.154.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/sampling v0.154.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pascaldekloe/name v1.0.1 // indirect
@@ -323,8 +323,8 @@ require (
 	go.opentelemetry.io/collector/pdata/testdata v0.154.0 // indirect
 	go.opentelemetry.io/collector/pdata/xpdata v0.154.0 // indirect
 	go.opentelemetry.io/collector/pipeline/xpipeline v0.154.0 // indirect
-	go.opentelemetry.io/collector/processor/processorhelper v0.153.0 // indirect
-	go.opentelemetry.io/collector/processor/processorhelper/xprocessorhelper v0.153.0 // indirect
+	go.opentelemetry.io/collector/processor/processorhelper v0.154.0 // indirect
+	go.opentelemetry.io/collector/processor/processorhelper/xprocessorhelper v0.154.0 // indirect
 	go.opentelemetry.io/collector/processor/processortest v0.154.0 // indirect
 	go.opentelemetry.io/collector/processor/xprocessor v0.154.0 // indirect
 	go.opentelemetry.io/collector/receiver/xreceiver v0.154.0 // indirect
