@@ -168,15 +168,139 @@ func TestLogsProcessorCompactKeyFields(t *testing.T) {
 	}
 }
 
+func TestLogsProcessorConsumeMode(t *testing.T) {
+	now := time.Unix(100, 0)
+	sink := &consumertest.LogsSink{}
+	p := newTestProcessor(t, &Config{
+		Config: odbsafety.Config{
+			MaxRatePerSecond: 1,
+			OnExcess:         odbsafety.ModeConsume,
+		},
+	}, sink, now)
+
+	require.NoError(t, p.ConsumeLogs(context.Background(), newLogs("a", "b", "c")))
+	requireBodies(t, sinkRecords(t, sink), []string{"a", "b", "c"})
+}
+
+func TestLogsProcessorCompactEscalatesToTruncate(t *testing.T) {
+	now := time.Unix(100, 0)
+	sink := &consumertest.LogsSink{}
+	p := newTestProcessor(t, &Config{
+		Config: odbsafety.Config{
+			MaxRatePerSecond:  1,
+			OnExcess:          odbsafety.ModeCompact,
+			SampleRate:        0,
+			CompactWindow:     30 * time.Second,
+			CompactThreshold:  2,
+			CompactMaxBuckets: 100,
+			TruncateThreshold: 3,
+		},
+	}, sink, now)
+
+	// "same" ×5: entry 1 passes; entries 2-5 are excess.
+	// compact handler: count=1 passes, count=2 compacts, count=3 compacts, count=4 truncates.
+	require.NoError(t, p.ConsumeLogs(context.Background(), newLogs("same", "same", "same", "same", "same")))
+	records := sinkRecords(t, sink)
+	requireBodies(t, records, []string{"same", "same", "same", "<output is truncated>"})
+	collapsed, ok := records[2].Attributes().Get("oteldb.collapsed_count")
+	require.True(t, ok)
+	require.Equal(t, int64(2), collapsed.Int())
+	truncated, ok := records[3].Attributes().Get("oteldb.truncated_count")
+	require.True(t, ok)
+	require.Equal(t, int64(1), truncated.Int())
+}
+
+func TestLogsProcessorCompactLRUOverflow(t *testing.T) {
+	now := time.Unix(100, 0)
+	sink := &consumertest.LogsSink{}
+	p := newTestProcessor(t, &Config{
+		Config: odbsafety.Config{
+			MaxRatePerSecond:  1,
+			OnExcess:          odbsafety.ModeCompact,
+			SampleRate:        0, // drop on LRU overflow
+			CompactWindow:     30 * time.Second,
+			CompactThreshold:  100, // high, so compact never fires
+			CompactMaxBuckets: 2,
+		},
+	}, sink, now)
+
+	// "a" passes (within limit); "x","y" are excess but count<threshold → pass;
+	// "z" overflows LRU (maxBuckets=2) → degrades to sample (rate=0) → removed.
+	require.NoError(t, p.ConsumeLogs(context.Background(), newLogs("a", "x", "y", "z")))
+	requireBodies(t, sinkRecords(t, sink), []string{"a", "x", "y"})
+}
+
+func BenchmarkLogsProcessor(b *testing.B) {
+	now := time.Unix(100, 0)
+	benchmarks := []struct {
+		name string
+		cfg  odbsafety.Config
+	}{
+		{
+			name: "disabled",
+			cfg:  odbsafety.Config{},
+		},
+		{
+			name: "drop-excess",
+			cfg: odbsafety.Config{
+				MaxRatePerSecond: 1,
+				OnExcess:         odbsafety.ModeDrop,
+			},
+		},
+		{
+			name: "compact-excess",
+			cfg: odbsafety.Config{
+				MaxRatePerSecond:  1,
+				OnExcess:          odbsafety.ModeCompact,
+				SampleRate:        0,
+				CompactWindow:     30 * time.Second,
+				CompactThreshold:  2,
+				CompactMaxBuckets: 100,
+			},
+		},
+		{
+			name: "truncate-excess",
+			cfg: odbsafety.Config{
+				MaxRatePerSecond: 1,
+				OnExcess:         odbsafety.ModeTruncate,
+				CompactWindow:    30 * time.Second,
+			},
+		},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			b.ReportAllocs()
+			sink := &consumertest.LogsSink{}
+			p := newLogsProcessor(processor.Settings{
+				TelemetrySettings: componentTelemetrySettings(),
+			}, &Config{Config: bm.cfg}, sink)
+			p.now = func() time.Time { return now }
+
+			ctx := context.Background()
+			for b.Loop() {
+				if bm.name != "disabled" {
+					p.windowStart = now
+					p.windowCount = p.maxRatePerSecond
+				}
+				ld := newLogs("same")
+				if err := p.ConsumeLogs(ctx, ld); err != nil {
+					b.Fatal(err)
+				}
+				sink.Reset()
+			}
+		})
+	}
+}
+
 func newTestProcessor(t *testing.T, cfg *Config, sink *consumertest.LogsSink, now time.Time) *logsProcessor {
 	t.Helper()
 	if cfg.OnExcess == "" {
 		cfg.OnExcess = odbsafety.ModeConsume
 	}
-	p, err := newLogsProcessor(processor.Settings{
+	p := newLogsProcessor(processor.Settings{
 		TelemetrySettings: componentTelemetrySettings(),
 	}, cfg, sink)
-	require.NoError(t, err)
 	p.now = func() time.Time { return now }
 	return p
 }

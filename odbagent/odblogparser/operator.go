@@ -77,10 +77,7 @@ func (p *Parser) parseEntry(ent *entry.Entry) error {
 	}
 
 	record := recordFromEntry(ent, data)
-	parser, err := p.selectParser(data)
-	if err != nil {
-		return err
-	}
+	parser := p.selectParser(data)
 	if parser == nil {
 		return nil
 	}
@@ -96,16 +93,16 @@ func (p *Parser) parseEntry(ent *entry.Entry) error {
 	return applyRecord(ent, p.ParseTo, record)
 }
 
-func (p *Parser) selectParser(data string) (logparser.Parser, error) {
+func (p *Parser) selectParser(data string) logparser.Parser {
 	if p.format != nil {
-		return p.format, nil
+		return p.format
 	}
 	for _, parser := range p.detectFormats {
 		if parser.Detect(data) {
-			return parser, nil
+			return parser
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 func stringValue(v any) (string, bool) {
@@ -162,11 +159,12 @@ func applyRecord(ent *entry.Entry, parseTo entry.Field, record logparser.Record)
 		mergeAttrsIntoMap(&ent.Resource, record.ResourceAttrs)
 	}
 
-	if isRootAttributesField(parseTo) {
+	switch {
+	case isRootAttributesField(parseTo):
 		mergeAttrsIntoMap(&ent.Attributes, record.Attrs)
-	} else if isRootResourceField(parseTo) {
+	case isRootResourceField(parseTo):
 		mergeAttrsIntoMap(&ent.Resource, record.Attrs)
-	} else {
+	default:
 		if err := ent.Set(parseTo, mapFromAttrs(record.Attrs)); err != nil {
 			return errors.Wrap(err, "set parse_to")
 		}
@@ -260,14 +258,6 @@ func flagsFromBytes(data []byte) plog.LogRecordFlags {
 		return 0
 	}
 	return plog.LogRecordFlags(data[0])
-}
-
-func attrsFromMap(src map[string]any) otelstorage.Attrs {
-	attrs := otelstorage.NewAttrs()
-	for k, v := range src {
-		setValue(attrs.AsMap().PutEmpty(k), v)
-	}
-	return attrs
 }
 
 func setValue(dst pcommon.Value, src any) {

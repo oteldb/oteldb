@@ -100,6 +100,79 @@ func TestTransformerCompactExcess(t *testing.T) {
 	require.Equal(t, int64(2), got[2].Attributes["oteldb.collapsed_count"])
 }
 
+func TestTransformerConsumeMode(t *testing.T) {
+	now := time.Unix(100, 0).UTC()
+	sink := stanzatest.NewSink()
+	transformer := newTestTransformer(t, &Config{
+		Config: safetyconfig.Config{
+			MaxRatePerSecond: 1,
+			OnExcess:         safetyconfig.ModeConsume,
+		},
+	}, sink, now)
+
+	require.NoError(t, transformer.ProcessBatch(context.Background(), entries("a", "b", "c")))
+	requireBodies(t, sink.Entries(), []string{"a", "b", "c"})
+}
+
+func TestTransformerSampleExcess(t *testing.T) {
+	now := time.Unix(100, 0).UTC()
+	sink := stanzatest.NewSink()
+	transformer := newTestTransformer(t, &Config{
+		Config: safetyconfig.Config{
+			MaxRatePerSecond: 2,
+			OnExcess:         safetyconfig.ModeSample,
+			SampleRate:       0, // drop all excess
+		},
+	}, sink, now)
+
+	require.NoError(t, transformer.ProcessBatch(context.Background(), entries("a", "b", "c", "d")))
+	requireBodies(t, sink.Entries(), []string{"a", "b"})
+}
+
+func TestTransformerCompactEscalatesToTruncate(t *testing.T) {
+	now := time.Unix(100, 0).UTC()
+	sink := stanzatest.NewSink()
+	transformer := newTestTransformer(t, &Config{
+		Config: safetyconfig.Config{
+			MaxRatePerSecond:  1,
+			OnExcess:          safetyconfig.ModeCompact,
+			SampleRate:        0,
+			CompactWindow:     30 * time.Second,
+			CompactThreshold:  2,
+			CompactMaxBuckets: 100,
+			TruncateThreshold: 3,
+		},
+	}, sink, now)
+
+	// "same" ×5: entry 1 passes; entries 2-5 are excess.
+	// compact handler: count=1 passes, count=2 compacts, count=3 compacts, count=4 truncates.
+	require.NoError(t, transformer.ProcessBatch(context.Background(), entries("same", "same", "same", "same", "same")))
+	got := sink.Entries()
+	requireBodies(t, got, []string{"same", "same", "same", "<output is truncated>"})
+	require.Equal(t, int64(2), got[2].Attributes["oteldb.collapsed_count"])
+	require.Equal(t, int64(1), got[3].Attributes["oteldb.truncated_count"])
+}
+
+func TestTransformerCompactLRUOverflow(t *testing.T) {
+	now := time.Unix(100, 0).UTC()
+	sink := stanzatest.NewSink()
+	transformer := newTestTransformer(t, &Config{
+		Config: safetyconfig.Config{
+			MaxRatePerSecond:  1,
+			OnExcess:          safetyconfig.ModeCompact,
+			SampleRate:        0, // drop on LRU overflow
+			CompactWindow:     30 * time.Second,
+			CompactThreshold:  100, // high, so compact never fires
+			CompactMaxBuckets: 2,
+		},
+	}, sink, now)
+
+	// "a" passes (within limit); "x","y" are excess but count<threshold → pass;
+	// "z" overflows LRU (maxBuckets=2) → degrades to sample (rate=0) → dropped.
+	require.NoError(t, transformer.ProcessBatch(context.Background(), entries("a", "x", "y", "z")))
+	requireBodies(t, sink.Entries(), []string{"a", "x", "y"})
+}
+
 func newTestTransformer(t *testing.T, cfg *Config, sink operator.Operator, now time.Time) *Transformer {
 	t.Helper()
 	cfg.TransformerConfig = NewConfig().TransformerConfig

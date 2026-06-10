@@ -26,9 +26,5 @@ func createLogsProcessor(
 	next consumer.Logs,
 ) (processor.Logs, error) {
 	c := cfg.(*Config)
-	p, err := newLogsProcessor(settings, c, next)
-	if err != nil {
-		return nil, err
-	}
-	return p, nil
+	return newLogsProcessor(settings, c, next), nil
 }

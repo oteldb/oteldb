@@ -29,7 +29,7 @@ type logsProcessor struct {
 
 var _ processor.Logs = (*logsProcessor)(nil)
 
-func newLogsProcessor(settings processor.Settings, cfg *Config, next consumer.Logs) (*logsProcessor, error) {
+func newLogsProcessor(settings processor.Settings, cfg *Config, next consumer.Logs) *logsProcessor {
 	if settings.MeterProvider == nil {
 		settings.MeterProvider = metricnoop.NewMeterProvider()
 	}
@@ -38,13 +38,13 @@ func newLogsProcessor(settings processor.Settings, cfg *Config, next consumer.Lo
 		next:             next,
 		maxRatePerSecond: cfg.MaxRatePerSecond,
 		redactFields:     cfg.RedactFields,
-		metrics:          newSafetyMetrics(meter, cfg.Workload, cfg.Namespace),
+		metrics:          newSafetyMetrics(meter, cfg.Workload, cfg.Namespace, cfg.CompactMaxBuckets),
 		now:              time.Now,
 	}
 
 	sampler := func() bool { return rand.Float64() < cfg.SampleRate } //#nosec G404
 	p.handler = odbsafety.NewHandler[plog.LogRecord](cfg.Config, sampler, p.metrics)
-	return p, nil
+	return p
 }
 
 func (p *logsProcessor) Start(context.Context, component.Host) error { return nil }
@@ -79,7 +79,9 @@ func (p *logsProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 		return rl.ScopeLogs().Len() == 0
 	})
 
-	return p.next.ConsumeLogs(ctx, ld)
+	err := p.next.ConsumeLogs(ctx, ld)
+	p.metrics.RecordBucketPressure(ctx, p.handler.BucketCount())
+	return err
 }
 
 func isSafetyRecord(record plog.LogRecord) bool {

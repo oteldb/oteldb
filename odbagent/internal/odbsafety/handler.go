@@ -87,6 +87,14 @@ func (h *Handler[R]) Enabled() bool {
 	return h != nil && h.mode != "" && h.mode != ModeConsume
 }
 
+// BucketCount returns the number of active compact buckets.
+func (h *Handler[R]) BucketCount() int {
+	if h == nil {
+		return 0
+	}
+	return len(h.buckets)
+}
+
 // Handle applies excess handling. It returns true when the original record must be dropped.
 func (h *Handler[R]) Handle(ctx context.Context, recorder Recorder[R], record R) bool {
 	if !h.Enabled() {
