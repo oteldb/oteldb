@@ -8,6 +8,7 @@ env:
 
 vars:
   DOCKER: '{{default "docker" .DOCKER}}'
+  VERSION: '{{default "dev" .VERSION}}'
 
 tasks:
   setup:
@@ -24,6 +25,16 @@ tasks:
     cmds:
       - go build -o ./oteldb ./cmd/oteldb
 
+  build:odbagent:
+    desc: Build the odbagent binary
+    sources:
+      - ./**/*.go
+    generates:
+      - ./bin/odbagent
+    cmds:
+      - mkdir -p ./bin
+      - go build -ldflags "-X main.version={{.VERSION}}" -o ./bin/odbagent ./cmd/odbagent
+
   build-deploy:
     desc: Build binaries for deploy images
     env:
@@ -35,6 +46,7 @@ tasks:
       - go build -trimpath -buildvcs=false -v ./cmd/odbmigrate
       - go build -trimpath -buildvcs=false -v ./cmd/otelproxy
       - go build -trimpath -buildvcs=false -v ./cmd/chotel
+      - go build -trimpath -buildvcs=false -v -ldflags "-X main.version={{.VERSION}}" -v ./cmd/odbagent
 
   test:
     desc: Run tests

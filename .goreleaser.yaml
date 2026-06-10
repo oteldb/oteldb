@@ -62,6 +62,23 @@ builds:
     flags:
       - -trimpath
 
+  - id: odbagent
+    binary: "odbagent{{ .Ext }}"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - riscv64
+    main: ./cmd/odbagent
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
   - id: docker-logql
     binary: "docker-logql{{ .Ext }}"
     env:
@@ -280,6 +297,7 @@ nfpms:
       - chotel
       - odbbackup
       - odbrestore
+      - odbagent
     homepage: https://github.com/oteldb/oteldb
     maintainer: Aleksandr Razumov <ernado@go-faster.org>
     description: OpenTelemetry signal storage
