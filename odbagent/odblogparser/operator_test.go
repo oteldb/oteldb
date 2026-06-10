@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/plog"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 
 	"github.com/oteldb/oteldb/internal/logparser"
 	"github.com/oteldb/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/odbagent/internal/stanzatest"
 )
 
 func TestConfigBuild(t *testing.T) {
@@ -48,16 +48,16 @@ func TestParserProcess(t *testing.T) {
 	parser, err := cfg.Build(testTelemetrySettings(t))
 	require.NoError(t, err)
 
-	sink := &sinkOperator{}
+	sink := stanzatest.NewSink()
 	require.NoError(t, parser.SetOutputs([]operator.Operator{sink}))
 
 	ent := entry.New()
 	ent.Body = `{"level":"warn","msg":"hello","trace_id":"00000000000000000000000000000001","answer":42}`
 
 	require.NoError(t, parser.Process(context.Background(), ent))
-	require.Len(t, sink.entries, 1)
 
-	got := sink.entries[0]
+	require.Len(t, sink.Entries(), 1)
+	got := sink.Entries()[0]
 	require.Equal(t, "hello", got.Body)
 	require.Equal(t, "warn", got.SeverityText)
 	require.Equal(t, entry.Warn, got.Severity)
@@ -73,17 +73,18 @@ func TestParserProcessDetectDisabled(t *testing.T) {
 	parser, err := cfg.Build(testTelemetrySettings(t))
 	require.NoError(t, err)
 
-	sink := &sinkOperator{}
+	sink := stanzatest.NewSink()
 	require.NoError(t, parser.SetOutputs([]operator.Operator{sink}))
 
 	ent := entry.New()
 	ent.Body = `{"level":"warn","msg":"hello"}`
 
 	require.NoError(t, parser.Process(context.Background(), ent))
-	require.Len(t, sink.entries, 1)
-	require.Equal(t, `{"level":"warn","msg":"hello"}`, sink.entries[0].Body)
-	require.Empty(t, sink.entries[0].Attributes)
-	require.Equal(t, entry.Default, sink.entries[0].Severity)
+	require.Len(t, sink.Entries(), 1)
+	got := sink.Entries()[0]
+	require.Equal(t, `{"level":"warn","msg":"hello"}`, got.Body)
+	require.Empty(t, got.Attributes)
+	require.Equal(t, entry.Default, got.Severity)
 }
 
 func TestSeverityMapping(t *testing.T) {
@@ -197,7 +198,7 @@ func BenchmarkParserProcess(b *testing.B) {
 	parser, err := cfg.Build(testTelemetrySettings(b))
 	require.NoError(b, err)
 
-	sink := &sinkOperator{}
+	sink := stanzatest.NewSink()
 	require.NoError(b, parser.SetOutputs([]operator.Operator{sink}))
 
 	ctx := context.Background()
@@ -208,6 +209,7 @@ func BenchmarkParserProcess(b *testing.B) {
 		if err := parser.Process(ctx, ent); err != nil {
 			b.Fatal(err)
 		}
+		sink.Reset()
 	}
 }
 
@@ -233,39 +235,3 @@ func testTelemetrySettings(tb testing.TB) component.TelemetrySettings {
 	tb.Helper()
 	return component.TelemetrySettings{Logger: zaptest.NewLogger(tb)}
 }
-
-type sinkOperator struct {
-	entries []*entry.Entry
-}
-
-func (s *sinkOperator) ID() string { return "sink" }
-
-func (s *sinkOperator) Type() string { return "sink" }
-
-func (s *sinkOperator) Start(operator.Persister) error { return nil }
-
-func (s *sinkOperator) Stop() error { return nil }
-
-func (s *sinkOperator) CanOutput() bool { return false }
-
-func (s *sinkOperator) Outputs() []operator.Operator { return nil }
-
-func (s *sinkOperator) GetOutputIDs() []string { return nil }
-
-func (s *sinkOperator) SetOutputs([]operator.Operator) error { return nil }
-
-func (s *sinkOperator) SetOutputIDs([]string) {}
-
-func (s *sinkOperator) CanProcess() bool { return true }
-
-func (s *sinkOperator) ProcessBatch(_ context.Context, entries []*entry.Entry) error {
-	s.entries = append(s.entries, entries...)
-	return nil
-}
-
-func (s *sinkOperator) Process(_ context.Context, ent *entry.Entry) error {
-	s.entries = append(s.entries, ent)
-	return nil
-}
-
-func (s *sinkOperator) Logger() *zap.Logger { return zap.NewNop() }
