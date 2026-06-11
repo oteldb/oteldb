@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -73,9 +74,21 @@ func (k rateKind) divideBySeconds() bool {
 	return k == rateKindRate || k == rateKindIRate
 }
 
+// rateCacheFn returns the Fn string used as a cache key for a rate-family query.
+// It encodes the kind, window, and offset so that rate(x[5m]) and rate(x[1h]) with
+// the same step do not share a cache entry.
+func rateCacheFn(kind rateKind, window, offset time.Duration) string {
+	return fmt.Sprintf("%s/w=%d/o=%d", kind.String(), window.Milliseconds(), offset.Milliseconds())
+}
+
 // funcNameToRateKind maps a PromQL function name to a rateKind.
 // Returns (kind, true) if the function is supported for rate offloading.
+// The name may carry a "/w=.../o=..." suffix added by queryRatePointsCached;
+// that suffix is stripped before the lookup.
 func funcNameToRateKind(name string) (rateKind, bool) {
+	if i := strings.IndexByte(name, '/'); i >= 0 {
+		name = name[:i]
+	}
 	switch name {
 	case "rate":
 		return rateKindRate, true
@@ -327,8 +340,10 @@ func (p *promQuerier) queryRatePointsCached(
 	fetch := func(ctx context.Context, fetchStart, fetchEnd time.Time) (map[[16]byte]*series[pointData], error) {
 		return p.queryRatePointsByHashFunc(ctx, fetchStart, fetchEnd, step, window, offset, timeseries, kind)
 	}
-	// Use kind.String() as the cache key to prevent collisions between rate/increase/delta.
-	resultMap, err := p.fetchAndMergeCache(ctx, span, start, end, step, kind.String(), timeseries, fetch)
+	// Include window and offset in the cache key so that rate(x[5m]) and
+	// rate(x[1h]) with the same step do not share a cache entry.
+	rateFn := rateCacheFn(kind, window, offset)
+	resultMap, err := p.fetchAndMergeCache(ctx, span, start, end, step, rateFn, timeseries, fetch)
 	if err != nil {
 		return nil, err
 	}

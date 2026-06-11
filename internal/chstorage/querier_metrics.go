@@ -675,6 +675,27 @@ func (p *promQuerier) upsertCache(ctx context.Context, hash [16]byte, step time.
 			return
 		}
 		entry = metricscache.NewEntry()
+	} else {
+		// If the new fetch range does not adjoin the cached range there is an
+		// unfetched gap.  Reusing the existing entry would cause MarkFetched to
+		// extend the watermark over that gap, making the cache falsely claim
+		// coverage for data it never retrieved.  Start fresh so that the next
+		// query for the full range is correctly treated as a miss.
+		//
+		// Two gap directions:
+		//   forward: new fetch starts well after the cached maximum
+		//            (gap in [oldMaxTS, fetchFrom))
+		//   backward: new fetch ends well before the cached minimum
+		//             (gap in [untilMs, oldMinTS))
+		oldMinTS, oldMaxTS := entry.Watermarks()
+		if oldMaxTS != math.MinInt64 {
+			stepMs := step.Milliseconds()
+			forwardGap := fetchFrom > nextAlignedFetch(oldMaxTS, stepMs)
+			backwardGap := untilMs < oldMinTS-max(1, stepMs)
+			if forwardGap || backwardGap {
+				entry = metricscache.NewEntry()
+			}
+		}
 	}
 
 	entry.Append(ts, vals, untilMs)
@@ -707,6 +728,17 @@ type cacheStats struct {
 }
 
 const uncachedWatermark = -1
+
+// nextAlignedFetch returns the earliest timestamp to fetch after a cache watermark.
+// For step-aligned queries (stepMs > 0) it rounds up to the next step boundary so
+// that the first fetched point is never shifted by 1 ms relative to the Prometheus
+// step grid.  For raw-point queries (stepMs == 0) it returns watermark+1.
+func nextAlignedFetch(watermarkMs, stepMs int64) int64 {
+	if stepMs <= 0 {
+		return watermarkMs + 1
+	}
+	return (watermarkMs/stepMs + 1) * stepMs
+}
 
 func computeFetchRange(
 	ctx context.Context,
@@ -751,8 +783,9 @@ func computeFetchRange(
 	if hasAnyMiss || stats.hits == 0 {
 		globalFetchFrom = start
 	} else {
-		// All series are hits. Fetch from the minimum watermark + 1.
-		globalFetchFrom = minHitTS + 1
+		// All series are hits. Fetch from the next step boundary after minHitTS so
+		// that step-aligned queries don't produce a 1ms-shifted first point.
+		globalFetchFrom = nextAlignedFetch(minHitTS, stepMs)
 	}
 
 	opt := cacheTypeOpt(fn, step)

@@ -496,6 +496,60 @@ func TestQueryPointsCached_BigQuery(t *testing.T) {
 	require.False(t, ok, "uncached hash2 must NOT be inserted during a big query")
 }
 
+// TestQueryPointsCached_DisjointGap is a regression test for the watermark gap bug:
+// if a "partial hit" causes upsertCache to be called with fetchFrom > entry.maxTS, the
+// old entry must be reset rather than extended.  Before the fix, MarkFetched would
+// stretch maxTS over the unfetched gap, making a subsequent query falsely appear as a
+// TotalHit and silently omit the missing range from the results.
+func TestQueryPointsCached_DisjointGap(t *testing.T) {
+	epoch := testEpoch
+	lb := labels.FromStrings("__name__", "m")
+	hash := labelHash(lb.Hash())
+	timeseries := map[[16]byte]labels.Labels{hash: lb}
+	stepMs := int64(60_000)
+
+	// linearMock returns 1 point per minute starting at s.
+	linearMock := func(_ context.Context, _ string, s, e time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+		ser := &series[pointData]{labels: lb}
+		for t := s.UnixMilli(); t <= e.UnixMilli(); t += stepMs {
+			ser.ts = append(ser.ts, t)
+			ser.data.values = append(ser.data.values, 1.0)
+		}
+		return map[[16]byte]*series[pointData]{hash: ser}, nil
+	}
+
+	mc := newTestCache(t, MetricsCacheOptions{MaxBytes: 1024 * 1024, SafetyLag: time.Minute})
+	p := &promQuerier{
+		metricsCache: mc,
+		tracer:       nooptrace.NewTracerProvider().Tracer("test"),
+		queryPointsFunc: func(ctx context.Context, table string, s, e time.Time, ts map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+			return linearMock(ctx, table, s, e, ts)
+		},
+	}
+	ctx := context.Background()
+
+	// Step 1: populate cache for [epoch, epoch+5min].
+	_, err := p.queryPointsCached(ctx, "points", epoch, epoch.Add(5*time.Minute), timeseries)
+	require.NoError(t, err)
+
+	// Step 2: query a disjoint newer range [epoch+10min, epoch+15min].
+	// This is a partial hit (entryMinTS <= start but entryMaxTS < start), so it
+	// fetches from epoch+10min and calls upsertCache with fetchFrom > oldMaxTS.
+	_, err = p.queryPointsCached(ctx, "points", epoch.Add(10*time.Minute), epoch.Add(15*time.Minute), timeseries)
+	require.NoError(t, err)
+
+	// Step 3: query the full range [epoch, epoch+15min].
+	// Before the fix the cache entry would falsely claim watermarks [epoch, epoch+14min]
+	// (the gap [epoch+5min, epoch+10min] was never fetched), resulting in only the
+	// last minute being re-fetched and data for the 5-minute gap being silently missing.
+	// After the fix the entry is reset on the disjoint upsert, so this query is treated
+	// as a miss and the full 16 minutes are fetched from ClickHouse.
+	pts, err := p.queryPointsCached(ctx, "points", epoch, epoch.Add(15*time.Minute), timeseries)
+	require.NoError(t, err)
+	require.Len(t, pts, 1)
+	require.Len(t, pts[0].ts, 16, "all 16 minutes must be present — no gap in [epoch+5min, epoch+10min]")
+}
+
 // TestQuerySampledPointsCached is a 4×4 combinatorial test: every cache scenario
 // is exercised against every grouping configuration.
 //
@@ -834,13 +888,18 @@ func TestQueryRatePointsCached(t *testing.T) {
 		return nil, errors.New("unexpected ClickHouse query")
 	}
 
+	// rateCacheKey returns the cache key used by queryRatePointsCached.
+	rateCacheKey := func(kind rateKind, step, window, offset time.Duration) metricscache.Key {
+		return metricscache.Key{Hash: hash, Step: step.Milliseconds(), Fn: rateCacheFn(kind, window, offset)}
+	}
+
 	// populateRate fills the cache for the series with step-aligned rate values.
 	populateRate := func(mc *metricscache.Cache, start, end time.Time) {
 		e := metricscache.NewEntry()
 		for t := start.UnixMilli(); t <= end.UnixMilli(); t += stepMs {
 			e.Append([]int64{t}, []float64{1.0}, end.UnixMilli())
 		}
-		mc.Set(metricscache.Key{Hash: hash, Step: stepMs, Fn: "rate"}, e)
+		mc.Set(rateCacheKey(rateKindRate, step, window, 0), e)
 	}
 
 	for _, tc := range []struct {
@@ -929,6 +988,121 @@ func TestQueryRatePointsCached(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestQueryRatePointsCached_WindowOffsetIsolation(t *testing.T) {
+	lb := labels.FromStrings("__name__", "m")
+	hash := labelHash(lb.Hash())
+	timeseries := map[[16]byte]labels.Labels{hash: lb}
+
+	epoch := testEpoch
+	start := epoch
+	end := epoch.Add(10 * time.Minute)
+	step := time.Minute
+
+	for _, tc := range []struct {
+		name       string
+		firstWin   time.Duration
+		firstOff   time.Duration
+		secondWin  time.Duration
+		secondOff  time.Duration
+		firstValue float64
+		wantValue  float64
+	}{
+		{
+			name:       "Window",
+			firstWin:   5 * time.Minute,
+			secondWin:  10 * time.Minute,
+			firstValue: 5,
+			wantValue:  10,
+		},
+		{
+			name:       "Offset",
+			firstWin:   5 * time.Minute,
+			secondWin:  5 * time.Minute,
+			secondOff:  2 * time.Minute,
+			firstValue: 5,
+			wantValue:  7,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mc := newTestCache(t, MetricsCacheOptions{MaxBytes: 1024 * 1024, SafetyLag: time.Minute})
+			callCount := 0
+			p := &promQuerier{
+				metricsCache: mc,
+				tracer:       nooptrace.NewTracerProvider().Tracer("test"),
+				queryRatePointsByHashFunc: func(_ context.Context, s, e time.Time, step, window, offset time.Duration, _ map[[16]byte]labels.Labels, _ rateKind) (map[[16]byte]*series[pointData], error) {
+					callCount++
+					ser := &series[pointData]{labels: lb}
+					value := float64(window/time.Minute + offset/time.Minute)
+					for ts := s.UnixMilli(); ts <= e.UnixMilli(); ts += step.Milliseconds() {
+						ser.ts = append(ser.ts, ts)
+						ser.data.values = append(ser.data.values, value)
+					}
+					return map[[16]byte]*series[pointData]{hash: ser}, nil
+				},
+			}
+
+			pts, err := p.queryRatePointsCached(context.Background(), start, end, step, tc.firstWin, tc.firstOff, timeseries, rateKindRate)
+			require.NoError(t, err)
+			require.Equal(t, 1, callCount)
+			require.Len(t, pts, 1)
+			require.NotEmpty(t, pts[0].data.values)
+			require.Equal(t, tc.firstValue, pts[0].data.values[0])
+
+			callCount = 0
+			pts, err = p.queryRatePointsCached(context.Background(), start, end, step, tc.secondWin, tc.secondOff, timeseries, rateKindRate)
+			require.NoError(t, err)
+			require.Equal(t, 1, callCount, "different rate window/offset must not hit the previous cache entry")
+			require.Len(t, pts, 1)
+			require.NotEmpty(t, pts[0].data.values)
+			require.Equal(t, tc.wantValue, pts[0].data.values[0])
+
+			// Same parameters should now be served from the second cache entry.
+			callCount = 0
+			_, err = p.queryRatePointsCached(context.Background(), start, end, step, tc.secondWin, tc.secondOff, timeseries, rateKindRate)
+			require.NoError(t, err)
+			require.Equal(t, 0, callCount)
+		})
+	}
+}
+
+func TestQueryRatePointsCached_PartialHitKeepsStepAlignment(t *testing.T) {
+	lb := labels.FromStrings("__name__", "m")
+	hash := labelHash(lb.Hash())
+	timeseries := map[[16]byte]labels.Labels{hash: lb}
+
+	epoch := testEpoch
+	step := time.Minute
+	stepMs := step.Milliseconds()
+	window := 5 * time.Minute
+
+	mc := newTestCache(t, MetricsCacheOptions{MaxBytes: 1024 * 1024, SafetyLag: time.Minute})
+	p := &promQuerier{
+		metricsCache: mc,
+		tracer:       nooptrace.NewTracerProvider().Tracer("test"),
+		queryRatePointsByHashFunc: func(_ context.Context, s, e time.Time, step, _, _ time.Duration, _ map[[16]byte]labels.Labels, _ rateKind) (map[[16]byte]*series[pointData], error) {
+			ser := &series[pointData]{labels: lb}
+			for ts := s.UnixMilli(); ts <= e.UnixMilli(); ts += step.Milliseconds() {
+				ser.ts = append(ser.ts, ts)
+				ser.data.values = append(ser.data.values, 1)
+			}
+			return map[[16]byte]*series[pointData]{hash: ser}, nil
+		},
+	}
+
+	_, err := p.queryRatePointsCached(context.Background(), epoch, epoch.Add(5*time.Minute), step, window, 0, timeseries, rateKindRate)
+	require.NoError(t, err)
+
+	pts, err := p.queryRatePointsCached(context.Background(), epoch, epoch.Add(10*time.Minute), step, window, 0, timeseries, rateKindRate)
+	require.NoError(t, err)
+	require.Len(t, pts, 1)
+
+	wantTS := make([]int64, 0, 11)
+	for i := range 11 {
+		wantTS = append(wantTS, epoch.UnixMilli()+int64(i)*stepMs)
+	}
+	require.Equal(t, wantTS, pts[0].ts)
 }
 
 func labelHash(v uint64) (r [16]byte) {
@@ -1196,4 +1370,102 @@ func TestMetricsCache_Metrics(t *testing.T) {
 	require.True(t, found["chstorage.metrics_cache.evicted_count"])
 	require.True(t, found["chstorage.metrics_cache.evicted_cost"])
 	require.True(t, found["chstorage.metrics_cache.rejected_sets"])
+}
+
+func TestQueryPointsCached_GapRegression(t *testing.T) {
+	mc := newTestCache(t, MetricsCacheOptions{MaxBytes: 1024 * 1024, SafetyLag: 0})
+
+	lb := labels.FromStrings("__name__", "gap_test")
+	hash := labelHash(lb.Hash())
+	timeseries := map[[16]byte]labels.Labels{hash: lb}
+	epoch := testEpoch
+	stepMs := int64(60_000) // 1 minute per point
+
+	callCount := 0
+	p := &promQuerier{
+		metricsCache: mc,
+		tracer:       nooptrace.NewTracerProvider().Tracer("test"),
+		queryPointsFunc: func(_ context.Context, _ string, s, e time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+			callCount++
+			ser := &series[pointData]{labels: lb}
+			for tstamp := s.UnixMilli(); tstamp <= e.UnixMilli(); tstamp += stepMs {
+				ser.ts = append(ser.ts, tstamp)
+				ser.data.values = append(ser.data.values, 1.0)
+			}
+			return map[[16]byte]*series[pointData]{hash: ser}, nil
+		},
+	}
+
+	ctx := context.Background()
+
+	// 1. Initial query: [epoch - 24h, epoch]
+	start1 := epoch.Add(-24 * time.Hour)
+	end1 := epoch
+	pts, err := p.queryPointsCached(ctx, "points", start1, end1, timeseries)
+	require.NoError(t, err)
+	require.Len(t, pts[0].ts, 1441) // 24h * 60m + 1
+	require.Equal(t, 1, callCount)
+
+	// 2. Disjoint query: User waits 30m, then queries [epoch + 25m, epoch + 30m]
+	start2 := epoch.Add(25 * time.Minute)
+	end2 := epoch.Add(30 * time.Minute)
+	pts, err = p.queryPointsCached(ctx, "points", start2, end2, timeseries)
+	require.NoError(t, err)
+	require.Len(t, pts[0].ts, 6) // 5 minutes = 6 points
+	require.Equal(t, 2, callCount)
+
+	// 3. The gap query: User zooms back out to see [epoch, epoch + 30m]
+	// In the buggy code, the cache falsely believes it has everything up to epoch+30m,
+	// so it serves a cache hit but completely misses the [epoch+1m, epoch+24m] data.
+	start3 := epoch
+	end3 := epoch.Add(30 * time.Minute)
+	pts, err = p.queryPointsCached(ctx, "points", start3, end3, timeseries)
+	require.NoError(t, err)
+
+	// We expect 31 points (epoch to epoch+30m inclusive).
+	// Without the fix, this fails because it only returns 7 points (epoch, and epoch+25m to epoch+30m).
+	require.Len(t, pts[0].ts, 31)
+}
+
+// TestQueryPointsCached_PrependDisjointGap ensures we don't stretch the watermark backwards
+// over a gap when querying a disjoint older range.
+func TestQueryPointsCached_PrependDisjointGap(t *testing.T) {
+	epoch := testEpoch
+	lb := labels.FromStrings("__name__", "m_prepend")
+	hash := labelHash(lb.Hash())
+	timeseries := map[[16]byte]labels.Labels{hash: lb}
+	stepMs := int64(60_000)
+
+	mc := newTestCache(t, MetricsCacheOptions{MaxBytes: 1024 * 1024, SafetyLag: time.Minute})
+	p := &promQuerier{
+		metricsCache: mc,
+		tracer:       nooptrace.NewTracerProvider().Tracer("test"),
+		queryPointsFunc: func(ctx context.Context, table string, s, e time.Time, ts map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+			ser := &series[pointData]{labels: lb}
+			for tstamp := s.UnixMilli(); tstamp <= e.UnixMilli(); tstamp += stepMs {
+				ser.ts = append(ser.ts, tstamp)
+				ser.data.values = append(ser.data.values, 1.0)
+			}
+			return map[[16]byte]*series[pointData]{hash: ser}, nil
+		},
+	}
+	ctx := context.Background()
+
+	// 1. Query an initial newer range: [epoch+10m, epoch+15m]
+	_, err := p.queryPointsCached(ctx, "points", epoch.Add(10*time.Minute), epoch.Add(15*time.Minute), timeseries)
+	require.NoError(t, err)
+
+	// 2. Query a disjoint older range: [epoch, epoch+5m].
+	// This will call upsertCache with untilMs = epoch+5m and oldMinTS = epoch+10m.
+	// Without untilMs < oldMinTS-1 check, it prepends the data and stretches minTS back to epoch,
+	// leaving a gap [epoch+5m, epoch+10m].
+	_, err = p.queryPointsCached(ctx, "points", epoch, epoch.Add(5*time.Minute), timeseries)
+	require.NoError(t, err)
+
+	// 3. Query the full range: [epoch, epoch+15m].
+	// It should be treated as a cache miss, fetching all 16 points.
+	pts, err := p.queryPointsCached(ctx, "points", epoch, epoch.Add(15*time.Minute), timeseries)
+	require.NoError(t, err)
+	require.Len(t, pts, 1)
+	require.Len(t, pts[0].ts, 16)
 }
