@@ -91,7 +91,7 @@ docker compose -f dev/local/ch/docker-compose.yml up -d
 - **Error handling**: Use `github.com/go-faster/errors` (not stdlib `errors` or `fmt.Errorf`). Wrap errors as `errors.Wrap(err, "context")` — no "failed:" prefix in wrap messages.
 - **Comments**: All comments must end with a period.
 - **Formatting**: `gofumpt` + `goimports` with local prefix `github.com/oteldb/oteldb`.
-- **Commits**: Conventional commits format: `type(scope): subject` (e.g., `fix(chstorage): fix column mapping`).
+- **Commits**: Conventional commits format: `type(scope): subject` (e.g., `fix(chstorage): fix column mapping`). Keep commit message body lines at 100 characters or fewer.
 - Follow the [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md).
 
 ## Architecture
