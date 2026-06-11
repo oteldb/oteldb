@@ -13,11 +13,6 @@ import (
 	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlpattern"
 )
 
-//go:fix inline
-func ptrTo[T any](v T) *T {
-	return new(v)
-}
-
 type TestCase struct {
 	input   string
 	want    Expr

@@ -10,11 +10,6 @@ import (
 	"github.com/oteldb/oteldb/internal/logql"
 )
 
-//go:fix inline
-func ptrTo[T any](v T) *T {
-	return new(v)
-}
-
 func TestSortVectorAggregation(t *testing.T) {
 	steps := []Step{
 		{
