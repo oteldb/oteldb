@@ -123,8 +123,6 @@ func (h *PromAPI) GetLabelValues(ctx context.Context, params promapi.GetLabelVal
 	)
 	grp, grpCtx := errgroup.WithContext(ctx)
 	for _, set := range sets {
-		set := set
-
 		grp.Go(func() error {
 			ctx := grpCtx
 
@@ -223,8 +221,6 @@ func (h *PromAPI) GetLabels(ctx context.Context, params promapi.GetLabelsParams)
 	)
 	grp, grpCtx := errgroup.WithContext(ctx)
 	for _, set := range sets {
-		set := set
-
 		grp.Go(func() error {
 			ctx := grpCtx
 
@@ -593,7 +589,6 @@ func (h *PromAPI) querySeries(
 			grp, grpCtx = errgroup.WithContext(ctx)
 		)
 		for i, mset := range matchers {
-			i, mset := i, mset
 			grp.Go(func() error {
 				ctx := grpCtx
 

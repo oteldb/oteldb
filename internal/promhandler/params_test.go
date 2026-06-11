@@ -59,7 +59,6 @@ func TestParseTimeRange(t *testing.T) {
 		{`a`, ``, ``, time.Time{}, time.Time{}, true},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			var (
 				start, end lokiapi.OptLokiTime
@@ -115,7 +114,6 @@ func TestParseTimestamp(t *testing.T) {
 		{``, time.Time{}, true},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got, err := ParseTimestamp(tt.raw)
 			if tt.wantErr {
@@ -154,7 +152,6 @@ func TestParseDuration(t *testing.T) {
 		{`-1s`, 0, true},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got, err := ParseDuration(tt.raw)
 			if tt.wantErr {
@@ -187,7 +184,6 @@ func TestParseStep(t *testing.T) {
 		{`foo`, 0, true},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got, err := parseStep(tt.raw, defaultStep)
 			if tt.wantErr {
@@ -230,7 +226,6 @@ func TestParseLabelMatchers(t *testing.T) {
 		{[]string{"{}"}, nil, true},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got, err := parseLabelMatchers(tt.param)
 			if tt.wantErr {
@@ -375,7 +370,6 @@ func TestPatchForm(t *testing.T) {
 			wantContentLength: 29,
 		},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := t.Context()
 

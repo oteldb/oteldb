@@ -22,7 +22,7 @@ func TestDeduceNanos(t *testing.T) {
 		d := int64(math.Pow10(zeroes))
 		return nanos - nanos%d
 	}
-	assert := func(a, b int64, msgAndArgs ...interface{}) {
+	assert := func(a, b int64, msgAndArgs ...any) {
 		t.Helper()
 		v, ok := DeduceNanos(a)
 		require.True(t, ok, msgAndArgs...)
@@ -160,7 +160,6 @@ func TestParseTimestamp(t *testing.T) {
 		{` `, 0, 0, false},
 		{``, 0, 0, false},
 	} {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			t.Logf("Input: %#q", tt.input)
 
@@ -218,7 +217,6 @@ var parseTraceIDTests = []struct {
 
 func TestParseTraceID(t *testing.T) {
 	for i, tt := range parseTraceIDTests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			t.Logf("Input: %#q", tt.input)
 
@@ -286,7 +284,6 @@ var parseSpanIDTests = []struct {
 
 func TestParseSpanID(t *testing.T) {
 	for i, tt := range parseSpanIDTests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			t.Logf("Input: %#q", tt.input)
 
@@ -357,7 +354,6 @@ var parseSourceTests = []struct {
 
 func TestParseSource(t *testing.T) {
 	for i, tt := range parseSourceTests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			t.Logf("Input: %#q", tt.input)
 

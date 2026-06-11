@@ -88,7 +88,6 @@ var parseTests = []struct {
 
 func TestParse(t *testing.T) {
 	for i, tt := range parseTests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got, err := Parse(tt.input)
 			if tt.wantErr {

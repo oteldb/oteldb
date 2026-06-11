@@ -56,7 +56,6 @@ func TestStringLabelFilter(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			set := newLabelSet(tt.input)
 
@@ -171,7 +170,6 @@ func TestDurationLabelFilter(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			set := newLabelSet(tt.input)
 
@@ -295,7 +293,6 @@ func TestBytesLabelFilter(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			set := newLabelSet(tt.input)
 
@@ -439,7 +436,6 @@ func TestNumberLabelFilter(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			set := newLabelSet(tt.input)
 
@@ -568,7 +564,6 @@ func TestIPLabelFilter(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			_, hasLabel := tt.input[tt.label]
 			set := newLabelSet(tt.input)

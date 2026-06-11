@@ -107,7 +107,6 @@ func (t *Tracker[Q]) Report(ctx context.Context, cb func(context.Context, Tracke
 	}
 	queries := make([]retrivalResult, len(t.queries))
 	for i, tq := range t.queries {
-		i, tq := i, tq
 		grp.Go(func() error {
 			r, err := t.retrieveReports(grpCtx, tq)
 			if err != nil {

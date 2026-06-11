@@ -27,7 +27,6 @@ func TestAlignLeft(t *testing.T) {
 		{`хлеб`, -1, `хлеб`},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got := alignLeft(tt.count, tt.input)
 			require.Equal(t, tt.want, got)
@@ -57,7 +56,6 @@ func TestAlignRight(t *testing.T) {
 		{`хлеб`, -1, `хлеб`},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got := alignRight(tt.count, tt.input)
 			require.Equal(t, tt.want, got)

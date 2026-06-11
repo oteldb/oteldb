@@ -231,7 +231,6 @@ func TestTokenizeErrors(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			_, err := Tokenize(tt.input, TokenizeOptions{
 				Filename: "test.ql",
@@ -243,7 +242,6 @@ func TestTokenizeErrors(t *testing.T) {
 
 func TestTokenize(t *testing.T) {
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got, err := Tokenize(tt.input, TokenizeOptions{})
 			if tt.wantErr {

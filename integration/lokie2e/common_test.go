@@ -264,7 +264,6 @@ func runTest(
 				true,
 			},
 		} {
-			tt := tt
 			t.Run(tt.name, func(t *testing.T) {
 				a := require.New(t)
 
@@ -511,7 +510,6 @@ func runTest(
 		}
 
 		for i, tt := range tests {
-			tt := tt
 			t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 				t.Parallel()
 
@@ -536,7 +534,6 @@ func runTest(
 			{`{http_method="HEAD"}`},
 			{`{http_method="HEAD"} | json | line_format "{{ . }}"`},
 		} {
-			tt := tt
 			t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 				t.Parallel()
 
@@ -621,7 +618,6 @@ func runTest(
 				},
 			},
 		} {
-			tt := tt
 			t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 				t.Parallel()
 

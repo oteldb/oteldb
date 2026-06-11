@@ -71,7 +71,6 @@ func TestStatic_SetOTELValue(t *testing.T) {
 		{pcommon.NewValueSlice(), Static{}, false},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			var got Static
 			ok := got.SetOTELValue(tt.val)
@@ -148,7 +147,6 @@ func TestStatic_Compare(t *testing.T) {
 		{`true`, `10`, -1},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			a := parseStatic(t, tt.a)
 			b := parseStatic(t, tt.b)

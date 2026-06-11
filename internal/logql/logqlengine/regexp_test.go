@@ -36,7 +36,6 @@ func TestRegexpExtractor(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			re := regexp.MustCompile(`(?P<method>(GET|HEAD|POST|PUT|PATCH))\s+(?P<path>[\/\w]+)\s+(?P<version>HTTP/[\d\.]+)`)
 			mapping := map[int]logql.Label{}

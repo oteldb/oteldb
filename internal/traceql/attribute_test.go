@@ -23,7 +23,6 @@ func TestParseAttribute(t *testing.T) {
 		{``, Attribute{}, true},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			gotA, err := ParseAttribute(tt.attr)
 			if tt.wantErr {

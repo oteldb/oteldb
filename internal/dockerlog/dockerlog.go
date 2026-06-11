@@ -96,7 +96,6 @@ func (n *InputNode) EvalPipeline(ctx context.Context, params logqlengine.EvalPar
 		// As a result, openLog context would not be canceled in case of error.
 		var grp errgroup.Group
 		for idx, ctr := range containers {
-			idx, ctr := idx, ctr
 			grp.Go(func() error {
 				iter, err := n.q.openLog(ctx, ctr, params.Start, params.End)
 				if err != nil {

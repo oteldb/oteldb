@@ -21,7 +21,6 @@ func Test_metricSuffixes(t *testing.T) {
 		{"test_value81_count_bytes", "count", "bytes"},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			gotS1, gotS2 := metricSuffixes(tt.input)
 			require.Equal(t, tt.wantS1, gotS1)

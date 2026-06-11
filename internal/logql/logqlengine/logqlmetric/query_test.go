@@ -168,7 +168,6 @@ func TestInstantAggregation(t *testing.T) {
 		{`count_over_time({} [2s]) - count_over_time({} [2s])`, "0"},
 	}
 	for i, tt := range tests {
-		tt := tt
 		id := i + 1
 		t.Run(fmt.Sprintf("Test%d", id), func(t *testing.T) {
 			if id == 12 && runtime.GOARCH == "riscv64" {
@@ -272,7 +271,6 @@ func TestRangeAggregationStep(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			var (
 				query      = fmt.Sprintf(`count_over_time({} [%s])`, tt.interval)
@@ -347,7 +345,6 @@ func TestRangeAggregation(t *testing.T) {
 		{`last_over_time({} | unwrap foo [2s])`, []string{"3", "6", "4"}},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			data := evaluateQuery(t, testSamples, tt.query, testParams, false)
 
@@ -561,7 +558,6 @@ func TestGroupedAggregation(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			data := evaluateQuery(t, testSamples, tt.query, testParams, false)
 
@@ -613,7 +609,6 @@ func TestKHeapAggregation(t *testing.T) {
 		{`bottomk by (key) (3, sum_over_time({} | unwrap _ [6s]))`, []string{"1", "2", "3"}},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			data := evaluateQuery(t, testSamples, tt.query, testParams, false)
 

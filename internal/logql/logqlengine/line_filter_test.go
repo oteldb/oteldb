@@ -152,7 +152,6 @@ func TestLineFilter(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			set := logqlabels.NewLabelSet()
 
@@ -245,7 +244,6 @@ func TestBuildLineFilter(t *testing.T) {
 			`|> line filter is unsupported`,
 		},
 	} {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			_, err := buildLineFilter(&tt.input)
 			if tt.wantErr != "" {
@@ -362,7 +360,6 @@ var ipLineFilterTests = []struct {
 
 func TestIPLineFilter(t *testing.T) {
 	for i, tt := range ipLineFilterTests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			set := logqlabels.NewLabelSet()
 
@@ -420,7 +417,6 @@ func Test_tryCaptureIPv4(t *testing.T) {
 		{`foo`, ``},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got, match := tryCaptureIPv4(tt.input)
 			if tt.capture == "" {
@@ -450,7 +446,6 @@ func Test_tryCaptureIPv6(t *testing.T) {
 		{`foo`, ``},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got, match := tryCaptureIPv6(tt.input)
 			if tt.capture == "" {

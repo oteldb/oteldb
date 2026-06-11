@@ -310,7 +310,6 @@ func main() {
 		}
 		g, ctx := errgroup.WithContext(ctx)
 		for _, s := range s.ports {
-			s := s
 			lg := lg.Named(s.name)
 			g.Go(func() error {
 				return s.Run(ctx, lg, m)

@@ -26,7 +26,6 @@ func TestParseAttributeRef(t *testing.T) {
 		{"service.name", logstorage.AttributeRef{Name: "service.name", Location: logstorage.AnyLocation}, false},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got, gotErr := logstorage.ParseAttributeRef(tt.ref)
 			if tt.wantErr {

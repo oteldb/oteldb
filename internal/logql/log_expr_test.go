@@ -18,7 +18,6 @@ func TestLabelMatcher_String(t *testing.T) {
 		{LabelMatcher{"label", OpNotRe, "^value$", nil}, `label!~"^value$"`},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			s := tt.m.String()
 			require.Equal(t, tt.want, tt.m.String())

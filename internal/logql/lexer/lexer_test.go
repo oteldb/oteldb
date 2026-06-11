@@ -296,7 +296,6 @@ var tests = []TestCase{
 
 func TestTokenize(t *testing.T) {
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got, err := Tokenize(tt.input, TokenizeOptions{AllowDots: true})
 			if tt.wantErr {
@@ -341,7 +340,6 @@ func TestTokenizeErrors(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			_, err := Tokenize(tt.input, TokenizeOptions{
 				Filename: "test.ql",

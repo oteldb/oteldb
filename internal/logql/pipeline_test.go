@@ -91,7 +91,6 @@ func TestLineFilter_String(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			s := tt.f.String()
 			require.Equal(t, tt.want, s)
@@ -130,7 +129,6 @@ func TestLabelPredicateBinOp_String(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			s := tt.m.String()
 			require.Equal(t, tt.want, tt.m.String())
@@ -151,7 +149,6 @@ func TestIPFilter_String(t *testing.T) {
 		{IPFilter{"label", OpNotEq, "127.0.0.1/24"}, `label != ip("127.0.0.1/24")`},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			s := tt.m.String()
 			require.Equal(t, tt.want, tt.m.String())
@@ -173,7 +170,6 @@ func TestDurationFilter_String(t *testing.T) {
 		{DurationFilter{"label", OpGt, time.Minute + time.Second}, `label > 1m1s`},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			s := tt.m.String()
 			require.Equal(t, tt.want, tt.m.String())
@@ -195,7 +191,6 @@ func TestBytesFilter_String(t *testing.T) {
 		{BytesFilter{"label", OpGt, 1024 * 1024 * 1024}, `label > 1.0GiB`},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			s := tt.m.String()
 			require.Equal(t, tt.want, tt.m.String())
@@ -217,7 +212,6 @@ func TestNumberFilter_String(t *testing.T) {
 		{NumberFilter{"label", OpGt, 3.14}, `label > 3.14`},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			s := tt.m.String()
 			require.Equal(t, tt.want, tt.m.String())

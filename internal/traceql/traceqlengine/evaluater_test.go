@@ -206,7 +206,6 @@ func TestEvaluater(t *testing.T) {
 		{`{ instrumentation.custom != "other" }`, true},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			defer func() {
 				if t.Failed() {

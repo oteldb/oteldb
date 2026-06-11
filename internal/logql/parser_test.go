@@ -13,8 +13,9 @@ import (
 	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlpattern"
 )
 
+//go:fix inline
 func ptrTo[T any](v T) *T {
-	return &v
+	return new(v)
 }
 
 type TestCase struct {
@@ -692,7 +693,7 @@ var tests = []TestCase{
 				},
 				Range: 5 * time.Hour,
 			},
-			Parameter: ptrTo(10.0),
+			Parameter: new(10.0),
 			Grouping: &Grouping{
 				Labels: []Label{"bar", "foo"},
 			},
@@ -787,7 +788,7 @@ var tests = []TestCase{
 					Range: 1 * time.Minute,
 				},
 			},
-			Parameter: ptrTo(1),
+			Parameter: new(1),
 			Grouping: &Grouping{
 				Without: true,
 			},
@@ -1314,7 +1315,6 @@ var tests = []TestCase{
 
 func TestParse(t *testing.T) {
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			defer func() {
 				if t.Failed() {
@@ -1387,7 +1387,6 @@ var (
 
 func TestExtractSelectors(t *testing.T) {
 	for i, tt := range extractSelectorsTests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			gotSel, err := ExtractSelectors(tt.input, ParseOptions{AllowDots: true})
 			if tt.wantErr {
@@ -1469,7 +1468,6 @@ func TestParseSelector(t *testing.T) {
 		{`{} | json`, Selector{}, true},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			gotSel, err := ParseSelector(tt.input, ParseOptions{AllowDots: true})
 			if tt.wantErr {

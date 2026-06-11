@@ -28,7 +28,6 @@ func TestSliceIterator(t *testing.T) {
 		{[]int{1, 2, 3, 4, 5, 6, 7, 8}},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			a := require.New(t)
 			si := Slice(tt.values)

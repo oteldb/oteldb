@@ -130,7 +130,6 @@ var matchTests = []struct {
 
 func TestMatch(t *testing.T) {
 	for i, tt := range matchTests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			defer func() {
 				if r := recover(); r != nil || t.Failed() {

@@ -162,7 +162,6 @@ var autocompleteTests = []struct {
 
 func TestParseAutocomplete(t *testing.T) {
 	for i, tt := range autocompleteTests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			defer func() {
 				if t.Failed() {
@@ -228,7 +227,6 @@ func TestAutocompleteString(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got := tt.input.String()
 			require.Equal(t, tt.want, got)

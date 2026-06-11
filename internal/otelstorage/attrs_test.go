@@ -24,7 +24,6 @@ var keyToLabelTests = []struct {
 
 func TestKeyToLabel(t *testing.T) {
 	for i, tt := range keyToLabelTests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			require.Equal(t, tt.want, KeyToLabel(tt.key))
 			require.Equal(t, tt.want, string(AppendKeyToLabel(nil, tt.key)))

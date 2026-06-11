@@ -11,7 +11,7 @@ import (
 	"github.com/go-faster/errors"
 )
 
-func writeXML(name string, v interface{}) error {
+func writeXML(name string, v any) error {
 	buf := new(bytes.Buffer)
 	e := xml.NewEncoder(buf)
 	e.Indent("", "  ")

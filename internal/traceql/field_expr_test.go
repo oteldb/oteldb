@@ -31,7 +31,6 @@ func TestAttribute_String(t *testing.T) {
 		{Attribute{Name: "foo.bar", Scope: ScopeResource, Parent: true}, "parent.resource.foo.bar"},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			require.Equal(t, tt.want, tt.attr.String())
 		})

@@ -10,7 +10,7 @@ import (
 func newConfig(targetsCount int, scrapeInterval time.Duration, targetAddr string) *config {
 	// https://github.com/VictoriaMetrics/prometheus-benchmark/blob/50c5891/services/vmagent-config-updater/main.go#L72-L94
 	scs := make([]*staticConfig, 0, targetsCount)
-	for i := 0; i < targetsCount; i++ {
+	for i := range targetsCount {
 		scs = append(scs, &staticConfig{
 			Targets: []string{targetAddr},
 			Labels: map[string]string{

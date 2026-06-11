@@ -10,7 +10,7 @@ import (
 	"github.com/oteldb/oteldb/internal/promcompliance/config"
 )
 
-var funcMap = map[string]interface{}{
+var funcMap = map[string]any{
 	"include": func(includePassing bool, result *comparer.Result) bool {
 		return includePassing || !result.Success()
 	},

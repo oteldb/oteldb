@@ -54,7 +54,6 @@ func TestUnpackExtractor(t *testing.T) {
 		{`[]`, `[]`, nil, true},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			e, err := buildUnpackExtractor(&logql.UnpackLabelParser{})
 			require.NoError(t, err)

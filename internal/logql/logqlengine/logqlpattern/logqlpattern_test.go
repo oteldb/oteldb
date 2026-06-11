@@ -187,7 +187,6 @@ func literal(s string) Part {
 
 func TestParse(t *testing.T) {
 	for i, tt := range parseTests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			defer func() {
 				if r := recover(); t.Failed() || r != nil {

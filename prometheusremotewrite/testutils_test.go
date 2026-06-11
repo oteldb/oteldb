@@ -219,7 +219,7 @@ func getQuantiles(bounds, values []float64) pmetric.SummaryDataPointValueAtQuant
 	quantiles := pmetric.NewSummaryDataPointValueAtQuantileSlice()
 	quantiles.EnsureCapacity(len(bounds))
 
-	for i := 0; i < len(bounds); i++ {
+	for i := range bounds {
 		quantile := quantiles.AppendEmpty()
 		quantile.SetQuantile(bounds[i])
 		quantile.SetValue(values[i])

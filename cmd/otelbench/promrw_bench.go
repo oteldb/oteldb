@@ -265,7 +265,7 @@ func allocateAddr(defaultAddr string) string {
 		return defaultAddr
 	}
 	var lastErr error
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		// Listen on random port.
 		laddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:")
 		if err != nil {

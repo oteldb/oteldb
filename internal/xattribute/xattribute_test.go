@@ -49,7 +49,6 @@ func TestStringerSlice(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			require.Equal(t, tt.want, StringerSlice(tt.k, tt.v))
 		})
@@ -89,7 +88,6 @@ func TestStringMap(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			require.Equal(t, tt.want, StringMap(tt.k, tt.m))
 		})

@@ -99,7 +99,6 @@ var typeTests = []struct {
 
 func TestTypeCheck(t *testing.T) {
 	for i, tt := range typeTests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			defer func() {
 				if t.Failed() {

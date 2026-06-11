@@ -79,7 +79,6 @@ func Test_groupEntries(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got, gotTotal, err := groupEntries(iterators.Slice(tt.entries))
 			if tt.wantErr {

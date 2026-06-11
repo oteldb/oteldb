@@ -133,7 +133,6 @@ func TestMergeBinOp(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			left := iterators.Slice(tt.left)
 			right := iterators.Slice(tt.right)

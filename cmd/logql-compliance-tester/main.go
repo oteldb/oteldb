@@ -50,7 +50,6 @@ func run(ctx context.Context) error {
 	}
 
 	for i, tc := range cfg.TestCases {
-		i, tc := i, tc
 		grp.Go(func() error {
 			ctx := grpCtx
 

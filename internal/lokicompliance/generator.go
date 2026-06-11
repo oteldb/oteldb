@@ -97,7 +97,6 @@ func GenerateLogs(ctx context.Context, targets []string, opts GenerateOptions) e
 
 	grp, grpCtx := errgroup.WithContext(ctx)
 	for _, target := range targets {
-		target := target
 		grp.Go(func() error {
 			ctx := grpCtx
 			if err := sendLogs(ctx, opts.Client, target, req); err != nil {

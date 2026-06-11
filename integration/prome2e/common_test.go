@@ -228,7 +228,6 @@ func runTest(
 				},
 			},
 		} {
-			tt := tt
 			t.Run(tt.name, func(t *testing.T) {
 				a := require.New(t)
 				a.NotEmpty(tt.match)
@@ -434,7 +433,6 @@ func runTest(
 				true,
 			},
 		} {
-			tt := tt
 			t.Run(tt.name, func(t *testing.T) {
 				a := require.New(t)
 
@@ -715,7 +713,6 @@ func runTest(
 				{"MaxSingleZeroSeries", `max by (handler) (prometheus_http_requests_total{handler="/api/v1/query"})`, 0, false},
 				{"AvgSingleZeroSeries", `avg by (handler) (prometheus_http_requests_total{handler="/api/v1/query"})`, 0, false},
 			} {
-				tt := tt
 				t.Run(tt.name, func(t *testing.T) {
 					t.Parallel()
 
@@ -820,7 +817,6 @@ func runTest(
 				}},
 				{"irate", `irate(prometheus_http_requests_total[1m])`, func(v float64) { a.GreaterOrEqual(v, 0.0) }},
 			} {
-				tc := tc
 				t.Run(tc.name, func(t *testing.T) {
 					r, err := c.GetQueryRange(ctx, params(tc.query))
 					a.NoError(err)

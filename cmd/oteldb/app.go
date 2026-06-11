@@ -462,7 +462,6 @@ func (app *App) Run(ctx context.Context) error {
 	}
 
 	for k, s := range app.services {
-		s := s
 		g.Go(func() (rerr error) {
 			defer func() {
 				if r := recover(); r != nil {

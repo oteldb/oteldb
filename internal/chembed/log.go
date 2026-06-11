@@ -24,11 +24,11 @@ func cut(s string, start, end byte) string {
 		return ""
 	}
 	s = s[left+1:]
-	right := strings.IndexByte(s, end)
-	if right < 0 {
+	before, _, ok := strings.Cut(s, string(end))
+	if !ok {
 		return ""
 	}
-	return strings.TrimSpace(s[:right])
+	return strings.TrimSpace(before)
 }
 
 type LogEntry struct {

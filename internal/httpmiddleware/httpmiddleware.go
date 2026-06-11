@@ -3,6 +3,7 @@ package httpmiddleware
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/go-faster/sdk/zctx"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -127,8 +128,8 @@ func Wrap(h http.Handler, middlewares ...Middleware) http.Handler {
 	case 1:
 		return middlewares[0](h)
 	default:
-		for i := len(middlewares) - 1; i >= 0; i-- {
-			h = middlewares[i](h)
+		for _, v := range slices.Backward(middlewares) {
+			h = v(h)
 		}
 		return h
 	}

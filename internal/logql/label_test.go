@@ -26,7 +26,6 @@ func TestIsValidLabel(t *testing.T) {
 		{``, false, `label name cannot be empty`},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			err := IsValidLabel(tt.input, tt.allowDot)
 			if tt.wantErr != "" {

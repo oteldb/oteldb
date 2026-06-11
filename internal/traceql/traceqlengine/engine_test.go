@@ -220,7 +220,6 @@ func TestEngine(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			q := MemoryQuerier{}
 			for _, span := range generateSpans(tt.left, "left") {
@@ -325,7 +324,6 @@ func TestTimeRange(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			require.Equal(t, tt.want, tt.trange.within(
 				tt.start.AsTime(),

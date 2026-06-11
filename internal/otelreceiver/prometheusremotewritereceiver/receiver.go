@@ -100,13 +100,11 @@ func (rec *Receiver) Start(ctx context.Context, host component.Host) (err error)
 		if err != nil {
 			return
 		}
-		rec.shutdownWG.Add(1)
-		go func() {
-			defer rec.shutdownWG.Done()
+		rec.shutdownWG.Go(func() {
 			if errHTTP := rec.server.Serve(listener); !errors.Is(errHTTP, http.ErrServerClosed) {
 				componentstatus.ReportStatus(rec.host, componentstatus.NewFatalErrorEvent(errHTTP))
 			}
-		}()
+		})
 	})
 	return err
 }

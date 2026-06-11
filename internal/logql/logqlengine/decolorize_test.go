@@ -25,7 +25,6 @@ func TestDecolorize(t *testing.T) {
 		{"\x1b[4m\x1b[44m Blue Background Underline \x1b[0m", " Blue Background Underline ", false},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			set := logqlabels.NewLabelSet()
 

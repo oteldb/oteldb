@@ -76,7 +76,6 @@ func TestKeepLabels(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			e, err := buildKeepLabels(&logql.KeepLabelsExpr{
 				Labels:   tt.keep,

@@ -162,7 +162,6 @@ func (b *LogsBench) send(ctx context.Context, logs plog.Logs) {
 	var wg sync.WaitGroup
 	wg.Add(len(b.targets))
 	for _, conn := range b.targets {
-		conn := conn
 		go func() {
 			defer wg.Done()
 

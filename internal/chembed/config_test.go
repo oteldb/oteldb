@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func logXML(t testing.TB, v interface{}) {
+func logXML(t testing.TB, v any) {
 	buf := new(bytes.Buffer)
 	e := xml.NewEncoder(buf)
 	e.Indent("", "  ")

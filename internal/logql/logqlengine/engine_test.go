@@ -466,7 +466,6 @@ func TestEngineEvalStream(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			ctx := context.Background()
 
@@ -673,7 +672,6 @@ func TestEngineEvalLiteral(t *testing.T) {
 		test3steps(`(vector(2)^vector(3))^vector(2)`, `64`),
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			ctx := context.Background()
 

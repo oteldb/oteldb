@@ -54,7 +54,6 @@ func TestScanUnit(t *testing.T) {
 		{"10sms", Unit{}, `unknown unit "sms"`},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			var scan scanner.Scanner
 			scan.Init(strings.NewReader(tt.input))

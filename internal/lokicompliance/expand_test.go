@@ -54,7 +54,6 @@ func TestCollectVariantArgs(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			templ, err := template.New("templ").Parse(tt.input)
 			require.NoError(t, err)

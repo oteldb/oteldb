@@ -81,7 +81,6 @@ func TestLogfmtExtractor(t *testing.T) {
 		{`label==`, []logql.Label{"label"}, nil, nil, true},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			e, err := buildLogfmtExtractor(&logql.LogfmtExpressionParser{
 				Labels: tt.labels,

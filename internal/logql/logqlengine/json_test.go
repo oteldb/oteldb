@@ -83,7 +83,6 @@ func TestJSONExtractor(t *testing.T) {
 		{`{"label": "foo}`, []logql.Label{"label"}, nil, nil, true},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			e, err := buildJSONExtractor(&logql.JSONExpressionParser{
 				Labels: tt.labels,
@@ -168,7 +167,6 @@ func BenchmarkJSONExtractor(b *testing.B) {
 	}
 
 	for _, bb := range benchs {
-		bb := bb
 		b.Run(bb.name, func(b *testing.B) {
 			p, err := buildJSONExtractor(bb.expr)
 			require.NoError(b, err)
