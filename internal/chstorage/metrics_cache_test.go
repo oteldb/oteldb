@@ -508,22 +508,17 @@ func TestQueryPointsCached_DisjointGap(t *testing.T) {
 	timeseries := map[[16]byte]labels.Labels{hash: lb}
 	stepMs := int64(60_000)
 
-	// linearMock returns 1 point per minute starting at s.
-	linearMock := func(_ context.Context, _ string, s, e time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
-		ser := &series[pointData]{labels: lb}
-		for t := s.UnixMilli(); t <= e.UnixMilli(); t += stepMs {
-			ser.ts = append(ser.ts, t)
-			ser.data.values = append(ser.data.values, 1.0)
-		}
-		return map[[16]byte]*series[pointData]{hash: ser}, nil
-	}
-
 	mc := newTestCache(t, MetricsCacheOptions{MaxBytes: 1024 * 1024, SafetyLag: time.Minute})
 	p := &promQuerier{
 		metricsCache: mc,
 		tracer:       nooptrace.NewTracerProvider().Tracer("test"),
-		queryPointsFunc: func(ctx context.Context, table string, s, e time.Time, ts map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
-			return linearMock(ctx, table, s, e, ts)
+		queryPointsFunc: func(_ context.Context, _ string, s, e time.Time, _ map[[16]byte]labels.Labels) (map[[16]byte]*series[pointData], error) {
+			ser := &series[pointData]{labels: lb}
+			for t := s.UnixMilli(); t <= e.UnixMilli(); t += stepMs {
+				ser.ts = append(ser.ts, t)
+				ser.data.values = append(ser.data.values, 1.0)
+			}
+			return map[[16]byte]*series[pointData]{hash: ser}, nil
 		},
 	}
 	ctx := context.Background()

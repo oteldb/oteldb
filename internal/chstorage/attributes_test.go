@@ -32,7 +32,7 @@ func Test_jsonLowCardinalityAttrCol(t *testing.T) {
 		col.Append(v)
 		hashes = append(hashes, v.Hash())
 	}
-	for j := 0; j < 3; j++ {
+	for range 3 {
 		m := pcommon.NewMap()
 		v := otelstorage.Attrs(m)
 		col.Append(v)
@@ -81,7 +81,7 @@ func Test_jsonAttrCol(t *testing.T) {
 		col.Append(v)
 		hashes = append(hashes, v.Hash())
 	}
-	for j := 0; j < 3; j++ {
+	for range 3 {
 		m := pcommon.NewMap()
 		v := otelstorage.Attrs(m)
 		col.Append(v)

@@ -205,7 +205,6 @@ func TestSelect(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		name := fmt.Sprintf("Test%d", i+1)
 		t.Run(name, func(t *testing.T) {
 			q := tt.build()

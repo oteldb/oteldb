@@ -19,7 +19,6 @@ func TestIsSingleToken(t *testing.T) {
 		{`abc 10`, false},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			require.Equal(t, tt.want, IsSingleToken(tt.s))
 		})
@@ -44,7 +43,6 @@ func TestCollectTokens(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			var got []string
 			CollectTokens(tt.s, func(tok string) bool {

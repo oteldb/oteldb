@@ -21,7 +21,6 @@ func Test_singleQuoted(t *testing.T) {
 		{"\U0010ffff", `'\U0010ffff'`},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			require.Equal(t, tt.want, singleQuoted(tt.s))
 		})

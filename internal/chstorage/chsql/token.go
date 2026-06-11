@@ -1,5 +1,7 @@
 package chsql
 
+import "slices"
+
 // IsSingleToken whether if given string is a single token.
 //
 // See https://clickhouse.com/docs/en/sql-reference/functions/string-search-functions#hastoken.
@@ -10,12 +12,7 @@ func IsSingleToken[S ~string | ~[]byte](s S) bool {
 	}
 	// If string does contain any non-alphanumeric ASCII characters.
 	// then it is not a single token.
-	for _, c := range []byte(s) {
-		if isTokenSeparator(c) {
-			return false
-		}
-	}
-	return true
+	return !slices.ContainsFunc([]byte(s), isTokenSeparator)
 }
 
 // CollectTokens iterates over tokens in given string.

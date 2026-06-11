@@ -383,7 +383,7 @@ func (c *eventsColumns) Row(row int) (events []tracestorage.Event, _ error) {
 			len(attributes),
 		)
 	)
-	for i := 0; i < l; i++ {
+	for i := range l {
 		attrs, err := decodeAttributes(attributes[i])
 		if err != nil {
 			return nil, errors.Wrap(err, "decode attributes")
@@ -448,7 +448,7 @@ func (c *linksColumns) Row(row int) (links []tracestorage.Link, _ error) {
 			len(attributes),
 		)
 	)
-	for i := 0; i < l; i++ {
+	for i := range l {
 		attrs, err := decodeAttributes(attributes[i])
 		if err != nil {
 			return nil, errors.Wrap(err, "decode attributes")

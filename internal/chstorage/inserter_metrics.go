@@ -119,7 +119,6 @@ func (b *metricsBatch) Insert(ctx context.Context, tables Tables, client ClickHo
 		{tables.Exemplars, b.exemplars},
 		{tables.Labels, labelColumns},
 	} {
-		table := table
 		grp.Go(func() error {
 			ctx := grpCtx
 

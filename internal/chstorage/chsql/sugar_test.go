@@ -42,7 +42,6 @@ func TestInTimeRange(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got := InTimeRange("timestamp", tt.start, tt.end, tt.prec)
 
@@ -69,7 +68,6 @@ func TestInterval(t *testing.T) {
 		{24 * time.Hour, "toIntervalDay(1)"},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got := Interval(tt.d)
 
@@ -104,7 +102,6 @@ func TestJoinAnd(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			got := JoinAnd(tt.args...)
 

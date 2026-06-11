@@ -222,7 +222,6 @@ func (r *restoreTable) inserter(ctx context.Context, tables []string, client Cli
 			}
 			grp, grpCtx := errgroup.WithContext(ctx)
 			for i, input := range inputs {
-				input := input
 				table := tables[i]
 				grp.Go(func() error {
 					if err := client.Do(grpCtx, ch.Query{

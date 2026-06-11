@@ -3,6 +3,7 @@ package chstorage
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -515,15 +516,12 @@ func (q *Querier) logQLLabelMatcher(
 		case logql.OpRe, logql.OpNotRe:
 			matches := make([]int, 0, 6)
 			for i := plog.SeverityNumberUnspecified; i <= plog.SeverityNumberFatal4; i++ {
-				for _, s := range []string{
+				if slices.ContainsFunc([]string{
 					i.String(),
 					strings.ToLower(i.String()),
 					strings.ToUpper(i.String()),
-				} {
-					if m.Re.MatchString(s) {
-						matches = append(matches, int(i))
-						break
-					}
+				}, m.Re.MatchString) {
+					matches = append(matches, int(i))
 				}
 			}
 			return chsql.In(chsql.Ident("severity_number"), chsql.TupleValues(matches...))
