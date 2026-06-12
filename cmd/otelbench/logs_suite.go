@@ -32,15 +32,27 @@ type LogsSuite struct {
 	NoUp     bool
 	Keep     bool
 
-	Target         string
-	LokiAddr       string
-	TempoAddr      string
-	ClickhouseAddr string
-	OteldbImage    string
-	Total          int64
-	Entries        int
-	Rate           time.Duration
+	Target          string
+	LokiAddr        string
+	TempoAddr       string
+	ClickhouseAddr  string
+	OteldbImage     string
+	ChotelImage     string
+	ClickhouseImage string
+	TempoImage      string
+	OtelcolImage    string
+	Total           int64
+	Entries         int
+	Rate            time.Duration
 }
+
+const (
+	defaultOteldbImage     = "ghcr.io/oteldb/oteldb:latest"
+	defaultChotelImage     = "ghcr.io/oteldb/oteldb/chotel:latest"
+	defaultClickhouseImage = "clickhouse/clickhouse-server:25.9"
+	defaultTempoImage      = "ghcr.io/go-faster/tempo:latest"
+	defaultOtelcolImage    = "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.154.0"
+)
 
 func newLogsSuiteCommand() *cobra.Command {
 	s := &LogsSuite{}
@@ -66,7 +78,11 @@ func newLogsSuiteCommand() *cobra.Command {
 	f.StringVar(&s.LokiAddr, "loki-addr", "http://127.0.0.1:3100", "Loki-compatible query endpoint")
 	f.StringVar(&s.TempoAddr, "tempo-addr", "http://127.0.0.1:3200", "Tempo endpoint for query trace lookup")
 	f.StringVar(&s.ClickhouseAddr, "clickhouse-addr", "127.0.0.1:9000", "ClickHouse native endpoint for ingest stats")
-	f.StringVar(&s.OteldbImage, "oteldb-image", "", "Override oteldb container image used by docker compose")
+	f.StringVar(&s.OteldbImage, "oteldb-image", defaultOteldbImage, "oteldb container image used by docker compose")
+	f.StringVar(&s.ChotelImage, "chotel-image", defaultChotelImage, "chotel container image used by docker compose")
+	f.StringVar(&s.ClickhouseImage, "clickhouse-image", defaultClickhouseImage, "ClickHouse container image used by docker compose")
+	f.StringVar(&s.TempoImage, "tempo-image", defaultTempoImage, "Tempo container image used by docker compose")
+	f.StringVar(&s.OtelcolImage, "otelcol-image", defaultOtelcolImage, "OpenTelemetry Collector container image used by docker compose")
 	f.Int64Var(&s.Total, "total", 0, "Cap ingested log lines (0 disables cap)")
 	f.IntVar(&s.Entries, "entries", 1000, "Log entries per ingest batch")
 	f.DurationVar(&s.Rate, "rate", 0, "Delay between ingest batches (<=0 sends as fast as possible)")
@@ -197,9 +213,13 @@ func (s *LogsSuite) compose(ctx context.Context, workDir string, args ...string)
 	fullArgs := append([]string{"compose", "-f", filepath.Join(workDir, "docker-compose.yml")}, args...)
 	cmd := exec.CommandContext(ctx, "docker", fullArgs...)
 	cmd.Dir = workDir
-	if s.OteldbImage != "" {
-		cmd.Env = append(os.Environ(), "OTELDB_IMAGE="+s.OteldbImage)
-	}
+	cmd.Env = append(os.Environ(),
+		"OTELDB_IMAGE="+s.OteldbImage,
+		"CHOTEL_IMAGE="+s.ChotelImage,
+		"CLICKHOUSE_IMAGE="+s.ClickhouseImage,
+		"TEMPO_IMAGE="+s.TempoImage,
+		"OTELCOL_IMAGE="+s.OtelcolImage,
+	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -294,42 +314,50 @@ func copyFile(from, to string) error {
 }
 
 type logsSuiteEnv struct {
-	StartedAt      time.Time `json:"started_at"`
-	GitSHA         string    `json:"git_sha"`
-	GOOS           string    `json:"goos"`
-	GOARCH         string    `json:"goarch"`
-	GoVersion      string    `json:"go_version"`
-	NumCPU         int       `json:"num_cpu"`
-	Kernel         string    `json:"kernel,omitempty"`
-	DatasetSize    string    `json:"dataset_size"`
-	DatasetRepeat  int       `json:"dataset_repeat"`
-	QueryCount     int       `json:"query_count"`
-	QueryWarmup    int       `json:"query_warmup"`
-	ClickhouseAddr string    `json:"clickhouse_addr"`
-	LokiAddr       string    `json:"loki_addr"`
-	TempoAddr      string    `json:"tempo_addr"`
-	Target         string    `json:"target"`
-	OteldbImage    string    `json:"oteldb_image,omitempty"`
+	StartedAt       time.Time `json:"started_at"`
+	GitSHA          string    `json:"git_sha"`
+	GOOS            string    `json:"goos"`
+	GOARCH          string    `json:"goarch"`
+	GoVersion       string    `json:"go_version"`
+	NumCPU          int       `json:"num_cpu"`
+	Kernel          string    `json:"kernel,omitempty"`
+	DatasetSize     string    `json:"dataset_size"`
+	DatasetRepeat   int       `json:"dataset_repeat"`
+	QueryCount      int       `json:"query_count"`
+	QueryWarmup     int       `json:"query_warmup"`
+	ClickhouseAddr  string    `json:"clickhouse_addr"`
+	LokiAddr        string    `json:"loki_addr"`
+	TempoAddr       string    `json:"tempo_addr"`
+	Target          string    `json:"target"`
+	OteldbImage     string    `json:"oteldb_image"`
+	ChotelImage     string    `json:"chotel_image"`
+	ClickhouseImage string    `json:"clickhouse_image"`
+	TempoImage      string    `json:"tempo_image"`
+	OtelcolImage    string    `json:"otelcol_image"`
 }
 
 func (s *LogsSuite) writeEnv(ctx context.Context, runDir string, started time.Time) error {
 	env := logsSuiteEnv{
-		StartedAt:      started,
-		GitSHA:         gitShortSHA(),
-		GOOS:           runtime.GOOS,
-		GOARCH:         runtime.GOARCH,
-		GoVersion:      runtime.Version(),
-		NumCPU:         runtime.NumCPU(),
-		Kernel:         uname(ctx),
-		DatasetSize:    s.Size,
-		DatasetRepeat:  s.Repeat,
-		QueryCount:     s.Count,
-		QueryWarmup:    s.Warmup,
-		ClickhouseAddr: s.ClickhouseAddr,
-		LokiAddr:       s.LokiAddr,
-		TempoAddr:      s.TempoAddr,
-		Target:         s.Target,
-		OteldbImage:    s.OteldbImage,
+		StartedAt:       started,
+		GitSHA:          gitShortSHA(),
+		GOOS:            runtime.GOOS,
+		GOARCH:          runtime.GOARCH,
+		GoVersion:       runtime.Version(),
+		NumCPU:          runtime.NumCPU(),
+		Kernel:          uname(ctx),
+		DatasetSize:     s.Size,
+		DatasetRepeat:   s.Repeat,
+		QueryCount:      s.Count,
+		QueryWarmup:     s.Warmup,
+		ClickhouseAddr:  s.ClickhouseAddr,
+		LokiAddr:        s.LokiAddr,
+		TempoAddr:       s.TempoAddr,
+		Target:          s.Target,
+		OteldbImage:     s.OteldbImage,
+		ChotelImage:     s.ChotelImage,
+		ClickhouseImage: s.ClickhouseImage,
+		TempoImage:      s.TempoImage,
+		OtelcolImage:    s.OtelcolImage,
 	}
 	data, err := json.MarshalIndent(env, "", "  ")
 	if err != nil {
