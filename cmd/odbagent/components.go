@@ -27,10 +27,10 @@ import (
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 	otelconftelemetry "go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
 
-	"github.com/oteldb/oteldb/internal/otelreceiver/chreceiver"
-	_ "github.com/oteldb/oteldb/odblogparser"
-	_ "github.com/oteldb/oteldb/odbsafety"
-	"github.com/oteldb/oteldb/odbsafetyprocessor"
+	"github.com/oteldb/oteldb/otelcolmod/chreceiver"
+	_ "github.com/oteldb/oteldb/otelcolmod/odblogparser"
+	_ "github.com/oteldb/oteldb/otelcolmod/odbsafety"
+	"github.com/oteldb/oteldb/otelcolmod/odbsafetyprocessor"
 )
 
 func components() (otelcol.Factories, error) {

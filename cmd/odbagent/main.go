@@ -15,8 +15,8 @@ import (
 
 	"github.com/oteldb/oteldb/internal/cliversion"
 
-	_ "github.com/oteldb/oteldb/odblogparser"
-	_ "github.com/oteldb/oteldb/odbsafety"
+	_ "github.com/oteldb/oteldb/otelcolmod/odblogparser"
+	_ "github.com/oteldb/oteldb/otelcolmod/odbsafety"
 )
 
 func main() {
