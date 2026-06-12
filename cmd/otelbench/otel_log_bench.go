@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -34,12 +36,18 @@ type LogsBench struct {
 	limit           int64
 	targets         []logsBenchTarget
 	start           lokiTimeVar
+	sourceDir       string
+	repeat          int
+	reportPath      string
 
 	clickhouseAddr string
 	writtenLines   atomic.Int64
 	writtenBytes   atomic.Int64
 	storageInfo    atomic.Pointer[ClickhouseStats]
 	stop           chan struct{}
+	windowStart    time.Time
+	windowEnd      time.Time
+	services       []string
 }
 
 type logsBenchTarget struct {
@@ -49,6 +57,7 @@ type logsBenchTarget struct {
 
 func (b *LogsBench) Run(ctx context.Context) error {
 	b.stop = make(chan struct{})
+	started := time.Now()
 	g, ctx := errgroup.WithContext(ctx)
 
 	if b.clickhouseAddr != "" {
@@ -62,7 +71,15 @@ func (b *LogsBench) Run(ctx context.Context) error {
 	g.Go(func() error {
 		return b.run(ctx)
 	})
-	return g.Wait()
+	if err := g.Wait(); err != nil {
+		return err
+	}
+	if b.reportPath != "" {
+		if err := b.writeReport(ctx, started, time.Now()); err != nil {
+			return errors.Wrap(err, "write report")
+		}
+	}
+	return nil
 }
 
 func (b *LogsBench) RunClickhouseReporter(ctx context.Context) error {
@@ -129,6 +146,15 @@ var errLogsLimit = errors.New("limit reached")
 
 func (b *LogsBench) run(ctx context.Context) error {
 	r := rand.New(rand.NewSource(b.seed)) // #nosec: G404
+	source, err := b.newSource()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closer, ok := source.(interface{ Close() error }); ok {
+			_ = closer.Close()
+		}
+	}()
 
 	ticker := time.NewTicker(b.rate)
 	defer ticker.Stop()
@@ -146,16 +172,68 @@ func (b *LogsBench) run(ctx context.Context) error {
 		case <-ticker.C:
 			now = now.Add(b.rate)
 
-			batch, lines, bytes := b.generateBatch(r, now)
-			b.send(ctx, batch)
-			totalLines := b.writtenLines.Add(lines)
-			b.writtenBytes.Add(bytes)
-			if b.limit > 0 && totalLines >= b.limit {
+			batch, lines, bytes, exhausted, err := source.Next(r, now)
+			if err != nil {
+				return err
+			}
+			if lines > 0 {
+				b.observeWindow(batch)
+				b.send(ctx, batch)
+				b.writtenLines.Add(lines)
+				b.writtenBytes.Add(bytes)
+			}
+			if exhausted || (b.limit > 0 && b.writtenLines.Load() >= b.limit) {
 				close(b.stop)
 				return nil
 			}
 		}
 	}
+}
+
+func (b *LogsBench) observeWindow(logs plog.Logs) {
+	for i := 0; i < logs.ResourceLogs().Len(); i++ {
+		resource := logs.ResourceLogs().At(i)
+		for j := 0; j < resource.ScopeLogs().Len(); j++ {
+			scope := resource.ScopeLogs().At(j)
+			for k := 0; k < scope.LogRecords().Len(); k++ {
+				ts := scope.LogRecords().At(k).Timestamp().AsTime()
+				if ts.IsZero() {
+					continue
+				}
+				if b.windowStart.IsZero() || ts.Before(b.windowStart) {
+					b.windowStart = ts
+				}
+				if b.windowEnd.IsZero() || ts.After(b.windowEnd) {
+					b.windowEnd = ts
+				}
+			}
+		}
+	}
+}
+
+type logsBatchSource interface {
+	Next(r *rand.Rand, ts time.Time) (plog.Logs, int64, int64, bool, error)
+}
+
+func (b *LogsBench) newSource() (logsBatchSource, error) {
+	if b.sourceDir == "" {
+		return randomLogsSource{bench: b}, nil
+	}
+	source, err := newFileLogsSource(b.sourceDir, b.entriesPerBatch, b.repeat, b.limit)
+	if err != nil {
+		return nil, err
+	}
+	b.services = source.Services()
+	return source, nil
+}
+
+type randomLogsSource struct {
+	bench *LogsBench
+}
+
+func (s randomLogsSource) Next(r *rand.Rand, ts time.Time) (plog.Logs, int64, int64, bool, error) {
+	logs, lines, bytes := s.bench.generateBatch(r, ts)
+	return logs, lines, bytes, false, nil
 }
 
 func (b *LogsBench) send(ctx context.Context, logs plog.Logs) {
@@ -201,6 +279,82 @@ func (b *LogsBench) generateBatch(r *rand.Rand, now time.Time) (logs plog.Logs, 
 		bytes += int64(len(record.Body().AsString()))
 	}
 	return logs, lines, bytes
+}
+
+type logsBenchReport struct {
+	StartedAt  time.Time              `json:"started_at"`
+	FinishedAt time.Time              `json:"finished_at"`
+	Duration   string                 `json:"duration"`
+	Throughput logsBenchThroughput    `json:"throughput"`
+	Window     logsBenchWindow        `json:"window"`
+	Dataset    logsBenchDatasetConfig `json:"dataset"`
+	Storage    *ClickhouseStats       `json:"storage,omitempty"`
+}
+
+type logsBenchThroughput struct {
+	Lines          int64   `json:"lines"`
+	Bytes          int64   `json:"bytes"`
+	LinesPerSecond float64 `json:"lines_per_second"`
+	BytesPerSecond float64 `json:"bytes_per_second"`
+}
+
+type logsBenchWindow struct {
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
+}
+
+type logsBenchDatasetConfig struct {
+	SourceDir string   `json:"source_dir,omitempty"`
+	Repeat    int      `json:"repeat"`
+	Services  []string `json:"services,omitempty"`
+}
+
+func (b *LogsBench) writeReport(ctx context.Context, started, finished time.Time) error {
+	duration := finished.Sub(started)
+	seconds := duration.Seconds()
+	if seconds <= 0 {
+		seconds = 1
+	}
+	var storage *ClickhouseStats
+	if b.clickhouseAddr != "" {
+		info, err := fetchClickhouseStats(ctx, b.clickhouseAddr, "logs")
+		if err == nil {
+			storage = &info
+		} else if v := b.storageInfo.Load(); v != nil {
+			storage = v
+		}
+	} else if v := b.storageInfo.Load(); v != nil {
+		storage = v
+	}
+	report := logsBenchReport{
+		StartedAt:  started,
+		FinishedAt: finished,
+		Duration:   duration.String(),
+		Throughput: logsBenchThroughput{
+			Lines:          b.writtenLines.Load(),
+			Bytes:          b.writtenBytes.Load(),
+			LinesPerSecond: float64(b.writtenLines.Load()) / seconds,
+			BytesPerSecond: float64(b.writtenBytes.Load()) / seconds,
+		},
+		Window: logsBenchWindow{
+			Start: b.windowStart,
+			End:   b.windowEnd,
+		},
+		Dataset: logsBenchDatasetConfig{
+			SourceDir: b.sourceDir,
+			Repeat:    b.repeat,
+			Services:  b.services,
+		},
+		Storage: storage,
+	}
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return errors.Wrap(err, "marshal")
+	}
+	if err := os.WriteFile(b.reportPath, append(data, '\n'), 0o644); err != nil {
+		return errors.Wrap(err, "write file")
+	}
+	return nil
 }
 
 func (b *LogsBench) prepareTargets(ctx context.Context, args []string) error {
@@ -297,6 +451,9 @@ func newOtelLogsBenchCommand() *cobra.Command {
 	f.IntVar(&b.entriesPerBatch, "entries", 5, "The number of entries per batch")
 	f.Int64Var(&b.limit, "total", 0, "The total number of generated entries (0 to disable limit)")
 	f.DurationVar(&b.rate, "rate", time.Second, "Rate of log emitter")
+	f.StringVar(&b.sourceDir, "source", "", "Directory with .log files to replay instead of random logs")
+	f.IntVar(&b.repeat, "repeat", 0, "Number of extra dataset replay loops for --source (0 replays once)")
+	f.StringVar(&b.reportPath, "report", "", "Write ingest summary JSON report to path")
 	f.StringVar(&b.clickhouseAddr, "clickhouseAddr", "", "clickhouse tcp protocol addr to get actual stats from")
 	f.Var(&b.start, "start", "Set starting point for log timestamps")
 	return cmd
