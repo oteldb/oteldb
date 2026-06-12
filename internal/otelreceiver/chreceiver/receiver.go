@@ -59,12 +59,10 @@ func (r *Receiver) Start(ctx context.Context, host component.Host) (err error) {
 			return
 		}
 		r.client = client
-		r.reader = chotel.NewReader(client)
-		if err = r.reader.Setup(ctx); err != nil {
-			_ = client.Close()
-			r.client = nil
-			return
-		}
+		r.reader = chotel.NewReader(client,
+			chotel.WithLag(r.cfg.Lag),
+			chotel.WithLookback(r.cfg.Lookback),
+		)
 
 		var runCtx context.Context
 		runCtx, r.cancel = context.WithCancel(context.Background())
@@ -108,9 +106,7 @@ func (r *Receiver) poll(ctx context.Context, now time.Time) error {
 			return errors.Wrap(err, "consume traces")
 		}
 	}
-	if err := r.reader.MarkExported(ctx, spans, now); err != nil {
-		return errors.Wrap(err, "mark exported")
-	}
+	r.reader.Advance(chotel.MaxFinishTime(spans))
 	r.logger.Debug("Consumed ClickHouse spans", zap.Int("count", len(filtered)))
 	return nil
 }

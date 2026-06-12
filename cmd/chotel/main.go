@@ -150,9 +150,6 @@ func (a *App) setup(ctx context.Context) error {
 	a.log.Info("Connected to clickhouse")
 	a.clickHouse = db
 	a.reader = chotel.NewReader(db)
-	if err := a.reader.Setup(ctx); err != nil {
-		return errors.Wrap(err, "setup reader")
-	}
 
 	conn, err := grpc.NewClient(a.otlpAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -191,9 +188,7 @@ func (a *App) send(ctx context.Context, now time.Time) error {
 	}, eb); err != nil {
 		return errors.Wrap(err, "export")
 	}
-	if err := a.reader.MarkExported(ctx, spans, now); err != nil {
-		return errors.Wrap(err, "mark exported")
-	}
+	a.reader.Advance(chotel.MaxFinishTime(spans))
 	zctx.From(ctx).Info("Exported", zap.Int("count", len(spans)))
 	return nil
 }

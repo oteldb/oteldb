@@ -15,6 +15,8 @@ const defaultPollRate = 500 * time.Millisecond
 type Config struct {
 	DSN      string              `mapstructure:"dsn"`
 	PollRate time.Duration       `mapstructure:"poll_rate"`
+	Lag      time.Duration       `mapstructure:"lag"`
+	Lookback time.Duration       `mapstructure:"lookback"`
 	Filter   chotel.FilterConfig `mapstructure:"filter"`
 }
 
@@ -28,6 +30,12 @@ func (c *Config) Validate() error {
 	}
 	if c.PollRate <= 0 {
 		return errors.New("'poll_rate' must be positive")
+	}
+	if c.Lag <= 0 {
+		return errors.New("'lag' must be positive")
+	}
+	if c.Lookback <= 0 {
+		return errors.New("'lookback' must be positive")
 	}
 	return nil
 }

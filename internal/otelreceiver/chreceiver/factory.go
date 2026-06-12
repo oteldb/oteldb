@@ -7,6 +7,8 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
+
+	"github.com/oteldb/oteldb/internal/chotel"
 )
 
 const (
@@ -26,6 +28,8 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		DSN:      "clickhouse://default:@localhost:9000/default",
 		PollRate: defaultPollRate,
+		Lag:      chotel.DefaultLag,
+		Lookback: chotel.DefaultLookback,
 	}
 }
 

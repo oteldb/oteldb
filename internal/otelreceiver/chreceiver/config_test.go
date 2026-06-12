@@ -31,6 +31,8 @@ func TestLoadConfig(t *testing.T) {
 			expected: &Config{
 				DSN:      "clickhouse://default:secret@clickhouse:9000/otel",
 				PollRate: time.Second,
+				Lag:      10 * time.Second,
+				Lookback: 2 * time.Minute,
 				Filter: chotel.FilterConfig{
 					Exclude:  []string{"SystemLog*"},
 					Include:  []string{"Query", "*Pipeline*"},

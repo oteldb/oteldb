@@ -2,6 +2,8 @@ chreceiver/defaults:
 chreceiver:
   dsn: clickhouse://default:secret@clickhouse:9000/otel
   poll_rate: 1s
+  lag: 10s
+  lookback: 2m
   filter:
     exclude:
       - SystemLog*
