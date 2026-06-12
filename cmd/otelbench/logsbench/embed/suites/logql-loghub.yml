@@ -7,7 +7,7 @@ instant:
     query: '{service_name="apache"} |~ "GET .* HTTP/1\\.[01]"'
   - title: "Mid case: severity token lookup"
     description: mid-case synthetic severity selectivity plus token search.
-    query: '{severity_text="ERROR"} |= "error"'
+    query: '{level="ERROR"} |= "error"'
   - title: "Worst case: full-table token scan"
     description: worst-case body-only full-table token scan; attributes and resource fields are not searched.
     query: '{} |= "error"'

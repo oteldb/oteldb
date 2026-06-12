@@ -174,6 +174,11 @@ func summarizeLogQLQueries(queries []logqlbench.LogQLReportQuery) []logQLSummary
 			readBytes += q.ReadBytes
 			readRows += q.ReadRows
 		}
+		runs := int64(len(g.durations))
+		if runs > 0 {
+			readBytes /= runs
+			readRows /= runs
+		}
 		rows = append(rows, logQLSummaryRow{
 			Title:     g.title,
 			Tier:      g.tier,

@@ -142,8 +142,6 @@ func (b *LogsBench) RunReporter(ctx context.Context) error {
 	}
 }
 
-var errLogsLimit = errors.New("limit reached")
-
 func (b *LogsBench) run(ctx context.Context) error {
 	r := rand.New(rand.NewSource(b.seed)) // #nosec: G404
 	source, err := b.newSource()
@@ -156,13 +154,53 @@ func (b *LogsBench) run(ctx context.Context) error {
 		}
 	}()
 
-	ticker := time.NewTicker(b.rate)
-	defer ticker.Stop()
-
 	now := b.start.Value
 	if now.IsZero() {
 		now = time.Now()
 	}
+	step := b.rate
+	if step <= 0 {
+		step = time.Duration(b.entriesPerBatch) * fileLogSpacing
+	}
+	emit := func() error {
+		now = now.Add(step)
+
+		batch, lines, bytes, exhausted, err := source.Next(r, now)
+		if err != nil {
+			return err
+		}
+		if lines > 0 {
+			b.observeWindow(batch)
+			b.send(ctx, batch)
+			b.writtenLines.Add(lines)
+			b.writtenBytes.Add(bytes)
+		}
+		if exhausted || (b.limit > 0 && b.writtenLines.Load() >= b.limit) {
+			close(b.stop)
+			return errLogsDone
+		}
+		return nil
+	}
+	if b.rate <= 0 {
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-b.stop:
+				return nil
+			default:
+				if err := emit(); err != nil {
+					if errors.Is(err, errLogsDone) {
+						return nil
+					}
+					return err
+				}
+			}
+		}
+	}
+
+	ticker := time.NewTicker(b.rate)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -170,25 +208,17 @@ func (b *LogsBench) run(ctx context.Context) error {
 		case <-b.stop:
 			return nil
 		case <-ticker.C:
-			now = now.Add(b.rate)
-
-			batch, lines, bytes, exhausted, err := source.Next(r, now)
-			if err != nil {
+			if err := emit(); err != nil {
+				if errors.Is(err, errLogsDone) {
+					return nil
+				}
 				return err
-			}
-			if lines > 0 {
-				b.observeWindow(batch)
-				b.send(ctx, batch)
-				b.writtenLines.Add(lines)
-				b.writtenBytes.Add(bytes)
-			}
-			if exhausted || (b.limit > 0 && b.writtenLines.Load() >= b.limit) {
-				close(b.stop)
-				return nil
 			}
 		}
 	}
 }
+
+var errLogsDone = errors.New("logs benchmark done")
 
 func (b *LogsBench) observeWindow(logs plog.Logs) {
 	for i := 0; i < logs.ResourceLogs().Len(); i++ {
@@ -438,11 +468,7 @@ func newOtelLogsBenchCommand() *cobra.Command {
 				return err
 			}
 
-			err = b.Run(ctx)
-			if errors.Is(err, errLogsLimit) {
-				err = nil
-			}
-			return err
+			return b.Run(ctx)
 		},
 	}
 	f := cmd.Flags()
@@ -450,7 +476,7 @@ func newOtelLogsBenchCommand() *cobra.Command {
 	f.IntVar(&b.resourceCount, "resources", 3, "The number of resources")
 	f.IntVar(&b.entriesPerBatch, "entries", 5, "The number of entries per batch")
 	f.Int64Var(&b.limit, "total", 0, "The total number of generated entries (0 to disable limit)")
-	f.DurationVar(&b.rate, "rate", time.Second, "Rate of log emitter")
+	f.DurationVar(&b.rate, "rate", time.Second, "Delay between log batches (<=0 sends as fast as possible)")
 	f.StringVar(&b.sourceDir, "source", "", "Directory with .log files to replay instead of random logs")
 	f.IntVar(&b.repeat, "repeat", 0, "Number of extra dataset replay loops for --source (0 replays once)")
 	f.StringVar(&b.reportPath, "report", "", "Write ingest summary JSON report to path")

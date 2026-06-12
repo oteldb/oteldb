@@ -15,7 +15,7 @@ services:
       retries: 60
 
   oteldb:
-    image: ghcr.io/oteldb/oteldb:latest
+    image: ${OTELDB_IMAGE:-ghcr.io/oteldb/oteldb:latest}
     command:
       - --config=/etc/otel/cfg.yml
     volumes:
