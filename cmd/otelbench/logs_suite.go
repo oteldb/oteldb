@@ -36,6 +36,7 @@ type LogsSuite struct {
 	LokiAddr       string
 	TempoAddr      string
 	ClickhouseAddr string
+	OteldbImage    string
 	Total          int64
 	Entries        int
 	Rate           time.Duration
@@ -65,9 +66,10 @@ func newLogsSuiteCommand() *cobra.Command {
 	f.StringVar(&s.LokiAddr, "loki-addr", "http://127.0.0.1:3100", "Loki-compatible query endpoint")
 	f.StringVar(&s.TempoAddr, "tempo-addr", "http://127.0.0.1:3200", "Tempo endpoint for query trace lookup")
 	f.StringVar(&s.ClickhouseAddr, "clickhouse-addr", "127.0.0.1:9000", "ClickHouse native endpoint for ingest stats")
+	f.StringVar(&s.OteldbImage, "oteldb-image", "", "Override oteldb container image used by docker compose")
 	f.Int64Var(&s.Total, "total", 0, "Cap ingested log lines (0 disables cap)")
 	f.IntVar(&s.Entries, "entries", 1000, "Log entries per ingest batch")
-	f.DurationVar(&s.Rate, "rate", 100*time.Millisecond, "Delay between ingest batches")
+	f.DurationVar(&s.Rate, "rate", 0, "Delay between ingest batches (<=0 sends as fast as possible)")
 	return cmd
 }
 
@@ -113,7 +115,7 @@ func (s *LogsSuite) Run(ctx context.Context) error {
 			}()
 		}
 	}
-	if err := waitLogsStack(ctx, s.LokiAddr); err != nil {
+	if err := waitLogsStack(ctx, s.LokiAddr, s.TempoAddr); err != nil {
 		return errors.Wrap(err, "wait stack")
 	}
 
@@ -195,17 +197,19 @@ func (s *LogsSuite) compose(ctx context.Context, workDir string, args ...string)
 	fullArgs := append([]string{"compose", "-f", filepath.Join(workDir, "docker-compose.yml")}, args...)
 	cmd := exec.CommandContext(ctx, "docker", fullArgs...)
 	cmd.Dir = workDir
+	if s.OteldbImage != "" {
+		cmd.Env = append(os.Environ(), "OTELDB_IMAGE="+s.OteldbImage)
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
-func waitLogsStack(ctx context.Context, lokiAddr string) error {
+func waitLogsStack(ctx context.Context, lokiAddr, tempoAddr string) error {
 	client := &http.Client{Timeout: time.Second}
 	checks := []string{
-		"http://127.0.0.1:8123/ping",
 		strings.TrimRight(lokiAddr, "/") + "/ready",
-		"http://127.0.0.1:3200/ready",
+		strings.TrimRight(tempoAddr, "/") + "/ready",
 	}
 	deadline := time.Now().Add(2 * time.Minute)
 	for {
@@ -244,7 +248,7 @@ func httpReady(ctx context.Context, client *http.Client, url string) (bool, erro
 	defer func() {
 		_ = resp.Body.Close()
 	}()
-	return resp.StatusCode >= 200 && resp.StatusCode < 500, nil
+	return resp.StatusCode >= 200 && resp.StatusCode < 300, nil
 }
 
 func readLogsBenchReport(path string) (logsBenchReport, error) {
@@ -305,6 +309,7 @@ type logsSuiteEnv struct {
 	LokiAddr       string    `json:"loki_addr"`
 	TempoAddr      string    `json:"tempo_addr"`
 	Target         string    `json:"target"`
+	OteldbImage    string    `json:"oteldb_image,omitempty"`
 }
 
 func (s *LogsSuite) writeEnv(ctx context.Context, runDir string, started time.Time) error {
@@ -324,6 +329,7 @@ func (s *LogsSuite) writeEnv(ctx context.Context, runDir string, started time.Ti
 		LokiAddr:       s.LokiAddr,
 		TempoAddr:      s.TempoAddr,
 		Target:         s.Target,
+		OteldbImage:    s.OteldbImage,
 	}
 	data, err := json.MarshalIndent(env, "", "  ")
 	if err != nil {
