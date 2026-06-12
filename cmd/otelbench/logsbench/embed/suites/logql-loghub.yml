@@ -1,0 +1,41 @@
+instant:
+  - title: "Best case: SSH failed password lookup"
+    description: best-case materialized service filter plus token search.
+    query: '{service_name="ssh"} |= "Failed password"'
+  - title: "Best case: Apache request regex"
+    description: best-case materialized service filter plus body regex.
+    query: '{service_name="apache"} |~ "GET .* HTTP/1\\.[01]"'
+  - title: "Mid case: severity token lookup"
+    description: mid-case synthetic severity selectivity plus token search.
+    query: '{severity_text="ERROR"} |= "error"'
+  - title: "Worst case: full-table token scan"
+    description: worst-case body-only full-table token scan; attributes and resource fields are not searched.
+    query: '{} |= "error"'
+  - title: "Worst case: full-table IP regex"
+    description: worst-case body-only full-table regex scan; attributes and resource fields are not searched.
+    query: '{} |~ "\\d+\\.\\d+\\.\\d+\\.\\d+"'
+
+range:
+  - title: "Best case: Apache count over time"
+    description: best-case aggregation with materialized service filter.
+    step: 1m
+    query: 'count_over_time({service_name="apache"}[5m])'
+  - title: "Mid case: host/session scan"
+    description: mid-case synthetic resource attribute matcher plus token search.
+    step: 1m
+    query: '{host_name=~"node-.*"} |= "session"'
+
+series:
+  - title: "Metadata: service series"
+    description: metadata series lookup over service labels.
+    match:
+      - '{service_name=~"apache|ssh|linux"}'
+
+labels:
+  - title: "Metadata: labels"
+    description: metadata labels lookup.
+
+label_values:
+  - title: "Metadata: service values"
+    description: metadata label_values(service_name) lookup.
+    name: service_name

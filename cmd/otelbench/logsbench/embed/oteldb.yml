@@ -1,0 +1,21 @@
+dsn: clickhouse://default:default@clickhouse:9000
+loki:
+  bind: 0.0.0.0:3100
+health_check:
+  bind: 0.0.0.0:13133
+otelcol:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  exporters:
+    oteldbexporter:
+      dsn: clickhouse://default:default@clickhouse:9000
+  service:
+    pipelines:
+      logs:
+        receivers: [otlp]
+        exporters: [oteldbexporter]
