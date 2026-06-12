@@ -20,6 +20,7 @@ func main() {
 		SilenceErrors: true,
 	}
 	rootCmd.AddCommand(
+		newLogsCommand(),
 		newPromQLCommand(),
 		newLogQLCommand(),
 		newPrometheusRemoteWriteCommand(),
