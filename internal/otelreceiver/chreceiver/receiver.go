@@ -79,7 +79,7 @@ func (r *Receiver) Start(ctx context.Context, host component.Host) (err error) {
 
 func (r *Receiver) run(ctx context.Context) error {
 	if err := r.poll(ctx, time.Now()); err != nil {
-		return errors.Wrap(err, "poll")
+		r.logger.Warn("ClickHouse poll failed", zap.Error(err))
 	}
 	ticker := time.NewTicker(r.cfg.PollRate)
 	defer ticker.Stop()
@@ -90,7 +90,7 @@ func (r *Receiver) run(ctx context.Context) error {
 			return ctx.Err()
 		case now := <-ticker.C:
 			if err := r.poll(ctx, now); err != nil {
-				return errors.Wrap(err, "poll")
+				r.logger.Warn("ClickHouse poll failed", zap.Error(err))
 			}
 		}
 	}
@@ -101,21 +101,26 @@ func (r *Receiver) poll(ctx context.Context, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	spans = chotel.Filter(spans, r.cfg.Filter)
-	if len(spans) == 0 {
-		return nil
+	filtered := chotel.Filter(spans, r.cfg.Filter)
+	if len(filtered) > 0 {
+		traces := chotel.ToTraces(filtered)
+		if err := r.consumer.ConsumeTraces(ctx, traces); err != nil {
+			return errors.Wrap(err, "consume traces")
+		}
 	}
-	traces := chotel.ToTraces(spans)
-	if err := r.consumer.ConsumeTraces(ctx, traces); err != nil {
-		return errors.Wrap(err, "consume traces")
+	if err := r.reader.MarkExported(ctx, spans, now); err != nil {
+		return errors.Wrap(err, "mark exported")
 	}
-	r.logger.Debug("Consumed ClickHouse spans", zap.Int("count", len(spans)))
+	r.logger.Debug("Consumed ClickHouse spans", zap.Int("count", len(filtered)))
 	return nil
 }
 
 // Shutdown implements [component.Component].
 func (r *Receiver) Shutdown(context.Context) (err error) {
 	r.stopOnce.Do(func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+
 		if r.cancel != nil {
 			r.cancel()
 		}

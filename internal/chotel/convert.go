@@ -26,6 +26,11 @@ var numericAttributeMarkers = []string{
 	"exception_code",
 }
 
+var defaultClickHouseResource = resource.NewWithAttributes(
+	semconv.SchemaURL,
+	semconv.ServiceNameKey.String("clickhouse"),
+)
+
 // ParseAttributes parses ClickHouse span attributes into OpenTelemetry attributes.
 func ParseAttributes(attrs map[string]string) []attribute.KeyValue {
 	out := make([]attribute.KeyValue, 0, len(attrs))
@@ -51,7 +56,7 @@ Attribute:
 func ConvertTrace(t chtrace.Trace) sdktrace.ReadOnlySpan {
 	return tracetest.SpanStub{
 		SpanKind:   t.Kind,
-		Resource:   clickhouseResource(),
+		Resource:   defaultClickHouseResource,
 		Name:       t.OperationName,
 		StartTime:  t.StartTime,
 		EndTime:    t.FinishTime,
@@ -100,11 +105,4 @@ func ToTraces(spans []chtrace.Trace) ptrace.Traces {
 		}
 	}
 	return out
-}
-
-func clickhouseResource() *resource.Resource {
-	return resource.NewWithAttributes(
-		semconv.SchemaURL,
-		semconv.ServiceNameKey.String("clickhouse"),
-	)
 }

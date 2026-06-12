@@ -191,6 +191,9 @@ func (a *App) send(ctx context.Context, now time.Time) error {
 	}, eb); err != nil {
 		return errors.Wrap(err, "export")
 	}
+	if err := a.reader.MarkExported(ctx, spans, now); err != nil {
+		return errors.Wrap(err, "mark exported")
+	}
 	zctx.From(ctx).Info("Exported", zap.Int("count", len(spans)))
 	return nil
 }

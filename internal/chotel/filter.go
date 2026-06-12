@@ -2,7 +2,8 @@ package chotel
 
 import (
 	"maps"
-	"path"
+	"regexp"
+	"strings"
 
 	"github.com/oteldb/oteldb/internal/chtrace"
 )
@@ -43,16 +44,23 @@ func matchesAny(patterns []string, value string) bool {
 		if pattern == value {
 			return true
 		}
-		matched, err := path.Match(pattern, value)
-		if err == nil && matched {
+		if globMatch(pattern, value) {
 			return true
 		}
 	}
 	return false
 }
 
+func globMatch(pattern, value string) bool {
+	pattern = regexp.QuoteMeta(pattern)
+	pattern = strings.ReplaceAll(pattern, `\*`, ".*")
+	pattern = strings.ReplaceAll(pattern, `\?`, ".")
+	matched, err := regexp.MatchString("^"+pattern+"$", value)
+	return err == nil && matched
+}
+
 type collapseKey struct {
-	traceID string
+	traceID [16]byte
 	name    string
 }
 
@@ -61,7 +69,7 @@ func collapse(spans []chtrace.Trace) []chtrace.Trace {
 	out := make([]chtrace.Trace, 0, len(spans))
 	for _, span := range spans {
 		key := collapseKey{
-			traceID: span.TraceID.String(),
+			traceID: span.TraceID,
 			name:    span.OperationName,
 		}
 		idx, ok := groups[key]
