@@ -4,7 +4,7 @@ version: "3"
 env:
   GO111MODULE: on
   GOPROXY: https://proxy.golang.org,direct
-  IMAGE: '{{default "registry.localhost/go-faster/oteldb" .IMAGE}}'
+  IMAGE: '{{default "registry.localhost/oteldb/oteldb" .IMAGE}}'
 
 vars:
   DOCKER: '{{default "docker" .DOCKER}}'
