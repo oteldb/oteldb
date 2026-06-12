@@ -8,6 +8,8 @@ func newLogsCommand() *cobra.Command {
 		Short: "logs is a self-benchmarking suite for oteldb logs",
 	}
 	cmd.AddCommand(
+		newLogsDumpAssetsCommand(),
+		newLogsReportCommand(),
 		newLogsSuiteCommand(),
 	)
 	return cmd
