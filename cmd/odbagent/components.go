@@ -27,6 +27,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 	otelconftelemetry "go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
 
+	"github.com/oteldb/oteldb/internal/otelreceiver/chreceiver"
 	_ "github.com/oteldb/oteldb/odblogparser"
 	_ "github.com/oteldb/oteldb/odbsafety"
 	"github.com/oteldb/oteldb/odbsafetyprocessor"
@@ -53,6 +54,7 @@ func components() (otelcol.Factories, error) {
 	factories.Receivers, err = otelcol.MakeFactoryMap[receiver.Factory](
 		otlpreceiver.NewFactory(),
 		filelogreceiver.NewFactory(),
+		chreceiver.NewFactory(),
 	)
 	if err != nil {
 		return otelcol.Factories{}, errors.Wrap(err, "make receiver factory map")

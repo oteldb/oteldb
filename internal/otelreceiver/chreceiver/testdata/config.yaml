@@ -1,0 +1,11 @@
+chreceiver/defaults:
+chreceiver:
+  dsn: clickhouse://default:secret@clickhouse:9000/otel
+  poll_rate: 1s
+  filter:
+    exclude:
+      - SystemLog*
+    include:
+      - Query
+      - '*Pipeline*'
+    collapse: true
