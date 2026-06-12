@@ -119,14 +119,16 @@ func (r *Receiver) poll(ctx context.Context, now time.Time) error {
 func (r *Receiver) Shutdown(context.Context) (err error) {
 	r.stopOnce.Do(func() {
 		r.mu.Lock()
-		defer r.mu.Unlock()
+		cancel := r.cancel
+		client := r.client
+		r.mu.Unlock()
 
-		if r.cancel != nil {
-			r.cancel()
+		if cancel != nil {
+			cancel()
 		}
 		r.wg.Wait()
-		if r.client != nil {
-			err = r.client.Close()
+		if client != nil {
+			err = client.Close()
 		}
 	})
 	return err

@@ -2,8 +2,6 @@ package chotel
 
 import (
 	"maps"
-	"regexp"
-	"strings"
 
 	"github.com/oteldb/oteldb/internal/chtrace"
 )
@@ -52,11 +50,35 @@ func matchesAny(patterns []string, value string) bool {
 }
 
 func globMatch(pattern, value string) bool {
-	pattern = regexp.QuoteMeta(pattern)
-	pattern = strings.ReplaceAll(pattern, `\*`, ".*")
-	pattern = strings.ReplaceAll(pattern, `\?`, ".")
-	matched, err := regexp.MatchString("^"+pattern+"$", value)
-	return err == nil && matched
+	patternIndex := 0
+	valueIndex := 0
+	starIndex := -1
+	matchIndex := 0
+
+	for valueIndex < len(value) {
+		if patternIndex < len(pattern) && (pattern[patternIndex] == '?' || pattern[patternIndex] == value[valueIndex]) {
+			patternIndex++
+			valueIndex++
+			continue
+		}
+		if patternIndex < len(pattern) && pattern[patternIndex] == '*' {
+			starIndex = patternIndex
+			matchIndex = valueIndex
+			patternIndex++
+			continue
+		}
+		if starIndex != -1 {
+			patternIndex = starIndex + 1
+			matchIndex++
+			valueIndex = matchIndex
+			continue
+		}
+		return false
+	}
+	for patternIndex < len(pattern) && pattern[patternIndex] == '*' {
+		patternIndex++
+	}
+	return patternIndex == len(pattern)
 }
 
 type collapseKey struct {
