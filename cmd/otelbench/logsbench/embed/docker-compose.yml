@@ -1,0 +1,80 @@
+services:
+  clickhouse:
+    image: ${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:25.9}
+    environment:
+      - CLICKHOUSE_PASSWORD=default
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:8123:8123"
+    volumes:
+      - ./clickhouse.xml:/etc/clickhouse-server/config.d/monitoring.xml:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:8123/ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 60
+
+  oteldb:
+    image: ${OTELDB_IMAGE:-ghcr.io/oteldb/oteldb:latest}
+    command:
+      - --config=/etc/otel/cfg.yml
+    volumes:
+      - ./oteldb.yml:/etc/otel/cfg.yml:ro
+    environment:
+      - PPROF_ADDR=0.0.0.0:9010
+      - OTELDB_STORAGE=ch
+      - CH_DSN=clickhouse://default:default@clickhouse:9000
+      - OTEL_LOG_LEVEL=info
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_TRACES_SAMPLER=parentbased_always_off
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=oteldb
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:13133/liveness"]
+      interval: 1s
+      timeout: 1s
+      retries: 60
+    ports:
+      - "127.0.0.1:3100:3100"
+      - "127.0.0.1:4318:4317"
+      - "127.0.0.1:9010:9010"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      otelcol:
+        condition: service_started
+
+  chotel:
+    image: ${CHOTEL_IMAGE:-ghcr.io/oteldb/oteldb/chotel:latest}
+    restart: always
+    environment:
+      - CH_DSN=clickhouse://default:default@clickhouse:9000
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=oteldb.chotel
+      - CHOTEL_SEND_RATE=1s
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      otelcol:
+        condition: service_started
+
+  tempo:
+    image: ${TEMPO_IMAGE:-ghcr.io/go-faster/tempo:latest}
+    command: ["-config.file=/etc/tempo.yml"]
+    ports:
+      - "127.0.0.1:3200:3200"
+    volumes:
+      - ./tempo.yml:/etc/tempo.yml:ro
+
+  otelcol:
+    image: ${OTELCOL_IMAGE:-ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.154.0}
+    command:
+      - --config
+      - /etc/otelcol-contrib/config.yaml
+    volumes:
+      - ./otelcol.yml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
