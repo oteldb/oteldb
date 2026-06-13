@@ -180,6 +180,14 @@ func (p *pointIterator) AtT() int64 {
 	return p.ts[p.n]
 }
 
+// AtST returns the current start timestamp.
+// Returns 0 if the start timestamp is not implemented or not set.
+// Before the iterator has advanced, the behavior is unspecified.
+func (p *pointIterator) AtST() int64 {
+	// TODO(tdakkota): we actually can support it
+	return 0
+}
+
 // Err returns the current error. It should be used only after the
 // iterator is exhausted, i.e. `Next` or `Seek` have returned ValNone.
 func (p *pointIterator) Err() error {
