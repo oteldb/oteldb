@@ -27,7 +27,7 @@
         -->
         <engine>
             engine MergeTree
-            order by (start_time_us, trace_id)
+            order by (finish_date, finish_time_us, trace_id)
             ttl toDateTime(finish_time_us/1000000) + toIntervalMinute(15)
         </engine>
         <database>system</database>

@@ -62,6 +62,21 @@ builds:
     flags:
       - -trimpath
 
+  - id: odbagent
+    binary: "odbagent{{ .Ext }}"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - riscv64
+    main: ./cmd/odbagent
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+
   - id: docker-logql
     binary: "docker-logql{{ .Ext }}"
     env:
@@ -109,6 +124,7 @@ release:
 
     ```
     {{ .Env.IMAGE }}:v{{ .Version }}
+    ghcr.io/oteldb/oteldb/odbagent:v{{ .Version }}
     ```
 
 dockers_v2:
@@ -140,7 +156,7 @@ dockers_v2:
     labels:
       "io.artifacthub.package.readme-url": "https://github.com/oteldb/oteldb/blob/main/README.md"
       "io.artifacthub.package.logo-url": "https://avatars.githubusercontent.com/u/131437363"
-      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"}]'
+      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"},{"name":"tdakkota","email":"oteldb@tdakkota.dev"}]'
       "io.artifacthub.package.license": "Apache 2.0"
 
       "org.opencontainers.image.description": "OpenTelemetry signal storage"
@@ -171,7 +187,7 @@ dockers_v2:
     labels:
       "io.artifacthub.package.readme-url": "https://github.com/oteldb/oteldb/blob/main/README.md"
       "io.artifacthub.package.logo-url": "https://avatars.githubusercontent.com/u/131437363"
-      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"}]'
+      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"},{"name":"tdakkota","email":"oteldb@tdakkota.dev"}]'
       "io.artifacthub.package.license": "Apache 2.0"
 
       "org.opencontainers.image.description": "OpenTelemetry signal storage"
@@ -204,12 +220,45 @@ dockers_v2:
     labels:
       "io.artifacthub.package.readme-url": "https://github.com/oteldb/oteldb/blob/main/README.md"
       "io.artifacthub.package.logo-url": "https://avatars.githubusercontent.com/u/131437363"
-      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"}]'
+      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"},{"name":"tdakkota","email":"oteldb@tdakkota.dev"}]'
       "io.artifacthub.package.license": "Apache 2.0"
 
       "org.opencontainers.image.description": "OpenTelemetry signal storage"
       "org.opencontainers.image.created": "{{.Date}}"
       "org.opencontainers.image.name": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
+
+  - id: distroless-odbagent
+    images:
+      - "ghcr.io/oteldb/oteldb/odbagent"
+
+    dockerfile: odbagent.Dockerfile
+
+    build_args:
+      BASE_IMAGE: "gcr.io/distroless/static"
+
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
+    tags:
+      - "{{ if not .IsNightly }}latest{{ end }}"
+      - "{{ if not .IsNightly }}distroless{{ end }}"
+      - "v{{ .Version }}"
+      - "v{{ .Version }}-distroless"
+      - "{{ if .IsNightly }}nightly-distroless{{ end }}"
+
+    labels:
+      "io.artifacthub.package.readme-url": "https://github.com/oteldb/oteldb/blob/main/README.md"
+      "io.artifacthub.package.logo-url": "https://avatars.githubusercontent.com/u/131437363"
+      "io.artifacthub.package.maintainers": '[{"name":"Aleksandr Razumov","email":"ernado@go-faster.org"},{"name":"tdakkota","email":"oteldb@tdakkota.dev"}]'
+      "io.artifacthub.package.license": "Apache 2.0"
+
+      "org.opencontainers.image.description": "OpenTelemetry Collector agent for oteldb"
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.name": "odbagent"
       "org.opencontainers.image.revision": "{{.FullCommit}}"
       "org.opencontainers.image.version": "{{.Version}}"
       "org.opencontainers.image.source": "{{.GitURL}}"
@@ -280,6 +329,7 @@ nfpms:
       - chotel
       - odbbackup
       - odbrestore
+      - odbagent
     homepage: https://github.com/oteldb/oteldb
     maintainer: Aleksandr Razumov <ernado@go-faster.org>
     description: OpenTelemetry signal storage

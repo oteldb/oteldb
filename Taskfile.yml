@@ -4,10 +4,16 @@ version: "3"
 env:
   GO111MODULE: on
   GOPROXY: https://proxy.golang.org,direct
-  IMAGE: '{{default "registry.localhost/go-faster/oteldb" .IMAGE}}'
+  IMAGE: '{{default "registry.localhost/oteldb/oteldb" .IMAGE}}'
 
 vars:
   DOCKER: '{{default "docker" .DOCKER}}'
+  REGISTRY:
+    sh: 'printf "%s" "${REGISTRY:-}"'
+  TAG:
+    sh: git log --pretty='%h' -1
+  PUSH_ARG:
+    sh: 'if [[ -n "${PUSH:-}" ]]; then echo "--push"; fi'
 
 tasks:
   setup:
@@ -24,6 +30,16 @@ tasks:
     cmds:
       - go build -o ./oteldb ./cmd/oteldb
 
+  build:odbagent:
+    desc: Build the odbagent binary
+    sources:
+      - ./**/*.go
+    generates:
+      - ./bin/odbagent
+    cmds:
+      - mkdir -p ./bin
+      - go build -o ./bin/odbagent ./cmd/odbagent
+
   build-deploy:
     desc: Build binaries for deploy images
     env:
@@ -35,6 +51,43 @@ tasks:
       - go build -trimpath -buildvcs=false -v ./cmd/odbmigrate
       - go build -trimpath -buildvcs=false -v ./cmd/otelproxy
       - go build -trimpath -buildvcs=false -v ./cmd/chotel
+      - go build -trimpath -buildvcs=false -v ./cmd/odbagent
+
+  deploy:images:
+    desc: Build deploy images, set PUSH=1 to push
+    deps:
+      - build-deploy
+    preconditions:
+      - sh: test -n "${REGISTRY:-}"
+        msg: "REGISTRY is required, for example: REGISTRY=ghcr.io/oteldb"
+    cmds:
+      - task: deploy:image:oteldb
+      - task: deploy:image:chotel
+      - task: deploy:image:odbagent
+
+  deploy:image:oteldb:
+    desc: Build the oteldb deploy image
+    preconditions:
+      - sh: test -n "${REGISTRY:-}"
+        msg: "REGISTRY is required, for example: REGISTRY=ghcr.io/oteldb"
+    cmds:
+      - '{{.DOCKER}} build -t "{{.REGISTRY}}/oteldb:{{.TAG}}" {{.PUSH_ARG}} -f dev/deploy/deploy.Dockerfile .'
+
+  deploy:image:chotel:
+    desc: Build the chotel deploy image
+    preconditions:
+      - sh: test -n "${REGISTRY:-}"
+        msg: "REGISTRY is required, for example: REGISTRY=ghcr.io/oteldb"
+    cmds:
+      - '{{.DOCKER}} build -t "{{.REGISTRY}}/chotel:{{.TAG}}" {{.PUSH_ARG}} -f dev/deploy/deploy.chotel.Dockerfile .'
+
+  deploy:image:odbagent:
+    desc: Build the odbagent deploy image
+    preconditions:
+      - sh: test -n "${REGISTRY:-}"
+        msg: "REGISTRY is required, for example: REGISTRY=ghcr.io/oteldb"
+    cmds:
+      - '{{.DOCKER}} build -t "{{.REGISTRY}}/odbagent:{{.TAG}}" {{.PUSH_ARG}} -f dev/deploy/deploy.odbagent.Dockerfile .'
 
   test:
     desc: Run tests
