@@ -142,7 +142,7 @@ func downloadFile(ctx context.Context, client *http.Client, url, path string) er
 		return errors.Wrap(err, "stat partial archive")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return errors.Wrap(err, "create request")
 	}
@@ -168,7 +168,7 @@ func downloadFile(ctx context.Context, client *http.Client, url, path string) er
 	} else {
 		flag |= os.O_TRUNC
 	}
-	out, err := os.OpenFile(partPath, flag, 0o644)
+	out, err := os.OpenFile(partPath, flag, 0o644) // #nosec G302,G304 -- partial download file in controlled cache dir; will be renamed
 	if err != nil {
 		return errors.Wrap(err, "open partial archive")
 	}
@@ -186,7 +186,7 @@ func downloadFile(ctx context.Context, client *http.Client, url, path string) er
 }
 
 func extractTarGz(path, dir string) error {
-	archive, err := os.Open(path)
+	archive, err := os.Open(path) // #nosec G304 -- path is internal cache path constructed from known dataset names
 	if err != nil {
 		return errors.Wrap(err, "open archive")
 	}
@@ -229,11 +229,11 @@ func extractTarEntry(reader io.Reader, header *tar.Header, dir string) error {
 		if err := os.MkdirAll(target, 0o755); err != nil {
 			return errors.Wrap(err, "create directory")
 		}
-	case tar.TypeReg, tar.TypeRegA:
+	case tar.TypeReg, tar.TypeRegA: //nolint:staticcheck // TypeRegA is deprecated but still produced by some archives
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return errors.Wrap(err, "create file parent")
 		}
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644) // #nosec G302,G304 -- extracted dataset file in controlled cache dir; standard readable permissions for benchmark data
 		if err != nil {
 			return errors.Wrap(err, "create file")
 		}
