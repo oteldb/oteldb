@@ -76,11 +76,11 @@ type Cache struct {
 
 func (c *Cache) lock(k Key) *sync.Mutex {
 	h := fnv.New32a()
-	h.Write(k.Hash[:])
+	_, _ = h.Write(k.Hash[:])
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], uint64(k.Step))
-	h.Write(buf[:])
-	h.Write([]byte(k.Fn))
+	_, _ = h.Write(buf[:])
+	_, _ = h.Write([]byte(k.Fn))
 	return &c.locks[h.Sum32()%256]
 }
 

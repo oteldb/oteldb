@@ -21,8 +21,6 @@ import (
 // testEpoch is a fixed point in the past so safety-lag never interferes.
 var testEpoch = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 
-
-
 func newTestCache(t *testing.T, opts metricscache.Options) *metricscache.Cache {
 	t.Helper()
 	mc, err := metricscache.New(opts)
