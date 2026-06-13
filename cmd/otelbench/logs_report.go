@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -110,7 +111,7 @@ func renderLogsReport(dir string) (string, error) {
 }
 
 func readLogsSuiteEnv(path string) (logsSuiteEnv, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path comes from CLI arg for local benchmark tooling
 	if err != nil {
 		return logsSuiteEnv{}, errors.Wrap(err, "read env")
 	}
@@ -122,7 +123,7 @@ func readLogsSuiteEnv(path string) (logsSuiteEnv, error) {
 }
 
 func readLogQLReport(path string) (logqlbench.LogQLReport, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path comes from CLI arg for local benchmark tooling
 	if err != nil {
 		return logqlbench.LogQLReport{}, errors.Wrap(err, "read query report")
 	}
@@ -168,7 +169,7 @@ func summarizeLogQLQueries(queries []logqlbench.LogQLReportQuery) []logQLSummary
 	}
 	rows := make([]logQLSummaryRow, 0, len(groups))
 	for _, g := range groups {
-		sort.Slice(g.durations, func(i, j int) bool { return g.durations[i] < g.durations[j] })
+		slices.Sort(g.durations)
 		var readBytes, readRows int64
 		for _, q := range g.queryReport {
 			readBytes += q.ReadBytes

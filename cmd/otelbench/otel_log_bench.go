@@ -242,7 +242,7 @@ func (b *LogsBench) observeWindow(logs plog.Logs) {
 }
 
 type logsBatchSource interface {
-	Next(r *rand.Rand, ts time.Time) (plog.Logs, int64, int64, bool, error)
+	Next(r *rand.Rand, ts time.Time) (logs plog.Logs, lines, bytes int64, exhausted bool, err error)
 }
 
 func (b *LogsBench) newSource() (logsBatchSource, error) {
@@ -261,8 +261,8 @@ type randomLogsSource struct {
 	bench *LogsBench
 }
 
-func (s randomLogsSource) Next(r *rand.Rand, ts time.Time) (plog.Logs, int64, int64, bool, error) {
-	logs, lines, bytes := s.bench.generateBatch(r, ts)
+func (s randomLogsSource) Next(r *rand.Rand, ts time.Time) (logs plog.Logs, lines, bytes int64, exhausted bool, err error) {
+	logs, lines, bytes = s.bench.generateBatch(r, ts)
 	return logs, lines, bytes, false, nil
 }
 

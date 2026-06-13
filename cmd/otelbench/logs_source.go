@@ -101,13 +101,12 @@ func (s *fileLogsSource) Close() error {
 	return s.closeCurrent()
 }
 
-func (s *fileLogsSource) Next(_ *rand.Rand, ts time.Time) (plog.Logs, int64, int64, bool, error) {
-	logs := plog.NewLogs()
+func (s *fileLogsSource) Next(_ *rand.Rand, ts time.Time) (logs plog.Logs, lines, bytes int64, exhausted bool, err error) {
+	logs = plog.NewLogs()
 	if s.nextTime.IsZero() {
 		s.nextTime = ts
 	}
 
-	var lines, bytes int64
 	for lines < int64(s.entriesPerBatch) {
 		if s.limit > 0 && s.readLines >= s.limit {
 			return logs, lines, bytes, true, nil

@@ -257,7 +257,7 @@ func waitLogsStack(ctx context.Context, lokiAddr, tempoAddr string) error {
 }
 
 func httpReady(ctx context.Context, client *http.Client, url string) (bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return false, err
 	}
@@ -272,7 +272,7 @@ func httpReady(ctx context.Context, client *http.Client, url string) (bool, erro
 }
 
 func readLogsBenchReport(path string) (logsBenchReport, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is internal runDir/ingest.json constructed by the suite runner
 	if err != nil {
 		return logsBenchReport{}, errors.Wrap(err, "read ingest report")
 	}
@@ -284,7 +284,7 @@ func readLogsBenchReport(path string) (logsBenchReport, error) {
 }
 
 func writeLogQLBenchstat(reportPath, benchstatPath string) error {
-	data, err := os.ReadFile(reportPath)
+	data, err := os.ReadFile(reportPath) // #nosec G304 -- reportPath is internal runDir/report.yml constructed by the suite runner
 	if err != nil {
 		return errors.Wrap(err, "read report")
 	}
@@ -292,7 +292,7 @@ func writeLogQLBenchstat(reportPath, benchstatPath string) error {
 	if err := yamlx.Unmarshal(data, &report); err != nil {
 		return errors.Wrap(err, "unmarshal report")
 	}
-	out, err := os.Create(benchstatPath)
+	out, err := os.Create(benchstatPath) // #nosec G304 -- benchstatPath is internal runDir/benchstat.txt constructed by the suite runner
 	if err != nil {
 		return errors.Wrap(err, "create benchstat")
 	}
@@ -303,7 +303,7 @@ func writeLogQLBenchstat(reportPath, benchstatPath string) error {
 }
 
 func copyFile(from, to string) error {
-	data, err := os.ReadFile(from)
+	data, err := os.ReadFile(from) // #nosec G304 -- from may be user-provided --suite path for local benchmark runs; to is always under controlled runDir
 	if err != nil {
 		return errors.Wrap(err, "read file")
 	}
