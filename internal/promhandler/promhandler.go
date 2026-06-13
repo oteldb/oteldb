@@ -404,7 +404,7 @@ func (h *PromAPI) GetQueryExemplars(ctx context.Context, params promapi.GetQuery
 		err := errors.New("end timestamp must not be before start time")
 		return nil, validationErr("check range", err)
 	}
-	expr, err := parser.ParseExpr(params.Query)
+	expr, err := parser.NewParser(parser.Options{}).ParseExpr(params.Query)
 	if err != nil {
 		return nil, validationErr("parse query", err)
 	}

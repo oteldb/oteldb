@@ -195,7 +195,7 @@ func parseQueryOpts(
 func parseLabelMatchers(matchers []string) ([][]*labels.Matcher, error) {
 	var matcherSets [][]*labels.Matcher
 	for _, s := range matchers {
-		matchers, err := parser.ParseMetricSelector(s)
+		matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(s)
 		if err != nil {
 			return nil, errors.Wrapf(err, "parse selector %q", s)
 		}
