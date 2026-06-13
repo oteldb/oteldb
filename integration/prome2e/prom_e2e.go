@@ -51,7 +51,7 @@ func ParseBatchSet(r io.Reader) (s BatchSet, _ error) {
 func (s *BatchSet) MatchingSeries(match []string) (r []map[string]string, _ error) {
 	matcherSets := make([][]*labels.Matcher, 0, len(match))
 	for _, s := range match {
-		matchers, err := parser.ParseMetricSelector(s)
+		matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(s)
 		if err != nil {
 			return nil, errors.Wrapf(err, "parse metric selector %q", s)
 		}
