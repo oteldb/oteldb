@@ -2,6 +2,10 @@ package metricscache
 
 import (
 	"context"
+	"encoding/binary"
+	"hash/fnv"
+	"math"
+	"sync"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -66,6 +70,18 @@ type Cache struct {
 
 	// Stats holds OTel metric counters for per-query cache diagnostics.
 	Stats CacheStats
+
+	locks [256]sync.Mutex
+}
+
+func (c *Cache) lock(k Key) *sync.Mutex {
+	h := fnv.New32a()
+	h.Write(k.Hash[:])
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], uint64(k.Step))
+	h.Write(buf[:])
+	h.Write([]byte(k.Fn))
+	return &c.locks[h.Sum32()%256]
 }
 
 // New creates a new Cache with the given options.
@@ -101,14 +117,92 @@ func New(opts Options) (*Cache, error) {
 	return c, nil
 }
 
-// Get retrieves an entry from the cache.
-func (c *Cache) Get(key Key) (*Entry, bool) {
-	return c.store.Get(key)
+// Lookup gets the watermark maxTS and whether the cache has a hit covering start.
+func (c *Cache) Lookup(k Key, start int64) (maxTS int64, hit bool) {
+	mu := c.lock(k)
+	mu.Lock()
+	defer mu.Unlock()
+
+	e, ok := c.store.Get(k)
+	if !ok {
+		return math.MinInt64, false
+	}
+	minTS, maxTS := e.Watermarks()
+	if minTS <= start && maxTS >= start {
+		return maxTS, true
+	}
+	return maxTS, false
 }
 
-// Set stores an entry in the cache.
-func (c *Cache) Set(key Key, entry *Entry) {
-	c.store.Set(key, entry)
+// Update contains parameters for Cache.Update.
+type Update struct {
+	FetchFrom    int64
+	UntilMs      int64
+	TS           []int64
+	Vals         []float64
+	OnlyIfExists bool
+}
+
+// Update gap-checks + fresh-starts + appends + markFetched + sets, atomic.
+func (c *Cache) Update(k Key, u Update) (wrote bool) {
+	mu := c.lock(k)
+	mu.Lock()
+	defer mu.Unlock()
+
+	e, ok := c.store.Get(k)
+	if !ok {
+		if u.OnlyIfExists {
+			return false
+		}
+		e = NewEntry()
+	} else {
+		oldMinTS, oldMaxTS := e.Watermarks()
+		if oldMaxTS != math.MinInt64 {
+			stepMs := k.Step
+			forwardGap := u.FetchFrom > nextAlignedFetch(oldMaxTS, stepMs)
+			backwardGap := u.UntilMs < oldMinTS-max(1, stepMs)
+			if forwardGap || backwardGap {
+				e = NewEntry()
+			}
+		}
+	}
+
+	e.append(u.TS, u.Vals, u.UntilMs)
+	e.markFetched(u.FetchFrom, u.UntilMs)
+	c.store.Set(k, e)
+	return true
+}
+
+// Read gets an entry and slices its points, copying the values to avoid aliasing.
+func (c *Cache) Read(k Key, from, to int64) (ts []int64, vals []float64, ok bool) {
+	mu := c.lock(k)
+	mu.Lock()
+	defer mu.Unlock()
+
+	e, ok := c.store.Get(k)
+	if !ok {
+		return nil, nil, false
+	}
+
+	t, v := e.slice(from, to)
+
+	if len(v) > 0 {
+		vCopy := make([]float64, len(v))
+		copy(vCopy, v)
+		v = vCopy
+	}
+	return t, v, true
+}
+
+// nextAlignedFetch returns the earliest timestamp to fetch after a cache watermark.
+// For step-aligned queries (stepMs > 0) it rounds up to the next step boundary so
+// that the first fetched point is never shifted by 1 ms relative to the Prometheus
+// step grid.  For raw-point queries (stepMs == 0) it returns watermark+1.
+func nextAlignedFetch(watermarkMs, stepMs int64) int64 {
+	if stepMs <= 0 {
+		return watermarkMs + 1
+	}
+	return (watermarkMs/stepMs + 1) * stepMs
 }
 
 // SafetyLag returns the duration from now that is not cached.

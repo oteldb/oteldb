@@ -81,7 +81,17 @@ func (p *promQuerier) fetchAndMergeCache(
 				ts = s.ts
 				vals = s.data.values
 			}
-			p.upsertCache(ctx, hash, step, fn, globalFetchFrom, ts, vals, cacheEnd.UnixMilli(), bigQuery)
+			key := metricscache.Key{Hash: hash, Step: step.Milliseconds(), Fn: fn}
+			wrote := p.metricsCache.Update(key, metricscache.Update{
+				FetchFrom:    globalFetchFrom,
+				UntilMs:      cacheEnd.UnixMilli(),
+				TS:           ts,
+				Vals:         vals,
+				OnlyIfExists: bigQuery,
+			})
+			if !wrote {
+				p.metricsCache.Stats.SkippedInserts.Add(ctx, 1, cacheTypeOpt(fn, step))
+			}
 		}
 	} else {
 		span.AddEvent("chstorage.fully_covered_by_cache")
@@ -96,8 +106,7 @@ func (p *promQuerier) fetchAndMergeCache(
 
 		if watermark >= start.UnixMilli() {
 			key := metricscache.Key{Hash: hash, Step: step.Milliseconds(), Fn: fn}
-			if entry, ok := p.metricsCache.Get(key); ok {
-				cachedTS, cachedVals := entry.Slice(start.UnixMilli(), min(watermark, end.UnixMilli()))
+			if cachedTS, cachedVals, ok := p.metricsCache.Read(key, start.UnixMilli(), min(watermark, end.UnixMilli())); ok {
 				s.ts = append(s.ts, cachedTS...)
 				s.data.values = append(s.data.values, cachedVals...)
 			}

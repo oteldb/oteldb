@@ -659,52 +659,6 @@ func (p *promQuerier) querySampledPointsCached(
 	return result, nil
 }
 
-// upsertCache writes fetched points and watermark for one series into the cache.
-// If onlyIfExists is true and the entry is not yet in the cache, the call is a no-op:
-// this prevents a large query from evicting warm entries belonging to other series.
-func (p *promQuerier) upsertCache(ctx context.Context, hash [16]byte, step time.Duration, fn string, fetchFrom int64, ts []int64, vals []float64, untilMs int64, onlyIfExists bool) {
-	key := metricscache.Key{
-		Hash: hash,
-		Step: step.Milliseconds(),
-		Fn:   fn,
-	}
-	entry, ok := p.metricsCache.Get(key)
-	if !ok {
-		if onlyIfExists {
-			p.metricsCache.Stats.SkippedInserts.Add(ctx, 1, cacheTypeOpt(fn, step))
-			return
-		}
-		entry = metricscache.NewEntry()
-	} else {
-		// If the new fetch range does not adjoin the cached range there is an
-		// unfetched gap.  Reusing the existing entry would cause MarkFetched to
-		// extend the watermark over that gap, making the cache falsely claim
-		// coverage for data it never retrieved.  Start fresh so that the next
-		// query for the full range is correctly treated as a miss.
-		//
-		// Two gap directions:
-		//   forward: new fetch starts well after the cached maximum
-		//            (gap in [oldMaxTS, fetchFrom))
-		//   backward: new fetch ends well before the cached minimum
-		//             (gap in [untilMs, oldMinTS))
-		oldMinTS, oldMaxTS := entry.Watermarks()
-		if oldMaxTS != math.MinInt64 {
-			stepMs := step.Milliseconds()
-			forwardGap := fetchFrom > nextAlignedFetch(oldMaxTS, stepMs)
-			backwardGap := untilMs < oldMinTS-max(1, stepMs)
-			if forwardGap || backwardGap {
-				entry = metricscache.NewEntry()
-			}
-		}
-	}
-
-	entry.Append(ts, vals, untilMs)
-	// Always advance the watermark so series with no data in the fetched range
-	// are treated as cache hits on the next query (skipping the ClickHouse round-trip).
-	entry.MarkFetched(fetchFrom, untilMs)
-	p.metricsCache.Set(key, entry)
-}
-
 var (
 	cacheTypeRaw        = metric.WithAttributes(attribute.String("cache_type", "raw"))
 	cacheTypeAggregated = metric.WithAttributes(attribute.String("cache_type", "aggregated"))
@@ -729,17 +683,6 @@ type cacheStats struct {
 
 const uncachedWatermark = -1
 
-// nextAlignedFetch returns the earliest timestamp to fetch after a cache watermark.
-// For step-aligned queries (stepMs > 0) it rounds up to the next step boundary so
-// that the first fetched point is never shifted by 1 ms relative to the Prometheus
-// step grid.  For raw-point queries (stepMs == 0) it returns watermark+1.
-func nextAlignedFetch(watermarkMs, stepMs int64) int64 {
-	if stepMs <= 0 {
-		return watermarkMs + 1
-	}
-	return (watermarkMs/stepMs + 1) * stepMs
-}
-
 func computeFetchRange(
 	ctx context.Context,
 	cache *metricscache.Cache,
@@ -761,19 +704,18 @@ func computeFetchRange(
 			Step: stepMs,
 			Fn:   fn,
 		}
-		entry, ok := cache.Get(key)
-		if ok {
-			entryMinTS, entryMaxTS := entry.Watermarks()
 
-			if entryMinTS <= start && entryMaxTS >= start {
-				stats.hits++
-				watermarks[hash] = entryMaxTS
-				if stats.hits == 1 || entryMaxTS < minHitTS {
-					minHitTS = entryMaxTS
-				}
-				continue
+		maxTS, hit := cache.Lookup(key, start)
+		if hit {
+			stats.hits++
+			watermarks[hash] = maxTS
+			if stats.hits == 1 || maxTS < minHitTS {
+				minHitTS = maxTS
 			}
+			continue
+		}
 
+		if maxTS != math.MinInt64 {
 			stats.partialHits++
 		}
 		stats.misses++
@@ -785,7 +727,11 @@ func computeFetchRange(
 	} else {
 		// All series are hits. Fetch from the next step boundary after minHitTS so
 		// that step-aligned queries don't produce a 1ms-shifted first point.
-		globalFetchFrom = nextAlignedFetch(minHitTS, stepMs)
+		if stepMs <= 0 {
+			globalFetchFrom = minHitTS + 1
+		} else {
+			globalFetchFrom = (minHitTS/stepMs + 1) * stepMs
+		}
 	}
 
 	opt := cacheTypeOpt(fn, step)

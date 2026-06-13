@@ -98,8 +98,8 @@ func TestEncodeDecodeBlock_WatermarkPreserved(t *testing.T) {
 
 func TestToFromBlock_RoundTrip(t *testing.T) {
 	e := NewEntry()
-	e.Append([]int64{100, 200, 300, 400}, []float64{1.1, 2.2, 3.3, 4.4}, 500)
-	e.MarkFetched(50, 500) // extend watermarks beyond data
+	e.append([]int64{100, 200, 300, 400}, []float64{1.1, 2.2, 3.3, 4.4}, 500)
+	e.markFetched(50, 500) // extend watermarks beyond data
 
 	b, err := e.ToBlock()
 	require.NoError(t, err)
@@ -114,8 +114,8 @@ func TestToFromBlock_RoundTrip(t *testing.T) {
 	require.Equal(t, maxTS1, maxTS2)
 
 	// Data must match.
-	ts1, vals1 := e.Slice(minTS1, maxTS1)
-	ts2, vals2 := e2.Slice(minTS2, maxTS2)
+	ts1, vals1 := e.slice(minTS1, maxTS1)
+	ts2, vals2 := e2.slice(minTS2, maxTS2)
 	require.Equal(t, ts1, ts2)
 	require.Equal(t, vals1, vals2)
 }
@@ -123,7 +123,7 @@ func TestToFromBlock_RoundTrip(t *testing.T) {
 func TestToFromBlock_EmptyEntry(t *testing.T) {
 	// An entry that was MarkFetched but received no data points.
 	e := NewEntry()
-	e.MarkFetched(1000, 5000)
+	e.markFetched(1000, 5000)
 
 	b, err := e.ToBlock()
 	require.NoError(t, err)

@@ -57,8 +57,8 @@ func (e *Entry) Cost() uint32 {
 	return EntryCost(len(e.deltaTS))
 }
 
-// Slice returns a copy of samples in [fromMs, toMs].
-func (e *Entry) Slice(fromMs, toMs int64) (tss []int64, vals []float64) {
+// slice returns a copy of samples in [fromMs, toMs].
+func (e *Entry) slice(fromMs, toMs int64) (tss []int64, vals []float64) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -88,14 +88,14 @@ func (e *Entry) Slice(fromMs, toMs int64) (tss []int64, vals []float64) {
 	return tss, vals
 }
 
-// Append stores points into the entry.
+// append stores points into the entry.
 //
 // Points older than current minTS are prepended (backward-fill when the caller fetches
 // a wider historical range than what was previously cached). Points already inside
 // [minTS, maxTS] are skipped as duplicates. Points in (maxTS, untilMs] are appended.
 //
 // Input MUST be sorted by timestamp.
-func (e *Entry) Append(ts []int64, vals []float64, untilMs int64) uint32 {
+func (e *Entry) append(ts []int64, vals []float64, untilMs int64) uint32 {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -172,12 +172,12 @@ func (e *Entry) Append(ts []int64, vals []float64, untilMs int64) uint32 {
 	return EntryCost(len(e.deltaTS))
 }
 
-// MarkFetched advances the watermark to record that [fetchFrom, untilMs] has been
+// markFetched advances the watermark to record that [fetchFrom, untilMs] has been
 // confirmed queried — even when no data points exist in that range.
 //
 // This lets the cache treat a series with no data as a cache hit so that
 // subsequent queries for the same range skip the ClickHouse round-trip.
-func (e *Entry) MarkFetched(fetchFrom, untilMs int64) {
+func (e *Entry) markFetched(fetchFrom, untilMs int64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.minTS == math.MinInt64 {
@@ -217,9 +217,9 @@ func FromBlock(b Block) (*Entry, error) {
 
 	e := NewEntry()
 	if len(ts) > 0 {
-		e.Append(ts, vals, b.MaxTS)
+		e.append(ts, vals, b.MaxTS)
 	}
-	// Restore watermarks (handles empty-series case where minTS/maxTS were set by MarkFetched).
-	e.MarkFetched(b.MinTS, b.MaxTS)
+	// Restore watermarks (handles empty-series case where minTS/maxTS were set by markFetched).
+	e.markFetched(b.MinTS, b.MaxTS)
 	return e, nil
 }

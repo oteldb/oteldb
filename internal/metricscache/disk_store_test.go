@@ -17,8 +17,8 @@ func TestDiskStore_RoundTrip(t *testing.T) {
 
 	// Store an entry.
 	e := NewEntry()
-	e.Append([]int64{1000, 2000, 3000}, []float64{1.1, 2.2, 3.3}, 4000)
-	e.MarkFetched(500, 4000)
+	e.append([]int64{1000, 2000, 3000}, []float64{1.1, 2.2, 3.3}, 4000)
+	e.markFetched(500, 4000)
 	s.Set(key, e)
 
 	// Retrieve it.
@@ -30,8 +30,8 @@ func TestDiskStore_RoundTrip(t *testing.T) {
 	require.Equal(t, minTS1, minTS2)
 	require.Equal(t, maxTS1, maxTS2)
 
-	ts1, vals1 := e.Slice(minTS1, maxTS1)
-	ts2, vals2 := got.Slice(minTS2, maxTS2)
+	ts1, vals1 := e.slice(minTS1, maxTS1)
+	ts2, vals2 := got.slice(minTS2, maxTS2)
 	require.Equal(t, ts1, ts2)
 	require.Equal(t, vals1, vals2)
 
@@ -54,7 +54,7 @@ func TestDiskStore_EmptyEntry(t *testing.T) {
 
 	key := Key{Hash: [16]byte{2}}
 	e := NewEntry()
-	e.MarkFetched(1000, 5000)
+	e.markFetched(1000, 5000)
 	s.Set(key, e)
 
 	got, ok := s.Get(key)
@@ -72,7 +72,7 @@ func TestDiskStore_CorruptJSON(t *testing.T) {
 
 	key := Key{Hash: [16]byte{5}, Step: 60_000, Fn: "rate"}
 	e := NewEntry()
-	e.Append([]int64{1000, 2000}, []float64{1.0, 2.0}, 3000)
+	e.append([]int64{1000, 2000}, []float64{1.0, 2.0}, 3000)
 	s.Set(key, e)
 	require.Equal(t, 1, s.Size())
 
@@ -103,7 +103,7 @@ func TestDiskStore_MissingBin(t *testing.T) {
 
 	key := Key{Hash: [16]byte{6}, Step: 60_000, Fn: "rate"}
 	e := NewEntry()
-	e.Append([]int64{1000, 2000}, []float64{1.0, 2.0}, 3000)
+	e.append([]int64{1000, 2000}, []float64{1.0, 2.0}, 3000)
 	s.Set(key, e)
 	require.Equal(t, 1, s.Size())
 
@@ -133,7 +133,7 @@ func TestDiskStore_CorruptBin(t *testing.T) {
 
 	key := Key{Hash: [16]byte{7}, Step: 60_000, Fn: "rate"}
 	e := NewEntry()
-	e.Append([]int64{1000, 2000}, []float64{1.0, 2.0}, 3000)
+	e.append([]int64{1000, 2000}, []float64{1.0, 2.0}, 3000)
 	s.Set(key, e)
 	require.Equal(t, 1, s.Size())
 
@@ -170,7 +170,7 @@ func TestDiskStore_IndexRebuild(t *testing.T) {
 	}
 	for i, k := range keys {
 		e := NewEntry()
-		e.Append([]int64{int64(i+1) * 1000}, []float64{float64(i)}, int64(i+1)*2000)
+		e.append([]int64{int64(i+1) * 1000}, []float64{float64(i)}, int64(i+1)*2000)
 		s1.Set(k, e)
 	}
 	require.Equal(t, 3, s1.Size())
