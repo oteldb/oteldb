@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -216,14 +215,10 @@ func extractTarGz(path, dir string) error {
 }
 
 func extractTarEntry(reader io.Reader, header *tar.Header, dir string) error {
-	name := filepath.Clean(header.Name)
-	if name == "." || filepath.IsAbs(name) || strings.HasPrefix(name, ".."+string(filepath.Separator)) || name == ".." {
+	if !filepath.IsLocal(header.Name) {
 		return errors.Errorf("unsafe archive path %q", header.Name)
 	}
-	target := filepath.Join(dir, name)
-	if !strings.HasPrefix(target, filepath.Clean(dir)+string(filepath.Separator)) && target != filepath.Clean(dir) {
-		return errors.Errorf("archive path escapes target %q", header.Name)
-	}
+	target := filepath.Join(dir, header.Name) // #nosec G305 -- filepath.IsLocal above ensures no path traversal
 	switch header.Typeflag {
 	case tar.TypeDir:
 		if err := os.MkdirAll(target, 0o755); err != nil {
