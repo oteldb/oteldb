@@ -45,13 +45,11 @@ tasks:
     env:
       CGO_ENABLED: 0
     cmds:
-      - go build -trimpath -buildvcs=false -v ./cmd/oteldb
-      - go build -trimpath -buildvcs=false -v ./cmd/odbbackup
-      - go build -trimpath -buildvcs=false -v ./cmd/odbrestore
-      - go build -trimpath -buildvcs=false -v ./cmd/odbmigrate
-      - go build -trimpath -buildvcs=false -v ./cmd/otelproxy
-      - go build -trimpath -buildvcs=false -v ./cmd/chotel
-      - go build -trimpath -buildvcs=false -v ./cmd/odbagent
+      - |
+        set -e
+        for target in oteldb odbbackup odbrestore odbmigrate otelproxy chotel odbagent; do
+          go build -trimpath -buildvcs=false -v -o ./$target ./cmd/$target
+        done
 
   deploy:images:
     desc: Build deploy images, set PUSH=1 to push
@@ -62,7 +60,10 @@ tasks:
         msg: "REGISTRY is required, for example: REGISTRY=ghcr.io/oteldb"
     cmds:
       - task: deploy:image:oteldb
-      - task: deploy:image:chotel
+      - for: [chotel, odbagent]
+        task: deploy:image:generic
+        vars:
+          BINARY: "{{.ITEM}}"
       - task: deploy:image:odbagent
 
   deploy:image:oteldb:
@@ -73,13 +74,13 @@ tasks:
     cmds:
       - '{{.DOCKER}} build -t "{{.REGISTRY}}/oteldb:{{.TAG}}" {{.PUSH_ARG}} -f dev/deploy/deploy.Dockerfile .'
 
-  deploy:image:chotel:
-    desc: Build the chotel deploy image
+  deploy:image:generic:
+    desc: Build a generic single-binary deploy image (pass BINARY=xxx)
     preconditions:
       - sh: test -n "${REGISTRY:-}"
         msg: "REGISTRY is required, for example: REGISTRY=ghcr.io/oteldb"
     cmds:
-      - '{{.DOCKER}} build -t "{{.REGISTRY}}/chotel:{{.TAG}}" {{.PUSH_ARG}} -f dev/deploy/deploy.chotel.Dockerfile .'
+      - '{{.DOCKER}} build -t "{{.REGISTRY}}/{{.BINARY}}:{{.TAG}}" {{.PUSH_ARG}} --build-arg BINARY={{.BINARY}} -f dev/deploy/deploy.generic.Dockerfile .'
 
   deploy:image:odbagent:
     desc: Build the odbagent deploy image

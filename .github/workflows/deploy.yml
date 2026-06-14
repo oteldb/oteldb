@@ -85,9 +85,11 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./dev/deploy/deploy.proxy.Dockerfile
+          file: ./dev/deploy/deploy.generic.Dockerfile
           push: true
           tags: "${{ env.IMAGE_TAG }}/proxy:${{ env.sha }}"
+          build-args: |
+            BINARY=otelproxy
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -95,9 +97,11 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./dev/deploy/deploy.chotel.Dockerfile
+          file: ./dev/deploy/deploy.generic.Dockerfile
           push: true
           tags: "${{ env.IMAGE_TAG }}/chotel:${{ env.sha }}"
+          build-args: |
+            BINARY=chotel
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

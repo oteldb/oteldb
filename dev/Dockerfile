@@ -3,6 +3,7 @@ ARG BASE_IMAGE=alpine:latest
 
 FROM golang:${GO_VERSION} AS builder
 ARG GOPROXY=https://proxy.golang.org,direct
+ARG TARGETS="oteldb odbbackup odbrestore odbmigrate"
 
 WORKDIR /app
 
@@ -11,17 +12,17 @@ ENV GOPROXY=${GOPROXY}
 RUN go mod download
 
 COPY .. ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -o /app/oteldb     ./cmd/oteldb
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -o /app/odbbackup  ./cmd/odbbackup
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -o /app/odbrestore ./cmd/odbrestore
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -o /app/odbmigrate ./cmd/odbmigrate
+RUN set -e; mkdir /out && \
+    for target in $TARGETS; do \
+      CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -o /out/$target ./cmd/$target; \
+    done
 
 FROM ${BASE_IMAGE}
+RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
-COPY --from=builder /app/oteldb     /usr/local/bin/oteldb
-COPY --from=builder /app/odbbackup  /usr/local/bin/odbbackup
-COPY --from=builder /app/odbrestore /usr/local/bin/odbrestore
-COPY --from=builder /app/odbmigrate /usr/local/bin/odbmigrate
+COPY --from=builder /out/ /usr/local/bin/
 
-ENTRYPOINT ["/usr/local/bin/oteldb"]
+ARG ENTRYPOINT_BIN=oteldb
+ENV ENTRYPOINT_BIN=${ENTRYPOINT_BIN}
+ENTRYPOINT ["/bin/sh", "-c", "exec /usr/local/bin/$ENTRYPOINT_BIN \"$@\"", "--"]

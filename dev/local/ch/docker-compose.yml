@@ -24,7 +24,10 @@ services:
     image: ghcr.io/oteldb/oteldb/chotel
     build:
       context: ../../../
-      dockerfile: dev/chotel.Dockerfile
+      dockerfile: dev/Dockerfile
+      args:
+        TARGETS: chotel
+        ENTRYPOINT_BIN: chotel
     restart: always
     environment:
       - CH_DSN=clickhouse://default:default@clickhouse:9000
@@ -119,7 +122,10 @@ services:
     image: ghcr.io/oteldb/oteldb/oteldemo
     build:
       context: ../../../
-      dockerfile: dev/oteldemo.Dockerfile
+      dockerfile: dev/Dockerfile
+      args:
+        TARGETS: oteldemo
+        ENTRYPOINT_BIN: oteldemo
     restart: always
     command: ["client"]
     environment:
@@ -137,7 +143,10 @@ services:
     command: ["server"]
     build:
       context: ../../../
-      dockerfile: dev/oteldemo.Dockerfile
+      dockerfile: dev/Dockerfile
+      args:
+        TARGETS: oteldemo
+        ENTRYPOINT_BIN: oteldemo
     restart: always
     environment:
       - OTEL_LOG_LEVEL=debug

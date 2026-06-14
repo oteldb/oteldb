@@ -58,7 +58,10 @@ services:
     image: ghcr.io/oteldb/oteldb/chotel
     build:
       context: ../../../
-      dockerfile: dev/chotel.Dockerfile
+      dockerfile: dev/Dockerfile
+      args:
+        TARGETS: chotel
+        ENTRYPOINT_BIN: chotel
     restart: always
     environment:
       - CH_DSN=clickhouse://default:default@clickhouse:9000

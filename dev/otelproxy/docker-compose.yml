@@ -77,7 +77,10 @@ services:
   otelproxy:
     build:
       context: ../../
-      dockerfile: dev/otelproxy.Dockerfile
+      dockerfile: dev/Dockerfile
+      args:
+        TARGETS: otelproxy
+        ENTRYPOINT_BIN: otelproxy
     restart: unless-stopped
     depends_on:
       - loki
