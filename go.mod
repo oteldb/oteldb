@@ -1,6 +1,6 @@
 module github.com/oteldb/oteldb
 
-go 1.26.4
+go 1.26.2
 
 tool (
 	github.com/bufbuild/buf/cmd/buf
@@ -15,7 +15,7 @@ require (
 	github.com/ClickHouse/ch-go v0.72.0
 	github.com/MakeNowJust/heredoc/v2 v2.0.1
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/VictoriaMetrics/VictoriaMetrics v1.145.0
+	github.com/VictoriaMetrics/VictoriaMetrics v1.141.0
 	github.com/VictoriaMetrics/easyproto v1.2.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -32,7 +32,7 @@ require (
 	github.com/golang/snappy v1.0.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/grafana/loki/pkg/push v0.0.0-20260609211316-89ea0d47eea7
+	github.com/grafana/loki/pkg/push v0.0.0-20241223090937-bf7301470453
 	github.com/grafana/pyroscope-go v1.3.1
 	github.com/klauspost/compress v1.18.6
 	github.com/kr/logfmt v0.0.0-20210122060352-19f9bcb100e6
