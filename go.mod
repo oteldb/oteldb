@@ -1,6 +1,6 @@
 module github.com/oteldb/oteldb
 
-go 1.26.2
+go 1.26.4
 
 tool (
 	github.com/bufbuild/buf/cmd/buf
@@ -15,7 +15,7 @@ require (
 	github.com/ClickHouse/ch-go v0.72.0
 	github.com/MakeNowJust/heredoc/v2 v2.0.1
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/VictoriaMetrics/VictoriaMetrics v1.141.0
+	github.com/VictoriaMetrics/VictoriaMetrics v1.145.0
 	github.com/VictoriaMetrics/easyproto v1.2.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
