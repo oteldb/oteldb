@@ -1,29 +1,57 @@
 # Prometheus Remote Write Receiver
 
 | Status                   |                 |
-|--------------------------|-----------------|
+| ------------------------ | --------------- |
 | Stability                | [inDevelopment] |
 | Supported pipeline types | metrics         |
-| Distributions            | [contrib]       |
+| Distributions            | [otelcol-contrib] |
 
-Supported pipeline types: metrics
+`prometheusremotewritereceiver` ingests metrics via the Prometheus Remote Write protocol and emits OTLP metrics into the collector pipeline.
 
 ## Getting Started
 
-All that is required to enable the Prometheus Remote Write receiver is to include it in the
-receiver definitions.
+Enable the receiver by including it in the receiver definitions:
 
 ```yaml
 receivers:
   prometheusremotewrite:
+    endpoint: 0.0.0.0:19291
 ```
 
-Http Server configuration settings:
+### Config fields
 
-- `endpoint` (default = 0.0.0.0:19291): host:port to which the receiver is going
-  to receive data.
+| Field            | Type     | Default         | Description                                          |
+| ---------------- | -------- | --------------- | ---------------------------------------------------- |
+| `endpoint`       | string   | `"0.0.0.0:19291"` | Host:port to receive data                         |
+| `tls`            | object   | —               | TLS settings (see [confighttp])                      |
+| `cors`           | object   | —               | CORS settings                                        |
+| `time_threshold` | duration | `24h`           | Drop timeseries older than this threshold            |
 
-Additional server settings are mentioned here:
-<https://github.com/open-telemetry/opentelemetry-collector/tree/main/config/confighttp#server-configuration>
+[confighttp]: https://github.com/open-telemetry/opentelemetry-collector/tree/main/config/confighttp
 
-- `time_threshold` (default = `24h`) - time threshold. All `timeseries` older than limit will be dropped.
+Additional HTTP server settings are documented at the
+[confighttp server configuration](https://github.com/open-telemetry/opentelemetry-collector/tree/main/config/confighttp#server-configuration) reference.
+
+## Pipeline example
+
+```yaml
+receivers:
+  prometheusremotewrite:
+    endpoint: 0.0.0.0:19291
+
+processors:
+  batch:
+    send_batch_size: 10000
+    timeout: 300ms
+
+exporters:
+  otlp:
+    endpoint: oteldb:4317
+
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheusremotewrite]
+      processors: [batch]
+      exporters: [otlp]
+```
