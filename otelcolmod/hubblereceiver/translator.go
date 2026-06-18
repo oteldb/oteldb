@@ -3,6 +3,7 @@ package hubblereceiver
 import (
 	"strconv"
 
+	"github.com/cilium/cilium/api/v1/flow"
 	"github.com/cilium/cilium/api/v1/observer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -33,6 +34,9 @@ func translateFlow(resp *observer.GetFlowsResponse, cfg *Config) plog.Logs {
 	sev, sevText := verdictSeverity(f.GetVerdict())
 	lr.SetSeverityNumber(sev)
 	lr.SetSeverityText(sevText)
+	if !cfg.DisableEventDescription {
+		lr.Body().SetStr(flowDescription(f))
+	}
 
 	attrs := lr.Attributes()
 
@@ -151,6 +155,10 @@ func translateFlow(resp *observer.GetFlowsResponse, cfg *Config) plog.Logs {
 	}
 
 	return logs
+}
+
+func flowDescription(f *flow.Flow) string {
+	return "Hubble " + f.GetType().String() + " flow " + f.GetVerdict().String()
 }
 
 func verdictSeverity(v observer.Verdict) (sev plog.SeverityNumber, text string) {

@@ -13,6 +13,9 @@ type Config struct {
 
 	ClusterID   int64  `mapstructure:"cluster_id"`
 	ClusterName string `mapstructure:"cluster_name"`
+
+	// DisableEventDescription leaves the log body empty when true.
+	DisableEventDescription bool `mapstructure:"disable_event_description"`
 }
 
 // Validate validates receiver config.

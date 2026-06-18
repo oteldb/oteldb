@@ -11,7 +11,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
-func translateEvent(r *tetragon.GetEventsResponse, clusterID int64) (plog.Logs, bool) {
+func translateEvent(r *tetragon.GetEventsResponse, cfg *Config) (plog.Logs, bool) {
 	logs := plog.NewLogs()
 	rl := logs.ResourceLogs().AppendEmpty()
 
@@ -65,8 +65,8 @@ func translateEvent(r *tetragon.GetEventsResponse, clusterID int64) (plog.Logs, 
 	if cn := r.GetClusterName(); cn != "" {
 		res.PutStr(string(semconv.K8SClusterNameKey), cn)
 	}
-	if clusterID != 0 {
-		res.PutStr("tetragon.cluster.id", strconv.FormatInt(clusterID, 10))
+	if cfg.ClusterID != 0 {
+		res.PutStr("tetragon.cluster.id", strconv.FormatInt(cfg.ClusterID, 10))
 	}
 
 	sl := rl.ScopeLogs().AppendEmpty()
@@ -77,6 +77,9 @@ func translateEvent(r *tetragon.GetEventsResponse, clusterID int64) (plog.Logs, 
 	sev, sevText := eventSeverity(eventName)
 	lr.SetSeverityNumber(sev)
 	lr.SetSeverityText(sevText)
+	if !cfg.DisableEventDescription {
+		lr.Body().SetStr(eventDescription(eventName))
+	}
 
 	attrs := lr.Attributes()
 	attrs.PutStr("event.name", eventName)
@@ -96,6 +99,23 @@ func translateEvent(r *tetragon.GetEventsResponse, clusterID int64) (plog.Logs, 
 	}
 
 	return logs, true
+}
+
+func eventDescription(name string) string {
+	switch name {
+	case "process_exec":
+		return "Tetragon process exec event"
+	case "process_exit":
+		return "Tetragon process exit event"
+	case "process_kprobe":
+		return "Tetragon process kprobe event"
+	case "process_tracepoint":
+		return "Tetragon process tracepoint event"
+	case "process_loader":
+		return "Tetragon process loader event"
+	default:
+		return "Tetragon event"
+	}
 }
 
 func appendProcess(m pcommon.Map, prefix string, p *tetragon.Process) {

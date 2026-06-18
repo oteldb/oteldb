@@ -13,6 +13,9 @@ type Config struct {
 	// ClusterID is a numeric cluster identifier set on every log record as
 	// "tetragon.cluster.id".
 	ClusterID int64 `mapstructure:"cluster_id"`
+
+	// DisableEventDescription leaves the log body empty when true.
+	DisableEventDescription bool `mapstructure:"disable_event_description"`
 }
 
 // Validate validates receiver config.

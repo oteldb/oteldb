@@ -88,7 +88,7 @@ func (r *Receiver) stream(ctx context.Context) error {
 		if err != nil {
 			return errors.Wrap(err, "recv")
 		}
-		if logs, ok := translateEvent(resp, r.cfg.ClusterID); ok {
+		if logs, ok := translateEvent(resp, r.cfg); ok {
 			if err := r.consumer.ConsumeLogs(ctx, logs); err != nil {
 				r.logger.Warn("ConsumeLogs failed", zap.Error(err))
 			}

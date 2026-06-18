@@ -43,6 +43,22 @@ func TestTranslateFlow_Base(t *testing.T) {
 	// 1000 seconds = 1,000,000,000,000 nanoseconds
 	assert.Equal(t, uint64(1000000000000), uint64(lr.Timestamp()))
 	assert.Equal(t, "INFO", lr.SeverityText())
+	assert.Equal(t, "Hubble L3_L4 flow FORWARDED", lr.Body().AsString())
+}
+
+func TestTranslateFlow_DisableEventDescription(t *testing.T) {
+	resp := &observer.GetFlowsResponse{
+		ResponseTypes: &observer.GetFlowsResponse_Flow{
+			Flow: &flow.Flow{
+				Type:   flow.FlowType_L3_L4,
+				Source: &flow.Endpoint{},
+			},
+		},
+	}
+
+	logs := translateFlow(resp, &Config{DisableEventDescription: true})
+	lr := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+	assert.Empty(t, lr.Body().AsString())
 }
 
 func TestTranslateFlow_NilFlow(t *testing.T) {
