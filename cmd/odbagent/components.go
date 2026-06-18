@@ -41,10 +41,12 @@ import (
 	otelconftelemetry "go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
 
 	"github.com/oteldb/oteldb/otelcolmod/chreceiver"
+	"github.com/oteldb/oteldb/otelcolmod/hubblereceiver"
 	_ "github.com/oteldb/oteldb/otelcolmod/odblogparser"
 	_ "github.com/oteldb/oteldb/otelcolmod/odbsafety"
 	"github.com/oteldb/oteldb/otelcolmod/odbsafetyprocessor"
 	"github.com/oteldb/oteldb/otelcolmod/prometheusremotewritereceiver"
+	"github.com/oteldb/oteldb/otelcolmod/tetragonreceiver"
 )
 
 func components() (otelcol.Factories, error) {
@@ -79,6 +81,8 @@ func components() (otelcol.Factories, error) {
 
 		prometheusremotewritereceiver.NewFactory(),
 		chreceiver.NewFactory(),
+		hubblereceiver.NewFactory(),
+		tetragonreceiver.NewFactory(),
 	)
 	if err != nil {
 		return otelcol.Factories{}, errors.Wrap(err, "make receiver factory map")

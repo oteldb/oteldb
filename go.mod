@@ -20,12 +20,14 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cheggaaa/pb/v3 v3.1.7
+	github.com/cilium/cilium v1.18.1
 	github.com/docker/cli v29.5.3+incompatible
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.19.0
 	github.com/go-faster/errors v0.7.1
 	github.com/go-faster/jx v1.2.0
 	github.com/go-faster/sdk v0.35.0
+	github.com/go-faster/tetragon v1.3.2
 	github.com/go-faster/yaml v0.4.6
 	github.com/go-logfmt/logfmt v0.6.1
 	github.com/gogo/protobuf v1.3.2
@@ -91,6 +93,7 @@ require (
 	go.opentelemetry.io/collector/component v1.60.0
 	go.opentelemetry.io/collector/component/componentstatus v0.154.0
 	go.opentelemetry.io/collector/component/componenttest v0.154.0
+	go.opentelemetry.io/collector/config/configgrpc v0.154.0
 	go.opentelemetry.io/collector/config/confighttp v0.154.0
 	go.opentelemetry.io/collector/config/confignet v1.60.0
 	go.opentelemetry.io/collector/config/configoptional v1.60.0
@@ -317,7 +320,6 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.15 // indirect
 	github.com/googleapis/gax-go/v2 v2.22.0 // indirect
 	github.com/gophercloud/gophercloud/v2 v2.12.0 // indirect
-	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/grafana/otel-profiling-go v0.5.3 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.11 // indirect
@@ -373,7 +375,7 @@ require (
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-runewidth v0.0.24 // indirect
-	github.com/mdlayher/socket v0.4.1 // indirect
+	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/mdlayher/vsock v1.2.1 // indirect
 	github.com/miekg/dns v1.1.72 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
@@ -500,7 +502,6 @@ require (
 	go.opentelemetry.io/collector/cmd/builder v0.154.0 // indirect
 	go.opentelemetry.io/collector/config/configauth v1.60.0 // indirect
 	go.opentelemetry.io/collector/config/configcompression v1.60.0 // indirect
-	go.opentelemetry.io/collector/config/configgrpc v0.154.0 // indirect
 	go.opentelemetry.io/collector/config/configmiddleware v1.60.0 // indirect
 	go.opentelemetry.io/collector/config/configopaque v1.60.0 // indirect
 	go.opentelemetry.io/collector/config/configretry v1.60.0 // indirect
