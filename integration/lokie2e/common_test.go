@@ -48,6 +48,16 @@ func setupDB(
 	var optimizers []logqlengine.Optimizer
 	optimizers = append(optimizers, logqlengine.DefaultOptimizers()...)
 	optimizers = append(optimizers, &chstorage.ClickhouseOptimizer{})
+	return setupDBWithOptimizers(t, provider, querier, engineQuerier, optimizers)
+}
+
+func setupDBWithOptimizers(
+	t *testing.T,
+	provider trace.TracerProvider,
+	querier logstorage.Querier,
+	engineQuerier logqlengine.Querier,
+	optimizers []logqlengine.Optimizer,
+) *lokiapi.Client {
 	engine, err := logqlengine.NewEngine(engineQuerier, logqlengine.Options{
 		ParseOptions:   logql.ParseOptions{AllowDots: true},
 		Optimizers:     optimizers,

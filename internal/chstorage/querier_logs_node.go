@@ -2,6 +2,7 @@ package chstorage
 
 import (
 	"context"
+	"time"
 
 	"github.com/oteldb/oteldb/internal/logql"
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
@@ -75,7 +76,10 @@ type SamplingNode struct {
 	q *Querier
 }
 
-var _ logqlengine.SampleNode = (*SamplingNode)(nil)
+var (
+	_ logqlengine.SampleNode         = (*SamplingNode)(nil)
+	_ logqlengine.BucketedSampleNode = (*SamplingNode)(nil)
+)
 
 // Traverse implements [logqlengine.Node].
 func (n *SamplingNode) Traverse(cb logqlengine.NodeVisitor) error {
@@ -87,6 +91,24 @@ func (n *SamplingNode) EvalSample(ctx context.Context, params logqlengine.EvalPa
 	q := SampleQuery{
 		Start:          params.Start,
 		End:            params.End,
+		Sel:            n.Sel,
+		Sampling:       n.Sampling,
+		GroupingLabels: n.GroupingLabels,
+	}
+	return q.Execute(ctx, n.q)
+}
+
+// EvalBucketedSample implements [logqlengine.BucketedSampleNode].
+func (n *SamplingNode) EvalBucketedSample(
+	ctx context.Context,
+	params logqlengine.EvalParams,
+	window time.Duration,
+) (logqlengine.StepIterator, error) {
+	q := BucketedSampleQuery{
+		Start:          params.Start,
+		End:            params.End,
+		Step:           params.Step,
+		Range:          window,
 		Sel:            n.Sel,
 		Sampling:       n.Sampling,
 		GroupingLabels: n.GroupingLabels,

@@ -88,6 +88,18 @@ type SampleNode interface {
 	EvalSample(ctx context.Context, params EvalParams) (SampleIterator, error)
 }
 
+// BucketedSampleNode is an optional capability of [SampleNode] implementations
+// that can push range-aggregation step-bucketing (e.g. for
+// sum by(...) (count_over_time(...))) down into the storage layer, instead of
+// streaming raw samples for [RangeAggregation] to bucket in Go.
+type BucketedSampleNode interface {
+	// EvalBucketedSample evaluates the node, returning one Step per output
+	// step in [params.Start, params.End) spaced params.Step apart, each
+	// aggregating samples whose timestamp falls within the trailing window
+	// of length window ending at that step.
+	EvalBucketedSample(ctx context.Context, params EvalParams, window time.Duration) (StepIterator, error)
+}
+
 // MetricParams defines [MetricNode] parameters.
 type MetricParams struct {
 	Start time.Time

@@ -42,6 +42,33 @@ func (n *RangeAggregation) EvalMetric(ctx context.Context, params MetricParams) 
 		start = start.Add(-o.Duration)
 		end = end.Add(-o.Duration)
 	}
+
+	// If the input can bucket samples per step itself (offloaded to storage,
+	// see chstorage.SamplingNode), skip streaming raw samples here and let it
+	// aggregate in SQL instead. The optimizer only offloads to a
+	// BucketedSampleNode when qrange.Offset/Unwrap are nil, so no extra
+	// eligibility check is needed here.
+	if bn, ok := n.Input.(BucketedSampleNode); ok {
+		iter, err := bn.EvalBucketedSample(ctx, EvalParams{
+			Start:     start,
+			End:       end,
+			Step:      params.Step,
+			Direction: DirectionForward,
+			Limit:     -1,
+		}, qrange.Range)
+		if err != nil {
+			return nil, err
+		}
+		defer closeOnError(iter, &rerr)
+
+		switch n.Expr.Op {
+		case logql.RangeOpRate, logql.RangeOpBytesRate:
+			return logqlmetric.DivideStep(iter, qrange.Range.Seconds()), nil
+		default:
+			return iter, nil
+		}
+	}
+
 	// Query samples for first step.
 	qstart := start.Add(-qrange.Range)
 

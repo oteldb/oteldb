@@ -395,15 +395,6 @@ func (p *promQuerier) queryRatePointsByHash(
 		return nil, nil
 	}
 
-	stepMS := step.Milliseconds()
-	if stepMS <= 0 {
-		stepMS = window.Milliseconds()
-		if stepMS <= 0 {
-			stepMS = 1
-		}
-	}
-	windowMS := window.Milliseconds()
-	offsetMS := offset.Milliseconds()
 	rawStart := start.Add(-offset - window)
 	rawEnd := end.Add(-offset)
 
@@ -414,38 +405,6 @@ func (p *promQuerier) queryRatePointsByHash(
 	for h := range timeseries {
 		inputData.Append(h)
 	}
-
-	var (
-		firstStepMSIdent     = chsql.Ident("first_step_ms")
-		lastStepMSIdent      = chsql.Ident("last_step_ms")
-		stepMSIdent          = chsql.Ident("step_ms")
-		windowMSIdent        = chsql.Ident("window_ms")
-		pointOffsetMSIdent   = chsql.Ident("point_offset_ms")
-		firstSampleStepIdent = chsql.Ident("first_sample_step_ms")
-		numStepsIdent        = chsql.Ident("num_steps")
-	)
-
-	toInt64 := chsql.ToInt64Val[int64]
-
-	var (
-		mapLambda = chsql.Lambda([]string{"i"},
-			chsql.Add(firstSampleStepIdent, chsql.Mul(chsql.ColumnToInt64("i"), stepMSIdent)),
-		)
-		rangeExpr = chsql.Range(numStepsIdent)
-
-		filterLambda = chsql.Lambda([]string{"s"}, chsql.JoinAnd(
-			chsql.Gte(chsql.Ident("s"), firstStepMSIdent),
-			chsql.Lte(chsql.Ident("s"), lastStepMSIdent),
-			chsql.Lt(chsql.Ident("s"), chsql.Add(pointOffsetMSIdent, windowMSIdent)),
-		))
-
-		stepExpr = chsql.ArrayJoin(
-			chsql.ArrayFilter(
-				filterLambda,
-				chsql.ArrayMap(mapLambda, rangeExpr),
-			),
-		)
-	)
 
 	// Subquery 1: Fan out each raw sample into every step bucket whose range window covers it.
 	//
@@ -473,45 +432,15 @@ func (p *promQuerier) queryRatePointsByHash(
 		chsql.Column("hash", nil),
 		chsql.Column("timestamp", nil),
 		chsql.Column("value", nil),
-		chsql.ResultColumn{Name: "step_ms_val", Expr: stepExpr},
-	).
-		// Query start/end aligned to step boundaries.
-		With("first_step_ms", toInt64(start.UnixMilli())).
-		With("last_step_ms", toInt64(end.UnixMilli())).
-		// Step and range window sizes.
-		With("step_ms", toInt64(stepMS)).
-		With("window_ms", toInt64(windowMS)).
-		// PromQL offset: the query window is shifted back by this amount.
-		With("offset_ms", toInt64(offsetMS)).
-		// Raw sample timestamp in milliseconds.
-		With("point_ms", chsql.ToUnixTimestamp64Milli(chsql.Ident("timestamp"))).
-		// point_ms + offset_ms: because offset shifts the query window back by offset_ms,
-		// adding it to the sample time is equivalent — a sample at T belongs to step S if
-		// S - window_ms <= point_offset_ms < S, which avoids carrying offset through every check.
-		With("point_offset_ms", chsql.Add(chsql.Ident("point_ms"), chsql.Ident("offset_ms"))).
-		// ceil((point_offset_ms - first_step_ms) / step_ms) * step_ms, clamped to 0:
-		// distance in ms from first_step_ms to the earliest step this sample could belong to.
-		With("offset_from_start", chsql.Greatest(
-			chsql.ToInt64(chsql.Integer(0)),
-			chsql.Sub(
-				chsql.Add(chsql.Ident("point_offset_ms"), chsql.Sub(chsql.Ident("step_ms"), chsql.Integer(1))),
-				chsql.Ident("first_step_ms"),
-			),
-		)).
-		// floor(window_ms / step_ms) + 1: max steps a single sample can fall into.
-		With("num_steps", chsql.ToUInt64(chsql.Add(chsql.IntDiv(chsql.Ident("window_ms"), chsql.Ident("step_ms")), chsql.Integer(1)))).
-		// first_step_ms + intDiv(offset_from_start, step_ms) * step_ms:
-		// timestamp of the earliest step this sample belongs to, snapped to the step grid.
-		With("first_sample_step_ms", chsql.Add(
-			chsql.Ident("first_step_ms"),
-			chsql.Mul(chsql.IntDiv(chsql.Ident("offset_from_start"), chsql.Ident("step_ms")), chsql.Ident("step_ms")),
-		)).
-		Where(
-			chsql.Gt(chsql.Ident("timestamp"), chsql.DateTime64(rawStart, proto.PrecisionMilli)),
-			chsql.Lte(chsql.Ident("timestamp"), chsql.DateTime64(rawEnd, proto.PrecisionMilli)),
-			chsql.In(chsql.Ident("hash"), chsql.Ident(inputTable)),
-			chsql.NotEq(chsql.ReinterpretAsUInt64(chsql.Ident("value")), chsql.Integer(promStaleNaNBits)),
-		)
+		chsql.ResultColumn{Name: "step_ms_val", Expr: stepFanoutExpr},
+	)
+	expanded = applyStepFanoutCTEs(expanded, start, end, step, window, offset, "timestamp")
+	expanded = expanded.Where(
+		chsql.Gt(chsql.Ident("timestamp"), chsql.DateTime64(rawStart, proto.PrecisionMilli)),
+		chsql.Lte(chsql.Ident("timestamp"), chsql.DateTime64(rawEnd, proto.PrecisionMilli)),
+		chsql.In(chsql.Ident("hash"), chsql.Ident(inputTable)),
+		chsql.NotEq(chsql.ReinterpretAsUInt64(chsql.Ident("value")), chsql.Integer(promStaleNaNBits)),
+	)
 
 	if kind.isInstant() {
 		return p.queryInstantPointsByHash(ctx, span, table, inputTable, &inputData, expanded, timeseries, kind)

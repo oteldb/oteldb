@@ -250,30 +250,10 @@ func (v *SampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlengine.Sa
 
 	entries := make([]chsql.Expr, 0, len(v.GroupingLabels)*2)
 	for _, key := range v.GroupingLabels {
-		label := string(key)
-		if key, ok := mapping[label]; ok {
-			label = key
-		}
-
-		var labelExpr chsql.Expr
-		switch label {
-		case logstorage.LabelSeverity, logstorage.LabelDetectedLevel:
-			labelExpr = chsql.ArrayElement(
-				severityMapExpr,
-				chsql.Ident("severity_number"),
-			)
-		default:
-			var ok bool
-			labelExpr, ok = q.getMaterializedLabelColumn(label)
-			if !ok {
-				labelExpr = firstAttrSelector(label)
-			}
-		}
-
 		entries = append(entries,
 			chsql.String(string(key)),
 			// Ensure `LowCardinality` column type.
-			chsql.Cast(labelExpr, "LowCardinality(String)"),
+			chsql.Cast(q.resolveGroupingLabelExpr(key, mapping), "LowCardinality(String)"),
 		)
 	}
 
@@ -342,6 +322,206 @@ func (v *SampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlengine.Sa
 			return nil, errors.Wrap(ErrLogsResultTooLarge, exp.Message)
 		}
 		return nil, err
+	}
+
+	return iterators.Slice(result), nil
+}
+
+// resolveGroupingLabelExpr returns the ClickHouse expression that evaluates
+// a single grouping label's value for a log row.
+func (q *Querier) resolveGroupingLabelExpr(label logql.Label, mapping map[string]string) chsql.Expr {
+	name := string(label)
+	if key, ok := mapping[name]; ok {
+		name = key
+	}
+
+	switch name {
+	case logstorage.LabelSeverity, logstorage.LabelDetectedLevel:
+		return chsql.ArrayElement(
+			severityMapExpr,
+			chsql.Ident("severity_number"),
+		)
+	default:
+		if expr, ok := q.getMaterializedLabelColumn(name); ok {
+			return expr
+		}
+		return firstAttrSelector(name)
+	}
+}
+
+// BucketedSampleQuery defines a sample query that aggregates samples per
+// output step directly in ClickHouse, instead of fetching one row per raw
+// log line for [logqlmetric.RangeAggregation] (range_agg.go) to bucket in
+// Go. It implements the same step-bucketing math as the PromQL
+// rate/increase/delta offload (see querier_metrics_rate.go and
+// chsql_stepfanout.go), without the counter-reset detection tier rate needs
+// — log sample values (line counts, byte lengths) are not counters.
+type BucketedSampleQuery struct {
+	// Start, End define the output step range.
+	Start, End time.Time
+	// Step is the output resolution. If <= 0 (instant query), a single
+	// bucket covering (End-Range, End] is produced.
+	Step time.Duration
+	// Range is the range-aggregation window, e.g. the `[5m]` in
+	// count_over_time({...}[5m]).
+	Range time.Duration
+	Sel   LogsSelector
+
+	Sampling SamplingOp
+	// GroupingLabels must be non-empty: this query only makes sense for the
+	// sum/avg/min/max by(...) (...) shape the optimizer already requires
+	// before offloading to it (see querier_logs_optimizer.go).
+	GroupingLabels []logql.Label
+}
+
+// Execute executes the query using given querier.
+func (v *BucketedSampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlmetric.StepIterator, rerr error) {
+	table := q.tables.Logs
+
+	ctx, span := q.tracer.Start(ctx, "chstorage.logs.BucketedSampleQuery.Eval",
+		trace.WithAttributes(
+			xattribute.UnixNano("logql.range.start", v.Start),
+			xattribute.UnixNano("logql.range.end", v.End),
+			xattribute.Duration("logql.step", v.Step),
+			xattribute.Duration("logql.window", v.Range),
+			attribute.String("logql.sampling", v.Sampling.String()),
+			xattribute.StringerSlice("logql.grouping_labels", v.GroupingLabels),
+			xattribute.StringerSlice("logql.label_matchers", v.Sel.Labels),
+			xattribute.StringerSlice("logql.line_matchers", v.Sel.Line),
+			xattribute.StringerSlice("logql.label_predicates", v.Sel.PipelineLabels),
+
+			attribute.String("chstorage.table", table),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+		}
+		span.End()
+	}()
+
+	if v.Range <= 0 {
+		return nil, errors.New("bucketed sample query requires a positive range")
+	}
+	if len(v.GroupingLabels) == 0 {
+		return nil, errors.New("bucketed sample query requires non-empty grouping labels")
+	}
+
+	step := v.Step
+	if step <= 0 {
+		step = v.Range
+	}
+
+	labels := v.Sel.mappingLabels()
+	for _, l := range v.GroupingLabels {
+		labels = append(labels, string(l))
+	}
+	mapping, err := q.getLabelMapping(ctx, labels)
+	if err != nil {
+		return nil, errors.Wrap(err, "get label mapping")
+	}
+
+	sampleExpr, err := getSampleExpr(v.Sampling)
+	if err != nil {
+		return nil, err
+	}
+
+	labelAliases := make([]string, len(v.GroupingLabels))
+	fanoutColumns := make([]chsql.ResultColumn, 0, 2+len(v.GroupingLabels))
+	fanoutColumns = append(fanoutColumns,
+		chsql.ResultColumn{Name: "sample", Expr: chsql.ToFloat64(sampleExpr)},
+		chsql.ResultColumn{Name: "step_ms_val", Expr: stepFanoutExpr},
+	)
+	for i, key := range v.GroupingLabels {
+		alias := fmt.Sprintf("g%d", i)
+		labelAliases[i] = alias
+		fanoutColumns = append(fanoutColumns, chsql.ResultColumn{
+			Name: alias,
+			Expr: chsql.Cast(q.resolveGroupingLabelExpr(key, mapping), "LowCardinality(String)"),
+		})
+	}
+
+	// Subquery 1: fan out each matched log row into every output step whose
+	// trailing window (step-window, step] covers its timestamp — identical
+	// math to the PromQL rate offload's fan-out tier (chsql_stepfanout.go).
+	expanded := chsql.Select(table, fanoutColumns...)
+	expanded = applyStepFanoutCTEs(expanded, v.Start, v.End, step, v.Range, 0, "timestamp")
+	expanded = expanded.Where(
+		chsql.InTimeRange("timestamp", v.Start.Add(-v.Range), v.End, proto.PrecisionNano),
+	)
+	v.Sel.addPredicates(ctx, expanded, mapping, q)
+
+	// Subquery 2: aggregate per (step, grouping labels). This is the whole
+	// point — ClickHouse returns one row per output point, not one row per
+	// raw log line.
+	groupBy := make([]chsql.Expr, 0, 1+len(labelAliases))
+	groupBy = append(groupBy, chsql.Ident("step_ms_val"))
+
+	var (
+		stepMSCol proto.ColInt64
+		totalCol  proto.ColFloat64
+		labelCols = make([]*proto.ColLowCardinality[string], len(labelAliases))
+	)
+	finalColumns := make([]chsql.ResultColumn, 0, 2+len(labelAliases))
+	finalColumns = append(finalColumns, chsql.Column("step_ms_val", &stepMSCol))
+	for i, alias := range labelAliases {
+		col := new(proto.ColStr).LowCardinality()
+		labelCols[i] = col
+		groupBy = append(groupBy, chsql.Ident(alias))
+		finalColumns = append(finalColumns, chsql.Column(alias, col))
+	}
+	finalColumns = append(finalColumns, chsql.ResultColumn{
+		Name: "total",
+		Expr: chsql.Sum(chsql.Ident("sample")),
+		Data: &totalCol,
+	})
+
+	query := chsql.SelectFrom(expanded, finalColumns...).GroupBy(groupBy...)
+
+	buckets := make(map[int64][]logqlmetric.Sample)
+	if err := q.do(ctx, selectQuery{
+		Query: query,
+		OnResult: func(ctx context.Context, block proto.Block) error {
+			for i := 0; i < stepMSCol.Rows(); i++ {
+				stepMS := stepMSCol.Row(i)
+
+				values := make(map[string]string, len(v.GroupingLabels))
+				for j, key := range v.GroupingLabels {
+					values[string(key)] = labelCols[j].Row(i)
+				}
+
+				buckets[stepMS] = append(buckets[stepMS], logqlmetric.Sample{
+					Data: totalCol.Row(i),
+					Set:  logqlabels.AggregatedLabelsFromMap(values),
+				})
+			}
+			return nil
+		},
+
+		MaxResultBytes: q.sampleResultBytesLimit,
+
+		Type:   "QueryBucketedSamples",
+		Signal: "logs",
+		Table:  table,
+	}); err != nil {
+		if exp, ok := ch.AsException(err); ok && exp.Code == proto.ErrTooManyRowsOrBytes {
+			return nil, errors.Wrap(ErrLogsResultTooLarge, exp.Message)
+		}
+		return nil, err
+	}
+
+	stepsMS := make([]int64, 0, len(buckets))
+	for ms := range buckets {
+		stepsMS = append(stepsMS, ms)
+	}
+	slices.Sort(stepsMS)
+
+	result := make([]logqlmetric.Step, 0, len(stepsMS))
+	for _, ms := range stepsMS {
+		result = append(result, logqlmetric.Step{
+			Timestamp: pcommon.NewTimestampFromTime(time.UnixMilli(ms)),
+			Samples:   buckets[ms],
+		})
 	}
 
 	return iterators.Slice(result), nil
