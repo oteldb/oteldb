@@ -548,8 +548,7 @@ type GetMetadataParams struct {
 	Limit OptInt `json:",omitempty,omitzero"`
 	// FIXME(tdakkota): undocumented.
 	LimitPerMetric OptInt `json:",omitempty,omitzero"`
-	// A metric name to filter metadata for.
-	// All metric metadata is retrieved if left empty.
+	// A metric name to filter metadata for. All metric metadata is retrieved if left empty.
 	Metric OptString `json:",omitempty,omitzero"`
 }
 
@@ -1103,8 +1102,8 @@ type GetQueryRangeParams struct {
 	Start PrometheusTimestamp
 	// End timestamp, inclusive.
 	End PrometheusTimestamp
-	// Query resolution step width in duration format or float number of seconds.
-	// Official Prometheus spec requires it, but some clients do not send it (e.g vmalert).
+	// Query resolution step width in duration format or float number of seconds. Official Prometheus spec
+	// requires it, but some clients do not send it (e.g vmalert).
 	Step OptString `json:",omitempty,omitzero"`
 	// Lookback delta duration in duration format or float number of seconds.
 	LookbackDelta OptString `json:",omitempty,omitzero"`
@@ -1416,21 +1415,19 @@ func decodeGetQueryRangeParams(args [0]string, argsEscaped bool, r *http.Request
 
 // GetRulesParams is parameters of getRules operation.
 type GetRulesParams struct {
-	// Return only the alerting rules (e.g. type=alert) or the recording rules (e.g. type=record).
-	// When the parameter is absent or empty, no filtering is done.
+	// Return only the alerting rules (e.g. type=alert) or the recording rules (e.g. type=record). When the
+	// parameter is absent or empty, no filtering is done.
 	Type OptGetRulesType `json:",omitempty,omitzero"`
-	// Only return rules with the given rule name.
-	// If the parameter is repeated, rules with any of the provided names are returned.
-	// If we've filtered out all the rules of a group, the group is not returned.
-	// When the parameter is absent or empty, no filtering is done.
+	// Only return rules with the given rule name. If the parameter is repeated, rules with any of the
+	// provided names are returned. If we've filtered out all the rules of a group, the group is not
+	// returned. When the parameter is absent or empty, no filtering is done.
 	RuleName []string `json:",omitempty"`
-	// Only return rules with the given rule group name.
-	// If the parameter is repeated, rules with any of the provided rule group names are returned.
-	// When the parameter is absent or empty, no filtering is done.
+	// Only return rules with the given rule group name. If the parameter is repeated, rules with any of
+	// the provided rule group names are returned. When the parameter is absent or empty, no filtering is
+	// done.
 	RuleGroup []string `json:",omitempty"`
-	// Only return rules with the given filepath.
-	// If the parameter is repeated, rules with any of the provided filepaths are returned.
-	// When the parameter is absent or empty, no filtering is done.
+	// Only return rules with the given filepath. If the parameter is repeated, rules with any of the
+	// provided filepaths are returned. When the parameter is absent or empty, no filtering is done.
 	File []string `json:",omitempty"`
 }
 

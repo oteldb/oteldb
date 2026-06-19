@@ -21,11 +21,12 @@ type QueryParams struct {
 	Q string
 	// Along with `end` define a time range from which tags should be returned.
 	Start OptTempoTime `json:",omitempty,omitzero"`
-	// Along with `start` define a time range from which tags should be returned.
-	// Providing both `start` and `end` includes blocks for the specified time range only.
+	// Along with `start` define a time range from which tags should be returned. Providing both `start`
+	// and `end` includes blocks for the specified time range only.
 	End OptTempoTime `json:",omitempty,omitzero"`
-	// Can be used instead of `start` and `end` to define the time range in relative values.
-	// For example, `since=15m` queries the last 15 minutes.
+	// Can be used instead of `start` and `end` to define the time range in relative values. For example,
+	// `since=15m` queries the last 15 minutes.
+	//
 	// Default is the last 1 hour.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
 }
@@ -274,18 +275,21 @@ type QueryRangeParams struct {
 	Q string
 	// Along with `end` define a time range from which tags should be returned.
 	Start OptTempoTime `json:",omitempty,omitzero"`
-	// Along with `start` define a time range from which tags should be returned.
-	// Providing both `start` and `end` includes blocks for the specified time range only.
+	// Along with `start` define a time range from which tags should be returned. Providing both `start`
+	// and `end` includes blocks for the specified time range only.
 	End OptTempoTime `json:",omitempty,omitzero"`
-	// Can be used instead of `start` and `end` to define the time range in relative values.
-	// For example, `since=15m` queries the last 15 minutes.
+	// Can be used instead of `start` and `end` to define the time range in relative values. For example,
+	// `since=15m` queries the last 15 minutes.
+	//
 	// Default is the last 1 hour.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
-	// Defines the granularity of the returned time-series.
-	// For example, `step=15s` returns a data point every 15s within the time range.
+	// Defines the granularity of the returned time-series. For example, `step=15s` returns a data point
+	// every 15s within the time range.
+	//
 	// If not specified, then the default behavior chooses a dynamic step based on the time range.
 	Step OptPrometheusDuration `json:",omitempty,omitzero"`
 	// Defines the maximum number of exemplars for the query.
+	//
 	// It's trimmed to `max_exemplars` if it exceeds it.
 	Exemplars OptInt `json:",omitempty,omitzero"`
 }
@@ -654,29 +658,28 @@ func decodeQueryRangeParams(args [0]string, argsEscaped bool, r *http.Request) (
 type SearchParams struct {
 	// URL-encoded TraceQL query.
 	Q OptString `json:",omitempty,omitzero"`
-	// Logfmt encoding of any span-level or process-level attributes to filter on.
-	// The value is matched as a case-insensitive substring.
-	// Key-value pairs are separated by spaces.
-	// If a value contains a space, it should be enclosed within double quotes.
+	// Logfmt encoding of any span-level or process-level attributes to filter on. The value is matched as
+	// a case-insensitive substring. Key-value pairs are separated by spaces. If a value contains a space,
+	// it should be enclosed within double quotes.
 	Tags OptString `json:",omitempty,omitzero"`
 	// Find traces with at least this duration. Duration values are of the form 10s for 10 seconds, 100ms,
-	//  30m, etc.
+	// 30m, etc.
 	MinDuration OptDuration `json:",omitempty,omitzero"`
 	// Find traces with no greater than this duration. Uses the same form as `minDuration`.
 	MaxDuration OptDuration `json:",omitempty,omitzero"`
-	// Limit the number of search results. Default is 20, but this is configurable in the querier. Refer
-	// to Configuration.
+	// Limit the number of search results. Default is 20, but this is configurable in the querier. Refer to
+	// Configuration.
 	Limit OptInt `json:",omitempty,omitzero"`
 	// Along with `end` define a time range from which traces should be returned.
 	Start OptTempoTime `json:",omitempty,omitzero"`
-	// Along with `start`, define a time range from which traces should be returned.
-	// Providing both `start` and `end` will change the way that Tempo searches.
-	// If the parameters are not provided, then Tempo will search the recent trace data stored in the
-	// ingesters.
-	// If the parameters are provided, it will search the backend as well.
+	// Along with `start`, define a time range from which traces should be returned. Providing both `start`
+	// and `end` will change the way that Tempo searches. If the parameters are not provided, then Tempo
+	// will search the recent trace data stored in the ingesters. If the parameters are provided, it will
+	// search the backend as well.
 	End OptTempoTime `json:",omitempty,omitzero"`
-	// Can be used instead of `start` and `end` to define the time range in relative values.
-	// For example, `since=15m` queries the last 15 minutes.
+	// Can be used instead of `start` and `end` to define the time range in relative values. For example,
+	// `since=15m` queries the last 15 minutes.
+	//
 	// Default is the last 1 hour.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
 	// Limit the number of spans per span-set. Default value is 3.
@@ -1183,21 +1186,23 @@ type SearchTagValuesParams struct {
 	// Tag name.
 	TagName string
 	// If provided, the tag values returned by the API are filtered to only return values seen on spans
-	// matching your filter parameters.
-	// Queries can be incomplete: for example, `{ .cluster = }`. Tempo extracts only the valid matchers
-	// and build a valid query.
+	// matching your filter parameters. Queries can be incomplete: for example, `{ .cluster = }`. Tempo
+	// extracts only the valid matchers and build a valid query.
+	//
 	// Only queries with a single selector `{}`` and AND `&&` operators are supported.
-	// - Example supported: `{ .cluster = "us-east-1" && .service = "frontend" }`
-	// - Example unsupported: `{ .cluster = "us-east-1" || .service = "frontend" } && { .cluster =
-	// "us-east-2" }`.
+	//
+	//  - Example supported: `{ .cluster = "us-east-1" && .service = "frontend" }`
+	//  - Example unsupported:
+	//    `{ .cluster = "us-east-1" || .service = "frontend" } && { .cluster = "us-east-2" }`
 	Q OptString `json:",omitempty,omitzero"`
 	// Along with `end` define a time range from which tags should be returned.
 	Start OptTempoTime `json:",omitempty,omitzero"`
-	// Along with `start` define a time range from which tags should be returned.
-	// Providing both `start` and `end` includes blocks for the specified time range only.
+	// Along with `start` define a time range from which tags should be returned. Providing both `start`
+	// and `end` includes blocks for the specified time range only.
 	End OptTempoTime `json:",omitempty,omitzero"`
-	// Can be used instead of `start` and `end` to define the time range in relative values.
-	// For example, `since=15m` queries the last 15 minutes.
+	// Can be used instead of `start` and `end` to define the time range in relative values. For example,
+	// `since=15m` queries the last 15 minutes.
+	//
 	// Default is the last 1 hour.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
 }
@@ -1504,21 +1509,23 @@ type SearchTagValuesV2Params struct {
 	// TraceQL attribute selector (`.service.name`, `resource.service.name`, etc.).
 	AttributeSelector string
 	// If provided, the tag values returned by the API are filtered to only return values seen on spans
-	// matching your filter parameters.
-	// Queries can be incomplete: for example, `{ .cluster = }`. Tempo extracts only the valid matchers
-	// and build a valid query.
+	// matching your filter parameters. Queries can be incomplete: for example, `{ .cluster = }`. Tempo
+	// extracts only the valid matchers and build a valid query.
+	//
 	// Only queries with a single selector `{}`` and AND `&&` operators are supported.
-	// - Example supported: `{ .cluster = "us-east-1" && .service = "frontend" }`
-	// - Example unsupported: `{ .cluster = "us-east-1" || .service = "frontend" } && { .cluster =
-	// "us-east-2" }`.
+	//
+	//  - Example supported: `{ .cluster = "us-east-1" && .service = "frontend" }`
+	//  - Example unsupported:
+	//    `{ .cluster = "us-east-1" || .service = "frontend" } && { .cluster = "us-east-2" }`
 	Q OptString `json:",omitempty,omitzero"`
 	// Along with `end` define a time range from which tags should be returned.
 	Start OptTempoTime `json:",omitempty,omitzero"`
-	// Along with `start` define a time range from which tags should be returned.
-	// Providing both `start` and `end` includes blocks for the specified time range only.
+	// Along with `start` define a time range from which tags should be returned. Providing both `start`
+	// and `end` includes blocks for the specified time range only.
 	End OptTempoTime `json:",omitempty,omitzero"`
-	// Can be used instead of `start` and `end` to define the time range in relative values.
-	// For example, `since=15m` queries the last 15 minutes.
+	// Can be used instead of `start` and `end` to define the time range in relative values. For example,
+	// `since=15m` queries the last 15 minutes.
+	//
 	// Default is the last 1 hour.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
 }
@@ -1827,11 +1834,12 @@ type SearchTagsParams struct {
 	Scope OptTagScope `json:",omitempty,omitzero"`
 	// Along with `end` define a time range from which tags should be returned.
 	Start OptTempoTime `json:",omitempty,omitzero"`
-	// Along with `start` define a time range from which tags should be returned.
-	// Providing both `start` and `end` includes blocks for the specified time range only.
+	// Along with `start` define a time range from which tags should be returned. Providing both `start`
+	// and `end` includes blocks for the specified time range only.
 	End OptTempoTime `json:",omitempty,omitzero"`
-	// Can be used instead of `start` and `end` to define the time range in relative values.
-	// For example, `since=15m` queries the last 15 minutes.
+	// Can be used instead of `start` and `end` to define the time range in relative values. For example,
+	// `since=15m` queries the last 15 minutes.
+	//
 	// Default is the last 1 hour.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
 }
@@ -2105,15 +2113,16 @@ type SearchTagsV2Params struct {
 	Scope OptTagScope `json:",omitempty,omitzero"`
 	// Along with `end` define a time range from which tags should be returned.
 	Start OptTempoTime `json:",omitempty,omitzero"`
-	// Along with `start` define a time range from which tags should be returned.
-	// Providing both `start` and `end` includes blocks for the specified time range only.
+	// Along with `start` define a time range from which tags should be returned. Providing both `start`
+	// and `end` includes blocks for the specified time range only.
 	End OptTempoTime `json:",omitempty,omitzero"`
-	// Can be used instead of `start` and `end` to define the time range in relative values.
-	// For example, `since=15m` queries the last 15 minutes.
+	// Can be used instead of `start` and `end` to define the time range in relative values. For example,
+	// `since=15m` queries the last 15 minutes.
+	//
 	// Default is the last 1 hour.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
-	// Sets the maximum number of tags names allowed per scope.
-	// The query stops once this limit is reached for any scope.
+	// Sets the maximum number of tags names allowed per scope. The query stops once this limit is reached
+	// for any scope.
 	Limit OptInt `json:",omitempty,omitzero"`
 }
 
@@ -2483,16 +2492,15 @@ type TraceByIDParams struct {
 	TraceID string
 	// Along with `end` define a time range from which traces should be returned.
 	Start OptTempoTime `json:",omitempty,omitzero"`
-	// Along with `start` define a time range from which traces should be returned.
-	// Providing both `start` and `end` will include traces for the specified time range only.
-	// If the parameters are not provided then Tempo will check for the trace across all blocks in
-	// backend.
-	// If the parameters are provided, it will only check in the blocks within the specified time range,
-	// this can result in trace not being found or partial results if it does not fall in the specified
-	// time range.
+	// Along with `start` define a time range from which traces should be returned. Providing both `start`
+	// and `end` will include traces for the specified time range only. If the parameters are not provided
+	// then Tempo will check for the trace across all blocks in backend. If the parameters are provided, it
+	// will only check in the blocks within the specified time range, this can result in trace not being
+	// found or partial results if it does not fall in the specified time range.
 	End OptTempoTime `json:",omitempty,omitzero"`
-	// Can be used instead of `start` and `end` to define the time range in relative values.
-	// For example, `since=15m` queries the last 15 minutes.
+	// Can be used instead of `start` and `end` to define the time range in relative values. For example,
+	// `since=15m` queries the last 15 minutes.
+	//
 	// Default is the last 1 hour.
 	Since  OptPrometheusDuration `json:",omitempty,omitzero"`
 	Accept string
@@ -2793,16 +2801,15 @@ type TraceByIDv2Params struct {
 	TraceID string
 	// Along with `end` define a time range from which traces should be returned.
 	Start OptTempoTime `json:",omitempty,omitzero"`
-	// Along with `start` define a time range from which traces should be returned.
-	// Providing both `start` and `end` will include traces for the specified time range only.
-	// If the parameters are not provided then Tempo will check for the trace across all blocks in
-	// backend.
-	// If the parameters are provided, it will only check in the blocks within the specified time range,
-	// this can result in trace not being found or partial results if it does not fall in the specified
-	// time range.
+	// Along with `start` define a time range from which traces should be returned. Providing both `start`
+	// and `end` will include traces for the specified time range only. If the parameters are not provided
+	// then Tempo will check for the trace across all blocks in backend. If the parameters are provided, it
+	// will only check in the blocks within the specified time range, this can result in trace not being
+	// found or partial results if it does not fall in the specified time range.
 	End OptTempoTime `json:",omitempty,omitzero"`
-	// Can be used instead of `start` and `end` to define the time range in relative values.
-	// For example, `since=15m` queries the last 15 minutes.
+	// Can be used instead of `start` and `end` to define the time range in relative values. For example,
+	// `since=15m` queries the last 15 minutes.
+	//
 	// Default is the last 1 hour.
 	Since  OptPrometheusDuration `json:",omitempty,omitzero"`
 	Accept OptString             `json:",omitempty,omitzero"`

@@ -71,7 +71,7 @@ func (s *Server) handleDetectedFieldValuesRequest(args [1]string, argsEscaped bo
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -241,7 +241,7 @@ func (s *Server) handleDetectedFieldsRequest(args [0]string, argsEscaped bool, w
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -371,8 +371,7 @@ func (s *Server) handleDetectedFieldsRequest(args [0]string, argsEscaped bool, w
 
 // handleDetectedLabelsRequest handles detectedLabels operation.
 //
-// Get detected labels.
-// Used by Grafana to test Logs Drilldown availability.
+// Get detected labels. Used by Grafana to test Logs Drilldown availability.
 //
 // GET /loki/api/v1/detected_labels
 func (s *Server) handleDetectedLabelsRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
@@ -408,7 +407,7 @@ func (s *Server) handleDetectedLabelsRequest(args [0]string, argsEscaped bool, w
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -538,8 +537,7 @@ func (s *Server) handleDetectedLabelsRequest(args [0]string, argsEscaped bool, w
 
 // handleDrilldownLimitsRequest handles drilldownLimits operation.
 //
-// Get drilldown limits.
-// Used by Grafana to get limits from Loki.
+// Get drilldown limits. Used by Grafana to get limits from Loki.
 //
 // GET /loki/api/v1/drilldown-limits
 func (s *Server) handleDrilldownLimitsRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
@@ -575,7 +573,7 @@ func (s *Server) handleDrilldownLimitsRequest(args [0]string, argsEscaped bool, 
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -710,7 +708,7 @@ func (s *Server) handleIndexStatsRequest(args [0]string, argsEscaped bool, w htt
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -872,7 +870,7 @@ func (s *Server) handleLabelValuesRequest(args [1]string, argsEscaped bool, w ht
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -1006,8 +1004,7 @@ func (s *Server) handleLabelValuesRequest(args [1]string, argsEscaped bool, w ht
 
 // handleLabelsRequest handles labels operation.
 //
-// Get labels.
-// Used by Grafana to test connection to Loki.
+// Get labels. Used by Grafana to test connection to Loki.
 //
 // GET /loki/api/v1/labels
 func (s *Server) handleLabelsRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
@@ -1043,7 +1040,7 @@ func (s *Server) handleLabelsRequest(args [0]string, argsEscaped bool, w http.Re
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -1169,8 +1166,8 @@ func (s *Server) handleLabelsRequest(args [0]string, argsEscaped bool, w http.Re
 
 // handlePatternsRequest handles patterns operation.
 //
-// Endpoint can be used to query loki for patterns detected in the logs.
-// This helps understand the structure of the logs Loki has ingested.
+// Endpoint can be used to query loki for patterns detected in the logs. This helps understand the
+// structure of the logs Loki has ingested.
 //
 // GET /loki/api/v1/patterns
 func (s *Server) handlePatternsRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
@@ -1206,7 +1203,7 @@ func (s *Server) handlePatternsRequest(args [0]string, argsEscaped bool, w http.
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -1376,7 +1373,7 @@ func (s *Server) handlePushRequest(args [0]string, argsEscaped bool, w http.Resp
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -1530,7 +1527,7 @@ func (s *Server) handleQueryRequest(args [0]string, argsEscaped bool, w http.Res
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -1696,7 +1693,7 @@ func (s *Server) handleQueryRangeRequest(args [0]string, argsEscaped bool, w htt
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -1874,7 +1871,7 @@ func (s *Server) handleQueryVolumeRequest(args [0]string, argsEscaped bool, w ht
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -2052,7 +2049,7 @@ func (s *Server) handleQueryVolumeRangeRequest(args [0]string, argsEscaped bool,
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 
@@ -2234,7 +2231,7 @@ func (s *Server) handleSeriesRequest(args [0]string, argsEscaped bool, w http.Re
 		if code != 0 {
 			codeAttr := semconv.HTTPResponseStatusCode(code)
 			attrs = append(attrs, codeAttr)
-			span.SetAttributes(codeAttr)
+			span.SetAttributes(attrs...)
 		}
 		attrOpt := metric.WithAttributes(attrs...)
 

@@ -446,22 +446,20 @@ func (s *FlamebearerTimelineV1Watermarks) init() FlamebearerTimelineV1Watermarks
 type FlamebearerV1 struct {
 	// Names is the sequence of symbol names.
 	Names []string `json:"names"`
-	// Levels contains the flamebearer nodes. Each level represents a row in the flamegraph.
-	// For each row / level, there's a sequence of values. These values are grouped in chunks
-	// which size depend on the flamebearer format: 4 for "single", 7 for "double".
-	// For "single" format, each chunk has the following data:
-	// i+0 = x offset (prefix sum of the level total values), delta encoded.
-	// i+1 = total samples (including the samples in its children nodes).
-	// i+2 = self samples (excluding the samples in its children nodes).
-	// i+3 = index in names array
-	// For "double" format, each chunk has the following data:
-	// i+0 = x offset (prefix sum of the level total values), delta encoded, base / left tree.
-	// i+1 = total samples (including the samples in its children nodes)   , base / left tree.
-	// i+2 = self samples (excluding the samples in its children nodes)    , base / left tree.
-	// i+3 = x offset (prefix sum of the level total values), delta encoded, diff / right tree.
-	// i+4 = total samples (including the samples in its children nodes)   , diff / right tree.
-	// i+5 = self samples (excluding the samples in its children nodes)    , diff / right tree.
-	// i+6 = index in the names array.
+	// Levels contains the flamebearer nodes. Each level represents a row in the flamegraph. For each row /
+	// level, there's a sequence of values. These values are grouped in chunks which size depend on the
+	// flamebearer format: 4 for "single", 7 for "double". For "single" format, each chunk has the
+	// following data: i+0 = x offset (prefix sum of the level total values), delta encoded. i+1 = total
+	// samples (including the samples in its children nodes). i+2 = self samples (excluding the samples in
+	// its children nodes). i+3 = index in names array
+	//
+	// For "double" format, each chunk has the following data: i+0 = x offset (prefix sum of the level
+	// total values), delta encoded, base / left tree. i+1 = total samples (including the samples in its
+	// children nodes) , base / left tree. i+2 = self samples (excluding the samples in its children nodes)
+	// , base / left tree. i+3 = x offset (prefix sum of the level total values), delta encoded, diff /
+	// right tree. i+4 = total samples (including the samples in its children nodes) , diff / right tree.
+	// i+5 = self samples (excluding the samples in its children nodes) , diff / right tree. i+6 = index in
+	// the names array.
 	Levels   [][]int `json:"levels"`
 	NumTicks int     `json:"numTicks"`
 	MaxSelf  int     `json:"maxSelf"`
@@ -509,17 +507,13 @@ func (s *FlamebearerV1) SetMaxSelf(val int) {
 
 // Ref: #/components/schemas/Heatmap
 type Heatmap struct {
-	// Values matrix contain values that indicate count of value occurrences,
-	// satisfying boundaries of X and Y bins: [StartTime:EndTime) and (MinValue:MaxValue].
-	// A value can be accessed via Values[x][y], where:
-	// 0 <= x < TimeBuckets, and
-	// 0 <= y < ValueBuckets.
+	// Values matrix contain values that indicate count of value occurrences, satisfying boundaries of X
+	// and Y bins: [StartTime:EndTime) and (MinValue:MaxValue]. A value can be accessed via Values[x][y],
+	// where: 0 <= x < TimeBuckets, and 0 <= y < ValueBuckets.
 	Values [][]uint64 `json:"values"`
-	// TimeBuckets denote number of bins on X axis.
-	// Length of Values array.
+	// TimeBuckets denote number of bins on X axis. Length of Values array.
 	TimeBuckets OptInt64 `json:"timeBuckets"`
-	// ValueBuckets denote number of bins on Y axis.
-	// Length of any item in the Values array.
+	// ValueBuckets denote number of bins on Y axis. Length of any item in the Values array.
 	ValueBuckets OptInt64 `json:"valueBuckets"`
 	// StartTime and EndTime indicate boundaries of X axis: [StartTime:EndTime).
 	StartTime OptInt64 `json:"startTime"`
@@ -527,8 +521,8 @@ type Heatmap struct {
 	// MinValue and MaxValue indicate boundaries of Y axis: (MinValue:MaxValue].
 	MinValue OptUint64 `json:"minValue"`
 	MaxValue OptUint64 `json:"maxValue"`
-	// MinDepth and MaxDepth indicate boundaries of Z axis: [MinDepth:MaxDepth].
-	// MinDepth is the minimal non-zero value that can be found in Values.
+	// MinDepth and MaxDepth indicate boundaries of Z axis: [MinDepth:MaxDepth]. MinDepth is the minimal
+	// non-zero value that can be found in Values.
 	MinDepth OptUint64 `json:"minDepth"`
 	MaxDepth OptUint64 `json:"maxDepth"`
 }
@@ -1080,6 +1074,11 @@ func (o *OptNilHeatmap) SetToNull() {
 	o.Null = true
 	var v Heatmap
 	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilHeatmap) IsEmpty() bool {
+	return !o.Set && !o.Null
 }
 
 // Get returns value and boolean that denotes whether value was set.

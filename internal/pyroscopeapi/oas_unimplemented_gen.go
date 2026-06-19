@@ -15,8 +15,7 @@ var _ Handler = UnimplementedHandler{}
 
 // GetApps implements getApps operation.
 //
-// Returns list of application metadata.
-// Used by Grafana to test connection to Pyroscope.
+// Returns list of application metadata. Used by Grafana to test connection to Pyroscope.
 //
 // GET /api/apps
 func (UnimplementedHandler) GetApps(ctx context.Context) (r []ApplicationMetadata, _ error) {
@@ -52,8 +51,7 @@ func (UnimplementedHandler) Labels(ctx context.Context, params LabelsParams) (r 
 
 // Render implements render operation.
 //
-// Renders given query.
-// One of `query` or `key` is required.
+// Renders given query. One of `query` or `key` is required.
 //
 // GET /render
 func (UnimplementedHandler) Render(ctx context.Context, params RenderParams) (r *FlamebearerProfileV1, _ error) {

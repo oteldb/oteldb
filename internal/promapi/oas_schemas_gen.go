@@ -307,7 +307,8 @@ func (s *Bucket) SetCount(val float64) {
 // Ref: #/components/schemas/Data
 // Data represents sum type.
 type Data struct {
-	Type   DataType // switch on this field
+	// Type selects the active sum variant, switch on this field.
+	Type   DataType
 	Matrix Matrix
 	Vector Vector
 	Scalar Scalar
@@ -806,7 +807,8 @@ func (s *Histogram) SetBuckets(val []Bucket) {
 
 // HistogramOrValue represents sum type.
 type HistogramOrValue struct {
-	Type          HistogramOrValueType // switch on this field
+	// Type selects the active sum variant, switch on this field.
+	Type          HistogramOrValueType
 	Histogram     Histogram
 	StringFloat64 float64
 }
@@ -886,8 +888,7 @@ type LabelValues []string
 type LabelValuesResponse struct {
 	// Always 'success'.
 	Status string `json:"status"`
-	// Only if there were warnings while executing the request. There will still be data in the data
-	// field.
+	// Only if there were warnings while executing the request. There will still be data in the data field.
 	Warnings []string `json:"warnings"`
 	// Only set if there were info-level annnotations while executing the request.
 	Infos []string    `json:"infos"`
@@ -977,8 +978,7 @@ func (s *LabelsForm) SetMatch(val []string) {
 type LabelsResponse struct {
 	// Always 'success'.
 	Status string `json:"status"`
-	// Only if there were warnings while executing the request. There will still be data in the data
-	// field.
+	// Only if there were warnings while executing the request. There will still be data in the data field.
 	Warnings []string `json:"warnings"`
 	// Only set if there were info-level annnotations while executing the request.
 	Infos []string `json:"infos"`
@@ -1103,8 +1103,7 @@ func (s *Metadata) init() Metadata {
 type MetadataResponse struct {
 	// Always 'success'.
 	Status string `json:"status"`
-	// Only if there were warnings while executing the request. There will still be data in the data
-	// field.
+	// Only if there were warnings while executing the request. There will still be data in the data field.
 	Warnings []string `json:"warnings"`
 	// Only set if there were info-level annnotations while executing the request.
 	Infos []string `json:"infos"`
@@ -1737,8 +1736,7 @@ type PrometheusTimestamp string
 type QueryExemplarsResponse struct {
 	// Always 'success'.
 	Status string `json:"status"`
-	// Only if there were warnings while executing the request. There will still be data in the data
-	// field.
+	// Only if there were warnings while executing the request. There will still be data in the data field.
 	Warnings []string `json:"warnings"`
 	// Only set if there were info-level annnotations while executing the request.
 	Infos []string  `json:"infos"`
@@ -1839,8 +1837,8 @@ type QueryRangeForm struct {
 	Query string              `json:"query"`
 	Start PrometheusTimestamp `json:"start"`
 	End   PrometheusTimestamp `json:"end"`
-	// Query resolution step width in duration format or float number of seconds.
-	// Official Prometheus spec requires it, but some clients do not send it (e.g vmalert).
+	// Query resolution step width in duration format or float number of seconds. Official Prometheus spec
+	// requires it, but some clients do not send it (e.g vmalert).
 	Step          OptString `json:"step"`
 	LookbackDelta OptString `json:"lookback_delta"`
 	Stats         OptString `json:"stats"`
@@ -1910,8 +1908,7 @@ func (s *QueryRangeForm) SetStats(val OptString) {
 type QueryResponse struct {
 	// Always 'success'.
 	Status string `json:"status"`
-	// Only if there were warnings while executing the request. There will still be data in the data
-	// field.
+	// Only if there were warnings while executing the request. There will still be data in the data field.
 	Warnings []string `json:"warnings"`
 	// Only set if there were info-level annnotations while executing the request.
 	Infos []string `json:"infos"`
@@ -2053,7 +2050,8 @@ func (s *RecordingRule) SetType(val string) {
 // Ref: #/components/schemas/Rule
 // Rule represents sum type.
 type Rule struct {
-	Type          RuleType // switch on this field
+	// Type selects the active sum variant, switch on this field.
+	Type          RuleType
 	AlertingRule  AlertingRule
 	RecordingRule RecordingRule
 }
@@ -2119,9 +2117,8 @@ func NewRecordingRuleRule(v RecordingRule) Rule {
 type RuleGroup struct {
 	Name OptString `json:"name"`
 	File OptString `json:"file"`
-	// In order to preserve rule ordering, while exposing type (alerting or recording)
-	// specific properties, both alerting and recording rules are exposed in the
-	// same array.
+	// In order to preserve rule ordering, while exposing type (alerting or recording) specific properties,
+	// both alerting and recording rules are exposed in the same array.
 	Rules          []Rule     `json:"rules"`
 	Internal       OptFloat64 `json:"internal"`
 	Limit          OptInt     `json:"limit"`
@@ -2267,8 +2264,7 @@ func (s *Rules) SetGroups(val []RuleGroup) {
 type RulesResponse struct {
 	// Always 'success'.
 	Status string `json:"status"`
-	// Only if there were warnings while executing the request. There will still be data in the data
-	// field.
+	// Only if there were warnings while executing the request. There will still be data in the data field.
 	Warnings []string `json:"warnings"`
 	// Only set if there were info-level annnotations while executing the request.
 	Infos []string `json:"infos"`
@@ -2399,8 +2395,7 @@ func (s *SeriesForm) SetMatch(val []string) {
 type SeriesResponse struct {
 	// Always 'success'.
 	Status string `json:"status"`
-	// Only if there were warnings while executing the request. There will still be data in the data
-	// field.
+	// Only if there were warnings while executing the request. There will still be data in the data field.
 	Warnings []string `json:"warnings"`
 	// Only set if there were info-level annnotations while executing the request.
 	Infos []string `json:"infos"`

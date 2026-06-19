@@ -33,8 +33,7 @@ func (UnimplementedHandler) DetectedFields(ctx context.Context, params DetectedF
 
 // DetectedLabels implements detectedLabels operation.
 //
-// Get detected labels.
-// Used by Grafana to test Logs Drilldown availability.
+// Get detected labels. Used by Grafana to test Logs Drilldown availability.
 //
 // GET /loki/api/v1/detected_labels
 func (UnimplementedHandler) DetectedLabels(ctx context.Context, params DetectedLabelsParams) (r *DetectedLabels, _ error) {
@@ -43,8 +42,7 @@ func (UnimplementedHandler) DetectedLabels(ctx context.Context, params DetectedL
 
 // DrilldownLimits implements drilldownLimits operation.
 //
-// Get drilldown limits.
-// Used by Grafana to get limits from Loki.
+// Get drilldown limits. Used by Grafana to get limits from Loki.
 //
 // GET /loki/api/v1/drilldown-limits
 func (UnimplementedHandler) DrilldownLimits(ctx context.Context) (r *DrilldownLimits, _ error) {
@@ -71,8 +69,7 @@ func (UnimplementedHandler) LabelValues(ctx context.Context, params LabelValuesP
 
 // Labels implements labels operation.
 //
-// Get labels.
-// Used by Grafana to test connection to Loki.
+// Get labels. Used by Grafana to test connection to Loki.
 //
 // GET /loki/api/v1/labels
 func (UnimplementedHandler) Labels(ctx context.Context, params LabelsParams) (r *Labels, _ error) {
@@ -81,8 +78,8 @@ func (UnimplementedHandler) Labels(ctx context.Context, params LabelsParams) (r 
 
 // Patterns implements patterns operation.
 //
-// Endpoint can be used to query loki for patterns detected in the logs.
-// This helps understand the structure of the logs Loki has ingested.
+// Endpoint can be used to query loki for patterns detected in the logs. This helps understand the
+// structure of the logs Loki has ingested.
 //
 // GET /loki/api/v1/patterns
 func (UnimplementedHandler) Patterns(ctx context.Context, params PatternsParams) (r *Patterns, _ error) {

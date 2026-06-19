@@ -203,7 +203,8 @@ func (o OptString) Or(d string) string {
 // Ref: #/definitions/query
 // Query represents sum type.
 type Query struct {
-	Type         QueryType // switch on this field
+	// Type selects the active sum variant, switch on this field.
+	Type         QueryType
 	RangeQuery   RangeQuery
 	InstantQuery InstantQuery
 	SeriesQuery  SeriesQuery

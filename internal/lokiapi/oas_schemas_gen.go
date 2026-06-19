@@ -778,6 +778,11 @@ func (o *OptNilStringArray) SetToNull() {
 	o.Value = v
 }
 
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilStringArray) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
 // Get returns value and boolean that denotes whether value was set.
 func (o OptNilStringArray) Get() (v []string, ok bool) {
 	if o.Null {
@@ -1080,7 +1085,8 @@ func (s *QueryResponse) SetData(val QueryResponseData) {
 // Ref: #/components/schemas/QueryResponseData
 // QueryResponseData represents sum type.
 type QueryResponseData struct {
-	Type          QueryResponseDataType // switch on this field
+	// Type selects the active sum variant, switch on this field.
+	Type          QueryResponseDataType
 	StreamsResult StreamsResult
 	ScalarResult  ScalarResult
 	VectorResult  VectorResult

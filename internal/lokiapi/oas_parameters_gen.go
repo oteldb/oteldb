@@ -20,15 +20,12 @@ type DetectedFieldValuesParams struct {
 	Field string
 	// The LogQL matchers to check (that is, `{job="foo", env=~".+"}`).
 	Query OptString `json:",omitempty,omitzero"`
-	// The start time for the query as a nanosecond Unix epoch.
-	// Defaults to 6 hours ago.
+	// The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 	Start OptLokiTime `json:",omitempty,omitzero"`
-	// The end time for the query as a nanosecond Unix epoch.
-	// Defaults to now.
+	// The end time for the query as a nanosecond Unix epoch. Defaults to now.
 	End OptLokiTime `json:",omitempty,omitzero"`
-	// A `duration` used to calculate `start` relative to `end`.
-	// If `end` is in the future, `start` is calculated as this duration before now.
-	// Any value specified for start supersedes this parameter.
+	// A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is
+	// calculated as this duration before now. Any value specified for start supersedes this parameter.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
 }
 
@@ -333,15 +330,12 @@ func decodeDetectedFieldValuesParams(args [1]string, argsEscaped bool, r *http.R
 type DetectedFieldsParams struct {
 	// The LogQL matchers to check (that is, `{job="foo", env=~".+"}`).
 	Query OptString `json:",omitempty,omitzero"`
-	// The start time for the query as a nanosecond Unix epoch.
-	// Defaults to 6 hours ago.
+	// The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 	Start OptLokiTime `json:",omitempty,omitzero"`
-	// The end time for the query as a nanosecond Unix epoch.
-	// Defaults to now.
+	// The end time for the query as a nanosecond Unix epoch. Defaults to now.
 	End OptLokiTime `json:",omitempty,omitzero"`
-	// A `duration` used to calculate `start` relative to `end`.
-	// If `end` is in the future, `start` is calculated as this duration before now.
-	// Any value specified for start supersedes this parameter.
+	// A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is
+	// calculated as this duration before now. Any value specified for start supersedes this parameter.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
 }
 
@@ -594,15 +588,12 @@ func decodeDetectedFieldsParams(args [0]string, argsEscaped bool, r *http.Reques
 type DetectedLabelsParams struct {
 	// The LogQL matchers to check (that is, `{job="foo", env=~".+"}`).
 	Query OptString `json:",omitempty,omitzero"`
-	// The start time for the query as a nanosecond Unix epoch.
-	// Defaults to 6 hours ago.
+	// The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 	Start OptLokiTime `json:",omitempty,omitzero"`
-	// The end time for the query as a nanosecond Unix epoch.
-	// Defaults to now.
+	// The end time for the query as a nanosecond Unix epoch. Defaults to now.
 	End OptLokiTime `json:",omitempty,omitzero"`
-	// A `duration` used to calculate `start` relative to `end`.
-	// If `end` is in the future, `start` is calculated as this duration before now.
-	// Any value specified for start supersedes this parameter.
+	// A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is
+	// calculated as this duration before now. Any value specified for start supersedes this parameter.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
 }
 
@@ -1027,18 +1018,14 @@ func decodeIndexStatsParams(args [0]string, argsEscaped bool, r *http.Request) (
 
 // LabelValuesParams is parameters of labelValues operation.
 type LabelValuesParams struct {
-	// The start time for the query as a nanosecond Unix epoch.
-	// Defaults to 6 hours ago.
+	// The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 	Start OptLokiTime `json:",omitempty,omitzero"`
-	// The end time for the query as a nanosecond Unix epoch.
-	// Defaults to now.
+	// The end time for the query as a nanosecond Unix epoch. Defaults to now.
 	End OptLokiTime `json:",omitempty,omitzero"`
-	// A `duration` used to calculate `start` relative to `end`.
-	// If `end` is in the future, `start` is calculated as this duration before now.
-	// Any value specified for start supersedes this parameter.
+	// A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is
+	// calculated as this duration before now. Any value specified for start supersedes this parameter.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
-	// A set of log stream selector that selects the streams to match and return label values for
-	// `{name}`.
+	// A set of log stream selector that selects the streams to match and return label values for `{name}`.
 	Query OptString `json:",omitempty,omitzero"`
 	// Label name.
 	Name string
@@ -1343,15 +1330,12 @@ func decodeLabelValuesParams(args [1]string, argsEscaped bool, r *http.Request) 
 
 // LabelsParams is parameters of labels operation.
 type LabelsParams struct {
-	// The start time for the query as a nanosecond Unix epoch.
-	// Defaults to 6 hours ago.
+	// The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 	Start OptLokiTime `json:",omitempty,omitzero"`
-	// The end time for the query as a nanosecond Unix epoch.
-	// Defaults to now.
+	// The end time for the query as a nanosecond Unix epoch. Defaults to now.
 	End OptLokiTime `json:",omitempty,omitzero"`
-	// A `duration` used to calculate `start` relative to `end`.
-	// If `end` is in the future, `start` is calculated as this duration before now.
-	// Any value specified for start supersedes this parameter.
+	// A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is
+	// calculated as this duration before now. Any value specified for start supersedes this parameter.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
 }
 
@@ -1554,16 +1538,14 @@ func decodeLabelsParams(args [0]string, argsEscaped bool, r *http.Request) (para
 type PatternsParams struct {
 	Start OptLokiTime `json:",omitempty,omitzero"`
 	End   OptLokiTime `json:",omitempty,omitzero"`
-	// A `duration` used to calculate `start` relative to `end`.
-	// If `end` is in the future, `start` is calculated as this duration before now.
-	// Any value specified for start supersedes this parameter.
+	// A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is
+	// calculated as this duration before now. Any value specified for start supersedes this parameter.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
 	// The LogQL query to perform.
 	Query string
-	// Query resolution step width in `duration` format or float number of seconds.
-	// `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`.
-	// For example, `5m` refers to a duration of 5 minutes.
-	// Defaults to a dynamic value based on start and end.
+	// Query resolution step width in `duration` format or float number of seconds. `duration` refers to
+	// Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, `5m` refers to a duration of
+	// 5 minutes. Defaults to a dynamic value based on start and end.
 	Step OptPrometheusDuration `json:",omitempty,omitzero"`
 }
 
@@ -1881,16 +1863,14 @@ func decodePatternsParams(args [0]string, argsEscaped bool, r *http.Request) (pa
 type QueryParams struct {
 	// The LogQL query to perform.
 	Query string
-	// The max number of entries to return.
-	// It defaults to `100`.
-	// Only applies to query types which produce a stream (log lines) response.
+	// The max number of entries to return. It defaults to `100`. Only applies to query types which produce
+	// a stream (log lines) response.
 	Limit OptInt `json:",omitempty,omitzero"`
-	// The evaluation time for the query as a nanosecond Unix epoch or another supported format.
-	// Defaults to now.
+	// The evaluation time for the query as a nanosecond Unix epoch or another supported format. Defaults
+	// to now.
 	Time OptLokiTime `json:",omitempty,omitzero"`
-	// Determines the sort order of logs.
-	// Supported values are `forward` or `backward`.
-	// Defaults to `backward`.
+	// Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to
+	// `backward`.
 	Direction OptDirection `json:",omitempty,omitzero"`
 }
 
@@ -2147,25 +2127,21 @@ func decodeQueryParams(args [0]string, argsEscaped bool, r *http.Request) (param
 type QueryRangeParams struct {
 	Start OptLokiTime `json:",omitempty,omitzero"`
 	End   OptLokiTime `json:",omitempty,omitzero"`
-	// A `duration` used to calculate `start` relative to `end`.
-	// If `end` is in the future, `start` is calculated as this duration before now.
-	// Any value specified for start supersedes this parameter.
+	// A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is
+	// calculated as this duration before now. Any value specified for start supersedes this parameter.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
 	// The LogQL query to perform.
 	Query string
-	// Query resolution step width in `duration` format or float number of seconds.
-	// `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`.
-	// For example, `5m` refers to a duration of 5 minutes.
-	// Defaults to a dynamic value based on start and end.
-	// Only applies to query types which produce a matrix response.
+	// Query resolution step width in `duration` format or float number of seconds. `duration` refers to
+	// Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, `5m` refers to a duration of
+	// 5 minutes. Defaults to a dynamic value based on start and end. Only applies to query types which
+	// produce a matrix response.
 	Step OptPrometheusDuration `json:",omitempty,omitzero"`
-	// The max number of entries to return.
-	// It defaults to `100`.
-	// Only applies to query types which produce a stream (log lines) response.
+	// The max number of entries to return. It defaults to `100`. Only applies to query types which produce
+	// a stream (log lines) response.
 	Limit OptInt `json:",omitempty,omitzero"`
-	// Determines the sort order of logs.
-	// Supported values are `forward` or `backward`.
-	// Defaults to `backward`.
+	// Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to
+	// `backward`.
 	Direction OptDirection `json:",omitempty,omitzero"`
 }
 
@@ -2627,18 +2603,16 @@ type QueryVolumeParams struct {
 	Start OptLokiTime `json:",omitempty,omitzero"`
 	// End timestamp.
 	End OptLokiTime `json:",omitempty,omitzero"`
-	// A `duration` used to calculate `start` relative to `end`.
-	// If `end` is in the future, `start` is calculated as this duration before now.
-	// Any value specified for start supersedes this parameter.
+	// A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is
+	// calculated as this duration before now. Any value specified for start supersedes this parameter.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
-	// How many metric series to return.
-	// The parameter is optional, the default is `100`.
+	// How many metric series to return. The parameter is optional, the default is `100`.
 	Limit OptInt `json:",omitempty,omitzero"`
-	// A comma separated list of labels to aggregate into.
-	// When not provided, volumes will be aggregated into the matching labels or label-value pairs.
+	// A comma separated list of labels to aggregate into. When not provided, volumes will be aggregated
+	// into the matching labels or label-value pairs.
 	TargetLabels OptString `json:",omitempty,omitzero"`
-	// Whether to aggregate into labels or label-value pairs.
-	// This parameter is optional, the default is label-value pairs.
+	// Whether to aggregate into labels or label-value pairs. This parameter is optional, the default is
+	// label-value pairs.
 	AggregateBy OptString `json:",omitempty,omitzero"`
 }
 
@@ -3045,26 +3019,24 @@ type QueryVolumeRangeParams struct {
 	Start OptLokiTime `json:",omitempty,omitzero"`
 	// End timestamp.
 	End OptLokiTime `json:",omitempty,omitzero"`
-	// A `duration` used to calculate `start` relative to `end`.
-	// If `end` is in the future, `start` is calculated as this duration before now.
-	// Any value specified for start supersedes this parameter.
+	// A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is
+	// calculated as this duration before now. Any value specified for start supersedes this parameter.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
-	// Query resolution step width in duration format or float number of seconds.
-	// `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`.
-	// For example, `5m` refers to a duration of 5 minutes.
-	// Defaults to a dynamic value based on `start` and `end`.
-	// Only applies when querying the `volume_range` endpoint, which will always return a Prometheus
-	// style matrix response.
-	// The default step configured for range queries will be used when not provided.
+	// Query resolution step width in duration format or float number of seconds. `duration` refers to
+	// Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, `5m` refers to a duration of
+	// 5 minutes.
+	//
+	// Defaults to a dynamic value based on `start` and `end`. Only applies when querying the
+	// `volume_range` endpoint, which will always return a Prometheus style matrix response. The default
+	// step configured for range queries will be used when not provided.
 	Step OptPrometheusDuration `json:",omitempty,omitzero"`
-	// How many metric series to return.
-	// The parameter is optional, the default is `100`.
+	// How many metric series to return. The parameter is optional, the default is `100`.
 	Limit OptInt `json:",omitempty,omitzero"`
-	// A comma separated list of labels to aggregate into.
-	// When not provided, volumes will be aggregated into the matching labels or label-value pairs.
+	// A comma separated list of labels to aggregate into. When not provided, volumes will be aggregated
+	// into the matching labels or label-value pairs.
 	TargetLabels OptString `json:",omitempty,omitzero"`
-	// Whether to aggregate into labels or label-value pairs.
-	// This parameter is optional, the default is label-value pairs.
+	// Whether to aggregate into labels or label-value pairs. This parameter is optional, the default is
+	// label-value pairs.
 	AggregateBy OptString `json:",omitempty,omitzero"`
 }
 
@@ -3539,9 +3511,8 @@ func decodeQueryVolumeRangeParams(args [0]string, argsEscaped bool, r *http.Requ
 type SeriesParams struct {
 	Start OptLokiTime `json:",omitempty,omitzero"`
 	End   OptLokiTime `json:",omitempty,omitzero"`
-	// A `duration` used to calculate `start` relative to `end`.
-	// If `end` is in the future, `start` is calculated as this duration before now.
-	// Any value specified for start supersedes this parameter.
+	// A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is
+	// calculated as this duration before now. Any value specified for start supersedes this parameter.
 	Since OptPrometheusDuration `json:",omitempty,omitzero"`
 	Match []string              `json:",omitempty"`
 }

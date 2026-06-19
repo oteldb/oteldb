@@ -14,30 +14,28 @@ import (
 // IngestParams is parameters of ingest operation.
 type IngestParams struct {
 	Name SegmentKey
-	// Start of time range in `attime` format.
-	// Defaults to now.
+	// Start of time range in `attime` format. Defaults to now.
 	From OptAtTime `json:",omitempty,omitzero"`
-	// End of time range in `attime` format.
-	// Defaults to now.
+	// End of time range in `attime` format. Defaults to now.
 	Until OptAtTime `json:",omitempty,omitzero"`
-	// Sample rate.
-	// Defaults to `100`.
+	// Sample rate. Defaults to `100`.
+	//
 	// NOTE: Pyroscope ignores parameter if it is invalid.
 	SampleRate OptUint32 `json:",omitempty,omitzero"`
 	SpyName    OptString `json:",omitempty,omitzero"`
 	// Could be
-	// - `samples`
-	// - `objects`
-	// - `goroutines`
-	// - `bytes`
-	// - `lock_nanoseconds`
-	// - `lock_samples`
-	// but Pyroscope does not check it, so we don't either.
+	//
+	//  - `samples`
+	//  - `objects`
+	//  - `goroutines`
+	//  - `bytes`
+	//  - `lock_nanoseconds`
+	//  - `lock_samples` but Pyroscope does not check it, so we don't either.
 	Units OptString `json:",omitempty,omitzero"`
 	// Could be
-	// - `average`
-	// - `sum`
-	// but Pyroscope does not check it, so we don't either.
+	//
+	//  - `average`
+	//  - `sum` but Pyroscope does not check it, so we don't either.
 	AggregationType OptString `json:",omitempty,omitzero"`
 	// Input format.
 	Format OptString `json:",omitempty,omitzero"`
@@ -470,11 +468,9 @@ func decodeIngestParams(args [0]string, argsEscaped bool, r *http.Request) (para
 type LabelValuesParams struct {
 	// Label to lookup values.
 	Label string
-	// Start of time range in `attime` format.
-	// For now, Pyroscope ignores parameter, if `query` is not set.
+	// Start of time range in `attime` format. For now, Pyroscope ignores parameter, if `query` is not set.
 	From OptAtTime `json:",omitempty,omitzero"`
-	// End of time range in `attime` format.
-	// For now, Pyroscope ignores parameter, if `query` is not set.
+	// End of time range in `attime` format. For now, Pyroscope ignores parameter, if `query` is not set.
 	Until OptAtTime `json:",omitempty,omitzero"`
 	// FrameQL query.
 	Query OptString `json:",omitempty,omitzero"`
@@ -698,11 +694,9 @@ func decodeLabelValuesParams(args [0]string, argsEscaped bool, r *http.Request) 
 
 // LabelsParams is parameters of labels operation.
 type LabelsParams struct {
-	// Start of time range in `attime` format.
-	// For now, Pyroscope ignores parameter, if `query` is not set.
+	// Start of time range in `attime` format. For now, Pyroscope ignores parameter, if `query` is not set.
 	From OptAtTime `json:",omitempty,omitzero"`
-	// End of time range in `attime` format.
-	// For now, Pyroscope ignores parameter, if `query` is not set.
+	// End of time range in `attime` format. For now, Pyroscope ignores parameter, if `query` is not set.
 	Until OptAtTime `json:",omitempty,omitzero"`
 	// FrameQL query.
 	Query OptString `json:",omitempty,omitzero"`

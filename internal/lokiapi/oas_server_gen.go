@@ -22,15 +22,13 @@ type Handler interface {
 	DetectedFields(ctx context.Context, params DetectedFieldsParams) (*DetectedFields, error)
 	// DetectedLabels implements detectedLabels operation.
 	//
-	// Get detected labels.
-	// Used by Grafana to test Logs Drilldown availability.
+	// Get detected labels. Used by Grafana to test Logs Drilldown availability.
 	//
 	// GET /loki/api/v1/detected_labels
 	DetectedLabels(ctx context.Context, params DetectedLabelsParams) (*DetectedLabels, error)
 	// DrilldownLimits implements drilldownLimits operation.
 	//
-	// Get drilldown limits.
-	// Used by Grafana to get limits from Loki.
+	// Get drilldown limits. Used by Grafana to get limits from Loki.
 	//
 	// GET /loki/api/v1/drilldown-limits
 	DrilldownLimits(ctx context.Context) (*DrilldownLimits, error)
@@ -48,15 +46,14 @@ type Handler interface {
 	LabelValues(ctx context.Context, params LabelValuesParams) (*Values, error)
 	// Labels implements labels operation.
 	//
-	// Get labels.
-	// Used by Grafana to test connection to Loki.
+	// Get labels. Used by Grafana to test connection to Loki.
 	//
 	// GET /loki/api/v1/labels
 	Labels(ctx context.Context, params LabelsParams) (*Labels, error)
 	// Patterns implements patterns operation.
 	//
-	// Endpoint can be used to query loki for patterns detected in the logs.
-	// This helps understand the structure of the logs Loki has ingested.
+	// Endpoint can be used to query loki for patterns detected in the logs. This helps understand the
+	// structure of the logs Loki has ingested.
 	//
 	// GET /loki/api/v1/patterns
 	Patterns(ctx context.Context, params PatternsParams) (*Patterns, error)

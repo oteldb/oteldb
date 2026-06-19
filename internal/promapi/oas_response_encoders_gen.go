@@ -15,7 +15,6 @@ import (
 func encodeGetLabelValuesResponse(response *LabelValuesResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -29,7 +28,6 @@ func encodeGetLabelValuesResponse(response *LabelValuesResponse, w http.Response
 func encodeGetLabelsResponse(response *LabelsResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -43,7 +41,6 @@ func encodeGetLabelsResponse(response *LabelsResponse, w http.ResponseWriter, sp
 func encodeGetMetadataResponse(response *MetadataResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -57,7 +54,6 @@ func encodeGetMetadataResponse(response *MetadataResponse, w http.ResponseWriter
 func encodeGetQueryResponse(response *QueryResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -71,7 +67,6 @@ func encodeGetQueryResponse(response *QueryResponse, w http.ResponseWriter, span
 func encodeGetQueryExemplarsResponse(response *QueryExemplarsResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -85,7 +80,6 @@ func encodeGetQueryExemplarsResponse(response *QueryExemplarsResponse, w http.Re
 func encodeGetQueryRangeResponse(response *QueryResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -99,7 +93,6 @@ func encodeGetQueryRangeResponse(response *QueryResponse, w http.ResponseWriter,
 func encodeGetRulesResponse(response *RulesResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -113,7 +106,6 @@ func encodeGetRulesResponse(response *RulesResponse, w http.ResponseWriter, span
 func encodeGetSeriesResponse(response *SeriesResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -127,7 +119,6 @@ func encodeGetSeriesResponse(response *SeriesResponse, w http.ResponseWriter, sp
 func encodePostLabelsResponse(response *LabelsResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -141,7 +132,6 @@ func encodePostLabelsResponse(response *LabelsResponse, w http.ResponseWriter, s
 func encodePostQueryResponse(response *QueryResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -155,7 +145,6 @@ func encodePostQueryResponse(response *QueryResponse, w http.ResponseWriter, spa
 func encodePostQueryExemplarsResponse(response *QueryExemplarsResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -169,7 +158,6 @@ func encodePostQueryExemplarsResponse(response *QueryExemplarsResponse, w http.R
 func encodePostQueryRangeResponse(response *QueryResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -183,7 +171,6 @@ func encodePostQueryRangeResponse(response *QueryResponse, w http.ResponseWriter
 func encodePostSeriesResponse(response *SeriesResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
-	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -202,10 +189,8 @@ func encodeErrorResponse(response *FailStatusCode, w http.ResponseWriter, span t
 		code = http.StatusOK
 	}
 	w.WriteHeader(code)
-	if st := http.StatusText(code); code >= http.StatusBadRequest {
-		span.SetStatus(codes.Error, st)
-	} else {
-		span.SetStatus(codes.Ok, st)
+	if code >= http.StatusInternalServerError {
+		span.SetStatus(codes.Error, http.StatusText(code))
 	}
 
 	e := new(jx.Encoder)

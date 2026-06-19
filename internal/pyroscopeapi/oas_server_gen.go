@@ -10,8 +10,7 @@ import (
 type Handler interface {
 	// GetApps implements getApps operation.
 	//
-	// Returns list of application metadata.
-	// Used by Grafana to test connection to Pyroscope.
+	// Returns list of application metadata. Used by Grafana to test connection to Pyroscope.
 	//
 	// GET /api/apps
 	GetApps(ctx context.Context) ([]ApplicationMetadata, error)
@@ -35,8 +34,7 @@ type Handler interface {
 	Labels(ctx context.Context, params LabelsParams) (Labels, error)
 	// Render implements render operation.
 	//
-	// Renders given query.
-	// One of `query` or `key` is required.
+	// Renders given query. One of `query` or `key` is required.
 	//
 	// GET /render
 	Render(ctx context.Context, params RenderParams) (*FlamebearerProfileV1, error)

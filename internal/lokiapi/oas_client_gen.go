@@ -4,6 +4,7 @@ package lokiapi
 
 import (
 	"context"
+	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -41,15 +42,13 @@ type Invoker interface {
 	DetectedFields(ctx context.Context, params DetectedFieldsParams) (*DetectedFields, error)
 	// DetectedLabels invokes detectedLabels operation.
 	//
-	// Get detected labels.
-	// Used by Grafana to test Logs Drilldown availability.
+	// Get detected labels. Used by Grafana to test Logs Drilldown availability.
 	//
 	// GET /loki/api/v1/detected_labels
 	DetectedLabels(ctx context.Context, params DetectedLabelsParams) (*DetectedLabels, error)
 	// DrilldownLimits invokes drilldownLimits operation.
 	//
-	// Get drilldown limits.
-	// Used by Grafana to get limits from Loki.
+	// Get drilldown limits. Used by Grafana to get limits from Loki.
 	//
 	// GET /loki/api/v1/drilldown-limits
 	DrilldownLimits(ctx context.Context) (*DrilldownLimits, error)
@@ -67,15 +66,14 @@ type Invoker interface {
 	LabelValues(ctx context.Context, params LabelValuesParams) (*Values, error)
 	// Labels invokes labels operation.
 	//
-	// Get labels.
-	// Used by Grafana to test connection to Loki.
+	// Get labels. Used by Grafana to test connection to Loki.
 	//
 	// GET /loki/api/v1/labels
 	Labels(ctx context.Context, params LabelsParams) (*Labels, error)
 	// Patterns invokes patterns operation.
 	//
-	// Endpoint can be used to query loki for patterns detected in the logs.
-	// This helps understand the structure of the logs Loki has ingested.
+	// Endpoint can be used to query loki for patterns detected in the logs. This helps understand the
+	// structure of the logs Loki has ingested.
 	//
 	// GET /loki/api/v1/patterns
 	Patterns(ctx context.Context, params PatternsParams) (*Patterns, error)
@@ -319,7 +317,13 @@ func (c *Client) sendDetectedFieldValues(ctx context.Context, params DetectedFie
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeDetectedFieldValuesResponse(resp)
@@ -474,7 +478,13 @@ func (c *Client) sendDetectedFields(ctx context.Context, params DetectedFieldsPa
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeDetectedFieldsResponse(resp)
@@ -487,8 +497,7 @@ func (c *Client) sendDetectedFields(ctx context.Context, params DetectedFieldsPa
 
 // DetectedLabels invokes detectedLabels operation.
 //
-// Get detected labels.
-// Used by Grafana to test Logs Drilldown availability.
+// Get detected labels. Used by Grafana to test Logs Drilldown availability.
 //
 // GET /loki/api/v1/detected_labels
 func (c *Client) DetectedLabels(ctx context.Context, params DetectedLabelsParams) (*DetectedLabels, error) {
@@ -630,7 +639,13 @@ func (c *Client) sendDetectedLabels(ctx context.Context, params DetectedLabelsPa
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeDetectedLabelsResponse(resp)
@@ -643,8 +658,7 @@ func (c *Client) sendDetectedLabels(ctx context.Context, params DetectedLabelsPa
 
 // DrilldownLimits invokes drilldownLimits operation.
 //
-// Get drilldown limits.
-// Used by Grafana to get limits from Loki.
+// Get drilldown limits. Used by Grafana to get limits from Loki.
 //
 // GET /loki/api/v1/drilldown-limits
 func (c *Client) DrilldownLimits(ctx context.Context) (*DrilldownLimits, error) {
@@ -705,7 +719,13 @@ func (c *Client) sendDrilldownLimits(ctx context.Context) (res *DrilldownLimits,
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeDrilldownLimitsResponse(resp)
@@ -837,7 +857,13 @@ func (c *Client) sendIndexStats(ctx context.Context, params IndexStatsParams) (r
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeIndexStatsResponse(resp)
@@ -1011,7 +1037,13 @@ func (c *Client) sendLabelValues(ctx context.Context, params LabelValuesParams) 
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeLabelValuesResponse(resp)
@@ -1024,8 +1056,7 @@ func (c *Client) sendLabelValues(ctx context.Context, params LabelValuesParams) 
 
 // Labels invokes labels operation.
 //
-// Get labels.
-// Used by Grafana to test connection to Loki.
+// Get labels. Used by Grafana to test connection to Loki.
 //
 // GET /loki/api/v1/labels
 func (c *Client) Labels(ctx context.Context, params LabelsParams) (*Labels, error) {
@@ -1150,7 +1181,13 @@ func (c *Client) sendLabels(ctx context.Context, params LabelsParams) (res *Labe
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeLabelsResponse(resp)
@@ -1163,8 +1200,8 @@ func (c *Client) sendLabels(ctx context.Context, params LabelsParams) (res *Labe
 
 // Patterns invokes patterns operation.
 //
-// Endpoint can be used to query loki for patterns detected in the logs.
-// This helps understand the structure of the logs Loki has ingested.
+// Endpoint can be used to query loki for patterns detected in the logs. This helps understand the
+// structure of the logs Loki has ingested.
 //
 // GET /loki/api/v1/patterns
 func (c *Client) Patterns(ctx context.Context, params PatternsParams) (*Patterns, error) {
@@ -1323,7 +1360,13 @@ func (c *Client) sendPatterns(ctx context.Context, params PatternsParams) (res *
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodePatternsResponse(resp)
@@ -1400,7 +1443,13 @@ func (c *Client) sendPush(ctx context.Context, request PushReq) (res *PushNoCont
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodePushResponse(resp)
@@ -1546,7 +1595,13 @@ func (c *Client) sendQuery(ctx context.Context, params QueryParams) (res *QueryR
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeQueryResponse(resp)
@@ -1752,7 +1807,13 @@ func (c *Client) sendQueryRange(ctx context.Context, params QueryRangeParams) (r
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeQueryRangeResponse(resp)
@@ -1958,7 +2019,13 @@ func (c *Client) sendQueryVolume(ctx context.Context, params QueryVolumeParams) 
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeQueryVolumeResponse(resp)
@@ -2184,7 +2251,13 @@ func (c *Client) sendQueryVolumeRange(ctx context.Context, params QueryVolumeRan
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeQueryVolumeRangeResponse(resp)
@@ -2348,7 +2421,13 @@ func (c *Client) sendSeries(ctx context.Context, params SeriesParams) (res *Maps
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeSeriesResponse(resp)

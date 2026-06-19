@@ -14,9 +14,12 @@ func (s *ErrorStatusCode) Error() string {
 	return fmt.Sprintf("code %d: %+v", s.StatusCode, s.Response)
 }
 
-// Breadcrumb specifies an application event that occurred before a Sentry event.
-// An event may contain one or more breadcrumbs.
-// See [this](https://develop.sentry.dev/sdk/event-payloads/breadcrumbs).
+// Breadcrumb specifies an application event that occurred before a Sentry event. An event may contain
+// one or more breadcrumbs.
+//
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/breadcrumbs
 // Ref: #/components/schemas/Breadcrumb
 type Breadcrumb struct {
 	Type      OptString         `json:"type"`
@@ -98,7 +101,9 @@ func (s *BreadcrumbData) init() BreadcrumbData {
 	return m
 }
 
-// See [this](https://develop.sentry.dev/sdk/event-payloads/contexts/).
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/contexts/
 // Ref: #/components/schemas/Context
 type Context map[string]jx.Raw
 
@@ -111,7 +116,9 @@ func (s *Context) init() Context {
 	return m
 }
 
-// See [this](https://develop.sentry.dev/sdk/event-payloads/debugmeta#debug-images).
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/debugmeta#debug-images
 // Ref: #/components/schemas/DebugImage
 type DebugImage struct {
 	Type        string    `json:"type"`
@@ -226,7 +233,9 @@ func (s *DebugImage) SetUUID(val OptString) {
 	s.UUID = val
 }
 
-// See [this](https://develop.sentry.dev/sdk/event-payloads/debugmeta).
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/debugmeta
 // Ref: #/components/schemas/DebugMeta
 type DebugMeta struct {
 	SdkInfo OptDebugMetaSdkInfo `json:"sdk_info"`
@@ -344,7 +353,9 @@ func (s *EnvelopeReqWithContentType) SetContent(val EnvelopeReq) {
 	s.Content = val
 }
 
-// See [this](https://develop.sentry.dev/sdk/event-payloads/exception/#errno).
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/exception/#errno
 // Ref: #/components/schemas/Errno
 type Errno struct {
 	Number int       `json:"number"`
@@ -399,8 +410,9 @@ func (s *ErrorStatusCode) SetResponse(val Error) {
 	s.Response = val
 }
 
-// Event is the fundamental data structure that is sent to Sentry.
-// See [this](https://develop.sentry.dev/sdk/event-payloads).
+// Event is the fundamental data structure that is sent to Sentry. See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads
 // Ref: #/components/schemas/Event
 type Event struct {
 	Breadcrumbs     []Breadcrumb       `json:"breadcrumbs"`
@@ -749,7 +761,10 @@ func (s *EventTags) init() EventTags {
 }
 
 // Exception specifies an error that occurred.
-// See [this](https://develop.sentry.dev/sdk/event-payloads/exception/).
+//
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/exception/
 // Ref: #/components/schemas/Exception
 type Exception struct {
 	Type       string        `json:"type"`
@@ -820,8 +835,10 @@ func (s *Exception) SetMechanism(val OptMechanism) {
 	s.Mechanism = val
 }
 
-// Frame represents a function call and it's metadata. Frames are associated with a Stacktrace.
-// See [this](https://develop.sentry.dev/sdk/event-payloads/stacktrace/).
+// Frame represents a function call and it's metadata. Frames are associated with a Stacktrace. See
+// [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/stacktrace/
 // Ref: #/components/schemas/Frame
 type Frame struct {
 	Function        OptString    `json:"function"`
@@ -1048,7 +1065,9 @@ func (s *FrameVars) init() FrameVars {
 
 type Level string
 
-// See [this](https://develop.sentry.dev/sdk/event-payloads/exception/#mach_exception).
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/exception/#mach_exception
 // Ref: #/components/schemas/MachException
 type MachException struct {
 	Exception int       `json:"exception"`
@@ -1097,7 +1116,9 @@ func (s *MachException) SetName(val OptString) {
 	s.Name = val
 }
 
-// See [this](https://develop.sentry.dev/sdk/event-payloads/exception/#exception-mechanism).
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/exception/#exception-mechanism
 // Ref: #/components/schemas/Mechanism
 type Mechanism struct {
 	Type        string           `json:"type"`
@@ -1237,7 +1258,9 @@ func (s *MechanismMeta) SetErrno(val OptErrno) {
 	s.Errno = val
 }
 
-// See [this](https://develop.sentry.dev/sdk/event-payloads/exception/#ns_error).
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/exception/#ns_error
 // Ref: #/components/schemas/NSError
 type NSError struct {
 	Code   int       `json:"code"`
@@ -2783,7 +2806,10 @@ func (o OptUser) Or(d User) User {
 }
 
 // Request contains information on a HTTP request related to the event.
-// See [this](https://develop.sentry.dev/sdk/event-payloads/request/).
+//
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/request/
 // Ref: #/components/schemas/Request
 type Request struct {
 	URL         OptString         `json:"url"`
@@ -2888,7 +2914,10 @@ func (s *RequestHeaders) init() RequestHeaders {
 }
 
 // SdkInfo contains all metadata about about the SDK being used.
-// See [this](https://develop.sentry.dev/sdk/event-payloads/sdk/).
+//
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/sdk/
 // Ref: #/components/schemas/SdkInfo
 type SdkInfo struct {
 	Name         OptString    `json:"name"`
@@ -2964,7 +2993,9 @@ func (s *SdkPackage) SetVersion(val OptString) {
 	s.Version = val
 }
 
-// See [this](https://develop.sentry.dev/sdk/event-payloads/exception/#signal).
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/exception/#signal
 // Ref: #/components/schemas/Signal
 type Signal struct {
 	Number   int       `json:"number"`
@@ -3013,7 +3044,9 @@ func (s *Signal) SetCodeName(val OptString) {
 	s.CodeName = val
 }
 
-// See [this](https://develop.sentry.dev/sdk/event-payloads/span).
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/span
 // Ref: #/components/schemas/Span
 type Span struct {
 	TraceID        TraceID     `json:"trace_id"`
@@ -3201,7 +3234,10 @@ func (s *StacktraceRegisters) init() StacktraceRegisters {
 }
 
 // Thread specifies threads that were running at the time of an event.
-// See [this](https://develop.sentry.dev/sdk/event-payloads/threads/).
+//
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/threads/
 // Ref: #/components/schemas/Thread
 type Thread struct {
 	ID        string             `json:"id"`
@@ -3315,9 +3351,12 @@ func (s *TransactionInfo) SetSource(val TransactionSource) {
 
 type TransactionSource string
 
-// User describes the user associated with an Event. If this is used, at least
-// an ID or an IP address should be provided.
-// See [this](https://develop.sentry.dev/sdk/event-payloads/user/).
+// User describes the user associated with an Event. If this is used, at least an ID or an IP address
+// should be provided.
+//
+// See [this].
+//
+// [this]: https://develop.sentry.dev/sdk/event-payloads/user/
 // Ref: #/components/schemas/User
 type User struct {
 	ID              OptString `json:"id"`

@@ -4,6 +4,7 @@ package tempoapi
 
 import (
 	"context"
+	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -29,8 +30,8 @@ func trimTrailingSlashes(u *url.URL) {
 type Invoker interface {
 	// BuildInfo invokes buildInfo operation.
 	//
-	// Returns Tempo buildinfo, in the same format as Prometheus `/api/v1/status/buildinfo`.
-	// Used by Grafana to check Tempo API version.
+	// Returns Tempo buildinfo, in the same format as Prometheus `/api/v1/status/buildinfo`. Used by
+	// Grafana to check Tempo API version.
 	//
 	// GET /api/status/buildinfo
 	BuildInfo(ctx context.Context) (*PrometheusVersion, error)
@@ -42,8 +43,8 @@ type Invoker interface {
 	Echo(ctx context.Context) (EchoOK, error)
 	// Query invokes query operation.
 	//
-	// The instant version of the Metrics API is similar to the range version, but instead returns a
-	// single value for the query.
+	// The instant version of the Metrics API is similar to the range version, but instead returns a single
+	// value for the query.
 	//
 	// GET /api/metrics/query
 	Query(ctx context.Context, params QueryParams) (*InstantMetrics, error)
@@ -67,8 +68,7 @@ type Invoker interface {
 	SearchTagValues(ctx context.Context, params SearchTagValuesParams) (*TagValues, error)
 	// SearchTagValuesV2 invokes searchTagValuesV2 operation.
 	//
-	// This endpoint retrieves all discovered values and their data types for the given TraceQL
-	// identifier.
+	// This endpoint retrieves all discovered values and their data types for the given TraceQL identifier.
 	//
 	// GET /api/v2/search/tag/{attribute_selector}/values
 	SearchTagValuesV2(ctx context.Context, params SearchTagValuesV2Params) (*TagValuesV2, error)
@@ -139,8 +139,8 @@ func (c *Client) requestURL(ctx context.Context) *url.URL {
 
 // BuildInfo invokes buildInfo operation.
 //
-// Returns Tempo buildinfo, in the same format as Prometheus `/api/v1/status/buildinfo`.
-// Used by Grafana to check Tempo API version.
+// Returns Tempo buildinfo, in the same format as Prometheus `/api/v1/status/buildinfo`. Used by
+// Grafana to check Tempo API version.
 //
 // GET /api/status/buildinfo
 func (c *Client) BuildInfo(ctx context.Context) (*PrometheusVersion, error) {
@@ -201,7 +201,13 @@ func (c *Client) sendBuildInfo(ctx context.Context) (res *PrometheusVersion, err
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeBuildInfoResponse(resp)
@@ -275,7 +281,13 @@ func (c *Client) sendEcho(ctx context.Context) (res EchoOK, err error) {
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeEchoResponse(resp)
@@ -288,8 +300,8 @@ func (c *Client) sendEcho(ctx context.Context) (res EchoOK, err error) {
 
 // Query invokes query operation.
 //
-// The instant version of the Metrics API is similar to the range version, but instead returns a
-// single value for the query.
+// The instant version of the Metrics API is similar to the range version, but instead returns a single
+// value for the query.
 //
 // GET /api/metrics/query
 func (c *Client) Query(ctx context.Context, params QueryParams) (*InstantMetrics, error) {
@@ -428,7 +440,13 @@ func (c *Client) sendQuery(ctx context.Context, params QueryParams) (res *Instan
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeQueryResponse(resp)
@@ -617,7 +635,13 @@ func (c *Client) sendQueryRange(ctx context.Context, params QueryRangeParams) (r
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeQueryRangeResponse(resp)
@@ -857,7 +881,13 @@ func (c *Client) sendSearch(ctx context.Context, params SearchParams) (res *Trac
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeSearchResponse(resp)
@@ -1031,7 +1061,13 @@ func (c *Client) sendSearchTagValues(ctx context.Context, params SearchTagValues
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeSearchTagValuesResponse(resp)
@@ -1044,8 +1080,7 @@ func (c *Client) sendSearchTagValues(ctx context.Context, params SearchTagValues
 
 // SearchTagValuesV2 invokes searchTagValuesV2 operation.
 //
-// This endpoint retrieves all discovered values and their data types for the given TraceQL
-// identifier.
+// This endpoint retrieves all discovered values and their data types for the given TraceQL identifier.
 //
 // GET /api/v2/search/tag/{attribute_selector}/values
 func (c *Client) SearchTagValuesV2(ctx context.Context, params SearchTagValuesV2Params) (*TagValuesV2, error) {
@@ -1206,7 +1241,13 @@ func (c *Client) sendSearchTagValuesV2(ctx context.Context, params SearchTagValu
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeSearchTagValuesV2Response(resp)
@@ -1361,7 +1402,13 @@ func (c *Client) sendSearchTags(ctx context.Context, params SearchTagsParams) (r
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeSearchTagsResponse(resp)
@@ -1550,7 +1597,13 @@ func (c *Client) sendSearchTagsV2(ctx context.Context, params SearchTagsV2Params
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeSearchTagsV2Response(resp)
@@ -1720,7 +1773,13 @@ func (c *Client) sendTraceByID(ctx context.Context, params TraceByIDParams) (res
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeTraceByIDResponse(resp)
@@ -1893,7 +1952,13 @@ func (c *Client) sendTraceByIDv2(ctx context.Context, params TraceByIDv2Params) 
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeTraceByIDv2Response(resp)

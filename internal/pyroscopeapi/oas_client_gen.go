@@ -4,6 +4,7 @@ package pyroscopeapi
 
 import (
 	"context"
+	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -29,8 +30,7 @@ func trimTrailingSlashes(u *url.URL) {
 type Invoker interface {
 	// GetApps invokes getApps operation.
 	//
-	// Returns list of application metadata.
-	// Used by Grafana to test connection to Pyroscope.
+	// Returns list of application metadata. Used by Grafana to test connection to Pyroscope.
 	//
 	// GET /api/apps
 	GetApps(ctx context.Context) ([]ApplicationMetadata, error)
@@ -54,8 +54,7 @@ type Invoker interface {
 	Labels(ctx context.Context, params LabelsParams) (Labels, error)
 	// Render invokes render operation.
 	//
-	// Renders given query.
-	// One of `query` or `key` is required.
+	// Renders given query. One of `query` or `key` is required.
 	//
 	// GET /render
 	Render(ctx context.Context, params RenderParams) (*FlamebearerProfileV1, error)
@@ -102,8 +101,7 @@ func (c *Client) requestURL(ctx context.Context) *url.URL {
 
 // GetApps invokes getApps operation.
 //
-// Returns list of application metadata.
-// Used by Grafana to test connection to Pyroscope.
+// Returns list of application metadata. Used by Grafana to test connection to Pyroscope.
 //
 // GET /api/apps
 func (c *Client) GetApps(ctx context.Context) ([]ApplicationMetadata, error) {
@@ -164,7 +162,13 @@ func (c *Client) sendGetApps(ctx context.Context) (res []ApplicationMetadata, er
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeGetAppsResponse(resp)
@@ -387,7 +391,13 @@ func (c *Client) sendIngest(ctx context.Context, request *IngestReqWithContentTy
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeIngestResponse(resp)
@@ -536,7 +546,13 @@ func (c *Client) sendLabelValues(ctx context.Context, params LabelValuesParams) 
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeLabelValuesResponse(resp)
@@ -671,7 +687,13 @@ func (c *Client) sendLabels(ctx context.Context, params LabelsParams) (res Label
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeLabelsResponse(resp)
@@ -684,8 +706,7 @@ func (c *Client) sendLabels(ctx context.Context, params LabelsParams) (res Label
 
 // Render invokes render operation.
 //
-// Renders given query.
-// One of `query` or `key` is required.
+// Renders given query. One of `query` or `key` is required.
 //
 // GET /render
 func (c *Client) Render(ctx context.Context, params RenderParams) (*FlamebearerProfileV1, error) {
@@ -875,7 +896,13 @@ func (c *Client) sendRender(ctx context.Context, params RenderParams) (res *Flam
 		return res, errors.Wrap(err, "do request")
 	}
 	body := resp.Body
-	defer body.Close()
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
 
 	stage = "DecodeResponse"
 	result, err := decodeRenderResponse(resp)
