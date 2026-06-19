@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-faster/errors"
 
+	"github.com/oteldb/oteldb/internal/chstorage"
 	"github.com/oteldb/oteldb/internal/logql"
 	"github.com/oteldb/oteldb/internal/logql/lexer"
 	"github.com/oteldb/oteldb/internal/lokiapi"
@@ -14,7 +15,9 @@ import (
 func evalErr(err error, msg string) error {
 	_, isLexerErr := errors.Into[*lexer.Error](err)
 	_, isParseErr := errors.Into[*logql.ParseError](err)
-	if isLexerErr || isParseErr {
+	isTooLarge := errors.Is(err, chstorage.ErrLogsTooManySamples) ||
+		errors.Is(err, chstorage.ErrLogsResultTooLarge)
+	if isLexerErr || isParseErr || isTooLarge {
 		return &lokiapi.ErrorStatusCode{
 			StatusCode: http.StatusBadRequest,
 			Response:   lokiapi.Error(err.Error()),

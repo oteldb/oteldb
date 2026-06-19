@@ -39,6 +39,9 @@ type Querier struct {
 	maxResultBytes   int
 	maxExecutionTime time.Duration
 
+	sampleRowsLimit        int
+	sampleResultBytesLimit int
+
 	disableRateOffloading   bool
 	disableMetricOffloading bool
 
@@ -69,6 +72,13 @@ type QuerierOptions struct {
 	MaxResultBytes int
 	// MaxExecutionTime defines max execution time for ClickHouse query.
 	MaxExecutionTime time.Duration
+
+	// MaxSampleRows defines max number of log rows a LogQL sample query
+	// (e.g. count_over_time, rate, bytes_over_time) is allowed to fetch.
+	MaxSampleRows int
+	// MaxSampleResultBytes defines max number of result bytes a LogQL sample
+	// query is allowed to fetch from ClickHouse (max_result_bytes override).
+	MaxSampleResultBytes int
 
 	// DisableRateOffloading disables rate/increase/delta/etc. offloading to ClickHouse.
 	DisableRateOffloading bool
@@ -108,6 +118,12 @@ func (opts *QuerierOptions) setDefaults() {
 	}
 	if opts.MaxExecutionTime == 0 {
 		opts.MaxExecutionTime = 30 * time.Second
+	}
+	if opts.MaxSampleRows == 0 {
+		opts.MaxSampleRows = 1_000_000
+	}
+	if opts.MaxSampleResultBytes == 0 {
+		opts.MaxSampleResultBytes = 256 * 1024 * 1024 // 256 MiB
 	}
 	if opts.CHLogLevel == nil {
 		opts.CHLogLevel = zap.DebugLevel
@@ -159,6 +175,9 @@ func NewQuerier(c ClickHouseClient, opts QuerierOptions) (*Querier, error) {
 		maxResultBytes:   opts.MaxResultBytes,
 		maxExecutionTime: opts.MaxExecutionTime,
 
+		sampleRowsLimit:        opts.MaxSampleRows,
+		sampleResultBytesLimit: opts.MaxSampleResultBytes,
+
 		disableRateOffloading:   opts.DisableRateOffloading,
 		disableMetricOffloading: opts.DisableMetricOffloading,
 
@@ -181,6 +200,10 @@ type selectQuery struct {
 
 	ExternalData  []proto.InputColumn
 	ExternalTable string
+
+	// MaxResultBytes overrides Querier.maxResultBytes for this query, if set
+	// and more restrictive.
+	MaxResultBytes int
 
 	Type   string
 	Signal string
@@ -212,10 +235,14 @@ func (q *Querier) do(ctx context.Context, s selectQuery) error {
 			Value: strconv.Itoa(q.maxResultRows),
 		})
 	}
-	if q.maxResultBytes > 0 {
+	maxResultBytes := q.maxResultBytes
+	if s.MaxResultBytes > 0 && (maxResultBytes == 0 || s.MaxResultBytes < maxResultBytes) {
+		maxResultBytes = s.MaxResultBytes
+	}
+	if maxResultBytes > 0 {
 		query.Settings = append(query.Settings, ch.Setting{
 			Key:   "max_result_bytes",
-			Value: strconv.Itoa(q.maxResultBytes),
+			Value: strconv.Itoa(maxResultBytes),
 		})
 	}
 	if q.maxExecutionTime > 0 {

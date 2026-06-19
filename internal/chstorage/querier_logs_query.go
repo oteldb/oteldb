@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ClickHouse/ch-go"
 	"github.com/ClickHouse/ch-go/proto"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
@@ -25,6 +26,14 @@ import (
 	"github.com/oteldb/oteldb/internal/logstorage"
 	"github.com/oteldb/oteldb/internal/xattribute"
 )
+
+// ErrLogsTooManySamples means that a LogQL sample query (e.g. count_over_time,
+// rate, bytes_over_time) matched more log rows than allowed.
+var ErrLogsTooManySamples = errors.New("too many log lines requested for sampling")
+
+// ErrLogsResultTooLarge means that ClickHouse aborted a sample query because
+// its result exceeded the configured byte limit.
+var ErrLogsResultTooLarge = errors.New("sample query result is too large")
 
 // LogsQuery defines a logs query.
 type LogsQuery[E any] struct {
@@ -82,26 +91,57 @@ func (v *LogsQuery[E]) Execute(ctx context.Context, q *Querier) (_ iterators.Ite
 	default:
 		return nil, errors.Errorf("unexpected direction %q", d)
 	}
-	query.Limit(v.Limit)
+	// A non-positive Limit means "unlimited" — used only by sample/range
+	// aggregations (count_over_time, rate, bytes_over_time, etc.) that fetch
+	// raw log lines to compute samples from, rather than a user-facing log
+	// listing request (the Loki API always supplies a positive default
+	// limit for those). Guard that case with the same safety cap used for
+	// SampleQuery, since it's just as susceptible to unbounded buffering.
+	unlimited := v.Limit <= 0
+	if unlimited {
+		if limit := q.sampleRowsLimit; limit > 0 {
+			query.Limit(limit + 1)
+		}
+	} else {
+		query.Limit(v.Limit)
+	}
 
 	var data []E
 	if err := q.do(ctx, selectQuery{
 		Query: query,
 		OnResult: func(ctx context.Context, block proto.Block) error {
-			return out.ForEach(func(r logstorage.Record) error {
+			if err := out.ForEach(func(r logstorage.Record) error {
 				e, err := v.Mapper(r)
 				if err != nil {
 					return err
 				}
 				data = append(data, e)
 				return nil
-			})
+			}); err != nil {
+				return err
+			}
+			if unlimited {
+				if limit := q.sampleRowsLimit; limit > 0 && len(data) > limit {
+					return errors.Wrapf(ErrLogsTooManySamples, "%d > %d rows", len(data), limit)
+				}
+			}
+			return nil
 		},
+
+		MaxResultBytes: func() int {
+			if unlimited {
+				return q.sampleResultBytesLimit
+			}
+			return 0
+		}(),
 
 		Type:   "QueryLogs",
 		Signal: "logs",
 		Table:  table,
 	}); err != nil {
+		if exp, ok := ch.AsException(err); ok && exp.Code == proto.ErrTooManyRowsOrBytes {
+			return nil, errors.Wrap(ErrLogsResultTooLarge, exp.Message)
+		}
 		return nil, err
 	}
 
@@ -265,6 +305,11 @@ func (v *SampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlengine.Sa
 	)
 	v.Sel.addPredicates(ctx, query, mapping, q)
 	query.Order(chsql.Ident("timestamp"), chsql.Asc)
+	if limit := q.sampleRowsLimit; limit > 0 {
+		// Fetch one extra row so we can tell "exactly at the limit" apart
+		// from "more rows than the limit".
+		query.Limit(limit + 1)
+	}
 
 	var result []logqlmetric.SampledEntry
 	if err := q.do(ctx, selectQuery{
@@ -281,13 +326,21 @@ func (v *SampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlengine.Sa
 					Set:       logqlabels.AggregatedLabelsFromSeq(labels),
 				})
 			}
+			if limit := q.sampleRowsLimit; limit > 0 && len(result) > limit {
+				return errors.Wrapf(ErrLogsTooManySamples, "%d > %d rows", len(result), limit)
+			}
 			return nil
 		},
+
+		MaxResultBytes: q.sampleResultBytesLimit,
 
 		Type:   "QuerySamples",
 		Signal: "logs",
 		Table:  table,
 	}); err != nil {
+		if exp, ok := ch.AsException(err); ok && exp.Code == proto.ErrTooManyRowsOrBytes {
+			return nil, errors.Wrap(ErrLogsResultTooLarge, exp.Message)
+		}
 		return nil, err
 	}
 

@@ -87,6 +87,9 @@ func setupCH(
 		TracerProvider:    m.TracerProvider(),
 		Tracker:           tracker,
 		MetricSeriesLimit: cfg.Prometheus.MaxTimeseries,
+
+		MaxSampleRows:        cfg.Loki.MaxSampleRows,
+		MaxSampleResultBytes: int(cfg.Loki.MaxSampleResultBytes),
 	})
 	if err != nil {
 		return store, errors.Wrap(err, "create querier")
