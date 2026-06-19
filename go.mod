@@ -78,7 +78,7 @@ require (
 	github.com/oteldb/promql-engine v0.7.0-alpha.0
 	github.com/pierrec/lz4/v4 v4.1.27
 	github.com/prometheus/client_golang v1.23.2
-	github.com/prometheus/common v0.68.1
+	github.com/prometheus/common v0.69.0
 	github.com/prometheus/prometheus v0.312.0
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/sergi/go-diff v1.4.0
