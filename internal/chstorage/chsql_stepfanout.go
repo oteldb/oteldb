@@ -6,43 +6,59 @@ import (
 	"github.com/oteldb/oteldb/internal/chstorage/chsql"
 )
 
+// nanosPerMilli converts a nanosecond-precision step value (computed by
+// [stepFanoutExpr]) back to the millisecond epoch [applyStepFanoutCTEs]'
+// callers expect.
+const nanosPerMilli = 1_000_000
+
 // stepFanoutExpr is the per-row "step_ms_val" expression shared by every
 // step-bucketing offload query (PromQL rate/increase/delta offload, LogQL
 // sample aggregation offload). It enumerates every output step (epoch
 // milliseconds) whose window (step-window, step] covers the row, given the
-// CTEs defined by [applyStepFanoutCTEs]: first_step_ms, last_step_ms,
-// step_ms, window_ms, point_offset_ms, first_sample_step_ms, num_steps.
+// CTEs defined by [applyStepFanoutCTEs]: first_step_ns, last_step_ns,
+// step_ns, window_ns, point_offset_ns, first_sample_step_ns, num_steps.
+//
+// Boundary checks compare nanosecond-precision timestamps, not the
+// millisecond-rounded grid values: rows can legitimately sit within a
+// fraction of a millisecond of a window edge (e.g. synthetic log generators
+// that align timestamps to whole seconds plus a sub-millisecond jitter), and
+// rounding the row's own timestamp down to milliseconds before comparing it
+// against the window boundary can flip which side of the boundary it falls
+// on, silently dropping or duplicating samples at exact step multiples.
 //
 // A row whose window spans multiple steps (i.e. step < window) produces
 // multiple output rows once arrayJoin-ed — see the diagram in
 // applyStepFanoutCTEs.
 var stepFanoutExpr = func() chsql.Expr {
 	var (
-		firstStepMSIdent     = chsql.Ident("first_step_ms")
-		lastStepMSIdent      = chsql.Ident("last_step_ms")
-		stepMSIdent          = chsql.Ident("step_ms")
-		windowMSIdent        = chsql.Ident("window_ms")
-		pointOffsetMSIdent   = chsql.Ident("point_offset_ms")
-		firstSampleStepIdent = chsql.Ident("first_sample_step_ms")
+		firstStepNSIdent     = chsql.Ident("first_step_ns")
+		lastStepNSIdent      = chsql.Ident("last_step_ns")
+		stepNSIdent          = chsql.Ident("step_ns")
+		windowNSIdent        = chsql.Ident("window_ns")
+		pointOffsetNSIdent   = chsql.Ident("point_offset_ns")
+		firstSampleStepIdent = chsql.Ident("first_sample_step_ns")
 		numStepsIdent        = chsql.Ident("num_steps")
 	)
 
 	mapLambda := chsql.Lambda([]string{"i"},
-		chsql.Add(firstSampleStepIdent, chsql.Mul(chsql.ColumnToInt64("i"), stepMSIdent)),
+		chsql.Add(firstSampleStepIdent, chsql.Mul(chsql.ColumnToInt64("i"), stepNSIdent)),
 	)
 	rangeExpr := chsql.Range(numStepsIdent)
 
 	filterLambda := chsql.Lambda([]string{"s"}, chsql.JoinAnd(
-		chsql.Gte(chsql.Ident("s"), firstStepMSIdent),
-		chsql.Lte(chsql.Ident("s"), lastStepMSIdent),
-		chsql.Lt(chsql.Ident("s"), chsql.Add(pointOffsetMSIdent, windowMSIdent)),
+		chsql.Gte(chsql.Ident("s"), firstStepNSIdent),
+		chsql.Lte(chsql.Ident("s"), lastStepNSIdent),
+		chsql.Lt(chsql.Ident("s"), chsql.Add(pointOffsetNSIdent, windowNSIdent)),
 	))
 
-	return chsql.ArrayJoin(
-		chsql.ArrayFilter(
-			filterLambda,
-			chsql.ArrayMap(mapLambda, rangeExpr),
+	return chsql.IntDiv(
+		chsql.ArrayJoin(
+			chsql.ArrayFilter(
+				filterLambda,
+				chsql.ArrayMap(mapLambda, rangeExpr),
+			),
 		),
+		chsql.Integer(nanosPerMilli),
 	)
 }()
 
@@ -74,47 +90,51 @@ func applyStepFanoutCTEs(
 	step, window, offset time.Duration,
 	timeColumn string,
 ) *chsql.SelectQuery {
-	stepMS := step.Milliseconds()
-	if stepMS <= 0 {
-		stepMS = window.Milliseconds()
-		if stepMS <= 0 {
-			stepMS = 1
+	stepNS := step.Nanoseconds()
+	if stepNS <= 0 {
+		stepNS = window.Nanoseconds()
+		if stepNS <= 0 {
+			stepNS = int64(time.Millisecond)
 		}
 	}
-	windowMS := window.Milliseconds()
-	offsetMS := offset.Milliseconds()
+	windowNS := window.Nanoseconds()
+	offsetNS := offset.Nanoseconds()
 	toInt64 := chsql.ToInt64Val[int64]
 
 	return q.
-		// Query start/end aligned to step boundaries.
-		With("first_step_ms", toInt64(start.UnixMilli())).
-		With("last_step_ms", toInt64(end.UnixMilli())).
+		// Query start/end aligned to step boundaries, in nanoseconds: row
+		// timestamps are compared against these at full timestamp precision
+		// (see stepFanoutExpr) rather than after rounding to milliseconds,
+		// since rounding can flip which side of a window boundary a row
+		// falls on.
+		With("first_step_ns", toInt64(start.UnixNano())).
+		With("last_step_ns", toInt64(end.UnixNano())).
 		// Step and range window sizes.
-		With("step_ms", toInt64(stepMS)).
-		With("window_ms", toInt64(windowMS)).
+		With("step_ns", toInt64(stepNS)).
+		With("window_ns", toInt64(windowNS)).
 		// PromQL/LogQL offset: the query window is shifted back by this amount.
-		With("offset_ms", toInt64(offsetMS)).
-		// Raw row timestamp in milliseconds.
-		With("point_ms", chsql.ToUnixTimestamp64Milli(chsql.Ident(timeColumn))).
-		// point_ms + offset_ms: because offset shifts the query window back by offset_ms,
+		With("offset_ns", toInt64(offsetNS)).
+		// Raw row timestamp in nanoseconds.
+		With("point_ns", chsql.ToUnixTimestamp64Nano(chsql.Ident(timeColumn))).
+		// point_ns + offset_ns: because offset shifts the query window back by offset_ns,
 		// adding it to the row time is equivalent — a row at T belongs to step S if
-		// S - window_ms <= point_offset_ms < S, which avoids carrying offset through every check.
-		With("point_offset_ms", chsql.Add(chsql.Ident("point_ms"), chsql.Ident("offset_ms"))).
-		// ceil((point_offset_ms - first_step_ms) / step_ms) * step_ms, clamped to 0:
-		// distance in ms from first_step_ms to the earliest step this row could belong to.
+		// S - window_ns <= point_offset_ns < S, which avoids carrying offset through every check.
+		With("point_offset_ns", chsql.Add(chsql.Ident("point_ns"), chsql.Ident("offset_ns"))).
+		// ceil((point_offset_ns - first_step_ns) / step_ns) * step_ns, clamped to 0:
+		// distance in ns from first_step_ns to the earliest step this row could belong to.
 		With("offset_from_start", chsql.Greatest(
 			chsql.ToInt64(chsql.Integer(0)),
 			chsql.Sub(
-				chsql.Add(chsql.Ident("point_offset_ms"), chsql.Sub(chsql.Ident("step_ms"), chsql.Integer(1))),
-				chsql.Ident("first_step_ms"),
+				chsql.Add(chsql.Ident("point_offset_ns"), chsql.Sub(chsql.Ident("step_ns"), chsql.Integer(1))),
+				chsql.Ident("first_step_ns"),
 			),
 		)).
-		// floor(window_ms / step_ms) + 1: max steps a single row can fall into.
-		With("num_steps", chsql.ToUInt64(chsql.Add(chsql.IntDiv(chsql.Ident("window_ms"), chsql.Ident("step_ms")), chsql.Integer(1)))).
-		// first_step_ms + intDiv(offset_from_start, step_ms) * step_ms:
+		// floor(window_ns / step_ns) + 1: max steps a single row can fall into.
+		With("num_steps", chsql.ToUInt64(chsql.Add(chsql.IntDiv(chsql.Ident("window_ns"), chsql.Ident("step_ns")), chsql.Integer(1)))).
+		// first_step_ns + intDiv(offset_from_start, step_ns) * step_ns:
 		// timestamp of the earliest step this row belongs to, snapped to the step grid.
-		With("first_sample_step_ms", chsql.Add(
-			chsql.Ident("first_step_ms"),
-			chsql.Mul(chsql.IntDiv(chsql.Ident("offset_from_start"), chsql.Ident("step_ms")), chsql.Ident("step_ms")),
+		With("first_sample_step_ns", chsql.Add(
+			chsql.Ident("first_step_ns"),
+			chsql.Mul(chsql.IntDiv(chsql.Ident("offset_from_start"), chsql.Ident("step_ns")), chsql.Ident("step_ns")),
 		))
 }

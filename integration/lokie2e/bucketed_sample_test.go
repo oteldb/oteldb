@@ -69,20 +69,34 @@ func TestBucketedSampleOffload(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
 		query string
+		step  string
 	}{
-		{"CountOverTime", `sum by (http_method) (count_over_time({http_method=~".+"} [30s]))`},
-		{"Rate", `sum by (http_method) (rate({http_method=~".+"} [30s]))`},
-		{"BytesOverTime", `sum by (http_method) (bytes_over_time({http_method=~".+"} [30s]))`},
-		{"BytesRate", `sum by (http_method) (bytes_rate({http_method=~".+"} [30s]))`},
+		{"CountOverTime", `sum by (http_method) (count_over_time({http_method=~".+"} [30s]))`, "10s"},
+		{"Rate", `sum by (http_method) (rate({http_method=~".+"} [30s]))`, "10s"},
+		{"BytesOverTime", `sum by (http_method) (bytes_over_time({http_method=~".+"} [30s]))`, "10s"},
+		{"BytesRate", `sum by (http_method) (bytes_rate({http_method=~".+"} [30s]))`, "10s"},
+		// step > range: windows no longer overlap and have gaps between
+		// them, exercising the non-overlapping (num_steps == 1) tier.
+		{"CountOverTimeSparse", `sum by (http_method) (count_over_time({http_method=~".+"} [1s]))`, "10s"},
+		{"BytesOverTimeSparse", `sum by (http_method) (bytes_over_time({http_method=~".+"} [1s]))`, "10s"},
+		// step == range: windows tile exactly, no overlap and no gaps.
+		{"CountOverTimeEqualStepRange", `sum by (http_method) (count_over_time({http_method=~".+"} [10s]))`, "10s"},
+		{"BytesOverTimeEqualStepRange", `sum by (http_method) (bytes_over_time({http_method=~".+"} [10s]))`, "10s"},
+		// step << range: heavy window overlap, exercising num_steps > 2.
+		{"CountOverTimeHeavyOverlap", `sum by (http_method) (count_over_time({http_method=~".+"} [5s]))`, "1s"},
+		{"RateHeavyOverlap", `sum by (http_method) (rate({http_method=~".+"} [5s]))`, "1s"},
+		// sub-second range and step, exercising the precision fix directly
+		// (chsql_stepfanout.go used to truncate row timestamps to
+		// milliseconds before comparing against window boundaries).
+		{"CountOverTimeSubSecond", `sum by (http_method) (count_over_time({http_method=~".+"} [500ms]))`, "200ms"},
+		{"BytesOverTimeSubSecond", `sum by (http_method) (bytes_over_time({http_method=~".+"} [200ms]))`, "500ms"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			params := lokiapi.QueryRangeParams{
 				Query: tt.query,
 				Start: lokiapi.NewOptLokiTime(asLokiTime(set.Start)),
 				End:   lokiapi.NewOptLokiTime(asLokiTime(set.End)),
-				// step < range: forces a raw log line to fall into multiple
-				// output steps, exercising the fan-out (arrayJoin) tier.
-				Step:  lokiapi.NewOptPrometheusDuration("10s"),
+				Step:  lokiapi.NewOptPrometheusDuration(lokiapi.PrometheusDuration(tt.step)),
 				Limit: lokiapi.NewOptInt(1000),
 			}
 
