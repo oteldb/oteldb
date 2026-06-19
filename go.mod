@@ -39,7 +39,7 @@ require (
 	github.com/mattn/go-isatty v0.0.22
 	github.com/maypok86/otter v1.2.4
 	github.com/moby/moby/api v1.55.0
-	github.com/moby/moby/client v0.4.1
+	github.com/moby/moby/client v0.5.0
 	github.com/ogen-go/ogen v1.22.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector v0.154.0
