@@ -52,9 +52,17 @@ func (o *ClickhouseOptimizer) Optimize(ctx context.Context, q logqlengine.Query)
 func (o *ClickhouseOptimizer) optimizeSampling(n logqlengine.MetricNode, lg *zap.Logger) logqlengine.MetricNode {
 	switch n := n.(type) {
 	case *logqlengine.VectorAggregation:
-		switch n.Expr.Op {
-		case logql.VectorOpBottomk, logql.VectorOpTopk,
-			logql.VectorOpSort, logql.VectorOpSortDesc:
+		// The offloaded SQL query always computes a per-(step, group) SUM of
+		// raw samples. Summing per-stream count_over_time/bytes_over_time
+		// values grouped by the outer labels is equivalent to summing the
+		// raw samples directly under those labels, so offload is safe for
+		// `sum by(...)`. It is NOT safe for avg/min/max/count/stddev/stdvar:
+		// those aren't associative across the regrouping from per-stream
+		// values to per-outer-label values (e.g. avg-of-sums != avg of the
+		// raw per-stream values unless every group has the same number of
+		// underlying streams), and bottomk/topk/sort/sortDesc need the full
+		// per-stream series, not a pre-summed one.
+		if n.Expr.Op != logql.VectorOpSum {
 			return n
 		}
 

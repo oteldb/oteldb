@@ -90,6 +90,12 @@ func TestBucketedSampleOffload(t *testing.T) {
 		// milliseconds before comparing against window boundaries).
 		{"CountOverTimeSubSecond", `sum by (http_method) (count_over_time({http_method=~".+"} [500ms]))`, "200ms"},
 		{"BytesOverTimeSubSecond", `sum by (http_method) (bytes_over_time({http_method=~".+"} [200ms]))`, "500ms"},
+		// avg by(...) is not eligible for SQL offload (only sum by(...) is —
+		// see ClickhouseOptimizer.optimizeSampling), so this exercises the
+		// Go-side fallback path and confirms it still produces correct
+		// results when run through the "offloaded" setup (which only
+		// offloads what's actually eligible).
+		{"AvgBytesNotOffloaded", `avg by (http_method) (bytes_over_time({http_method=~".+"} [30s]))`, "10s"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			params := lokiapi.QueryRangeParams{
