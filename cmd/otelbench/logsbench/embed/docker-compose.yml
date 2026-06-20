@@ -70,7 +70,7 @@ services:
       - ./tempo.yml:/etc/tempo.yml:ro
 
   otelcol:
-    image: ${OTELCOL_IMAGE:-ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.154.0}
+    image: ${OTELCOL_IMAGE:-ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector:0.154.0}
     command:
       - --config
       - /etc/otelcol-contrib/config.yaml

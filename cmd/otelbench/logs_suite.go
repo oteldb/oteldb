@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -51,7 +52,7 @@ const (
 	defaultChotelImage     = "ghcr.io/oteldb/oteldb/chotel:latest"
 	defaultClickhouseImage = "clickhouse/clickhouse-server:25.9"
 	defaultTempoImage      = "ghcr.io/go-faster/tempo:latest"
-	defaultOtelcolImage    = "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.154.0"
+	defaultOtelcolImage    = "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector:0.154.0"
 )
 
 func newLogsSuiteCommand() *cobra.Command {
@@ -61,7 +62,7 @@ func newLogsSuiteCommand() *cobra.Command {
 		Short: "Run the embedded oteldb logs benchmark suite",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return s.Run(cmd.Context())
+			return s.Run(cmd.Context(), cmd.OutOrStdout())
 		},
 	}
 	f := cmd.Flags()
@@ -89,13 +90,13 @@ func newLogsSuiteCommand() *cobra.Command {
 	return cmd
 }
 
-func (s *LogsSuite) Run(ctx context.Context) error {
+func (s *LogsSuite) Run(ctx context.Context, output io.Writer) error {
 	started := time.Now().UTC()
 	runDir, err := s.createRunDir(started)
 	if err != nil {
 		return err
 	}
-	fmt.Println("run directory:", runDir)
+	fmt.Fprintln(output, "run directory:", runDir)
 
 	workDir := filepath.Join(runDir, "work")
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
@@ -108,7 +109,7 @@ func (s *LogsSuite) Run(ctx context.Context) error {
 		return errors.Wrap(err, "write env")
 	}
 
-	fmt.Println("downloading dataset")
+	fmt.Fprintln(output, "downloading dataset")
 	dataset, err := logsbench.DownloadLoghub(ctx, logsbench.DownloadOptions{
 		Size:     logsbench.DatasetSize(s.Size),
 		CacheDir: s.CacheDir,
@@ -116,27 +117,30 @@ func (s *LogsSuite) Run(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "download dataset")
 	}
+	fmt.Fprintln(output, "downloaded dataset:", dataset.Dir)
 
 	if !s.NoUp {
-		fmt.Println("starting compose stack")
+		fmt.Fprintln(output, "starting compose stack")
 		if err := s.compose(ctx, workDir, "up", "-d"); err != nil {
 			return errors.Wrap(err, "compose up")
 		}
 		if !s.Keep {
 			defer func() {
-				fmt.Println("stopping compose stack")
+				fmt.Fprintln(output, "stopping compose stack")
 				if err := s.compose(context.Background(), workDir, "down", "-v"); err != nil {
 					fmt.Fprintln(os.Stderr, "compose down:", err)
 				}
 			}()
 		}
+		fmt.Fprintln(output, "compose is up")
 	}
+	fmt.Fprintln(output, "waiting for stack to be ready")
 	if err := waitLogsStack(ctx, s.LokiAddr, s.TempoAddr); err != nil {
 		return errors.Wrap(err, "wait stack")
 	}
 
 	ingestReport := filepath.Join(runDir, "ingest.json")
-	fmt.Println("ingesting logs")
+	fmt.Fprintln(output, "ingesting logs")
 	bench := &LogsBench{
 		seed:            1,
 		resourceCount:   3,
@@ -169,7 +173,7 @@ func (s *LogsSuite) Run(ctx context.Context) error {
 	}
 
 	queryReport := filepath.Join(runDir, "report.yml")
-	fmt.Println("running LogQL queries")
+	fmt.Fprintln(output, "running LogQL queries")
 	query := &logqlbench.LogQLBenchmark{
 		Addr:           s.LokiAddr,
 		Count:          s.Count,
@@ -192,10 +196,11 @@ func (s *LogsSuite) Run(ctx context.Context) error {
 		return errors.Wrap(err, "run LogQL bench")
 	}
 
+	fmt.Fprintln(output, "writing LogQL benchstat:", runDir)
 	if err := writeLogQLBenchstat(queryReport, filepath.Join(runDir, "benchstat.txt")); err != nil {
 		return errors.Wrap(err, "write benchstat")
 	}
-	fmt.Println("suite complete:", runDir)
+	fmt.Fprintln(output, "suite complete:", runDir)
 	return nil
 }
 
@@ -206,7 +211,11 @@ func (s *LogsSuite) createRunDir(ts time.Time) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", errors.Wrap(err, "create run directory")
 	}
-	return dir, nil
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", errors.Wrap(err, "resolve run directory")
+	}
+	return abs, nil
 }
 
 func (s *LogsSuite) compose(ctx context.Context, workDir string, args ...string) error {
