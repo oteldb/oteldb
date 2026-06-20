@@ -91,12 +91,15 @@ func newLogsSuiteCommand() *cobra.Command {
 }
 
 func (s *LogsSuite) Run(ctx context.Context, output io.Writer) error {
+	log := func(args ...any) {
+		fmt.Fprintln(output, args...)
+	}
 	started := time.Now().UTC()
 	runDir, err := s.createRunDir(started)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(output, "run directory:", runDir)
+	log("run directory:", runDir)
 
 	workDir := filepath.Join(runDir, "work")
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
@@ -109,7 +112,7 @@ func (s *LogsSuite) Run(ctx context.Context, output io.Writer) error {
 		return errors.Wrap(err, "write env")
 	}
 
-	fmt.Fprintln(output, "downloading dataset")
+	log("downloading dataset")
 	dataset, err := logsbench.DownloadLoghub(ctx, logsbench.DownloadOptions{
 		Size:     logsbench.DatasetSize(s.Size),
 		CacheDir: s.CacheDir,
@@ -117,30 +120,30 @@ func (s *LogsSuite) Run(ctx context.Context, output io.Writer) error {
 	if err != nil {
 		return errors.Wrap(err, "download dataset")
 	}
-	fmt.Fprintln(output, "downloaded dataset:", dataset.Dir)
+	log("downloaded dataset:", dataset.Dir)
 
 	if !s.NoUp {
-		fmt.Fprintln(output, "starting compose stack")
-		if err := s.compose(ctx, workDir, "up", "-d"); err != nil {
+		log("starting compose stack")
+		if err := s.compose(ctx, log, workDir, "up", "-d"); err != nil {
 			return errors.Wrap(err, "compose up")
 		}
 		if !s.Keep {
 			defer func() {
-				fmt.Fprintln(output, "stopping compose stack")
-				if err := s.compose(context.Background(), workDir, "down", "-v"); err != nil {
+				log("stopping compose stack")
+				if err := s.compose(context.Background(), log, workDir, "down", "-v"); err != nil {
 					fmt.Fprintln(os.Stderr, "compose down:", err)
 				}
 			}()
 		}
-		fmt.Fprintln(output, "compose is up")
+		log("compose is up")
 	}
-	fmt.Fprintln(output, "waiting for stack to be ready")
-	if err := waitLogsStack(ctx, s.LokiAddr, s.TempoAddr); err != nil {
+	log("waiting for stack to be ready")
+	if err := waitLogsStack(ctx, log, s.LokiAddr, s.TempoAddr); err != nil {
 		return errors.Wrap(err, "wait stack")
 	}
 
 	ingestReport := filepath.Join(runDir, "ingest.json")
-	fmt.Fprintln(output, "ingesting logs")
+	log("ingesting logs")
 	bench := &LogsBench{
 		seed:            1,
 		resourceCount:   3,
@@ -173,7 +176,7 @@ func (s *LogsSuite) Run(ctx context.Context, output io.Writer) error {
 	}
 
 	queryReport := filepath.Join(runDir, "report.yml")
-	fmt.Fprintln(output, "running LogQL queries")
+	log("running LogQL queries")
 	query := &logqlbench.LogQLBenchmark{
 		Addr:           s.LokiAddr,
 		Count:          s.Count,
@@ -196,11 +199,11 @@ func (s *LogsSuite) Run(ctx context.Context, output io.Writer) error {
 		return errors.Wrap(err, "run LogQL bench")
 	}
 
-	fmt.Fprintln(output, "writing LogQL benchstat:", runDir)
+	log("writing LogQL benchstat:", runDir)
 	if err := writeLogQLBenchstat(queryReport, filepath.Join(runDir, "benchstat.txt")); err != nil {
 		return errors.Wrap(err, "write benchstat")
 	}
-	fmt.Fprintln(output, "suite complete:", runDir)
+	log("suite complete:", runDir)
 	return nil
 }
 
@@ -218,7 +221,7 @@ func (s *LogsSuite) createRunDir(ts time.Time) (string, error) {
 	return abs, nil
 }
 
-func (s *LogsSuite) compose(ctx context.Context, workDir string, args ...string) error {
+func (s *LogsSuite) compose(ctx context.Context, log func(...any), workDir string, args ...string) error {
 	fullArgs := append([]string{"compose", "-f", filepath.Join(workDir, "docker-compose.yml")}, args...)
 	cmd := exec.CommandContext(ctx, "docker", fullArgs...)
 	cmd.Dir = workDir
@@ -231,27 +234,36 @@ func (s *LogsSuite) compose(ctx context.Context, workDir string, args ...string)
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	log("running", cmd.Path+" "+strings.Join(cmd.Args, " "))
 	return cmd.Run()
 }
 
-func waitLogsStack(ctx context.Context, lokiAddr, tempoAddr string) error {
+func waitLogsStack(ctx context.Context, log func(...any), lokiAddr, tempoAddr string) error {
 	client := &http.Client{Timeout: time.Second}
 	checks := []string{
 		strings.TrimRight(lokiAddr, "/") + "/ready",
 		strings.TrimRight(tempoAddr, "/") + "/ready",
 	}
-	deadline := time.Now().Add(2 * time.Minute)
+	deadline := time.Now().Add(5 * time.Minute)
 	for {
 		var ready bool
 		for _, url := range checks {
+			log("checking", url)
 			ok, err := httpReady(ctx, client, url)
 			if err != nil || !ok {
+				errMsg := ""
+				if err != nil {
+					errMsg = err.Error()
+				}
+				log("check", url, "failed", errMsg)
 				ready = false
 				break
 			}
+			log("ready", url)
 			ready = true
 		}
 		if ready {
+			log("all ready")
 			return nil
 		}
 		if time.Now().After(deadline) {
@@ -260,7 +272,7 @@ func waitLogsStack(ctx context.Context, lokiAddr, tempoAddr string) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(time.Second):
+		case <-time.After(5 * time.Second):
 		}
 	}
 }
