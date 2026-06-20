@@ -34,6 +34,7 @@ func newLogQLBenchmarkCommand() *cobra.Command {
 	f.BoolVar(&p.AllowEmpty, "allow-empty", true, "Allow empty results")
 
 	f.StringVar(&p.TrackerOptions.TempoAddr, "tempo-addr", "http://127.0.0.1:3200", "Tempo endpoint")
+	f.StringVar(&p.TrackerOptions.OTLPEndpoint, "otlp-endpoint", "127.0.0.1:4317", "OTLP gRPC endpoint to export traces to")
 	f.BoolVar(&p.TrackerOptions.Trace, "trace", false, "Trace queries")
 
 	f.IntVar(&p.Count, "count", 1, "Number of times to run each query (only for sequential)")
