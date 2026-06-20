@@ -108,9 +108,6 @@ func (s *LogsSuite) Run(ctx context.Context, output io.Writer) error {
 	if err := logsbench.WriteAssets(workDir); err != nil {
 		return errors.Wrap(err, "write embedded assets")
 	}
-	if err := s.writeEnv(ctx, runDir, started); err != nil {
-		return errors.Wrap(err, "write env")
-	}
 
 	log("downloading dataset")
 	dataset, err := logsbench.DownloadLoghub(ctx, logsbench.DownloadOptions{
@@ -136,6 +133,9 @@ func (s *LogsSuite) Run(ctx context.Context, output io.Writer) error {
 			}()
 		}
 		log("compose is up")
+	}
+	if err := s.writeEnv(ctx, runDir, started); err != nil {
+		return errors.Wrap(err, "write env")
 	}
 	log("waiting for stack to be ready")
 	if err := waitLogsStack(ctx, log, s.LokiAddr, s.TempoAddr); err != nil {
@@ -335,50 +335,71 @@ func copyFile(from, to string) error {
 }
 
 type logsSuiteEnv struct {
-	StartedAt       time.Time `json:"started_at"`
-	GitSHA          string    `json:"git_sha"`
-	GOOS            string    `json:"goos"`
-	GOARCH          string    `json:"goarch"`
-	GoVersion       string    `json:"go_version"`
-	NumCPU          int       `json:"num_cpu"`
-	Kernel          string    `json:"kernel,omitempty"`
-	DatasetSize     string    `json:"dataset_size"`
-	DatasetRepeat   int       `json:"dataset_repeat"`
-	QueryCount      int       `json:"query_count"`
-	QueryWarmup     int       `json:"query_warmup"`
-	ClickhouseAddr  string    `json:"clickhouse_addr"`
-	LokiAddr        string    `json:"loki_addr"`
-	TempoAddr       string    `json:"tempo_addr"`
-	Target          string    `json:"target"`
-	OteldbImage     string    `json:"oteldb_image"`
-	ChotelImage     string    `json:"chotel_image"`
-	ClickhouseImage string    `json:"clickhouse_image"`
-	TempoImage      string    `json:"tempo_image"`
-	OtelcolImage    string    `json:"otelcol_image"`
+	StartedAt         time.Time `json:"started_at"`
+	GitSHA            string    `json:"git_sha"`
+	GOOS              string    `json:"goos"`
+	GOARCH            string    `json:"goarch"`
+	GoVersion         string    `json:"go_version"`
+	NumCPU            int       `json:"num_cpu"`
+	CPUModel          string    `json:"cpu_model,omitempty"`
+	MemTotalBytes     int64     `json:"mem_total_bytes,omitempty"`
+	DiskTotalBytes    int64     `json:"disk_total_bytes,omitempty"`
+	DiskFreeBytes     int64     `json:"disk_free_bytes,omitempty"`
+	Filesystem        string    `json:"filesystem,omitempty"`
+	Kernel            string    `json:"kernel,omitempty"`
+	DatasetSize       string    `json:"dataset_size"`
+	DatasetRepeat     int       `json:"dataset_repeat"`
+	QueryCount        int       `json:"query_count"`
+	QueryWarmup       int       `json:"query_warmup"`
+	ClickhouseAddr    string    `json:"clickhouse_addr"`
+	LokiAddr          string    `json:"loki_addr"`
+	TempoAddr         string    `json:"tempo_addr"`
+	Target            string    `json:"target"`
+	OteldbImage       string    `json:"oteldb_image"`
+	OteldbImageID     string    `json:"oteldb_image_id,omitempty"`
+	ChotelImage       string    `json:"chotel_image"`
+	ChotelImageID     string    `json:"chotel_image_id,omitempty"`
+	ClickhouseImage   string    `json:"clickhouse_image"`
+	ClickhouseImageID string    `json:"clickhouse_image_id,omitempty"`
+	TempoImage        string    `json:"tempo_image"`
+	TempoImageID      string    `json:"tempo_image_id,omitempty"`
+	OtelcolImage      string    `json:"otelcol_image"`
+	OtelcolImageID    string    `json:"otelcol_image_id,omitempty"`
 }
 
 func (s *LogsSuite) writeEnv(ctx context.Context, runDir string, started time.Time) error {
+	disk := hostDiskInfo(runDir)
 	env := logsSuiteEnv{
-		StartedAt:       started,
-		GitSHA:          gitShortSHA(),
-		GOOS:            runtime.GOOS,
-		GOARCH:          runtime.GOARCH,
-		GoVersion:       runtime.Version(),
-		NumCPU:          runtime.NumCPU(),
-		Kernel:          uname(ctx),
-		DatasetSize:     s.Size,
-		DatasetRepeat:   s.Repeat,
-		QueryCount:      s.Count,
-		QueryWarmup:     s.Warmup,
-		ClickhouseAddr:  s.ClickhouseAddr,
-		LokiAddr:        s.LokiAddr,
-		TempoAddr:       s.TempoAddr,
-		Target:          s.Target,
-		OteldbImage:     s.OteldbImage,
-		ChotelImage:     s.ChotelImage,
-		ClickhouseImage: s.ClickhouseImage,
-		TempoImage:      s.TempoImage,
-		OtelcolImage:    s.OtelcolImage,
+		StartedAt:         started,
+		GitSHA:            gitShortSHA(),
+		GOOS:              runtime.GOOS,
+		GOARCH:            runtime.GOARCH,
+		GoVersion:         runtime.Version(),
+		NumCPU:            runtime.NumCPU(),
+		CPUModel:          hostCPUModel(),
+		MemTotalBytes:     hostMemTotalBytes(),
+		DiskTotalBytes:    disk.TotalBytes,
+		DiskFreeBytes:     disk.FreeBytes,
+		Filesystem:        disk.Filesystem,
+		Kernel:            uname(ctx),
+		DatasetSize:       s.Size,
+		DatasetRepeat:     s.Repeat,
+		QueryCount:        s.Count,
+		QueryWarmup:       s.Warmup,
+		ClickhouseAddr:    s.ClickhouseAddr,
+		LokiAddr:          s.LokiAddr,
+		TempoAddr:         s.TempoAddr,
+		Target:            s.Target,
+		OteldbImage:       s.OteldbImage,
+		OteldbImageID:     dockerImageID(ctx, s.OteldbImage),
+		ChotelImage:       s.ChotelImage,
+		ChotelImageID:     dockerImageID(ctx, s.ChotelImage),
+		ClickhouseImage:   s.ClickhouseImage,
+		ClickhouseImageID: dockerImageID(ctx, s.ClickhouseImage),
+		TempoImage:        s.TempoImage,
+		TempoImageID:      dockerImageID(ctx, s.TempoImage),
+		OtelcolImage:      s.OtelcolImage,
+		OtelcolImageID:    dockerImageID(ctx, s.OtelcolImage),
 	}
 	data, err := json.MarshalIndent(env, "", "  ")
 	if err != nil {
@@ -388,6 +409,18 @@ func (s *LogsSuite) writeEnv(ctx context.Context, runDir string, started time.Ti
 		return errors.Wrap(err, "write env")
 	}
 	return nil
+}
+
+// dockerImageID returns the content-addressable image ID (sha256 digest) for
+// image, or an empty string if it isn't present locally.
+func dockerImageID(ctx context.Context, image string) string {
+	cmd := exec.CommandContext(ctx, "docker", "image", "inspect", image, "--format", "{{.Id}}")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out.String())
 }
 
 func gitShortSHA() string {
