@@ -27,7 +27,11 @@ type ClickhouseStats struct {
 
 func (v ClickhouseStats) WriteInfo(b *strings.Builder, now time.Time) {
 	b.WriteString(" ")
-	fmt.Fprintf(b, "uptime=%s", now.Sub(v.Start).Round(time.Second))
+	if v.Start.IsZero() {
+		b.WriteString("uptime=N/A")
+	} else {
+		fmt.Fprintf(b, "uptime=%s", now.Sub(v.Start).Round(time.Second))
+	}
 	b.WriteString(" ")
 	if v.Delta != -1 {
 		fmt.Fprintf(b, "lag=%s", v.Delta.Round(time.Second))
