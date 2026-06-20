@@ -234,14 +234,14 @@ func (s *LogsSuite) compose(ctx context.Context, log func(...any), workDir strin
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	log("running", cmd.Path+" "+strings.Join(cmd.Args, " "))
+	log("running", strings.Join(cmd.Args, " "))
 	return cmd.Run()
 }
 
 func waitLogsStack(ctx context.Context, log func(...any), lokiAddr, tempoAddr string) error {
 	client := &http.Client{Timeout: time.Second}
 	checks := []string{
-		strings.TrimRight(lokiAddr, "/") + "/ready",
+		strings.TrimRight(lokiAddr, "/") + "/loki/api/v1/labels",
 		strings.TrimRight(tempoAddr, "/") + "/ready",
 	}
 	deadline := time.Now().Add(5 * time.Minute)
