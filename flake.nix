@@ -10,10 +10,11 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        rev = self.shortRev or self.dirtyShortRev or "dirty";
 
         commonArgs = {
           pname = "oteldb-packages";
-          version = "0.1.0"; # Replace with actual version if needed
+          version = rev;
           src = ./.;
 
           # Update this hash when go.mod/go.sum changes.
