@@ -171,11 +171,19 @@ type SetupOptions struct {
 	Trace bool
 	// TempoAddr sets URL to Tempo API to retrieve traces.
 	TempoAddr string
+	// OTLPEndpoint sets gRPC endpoint to export traces to.
+	OTLPEndpoint string
 }
 
 func (opts *SetupOptions) setDefaults() {
 	if opts.TempoAddr == "" {
 		opts.TempoAddr = "http://127.0.0.1:3200"
+	}
+	if opts.OTLPEndpoint == "" {
+		// Avoid relying on gRPC's default "localhost:4317" target: its DNS
+		// resolver can produce zero addresses on hosts with a broken or
+		// minimal resolver setup (e.g. fresh VDS instances).
+		opts.OTLPEndpoint = "127.0.0.1:4317"
 	}
 }
 
@@ -183,7 +191,10 @@ func (opts *SetupOptions) setDefaults() {
 func Setup[Q any](ctx context.Context, senderName string, opts SetupOptions) (*Tracker[Q], error) {
 	opts.setDefaults()
 
-	exporter, err := otlptracegrpc.New(ctx)
+	exporter, err := otlptracegrpc.New(ctx,
+		otlptracegrpc.WithEndpoint(opts.OTLPEndpoint),
+		otlptracegrpc.WithInsecure(),
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "create exporter")
 	}

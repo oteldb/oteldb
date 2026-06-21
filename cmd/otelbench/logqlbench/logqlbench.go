@@ -124,7 +124,7 @@ func (p *LogQLBenchmark) Run(ctx context.Context) error {
 	if p.TrackerOptions.Trace {
 		fmt.Println("waiting for traces")
 		if err := p.tracker.Flush(ctx); err != nil {
-			return errors.Wrap(err, "flush traces")
+			fmt.Println("warning: flush traces:", err)
 		}
 	} else {
 		fmt.Println("saving")

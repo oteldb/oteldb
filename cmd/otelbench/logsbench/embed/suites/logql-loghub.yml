@@ -1,0 +1,184 @@
+instant:
+  - title: "Best case: SSH failed password lookup"
+    description: best-case materialized service filter plus token search.
+    query: '{service_name="ssh"} |= "Failed password"'
+  - title: "Best case: Apache request regex"
+    description: best-case materialized service filter plus body regex.
+    query: '{service_name="apache"} |~ "GET .* HTTP/1\\.[01]"'
+  - title: "Best case: Apache negative filter"
+    description: materialized service filter plus negative body filter.
+    query: '{service_name="apache"} != "GET"'
+  - title: "Best case: SSH chained filters"
+    description: materialized service filter plus multiple chained body filters.
+    query: '{service_name="ssh"} |= "Failed" |= "password" != "debug"'
+  - title: "Best case: Apache extracted method filter"
+    description: regexp label extraction followed by label filter.
+    query: '{service_name="apache"} |~ "GET .* HTTP" | regexp "\\\"(?P<method>[A-Z]+) (?P<path>[^ ]+) HTTP/[^\\\"]+\\\"" | method = "POST"'
+  - title: "Best case: SSH line format"
+    description: line formatting after token search.
+    query: '{service_name="ssh"} |= "Failed" | line_format "{{ . }}"'
+  - title: "Best case: Linux error lookup"
+    description: linux service-specific token search.
+    query: '{service_name="linux"} |= "error"'
+  - title: "Best case: host error lookup"
+    description: host label filter plus token search.
+    query: '{host_name="node-0"} |= "error"'
+  - title: "Best case: Apache error selector"
+    description: multiple-label selector intersection.
+    query: '{service_name="apache", level="ERROR"}'
+  - title: "Mid case: severity token lookup"
+    description: mid-case synthetic severity selectivity plus token search.
+    query: '{level="ERROR"} |= "error"'
+  - title: "Mid case: WARN isolation"
+    description: severity-only lookup for WARN records.
+    query: '{level="WARN"}'
+  - title: "Mid case: DEBUG isolation"
+    description: severity-only lookup for DEBUG records.
+    query: '{level="DEBUG"}'
+  - title: "Mid case: FATAL isolation"
+    description: severity-only lookup for FATAL records.
+    query: '{level="FATAL"}'
+  - title: "Worst case: full-table token scan"
+    description: worst-case body-only full-table token scan; attributes and resource fields are not searched.
+    query: '{} |= "error"'
+  - title: "Worst case: full-table IP regex"
+    description: worst-case body-only full-table regex scan; attributes and resource fields are not searched.
+    query: '{} |~ "\\d+\\.\\d+\\.\\d+\\.\\d+"'
+  - title: "Worst case: full-table negative regex"
+    description: worst-case body-only negative regex scan.
+    query: '{} !~ "debug|trace"'
+
+range:
+  - title: "Best case: Apache count over time"
+    description: best-case aggregation with materialized service filter.
+    step: 1m
+    query: 'count_over_time({service_name="apache"}[5m])'
+  - title: "Metric: log lines by service"
+    description: count log lines over time grouped by materialized service labels.
+    step: 1m
+    query: 'sum by (service_name) (count_over_time({service_name=~"apache|ssh|linux"}[5m]))'
+  - title: "Metric: log lines by level"
+    description: count log lines over time grouped by synthetic severity labels.
+    step: 1m
+    query: 'sum by (level) (count_over_time({level=~"DEBUG|INFO|WARN|ERROR"}[5m]))'
+  - title: "Metric: log line rate by service"
+    description: per-second log line rate grouped by materialized service labels.
+    step: 1m
+    query: 'sum by (service_name) (rate({service_name=~"apache|ssh|linux"}[5m]))'
+  - title: "Metric: error rate by service"
+    description: per-second error log line rate grouped by service labels.
+    step: 1m
+    query: 'sum by (service_name) (rate({level="ERROR", service_name=~"apache|ssh|linux"}[5m]))'
+  - title: "Metric: log bytes by service"
+    description: log volume in bytes over time grouped by service labels.
+    step: 1m
+    query: 'sum by (service_name) (bytes_over_time({service_name=~"apache|ssh|linux"}[5m]))'
+  - title: "Metric: log byte rate by level"
+    description: per-second log byte rate grouped by severity labels.
+    step: 1m
+    query: 'sum by (level) (bytes_rate({level=~"DEBUG|INFO|WARN|ERROR"}[5m]))'
+  - title: "Metric: services above line-count threshold"
+    description: find services whose five-minute log volume exceeds a threshold.
+    step: 1m
+    query: 'sum by (service_name) (count_over_time({service_name=~"apache|ssh|linux"}[5m])) > 100'
+  - title: "Metric: levels above byte-rate threshold"
+    description: find severity levels whose five-minute byte rate exceeds a threshold.
+    step: 1m
+    query: 'sum by (level) (bytes_rate({level=~"DEBUG|INFO|WARN|ERROR"}[5m])) > 1024'
+  - title: "Metric: SSH absent over time"
+    description: alerting-style absence query over SSH streams.
+    step: 1m
+    query: 'absent_over_time({service_name="ssh"}[5m])'
+  - title: "Metric: Apache average response bytes"
+    description: extract response byte counts and average them over time.
+    step: 1m
+    query: 'avg_over_time({service_name="apache"} | regexp " (?P<status>[0-9]{3}) (?P<bytes>[0-9]+)$" | unwrap bytes [5m])'
+  - title: "Metric: Apache sum response bytes"
+    description: extract response byte counts and sum them over time.
+    step: 1m
+    query: 'sum_over_time({service_name="apache"} | regexp " (?P<status>[0-9]{3}) (?P<bytes>[0-9]+)$" | unwrap bytes [5m])'
+  - title: "Metric: Apache quantile response bytes"
+    description: extract response byte counts and compute a quantile over time.
+    step: 1m
+    query: 'quantile_over_time(0.99, {service_name="apache"} | regexp " (?P<status>[0-9]{3}) (?P<bytes>[0-9]+)$" | unwrap bytes [5m])'
+  - title: "Metric: Apache first response bytes"
+    description: first unwrapped response byte value over time.
+    step: 1m
+    query: 'first_over_time({service_name="apache"} | regexp " (?P<status>[0-9]{3}) (?P<bytes>[0-9]+)$" | unwrap bytes [5m])'
+  - title: "Metric: Apache last response bytes"
+    description: last unwrapped response byte value over time.
+    step: 1m
+    query: 'last_over_time({service_name="apache"} | regexp " (?P<status>[0-9]{3}) (?P<bytes>[0-9]+)$" | unwrap bytes [5m])'
+  - title: "Metric: top services by log rate"
+    description: topk aggregation over service log rates.
+    step: 1m
+    query: 'topk(3, sum by (service_name) (rate({service_name=~"apache|ssh|linux|HDFS_2|Thunderbird"}[5m])))'
+  - title: "Metric: bottom services by log rate"
+    description: bottomk aggregation over service log rates.
+    step: 1m
+    query: 'bottomk(3, sum by (service_name) (rate({service_name=~"apache|ssh|linux|HDFS_2|Thunderbird"}[5m])))'
+  - title: "Metric: max line rate by service"
+    description: max aggregation grouped by service.
+    step: 1m
+    query: 'max by (service_name) (rate({service_name=~"apache|ssh|linux"}[5m]))'
+  - title: "Metric: min line rate by service"
+    description: min aggregation grouped by service.
+    step: 1m
+    query: 'min by (service_name) (rate({service_name=~"apache|ssh|linux"}[5m]))'
+  - title: "Metric: count without host"
+    description: multi-level aggregation that drops host cardinality.
+    step: 1m
+    query: 'sum without (host_name) (count_over_time({service_name=~"apache|ssh|linux"}[5m]))'
+  - title: "Metric: SSH filtered rate"
+    description: range metric query with chained line filters.
+    step: 1m
+    query: 'sum by (service_name) (rate({service_name="ssh"} |= "Failed" != "debug" [5m]))'
+  - title: "Metric: Linux count over time"
+    description: linux service-specific range aggregation.
+    step: 1m
+    query: 'count_over_time({service_name="linux"}[5m])'
+  - title: "Metric: HDFS count over time"
+    description: large dataset HDFS_2 service-specific range aggregation.
+    step: 1m
+    query: 'count_over_time({service_name="HDFS_2"}[5m])'
+  - title: "Metric: Thunderbird count over time"
+    description: large dataset Thunderbird service-specific range aggregation.
+    step: 1m
+    query: 'count_over_time({service_name="Thunderbird"}[5m])'
+  - title: "Worst case: full-cardinality count over time"
+    description: unbounded range aggregation grouped by high-cardinality labels.
+    step: 1m
+    query: 'sum by (service_name, host_name, level) (count_over_time({}[5m]))'
+  - title: "Mid case: host/session scan"
+    description: mid-case synthetic resource attribute matcher plus token search.
+    step: 1m
+    query: '{host_name=~"node-.*"} |= "session"'
+
+series:
+  - title: "Metadata: service series"
+    description: metadata series lookup over service labels.
+    match:
+      - '{service_name=~"apache|ssh|linux"}'
+  - title: "Metadata: apache error series"
+    description: metadata series lookup over multiple labels.
+    match:
+      - '{service_name="apache", level="ERROR"}'
+
+labels:
+  - title: "Metadata: labels"
+    description: metadata labels lookup.
+
+label_values:
+  - title: "Metadata: service values"
+    description: metadata label_values(service_name) lookup.
+    name: service_name
+  - title: "Metadata: level values"
+    description: metadata label_values(level) lookup.
+    name: level
+  - title: "Metadata: host values"
+    description: metadata label_values(host_name) lookup.
+    name: host_name
+  - title: "Metadata: apache level values"
+    description: scoped metadata label_values(level) lookup.
+    name: level
+    match: '{service_name="apache"}'
