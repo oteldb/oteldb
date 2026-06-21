@@ -36,14 +36,18 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/oteldb/oteldb/internal/otelreceiver/oteldbexporter"
+	"github.com/oteldb/oteldb/otelcolmod/hubblereceiver"
 	"github.com/oteldb/oteldb/otelcolmod/odbsafetyprocessor"
 	"github.com/oteldb/oteldb/otelcolmod/prometheusremotewritereceiver"
+	"github.com/oteldb/oteldb/otelcolmod/tetragonreceiver"
 )
 
 func receiverFactoryMap() (map[component.Type]receiver.Factory, error) {
 	return otelcol.MakeFactoryMap(
 		otlpreceiver.NewFactory(),
 		prometheusremotewritereceiver.NewFactory(),
+		hubblereceiver.NewFactory(),
+		tetragonreceiver.NewFactory(),
 	)
 }
 
