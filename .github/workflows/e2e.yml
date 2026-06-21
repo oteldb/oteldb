@@ -45,7 +45,7 @@ jobs:
         env:
           E2E: "1"
           TESTCONTAINERS_RYUK_DISABLED: "true"
-        run: go test -timeout 15m -race -v -coverpkg=./... -coverprofile=profile.out ./...
+        run: go test -timeout 15m -race -coverpkg=./... -coverprofile=profile.out ./...
 
       - name: Emit coverage
         run: go tool cover -func profile.out
