@@ -92,7 +92,7 @@ func newLogsSuiteCommand() *cobra.Command {
 
 func (s *LogsSuite) Run(ctx context.Context, output io.Writer) error {
 	log := func(args ...any) {
-		fmt.Fprintln(output, args...)
+		_, _ = fmt.Fprintln(output, args...)
 	}
 	started := time.Now().UTC()
 	runDir, err := s.createRunDir(started)
