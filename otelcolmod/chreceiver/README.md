@@ -1,10 +1,12 @@
+[odbagent]: ../../cmd/odbagent
+
 # chreceiver
 
 | Status                   |                 |
 | ------------------------ | --------------- |
 | Stability                | [inDevelopment] |
 | Supported pipeline types | traces          |
-| Distributions            | [otelcol-contrib] |
+| Distributions            | [odbagent] |
 
 `chreceiver` reads ClickHouse internal spans from `system.opentelemetry_span_log` and emits OTLP traces into the collector pipeline. The reader uses a cursor on `finish_time_us`, so the span log should be ordered by finish time.
 

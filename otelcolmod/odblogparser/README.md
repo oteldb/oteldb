@@ -1,10 +1,12 @@
+[odbagent]: ../../cmd/odbagent
+
 # odblogparser
 
 | Status                   |                      |
 | ------------------------ | -------------------- |
 | Stability                | [inDevelopment]      |
 | Supported pipeline types | logs (stanza)        |
-| Distributions            | [otelcol-contrib]    |
+| Distributions            | [odbagent]    |
 
 `odblogparser` is a [stanza](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/pkg/stanza) parser operator for custom OpenTelemetry Collector builds. It adapts oteldb's internal log parsers to the collector-contrib stanza pipeline, supporting `generic-json`, `logfmt`, `zap-development`, and `klog` formats.
 

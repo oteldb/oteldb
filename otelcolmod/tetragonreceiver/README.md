@@ -1,10 +1,12 @@
+[odbagent]: ../../cmd/odbagent
+
 # Tetragon Receiver
 
 | Status                   |                 |
 | ------------------------ | --------------- |
 | Stability                | [inDevelopment] |
 | Supported pipeline types | logs            |
-| Distributions            | [otelcol-contrib] |
+| Distributions            | [odbagent] |
 
 `tetragonreceiver` streams events from [Tetragon](https://tetragon.io/) via gRPC and emits OTLP Logs into the collector pipeline. It consumes the `GetEvents` gRPC stream provided by the Tetragon agent — one OTLP log record per Tetragon event.
 

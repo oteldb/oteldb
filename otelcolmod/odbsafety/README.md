@@ -1,10 +1,12 @@
+[odbagent]: ../../cmd/odbagent
+
 # odbsafety
 
 | Status                   |                      |
 | ------------------------ | -------------------- |
 | Stability                | [inDevelopment]      |
 | Supported pipeline types | logs (stanza)        |
-| Distributions            | [otelcol-contrib]    |
+| Distributions            | [odbagent]    |
 
 `odbsafety` is a [stanza](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/pkg/stanza) transformer operator for custom OpenTelemetry Collector builds. It applies oteldb log safety limiting inside receivers such as `filelog`, before entries are converted into pdata batches.
 

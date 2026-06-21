@@ -1,10 +1,12 @@
+[odbagent]: ../../cmd/odbagent
+
 # Prometheus Remote Write Receiver
 
 | Status                   |                 |
 | ------------------------ | --------------- |
 | Stability                | [inDevelopment] |
 | Supported pipeline types | metrics         |
-| Distributions            | [otelcol-contrib] |
+| Distributions            | [odbagent] |
 
 `prometheusremotewritereceiver` ingests metrics via the Prometheus Remote Write protocol and emits OTLP metrics into the collector pipeline.
 

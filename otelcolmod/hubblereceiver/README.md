@@ -1,10 +1,12 @@
+[odbagent]: ../../cmd/odbagent
+
 # Hubble Receiver
 
 | Status                   |                 |
 | ------------------------ | --------------- |
 | Stability                | [inDevelopment] |
 | Supported pipeline types | logs            |
-| Distributions            | [otelcol-contrib] |
+| Distributions            | [odbagent] |
 
 `hubblereceiver` streams network flows from [Hubble Relay](https://docs.cilium.io/en/stable/observability/hubble/setup/) via gRPC and emits OTLP Logs into the collector pipeline. It is the gRPC-streaming equivalent of ingesting Cilium network flows — one OTLP log record per Hubble flow.
 

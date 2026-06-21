@@ -1,10 +1,12 @@
+[odbagent]: ../../cmd/odbagent
+
 # odbsafetyprocessor
 
 | Status                   |                 |
 | ------------------------ | --------------- |
 | Stability                | [inDevelopment] |
 | Supported pipeline types | logs            |
-| Distributions            | [otelcol-contrib] |
+| Distributions            | [odbagent] |
 
 `odbsafetyprocessor` is an OpenTelemetry Collector logs processor that applies oteldb log safety limiting to pdata logs. It operates after logs have been batched into pdata, in contrast to the stanza `odbsafety` operator which protects at the receiver level.
 
