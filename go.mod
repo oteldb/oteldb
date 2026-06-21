@@ -47,11 +47,14 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/failoverconnector v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/roundrobinconnector v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/servicegraphconnector v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/signaltometricsconnector v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/sumconnector v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/basicauthextension v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.154.0
@@ -68,12 +71,15 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/cloudflarereceiver v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/dockerstatsreceiver v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/journaldreceiver v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8seventsreceiver v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kafkareceiver v0.154.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/nginxreceiver v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/webhookeventreceiver v0.154.0
@@ -396,6 +402,7 @@ require (
 	github.com/morikuni/aec v1.1.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
+	github.com/nginx/nginx-prometheus-exporter v1.5.1 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/internal/basicauth v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/internal/credentialsfile v0.154.0 // indirect
@@ -406,6 +413,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/docker v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/filter v0.154.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/gopsutilenv v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/healthcheck v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/k8sconfig v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/k8sinventory v0.154.0 // indirect
@@ -419,12 +427,15 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/kafka/configkafka v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/kafka/topic v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.154.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/sampling v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/status v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/azure v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.154.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheusremotewrite v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/zipkin v0.154.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/winperfcounters v0.154.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.154.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
@@ -474,6 +485,12 @@ require (
 	github.com/tetratelabs/wazero v1.11.0 // indirect
 	github.com/tg123/go-htpasswd v1.2.4 // indirect
 	github.com/tidwall/btree v1.8.1 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.0 // indirect
+	github.com/tidwall/tinylru v1.1.0 // indirect
+	github.com/tidwall/wal v1.2.1 // indirect
+	github.com/tilinna/clock v1.1.0 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/twmb/franz-go v1.21.2 // indirect
