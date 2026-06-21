@@ -6,6 +6,7 @@ import (
 	"github.com/cilium/cilium/api/v1/flow"
 	"github.com/cilium/cilium/api/v1/observer"
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -212,7 +213,7 @@ func TestTranslateFlow_TraceContext(t *testing.T) {
 				Source: &flow.Endpoint{},
 				TraceContext: &flow.TraceContext{
 					Parent: &flow.TraceParent{
-						TraceId: "abc123",
+						TraceId: "0102030405060708090a0b0c0d0e0f10",
 					},
 				},
 			},
@@ -221,7 +222,12 @@ func TestTranslateFlow_TraceContext(t *testing.T) {
 
 	logs := translateFlow(resp, cfg)
 	lr := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
-	assert.Equal(t, "abc123", lr.Attributes().AsRaw()["trace_id"])
+	assert.Equal(t,
+		pcommon.TraceID{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10},
+		lr.TraceID(),
+	)
+	_, ok := lr.Attributes().AsRaw()["trace_id"]
+	assert.False(t, ok)
 }
 
 func TestTranslateFlow_Destination(t *testing.T) {

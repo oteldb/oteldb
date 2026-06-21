@@ -1,6 +1,7 @@
 package hubblereceiver
 
 import (
+	"encoding/hex"
 	"strconv"
 
 	"github.com/cilium/cilium/api/v1/flow"
@@ -146,7 +147,9 @@ func translateFlow(resp *observer.GetFlowsResponse, cfg *Config) plog.Logs {
 	}
 
 	if tid := f.GetTraceContext().GetParent().GetTraceId(); tid != "" {
-		attrs.PutStr("trace_id", tid)
+		if b, err := hex.DecodeString(tid); err == nil && len(b) == len(pcommon.TraceID{}) {
+			lr.SetTraceID(pcommon.TraceID(b))
+		}
 	}
 
 	if iface := f.GetInterface(); iface != nil {
