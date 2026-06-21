@@ -50,21 +50,27 @@ func (v ClickhouseStats) WriteInfo(b *strings.Builder, now time.Time) {
 	)
 	bytesPerPoint := float64(v.CompressedSize) / float64(v.Rows)
 	b.WriteString(" ")
-	fmt.Fprintf(b, "%.1f b/point", bytesPerPoint)
+	if v.Rows == 0 {
+		b.WriteString("N/A b/point")
+	} else {
+		fmt.Fprintf(b, "%.1f b/point", bytesPerPoint)
+	}
 
 	type metric struct {
 		Name    string
 		Seconds int
 	}
-	for _, m := range []metric{
-		{Name: "d", Seconds: 60 * 60 * 24},
-		{Name: "w", Seconds: 60 * 60 * 24 * 7},
-		{Name: "m", Seconds: 60 * 60 * 24 * 30},
-	} {
-		rowsPerDay := v.PointsPerSecond * m.Seconds
-		dataPerDay := float64(rowsPerDay) / float64(v.Rows) * float64(v.CompressedSize)
-		b.WriteString(" ")
-		fmt.Fprintf(b, "%s/%s", compactBytes(int(dataPerDay)), m.Name)
+	if v.Rows > 0 {
+		for _, m := range []metric{
+			{Name: "d", Seconds: 60 * 60 * 24},
+			{Name: "w", Seconds: 60 * 60 * 24 * 7},
+			{Name: "m", Seconds: 60 * 60 * 24 * 30},
+		} {
+			rowsPerPeriod := v.PointsPerSecond * m.Seconds
+			dataPerPeriod := float64(rowsPerPeriod) / float64(v.Rows) * float64(v.CompressedSize)
+			b.WriteString(" ")
+			fmt.Fprintf(b, "%s/%s", compactBytes(int(dataPerPeriod)), m.Name)
+		}
 	}
 }
 
