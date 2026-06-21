@@ -3,10 +3,12 @@ package pyroproxy
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/oteldb/oteldb/internal/pyroscopeapi"
@@ -79,8 +81,17 @@ func (s *Server) NewError(ctx context.Context, err error) *pyroscopeapi.ErrorSta
 		// Pass as-is.
 		return v
 	}
+	msg := appendTrace(ctx, err.Error())
 	return &pyroscopeapi.ErrorStatusCode{
 		StatusCode: http.StatusInternalServerError,
-		Response:   pyroscopeapi.Error(err.Error()),
+		Response:   pyroscopeapi.Error(msg),
 	}
+}
+
+func appendTrace(ctx context.Context, s string) string {
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return s
+	}
+	return fmt.Sprintf("%s (trace_id=%s, span_id=%s)", s, sc.TraceID(), sc.SpanID())
 }

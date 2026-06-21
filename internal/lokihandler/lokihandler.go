@@ -12,6 +12,7 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
 	ht "github.com/ogen-go/ogen/http"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/oteldb/oteldb/internal/iterators"
@@ -43,14 +44,14 @@ func NewLokiAPI(q logstorage.Querier, engine *logqlengine.Engine, opts LokiAPIOp
 	}
 }
 
-func (h *LokiAPI) parseQuery(param lokiapi.OptString) (logql.Selector, error) {
+func (h *LokiAPI) parseQuery(ctx context.Context, param lokiapi.OptString) (logql.Selector, error) {
 	q := param.Or("")
 	if q == "" {
 		return logql.Selector{}, nil
 	}
 	seq, err := logql.ExtractSelectors(q, h.engine.ParseOptions())
 	if err != nil {
-		return logql.Selector{}, validationErr(err, "parse query")
+		return logql.Selector{}, validationErr(ctx, err, "parse query")
 	}
 	for sel := range seq {
 		return sel, nil
@@ -74,12 +75,12 @@ func (h *LokiAPI) DetectedFieldValues(ctx context.Context, params lokiapi.Detect
 		h.opts.DefaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
-	sel, err := h.parseQuery(params.Query)
+	sel, err := h.parseQuery(ctx, params.Query)
 	if err != nil {
-		return nil, validationErr(err, "parse query")
+		return nil, validationErr(ctx, err, "parse query")
 	}
 
 	iter, err := h.q.LabelValues(ctx, params.Field, logstorage.LabelsOptions{
@@ -88,7 +89,7 @@ func (h *LokiAPI) DetectedFieldValues(ctx context.Context, params lokiapi.Detect
 		Query: sel,
 	})
 	if err != nil {
-		return nil, executionErr(err, "get label values")
+		return nil, executionErr(ctx, err, "get label values")
 	}
 	defer func() {
 		_ = iter.Close()
@@ -99,7 +100,7 @@ func (h *LokiAPI) DetectedFieldValues(ctx context.Context, params lokiapi.Detect
 		values = append(values, tag.Value)
 		return nil
 	}); err != nil {
-		return nil, executionErr(err, "read label values")
+		return nil, executionErr(ctx, err, "read label values")
 	}
 	lg.Debug("Got detected label values",
 		zap.String("field", params.Field),
@@ -128,12 +129,12 @@ func (h *LokiAPI) DetectedFields(ctx context.Context, params lokiapi.DetectedFie
 		h.opts.DefaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
-	sel, err := h.parseQuery(params.Query)
+	sel, err := h.parseQuery(ctx, params.Query)
 	if err != nil {
-		return nil, validationErr(err, "parse query")
+		return nil, validationErr(ctx, err, "parse query")
 	}
 
 	fields, err := h.q.DetectedFields(ctx, logstorage.LabelsOptions{
@@ -142,7 +143,7 @@ func (h *LokiAPI) DetectedFields(ctx context.Context, params lokiapi.DetectedFie
 		Query: sel,
 	})
 	if err != nil {
-		return nil, executionErr(err, "get detected fields")
+		return nil, executionErr(ctx, err, "get detected fields")
 	}
 	lg.Debug("Got detected fields", zap.Int("count", len(fields)))
 
@@ -180,12 +181,12 @@ func (h *LokiAPI) DetectedLabels(ctx context.Context, params lokiapi.DetectedLab
 		h.opts.DefaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
-	sel, err := h.parseQuery(params.Query)
+	sel, err := h.parseQuery(ctx, params.Query)
 	if err != nil {
-		return nil, validationErr(err, "parse query")
+		return nil, validationErr(ctx, err, "parse query")
 	}
 	labels, err := h.q.DetectedLabels(ctx, logstorage.LabelsOptions{
 		Start: start,
@@ -194,7 +195,7 @@ func (h *LokiAPI) DetectedLabels(ctx context.Context, params lokiapi.DetectedLab
 		Limit: 100,
 	})
 	if err != nil {
-		return nil, executionErr(err, "get detected labels")
+		return nil, executionErr(ctx, err, "get detected labels")
 	}
 
 	result := make([]lokiapi.DetectedLabel, len(labels))
@@ -250,12 +251,12 @@ func (h *LokiAPI) LabelValues(ctx context.Context, params lokiapi.LabelValuesPar
 		h.opts.DefaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
-	sel, err := h.parseQuery(params.Query)
+	sel, err := h.parseQuery(ctx, params.Query)
 	if err != nil {
-		return nil, validationErr(err, "parse query")
+		return nil, validationErr(ctx, err, "parse query")
 	}
 
 	iter, err := h.q.LabelValues(ctx, params.Name, logstorage.LabelsOptions{
@@ -264,7 +265,7 @@ func (h *LokiAPI) LabelValues(ctx context.Context, params lokiapi.LabelValuesPar
 		Query: sel,
 	})
 	if err != nil {
-		return nil, executionErr(err, "get label values")
+		return nil, executionErr(ctx, err, "get label values")
 	}
 	defer func() {
 		_ = iter.Close()
@@ -275,7 +276,7 @@ func (h *LokiAPI) LabelValues(ctx context.Context, params lokiapi.LabelValuesPar
 		values = append(values, tag.Value)
 		return nil
 	}); err != nil {
-		return nil, executionErr(err, "read label values")
+		return nil, executionErr(ctx, err, "read label values")
 	}
 	lg.Debug("Got label values",
 		zap.String("name", params.Name),
@@ -305,7 +306,7 @@ func (h *LokiAPI) Labels(ctx context.Context, params lokiapi.LabelsParams) (*lok
 		h.opts.DefaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	names, err := h.q.LabelNames(ctx, logstorage.LabelsOptions{
@@ -313,7 +314,7 @@ func (h *LokiAPI) Labels(ctx context.Context, params lokiapi.LabelsParams) (*lok
 		End:   end,
 	})
 	if err != nil {
-		return nil, executionErr(err, "get label names")
+		return nil, executionErr(ctx, err, "get label names")
 	}
 	lg.Debug("Got label names", zap.Int("count", len(names)))
 
@@ -331,12 +332,12 @@ func (h *LokiAPI) Labels(ctx context.Context, params lokiapi.LabelsParams) (*lok
 func (h *LokiAPI) Query(ctx context.Context, params lokiapi.QueryParams) (*lokiapi.QueryResponse, error) {
 	ts, err := promhandler.ParseOptTimestamp(params.Time, time.Now())
 	if err != nil {
-		return nil, validationErr(err, "parse time")
+		return nil, validationErr(ctx, err, "parse time")
 	}
 
 	direction, err := parseDirection(params.Direction)
 	if err != nil {
-		return nil, validationErr(err, "parse direction")
+		return nil, validationErr(ctx, err, "parse direction")
 	}
 
 	data, err := h.eval(ctx, params.Query, logqlengine.EvalParams{
@@ -347,7 +348,7 @@ func (h *LokiAPI) Query(ctx context.Context, params lokiapi.QueryParams) (*lokia
 		Limit:     params.Limit.Or(100),
 	})
 	if err != nil {
-		return nil, evalErr(err, "instant query")
+		return nil, evalErr(ctx, err, "instant query")
 	}
 
 	return &lokiapi.QueryResponse{
@@ -370,17 +371,17 @@ func (h *LokiAPI) QueryRange(ctx context.Context, params lokiapi.QueryRangeParam
 		h.opts.DefaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	step, err := parseStep(params.Step, start, end)
 	if err != nil {
-		return nil, validationErr(err, "parse step")
+		return nil, validationErr(ctx, err, "parse step")
 	}
 
 	direction, err := parseDirection(params.Direction)
 	if err != nil {
-		return nil, validationErr(err, "parse direction")
+		return nil, validationErr(ctx, err, "parse direction")
 	}
 
 	data, err := h.eval(ctx, params.Query, logqlengine.EvalParams{
@@ -391,7 +392,7 @@ func (h *LokiAPI) QueryRange(ctx context.Context, params lokiapi.QueryRangeParam
 		Limit:     params.Limit.Or(100),
 	})
 	if err != nil {
-		return nil, evalErr(err, "range query")
+		return nil, evalErr(ctx, err, "range query")
 	}
 
 	return &lokiapi.QueryResponse{
@@ -423,7 +424,7 @@ func (h *LokiAPI) QueryVolume(ctx context.Context, params lokiapi.QueryVolumePar
 		h.opts.DefaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	data, err := h.evalVolumeQuery(ctx, params.Query.Or(""), params.TargetLabels.Or(""), logqlengine.EvalParams{
@@ -466,12 +467,12 @@ func (h *LokiAPI) QueryVolumeRange(ctx context.Context, params lokiapi.QueryVolu
 		h.opts.DefaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	step, err := parseStep(params.Step, start, end)
 	if err != nil {
-		return nil, validationErr(err, "parse step")
+		return nil, validationErr(ctx, err, "parse step")
 	}
 
 	data, err := h.evalVolumeQuery(ctx, params.Query.Or(""), params.TargetLabels.Or(""), logqlengine.EvalParams{
@@ -499,7 +500,7 @@ func (h *LokiAPI) evalVolumeQuery(ctx context.Context, query, targetLabels strin
 	if query != "" {
 		sel, err = logql.ParseSelector(query, h.engine.ParseOptions())
 		if err != nil {
-			return r, validationErr(err, "parse query")
+			return r, validationErr(ctx, err, "parse query")
 		}
 	}
 	var agg []logql.Label
@@ -563,14 +564,14 @@ func (h *LokiAPI) Series(ctx context.Context, params lokiapi.SeriesParams) (*lok
 		h.opts.DefaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	selectors := make([]logql.Selector, len(params.Match))
 	for i, m := range params.Match {
 		selectors[i], err = logql.ParseSelector(m, h.engine.ParseOptions())
 		if err != nil {
-			return nil, validationErr(err, fmt.Sprintf("invalid match[%d]", i))
+			return nil, validationErr(ctx, err, fmt.Sprintf("invalid match[%d]", i))
 		}
 	}
 
@@ -580,7 +581,7 @@ func (h *LokiAPI) Series(ctx context.Context, params lokiapi.SeriesParams) (*lok
 		Selectors: selectors,
 	})
 	if err != nil {
-		return nil, executionErr(err, "get series")
+		return nil, executionErr(ctx, err, "get series")
 	}
 
 	// FIXME(tdakkota): copying slice only because generated type is named.
@@ -629,13 +630,22 @@ func (h *LokiAPI) eval(ctx context.Context, query string, params logqlengine.Eva
 // NewError creates *ErrorStatusCode from error returned by handler.
 //
 // Used for common default response.
-func (h *LokiAPI) NewError(_ context.Context, err error) *lokiapi.ErrorStatusCode {
+func (h *LokiAPI) NewError(ctx context.Context, err error) *lokiapi.ErrorStatusCode {
 	code := http.StatusBadRequest
 	if _, ok := errors.Into[*logqlerrors.UnsupportedError](err); ok {
 		code = http.StatusNotImplemented
 	}
+	msg := appendTrace(ctx, err.Error())
 	return &lokiapi.ErrorStatusCode{
 		StatusCode: code,
-		Response:   lokiapi.Error(err.Error()),
+		Response:   lokiapi.Error(msg),
 	}
+}
+
+func appendTrace(ctx context.Context, s string) string {
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return s
+	}
+	return fmt.Sprintf("%s (trace_id=%s, span_id=%s)", s, sc.TraceID(), sc.SpanID())
 }

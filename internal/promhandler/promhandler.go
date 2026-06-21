@@ -3,6 +3,7 @@ package promhandler
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -643,36 +644,45 @@ func (h *PromAPI) querier(ctx context.Context, mint, maxt time.Time) (storage.Qu
 // NewError creates *FailStatusCode from error returned by handler.
 //
 // Used for common default response.
-func (h *PromAPI) NewError(_ context.Context, err error) *promapi.FailStatusCode {
+func (h *PromAPI) NewError(ctx context.Context, err error) *promapi.FailStatusCode {
 	if errors.Is(err, chstorage.ErrMetricsTooManySeries) {
-		return fail(promapi.FailErrorTypeExecution, err)
+		return fail(ctx, promapi.FailErrorTypeExecution, err)
 	}
 	if _, ok := errors.Into[promql.ErrQueryCanceled](err); ok || errors.Is(err, context.Canceled) {
-		return fail(promapi.FailErrorTypeCanceled, err)
+		return fail(ctx, promapi.FailErrorTypeCanceled, err)
 	}
 	if _, ok := errors.Into[promql.ErrQueryTimeout](err); ok || errors.Is(err, context.DeadlineExceeded) {
-		return fail(promapi.FailErrorTypeTimeout, err)
+		return fail(ctx, promapi.FailErrorTypeTimeout, err)
 	}
 	if _, ok := errors.Into[promql.ErrStorage](err); ok {
-		return fail(promapi.FailErrorTypeInternal, err)
+		return fail(ctx, promapi.FailErrorTypeInternal, err)
 	}
 
 	if pe, ok := errors.Into[*PromError](err); ok {
-		return fail(pe.Kind, err)
+		return fail(ctx, pe.Kind, err)
 	}
 
-	return fail(promapi.FailErrorTypeInternal, err)
+	return fail(ctx, promapi.FailErrorTypeInternal, err)
 }
 
-func fail(kind promapi.FailErrorType, err error) *promapi.FailStatusCode {
+func fail(ctx context.Context, kind promapi.FailErrorType, err error) *promapi.FailStatusCode {
+	msg := appendTrace(ctx, err.Error())
 	return &promapi.FailStatusCode{
 		StatusCode: promapi.FailToCode(kind),
 		Response: promapi.Fail{
 			Status:    "error",
-			Error:     err.Error(),
+			Error:     msg,
 			ErrorType: kind,
 		},
 	}
+}
+
+func appendTrace(ctx context.Context, s string) string {
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return s
+	}
+	return fmt.Sprintf("%s (trace_id=%s, span_id=%s)", s, sc.TraceID(), sc.SpanID())
 }
 
 // TimeoutMiddleware sets request timeout by given parameter, if set.

@@ -15,6 +15,7 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"github.com/go-logfmt/logfmt"
 	ht "github.com/ogen-go/ogen/http"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -94,7 +95,7 @@ func (h *TempoAPI) Query(ctx context.Context, params tempoapi.QueryParams) (*tem
 		time.Hour,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 	return nil, ht.ErrNotImplemented
 }
@@ -113,7 +114,7 @@ func (h *TempoAPI) QueryRange(ctx context.Context, params tempoapi.QueryRangePar
 		time.Hour,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 	return nil, ht.ErrNotImplemented
 }
@@ -140,7 +141,7 @@ func (h *TempoAPI) Search(ctx context.Context, params tempoapi.SearchParams) (re
 	default:
 		return nil, &tempoapi.ErrorStatusCode{
 			StatusCode: http.StatusBadRequest,
-			Response:   `either of parameters "q" and "tags" should be set`,
+			Response:   tempoapi.Error(appendTrace(ctx, `either of parameters "q" and "tags" should be set`)),
 		}
 	}
 }
@@ -149,7 +150,7 @@ func (h *TempoAPI) searchTraceQL(ctx context.Context, query string, params tempo
 	if h.engine == nil {
 		return nil, &tempoapi.ErrorStatusCode{
 			StatusCode: http.StatusInternalServerError,
-			Response:   "TraceQL engine is disabled",
+			Response:   tempoapi.Error(appendTrace(ctx, "TraceQL engine is disabled")),
 		}
 	}
 
@@ -161,7 +162,7 @@ func (h *TempoAPI) searchTraceQL(ctx context.Context, query string, params tempo
 		0,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	resp, err = h.engine.Eval(ctx, query, traceqlengine.EvalParams{
@@ -172,7 +173,7 @@ func (h *TempoAPI) searchTraceQL(ctx context.Context, query string, params tempo
 		Limit:       params.Limit.Or(20),
 	})
 	if err != nil {
-		return nil, executionErr(err, "eval")
+		return nil, executionErr(ctx, err, "eval")
 	}
 	return resp, nil
 }
@@ -182,7 +183,7 @@ func (h *TempoAPI) searchTags(ctx context.Context, query string, params tempoapi
 	if err != nil {
 		return nil, &tempoapi.ErrorStatusCode{
 			StatusCode: http.StatusBadRequest,
-			Response:   tempoapi.Error(fmt.Sprintf("parse logfmt: %s", err)),
+			Response:   tempoapi.Error(appendTrace(ctx, fmt.Sprintf("parse logfmt: %s", err))),
 		}
 	}
 
@@ -194,7 +195,7 @@ func (h *TempoAPI) searchTags(ctx context.Context, query string, params tempoapi
 		0,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	i, err := h.q.SearchTags(ctx, tags, tracestorage.SearchTagsOptions{
@@ -204,7 +205,7 @@ func (h *TempoAPI) searchTags(ctx context.Context, query string, params tempoapi
 		End:         end,
 	})
 	if err != nil {
-		return nil, executionErr(err, "search by tags")
+		return nil, executionErr(ctx, err, "search by tags")
 	}
 	defer func() {
 		_ = i.Close()
@@ -214,7 +215,7 @@ func (h *TempoAPI) searchTags(ctx context.Context, query string, params tempoapi
 		limit: params.Limit.Or(20),
 	}
 	if err := iterators.ForEach(i, c.AddSpan); err != nil {
-		return nil, executionErr(err, "map spans")
+		return nil, executionErr(ctx, err, "map spans")
 	}
 
 	return &tempoapi.Traces{
@@ -254,7 +255,7 @@ func (h *TempoAPI) SearchTagValues(ctx context.Context, params tempoapi.SearchTa
 		h.defaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	var (
@@ -271,7 +272,7 @@ func (h *TempoAPI) SearchTagValues(ctx context.Context, params tempoapi.SearchTa
 		End:               end,
 	})
 	if err != nil {
-		return nil, executionErr(err, "get tag values")
+		return nil, executionErr(ctx, err, "get tag values")
 	}
 	defer func() {
 		_ = iter.Close()
@@ -282,7 +283,7 @@ func (h *TempoAPI) SearchTagValues(ctx context.Context, params tempoapi.SearchTa
 		values = append(values, tag.Value)
 		return nil
 	}); err != nil {
-		return nil, executionErr(err, "map tag values")
+		return nil, executionErr(ctx, err, "map tag values")
 	}
 	lg.Debug("Got tag values",
 		zap.String("tag_name", params.TagName),
@@ -313,7 +314,7 @@ func (h *TempoAPI) SearchTagValuesV2(ctx context.Context, params tempoapi.Search
 		h.defaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	attr, err := traceql.ParseAttribute(params.AttributeSelector)
@@ -331,7 +332,7 @@ func (h *TempoAPI) SearchTagValuesV2(ctx context.Context, params tempoapi.Search
 		End:               end,
 	})
 	if err != nil {
-		return nil, executionErr(err, "get tag values")
+		return nil, executionErr(ctx, err, "get tag values")
 	}
 	defer func() {
 		_ = iter.Close()
@@ -374,7 +375,7 @@ func (h *TempoAPI) SearchTagValuesV2(ctx context.Context, params tempoapi.Search
 		})
 		return nil
 	}); err != nil {
-		return nil, executionErr(err, "map tag values")
+		return nil, executionErr(ctx, err, "map tag values")
 	}
 	lg.Debug("Got tag values",
 		zap.String("attribute_selector", params.AttributeSelector),
@@ -404,7 +405,7 @@ func (h *TempoAPI) SearchTags(ctx context.Context, params tempoapi.SearchTagsPar
 		h.defaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	var scope traceql.AttributeScope
@@ -429,7 +430,7 @@ func (h *TempoAPI) SearchTags(ctx context.Context, params tempoapi.SearchTagsPar
 		End:   end,
 	})
 	if err != nil {
-		return nil, executionErr(err, "get tag names")
+		return nil, executionErr(ctx, err, "get tag names")
 	}
 
 	names := make(map[string]struct{}, len(tags))
@@ -460,7 +461,7 @@ func (h *TempoAPI) SearchTagsV2(ctx context.Context, params tempoapi.SearchTagsV
 		h.defaultSince,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	var (
@@ -490,7 +491,7 @@ func (h *TempoAPI) SearchTagsV2(ctx context.Context, params tempoapi.SearchTagsV
 		End:   end,
 	})
 	if err != nil {
-		return nil, executionErr(err, "get tag names")
+		return nil, executionErr(ctx, err, "get tag names")
 	}
 
 	scopes := make(map[tempoapi.TagScope]tempoapi.ScopeTags, 4)
@@ -539,7 +540,7 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 
 	traceID, err := otelstorage.ParseTraceID(params.TraceID)
 	if err != nil {
-		return nil, validationErr(err, fmt.Sprintf("invalid traceID %q", params.TraceID))
+		return nil, validationErr(ctx, err, fmt.Sprintf("invalid traceID %q", params.TraceID))
 	}
 
 	start, end, err := parseSearchTimeRange(
@@ -550,7 +551,7 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 		0,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	iter, err := h.q.TraceByID(ctx, traceID, tracestorage.TraceByIDOptions{
@@ -558,7 +559,7 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 		End:   end,
 	})
 	if err != nil {
-		return nil, executionErr(err, "query trace by ID")
+		return nil, executionErr(ctx, err, "query trace by ID")
 	}
 	defer func() {
 		_ = iter.Close()
@@ -566,7 +567,7 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 
 	var c batchCollector
 	if err := iterators.ForEach(iter, c.AddSpan); err != nil {
-		return nil, executionErr(err, "map spans")
+		return nil, executionErr(ctx, err, "map spans")
 	}
 
 	spanCount := c.SpanCount()
@@ -578,7 +579,7 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 
 	data, err := proto.Marshal(c.ResultExport())
 	if err != nil {
-		return resp, executionErr(err, "marshal traces")
+		return resp, executionErr(ctx, err, "marshal traces")
 	}
 	return &tempoapi.TraceByID{Data: bytes.NewReader(data)}, nil
 }
@@ -598,7 +599,7 @@ func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2P
 	}
 	ct, ctParams, err := mime.ParseMediaType(accept)
 	if err != nil {
-		return nil, validationErr(err, fmt.Sprintf("invalid Accept header %q", accept))
+		return nil, validationErr(ctx, err, fmt.Sprintf("invalid Accept header %q", accept))
 	}
 
 	var encoder encoderFunc
@@ -609,7 +610,7 @@ func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2P
 		if !strings.EqualFold(ctParams["charset"], "utf-8") {
 			return nil, &tempoapi.ErrorStatusCode{
 				StatusCode: http.StatusBadRequest,
-				Response:   tempoapi.Error(fmt.Sprintf("unsupported charset %q in Accept header", ctParams["charset"])),
+				Response:   tempoapi.Error(appendTrace(ctx, fmt.Sprintf("unsupported charset %q in Accept header", ctParams["charset"]))),
 			}
 		}
 		encoder = jsonEncoder
@@ -618,13 +619,13 @@ func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2P
 	default:
 		return nil, &tempoapi.ErrorStatusCode{
 			StatusCode: http.StatusBadRequest,
-			Response:   tempoapi.Error(fmt.Sprintf("unknown or invalid Content-Type %q in Accept header", accept)),
+			Response:   tempoapi.Error(appendTrace(ctx, fmt.Sprintf("unknown or invalid Content-Type %q in Accept header", accept))),
 		}
 	}
 
 	traceID, err := otelstorage.ParseTraceID(params.TraceID)
 	if err != nil {
-		return nil, validationErr(err, fmt.Sprintf("invalid traceID %q", params.TraceID))
+		return nil, validationErr(ctx, err, fmt.Sprintf("invalid traceID %q", params.TraceID))
 	}
 
 	start, end, err := parseSearchTimeRange(
@@ -635,7 +636,7 @@ func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2P
 		0,
 	)
 	if err != nil {
-		return nil, validationErr(err, "parse time range")
+		return nil, validationErr(ctx, err, "parse time range")
 	}
 
 	iter, err := h.q.TraceByID(ctx, traceID, tracestorage.TraceByIDOptions{
@@ -643,7 +644,7 @@ func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2P
 		End:   end,
 	})
 	if err != nil {
-		return nil, executionErr(err, "query trace by ID")
+		return nil, executionErr(ctx, err, "query trace by ID")
 	}
 	defer func() {
 		_ = iter.Close()
@@ -651,7 +652,7 @@ func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2P
 
 	var c batchCollector
 	if err := iterators.ForEach(iter, c.AddSpan); err != nil {
-		return nil, executionErr(err, "map spans")
+		return nil, executionErr(ctx, err, "map spans")
 	}
 	spanCount := c.SpanCount()
 
@@ -662,7 +663,7 @@ func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2P
 
 	data, err := encoder(c.ResultTempo())
 	if err != nil {
-		return nil, executionErr(err, "encode traces")
+		return nil, executionErr(ctx, err, "encode traces")
 	}
 	return &tempoapi.TraceByIDV2Headers{
 		ContentType: ct,
@@ -689,9 +690,18 @@ func llmEncoder(*tempopb.TraceByIDResponse) ([]byte, error) {
 // NewError creates *ErrorStatusCode from error returned by handler.
 //
 // Used for common default response.
-func (h *TempoAPI) NewError(_ context.Context, err error) *tempoapi.ErrorStatusCode {
+func (h *TempoAPI) NewError(ctx context.Context, err error) *tempoapi.ErrorStatusCode {
+	msg := appendTrace(ctx, err.Error())
 	return &tempoapi.ErrorStatusCode{
 		StatusCode: http.StatusBadRequest,
-		Response:   tempoapi.Error(err.Error()),
+		Response:   tempoapi.Error(msg),
 	}
+}
+
+func appendTrace(ctx context.Context, s string) string {
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return s
+	}
+	return fmt.Sprintf("%s (trace_id=%s, span_id=%s)", s, sc.TraceID(), sc.SpanID())
 }

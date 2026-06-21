@@ -3,10 +3,12 @@ package tempoproxy
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/oteldb/oteldb/internal/tempoapi"
@@ -134,8 +136,17 @@ func (s *Server) NewError(ctx context.Context, err error) *tempoapi.ErrorStatusC
 		// Pass as-is.
 		return v
 	}
+	msg := appendTrace(ctx, err.Error())
 	return &tempoapi.ErrorStatusCode{
 		StatusCode: http.StatusInternalServerError,
-		Response:   tempoapi.Error(err.Error()),
+		Response:   tempoapi.Error(msg),
 	}
+}
+
+func appendTrace(ctx context.Context, s string) string {
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return s
+	}
+	return fmt.Sprintf("%s (trace_id=%s, span_id=%s)", s, sc.TraceID(), sc.SpanID())
 }

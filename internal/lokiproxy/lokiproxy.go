@@ -3,10 +3,12 @@ package lokiproxy
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/oteldb/oteldb/internal/lokiapi"
@@ -162,8 +164,17 @@ func (s *Server) NewError(ctx context.Context, err error) *lokiapi.ErrorStatusCo
 		// Pass as-is.
 		return v
 	}
+	msg := appendTrace(ctx, err.Error())
 	return &lokiapi.ErrorStatusCode{
 		StatusCode: http.StatusInternalServerError,
-		Response:   lokiapi.Error(err.Error()),
+		Response:   lokiapi.Error(msg),
 	}
+}
+
+func appendTrace(ctx context.Context, s string) string {
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return s
+	}
+	return fmt.Sprintf("%s (trace_id=%s, span_id=%s)", s, sc.TraceID(), sc.SpanID())
 }
