@@ -60,7 +60,7 @@ tasks:
         msg: "REGISTRY is required, for example: REGISTRY=ghcr.io/oteldb"
     cmds:
       - task: deploy:image:oteldb
-      - for: [chotel, odbagent]
+      - for: [chotel]
         task: deploy:image:generic
         vars:
           BINARY: "{{.ITEM}}"
