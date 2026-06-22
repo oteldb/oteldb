@@ -74,6 +74,11 @@ func TestTransformerTruncateExcess(t *testing.T) {
 	}, sink, now)
 
 	require.NoError(t, transformer.ProcessBatch(context.Background(), entries("a", "b", "c")))
+
+	transformer.now = func() time.Time { return time.Unix(200, 0).UTC() }
+	transformer.handler.SetNow(transformer.now)
+	require.NoError(t, transformer.ProcessBatch(context.Background(), entries()))
+
 	got := sink.Entries()
 	requireBodies(t, got, []string{"a", "<output is truncated>"})
 	require.Equal(t, int64(2), got[1].Attributes["oteldb.truncated_count"])
@@ -87,7 +92,8 @@ func TestTransformerCompactExcess(t *testing.T) {
 		Config: safetyconfig.Config{
 			MaxRatePerSecond:  1,
 			OnExcess:          safetyconfig.ModeCompact,
-			SampleRate:        0,
+			SampleFirst:       0,
+			SampleThereafter:  0,
 			CompactWindow:     30 * time.Second,
 			CompactThreshold:  2,
 			CompactMaxBuckets: 100,
@@ -95,6 +101,11 @@ func TestTransformerCompactExcess(t *testing.T) {
 	}, sink, now)
 
 	require.NoError(t, transformer.ProcessBatch(context.Background(), entries("same", "same", "same", "same")))
+
+	transformer.now = func() time.Time { return time.Unix(200, 0).UTC() }
+	transformer.handler.SetNow(transformer.now)
+	require.NoError(t, transformer.ProcessBatch(context.Background(), entries()))
+
 	got := sink.Entries()
 	requireBodies(t, got, []string{"same", "same", "same"})
 	require.Equal(t, int64(2), got[2].Attributes["oteldb.collapsed_count"])
@@ -121,7 +132,8 @@ func TestTransformerSampleExcess(t *testing.T) {
 		Config: safetyconfig.Config{
 			MaxRatePerSecond: 2,
 			OnExcess:         safetyconfig.ModeSample,
-			SampleRate:       0, // drop all excess
+			SampleFirst:      0,
+			SampleThereafter: 0,
 		},
 	}, sink, now)
 
@@ -136,7 +148,8 @@ func TestTransformerCompactEscalatesToTruncate(t *testing.T) {
 		Config: safetyconfig.Config{
 			MaxRatePerSecond:  1,
 			OnExcess:          safetyconfig.ModeCompact,
-			SampleRate:        0,
+			SampleFirst:       0,
+			SampleThereafter:  0,
 			CompactWindow:     30 * time.Second,
 			CompactThreshold:  2,
 			CompactMaxBuckets: 100,
@@ -147,10 +160,15 @@ func TestTransformerCompactEscalatesToTruncate(t *testing.T) {
 	// "same" ×5: entry 1 passes; entries 2-5 are excess.
 	// compact handler: count=1 passes, count=2 compacts, count=3 compacts, count=4 truncates.
 	require.NoError(t, transformer.ProcessBatch(context.Background(), entries("same", "same", "same", "same", "same")))
+
+	transformer.now = func() time.Time { return time.Unix(200, 0).UTC() }
+	transformer.handler.SetNow(transformer.now)
+	require.NoError(t, transformer.ProcessBatch(context.Background(), entries()))
+
 	got := sink.Entries()
-	requireBodies(t, got, []string{"same", "same", "same", "<output is truncated>"})
-	require.Equal(t, int64(2), got[2].Attributes["oteldb.collapsed_count"])
-	require.Equal(t, int64(1), got[3].Attributes["oteldb.truncated_count"])
+	requireBodies(t, got, []string{"same", "same", "<output is truncated>", "same"})
+	require.Equal(t, int64(1), got[2].Attributes["oteldb.truncated_count"])
+	require.Equal(t, int64(2), got[3].Attributes["oteldb.collapsed_count"])
 }
 
 func TestTransformerCompactLRUOverflow(t *testing.T) {
@@ -160,7 +178,8 @@ func TestTransformerCompactLRUOverflow(t *testing.T) {
 		Config: safetyconfig.Config{
 			MaxRatePerSecond:  1,
 			OnExcess:          safetyconfig.ModeCompact,
-			SampleRate:        0, // drop on LRU overflow
+			SampleFirst:       0,
+			SampleThereafter:  0,
 			CompactWindow:     30 * time.Second,
 			CompactThreshold:  100, // high, so compact never fires
 			CompactMaxBuckets: 2,
@@ -207,7 +226,8 @@ func BenchmarkTransformerProcess(b *testing.B) {
 			cfg: safetyconfig.Config{
 				MaxRatePerSecond:  1,
 				OnExcess:          safetyconfig.ModeCompact,
-				SampleRate:        0,
+				SampleFirst:       0,
+				SampleThereafter:  0,
 				CompactWindow:     30 * time.Second,
 				CompactThreshold:  2,
 				CompactMaxBuckets: 100,
@@ -227,16 +247,16 @@ func BenchmarkTransformerProcess(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			b.ReportAllocs()
 			transformer := &Transformer{
-				maxRatePerSecond: bm.cfg.MaxRatePerSecond,
-				redactFields:     bm.cfg.RedactFields,
-				handler:          safetyconfig.NewHandler[*entry.Entry](bm.cfg, func() bool { return false }, safetyconfig.NoopMetrics{}),
-				now:              func() time.Time { return now },
+				cfg:          bm.cfg,
+				redactFields: bm.cfg.RedactFields,
+				handler:      safetyconfig.NewHandler[*entry.Entry](bm.cfg, func() bool { return false }, safetyconfig.NoopMetrics{}),
+				now:          func() time.Time { return now },
 			}
 			ctx := context.Background()
 			for b.Loop() {
 				if bm.name != "disabled" {
 					transformer.rateWindowStart = now
-					transformer.rateWindowCount = transformer.maxRatePerSecond
+					transformer.rateWindowCount = transformer.cfg.SoftLimit()
 				}
 				out := make([]*entry.Entry, 0, 1)
 				batch := processBatch{ctx: ctx, output: &out}

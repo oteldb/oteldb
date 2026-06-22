@@ -2,7 +2,7 @@ package odbsafetyprocessor
 
 import (
 	"context"
-	"math/rand/v2"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/processor"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/multierr"
 
 	"github.com/oteldb/oteldb/internal/odbsafety"
 )
@@ -17,11 +18,11 @@ import (
 type logsProcessor struct {
 	next consumer.Logs
 
-	maxRatePerSecond int
-	redactFields     []string
-	handler          *odbsafety.Handler[plog.LogRecord]
-	metrics          safetyMetrics
-	now              func() time.Time
+	cfg          *Config
+	redactFields []string
+	handler      *odbsafety.Handler[plog.LogRecord]
+	metrics      safetyMetrics
+	now          func() time.Time
 
 	windowStart time.Time
 	windowCount int
@@ -35,14 +36,24 @@ func newLogsProcessor(settings processor.Settings, cfg *Config, next consumer.Lo
 	}
 	meter := settings.MeterProvider.Meter("odbagent/odbsafetyprocessor")
 	p := &logsProcessor{
-		next:             next,
-		maxRatePerSecond: cfg.MaxRatePerSecond,
-		redactFields:     cfg.RedactFields,
-		metrics:          newSafetyMetrics(meter, cfg.Workload, cfg.Namespace, cfg.CompactMaxBuckets),
-		now:              time.Now,
+		next:         next,
+		cfg:          cfg,
+		redactFields: cfg.RedactFields,
+		metrics:      newSafetyMetrics(meter, cfg.Workload, cfg.Namespace, cfg.CompactMaxBuckets),
+		now:          time.Now,
 	}
 
-	sampler := func() bool { return rand.Float64() < cfg.SampleRate } //#nosec G404
+	var count atomic.Uint64
+	sampler := func() bool {
+		c := count.Add(1)
+		if cfg.SampleFirst > 0 && c <= uint64(cfg.SampleFirst) {
+			return true
+		}
+		if cfg.SampleThereafter <= 0 {
+			return false
+		}
+		return c%uint64(cfg.SampleThereafter) == 0
+	}
 	p.handler = odbsafety.NewHandler[plog.LogRecord](cfg.Config, sampler, p.metrics)
 	return p
 }
@@ -56,32 +67,52 @@ func (p *logsProcessor) Capabilities() consumer.Capabilities {
 }
 
 func (p *logsProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
-	if len(p.redactFields) == 0 && (p.maxRatePerSecond == 0 || p.handler == nil) {
+	if len(p.redactFields) == 0 && p.cfg.SoftLimit() <= 0 && p.cfg.HardLimit() <= 0 {
 		return p.next.ConsumeLogs(ctx, ld)
 	}
 
 	batch := newProcessBatch(ctx, p.handler)
+	sawScope := false
 	ld.ResourceLogs().RemoveIf(func(rl plog.ResourceLogs) bool {
 		rl.ScopeLogs().RemoveIf(func(sl plog.ScopeLogs) bool {
 			records := sl.LogRecords()
+			batch.records = records
+			sawScope = true
 			records.RemoveIf(func(record plog.LogRecord) bool {
 				if isSafetyRecord(record) {
 					return false
 				}
 				p.redact(record)
-				if !p.exceeded() {
+				mode := p.excessMode()
+				if mode == "" {
 					return false
 				}
-				return batch.handle(records, record)
+				return batch.handle(mode, records, record)
 			})
 			return records.Len() == 0
 		})
 		return rl.ScopeLogs().Len() == 0
 	})
 
-	err := p.next.ConsumeLogs(ctx, ld)
+	// If the incoming batch carried no scope, batch.records has no backing
+	// LogRecordSlice to flush synthetic records into. Give it a standalone
+	// one and ship it separately, rather than appending into ld blindly.
+	var flushed plog.Logs
+	if p.handler != nil {
+		if !sawScope {
+			flushed = plog.NewLogs()
+			batch.records = flushed.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords()
+		}
+		p.handler.Flush(ctx, batch)
+	}
+
+	var errs error
+	if !sawScope && batch.records.Len() > 0 {
+		errs = multierr.Append(errs, p.next.ConsumeLogs(ctx, flushed))
+	}
+	errs = multierr.Append(errs, p.next.ConsumeLogs(ctx, ld))
 	p.metrics.RecordBucketPressure(ctx, p.handler.BucketCount())
-	return err
+	return errs
 }
 
 func isSafetyRecord(record plog.LogRecord) bool {
@@ -104,9 +135,9 @@ func (p *logsProcessor) redact(record plog.LogRecord) {
 	}
 }
 
-func (p *logsProcessor) exceeded() bool {
-	if p.maxRatePerSecond <= 0 {
-		return false
+func (p *logsProcessor) excessMode() string {
+	if p.cfg.SoftLimit() <= 0 && p.cfg.HardLimit() <= 0 {
+		return ""
 	}
 
 	now := p.now()
@@ -115,5 +146,14 @@ func (p *logsProcessor) exceeded() bool {
 		p.windowCount = 0
 	}
 	p.windowCount++
-	return p.windowCount > p.maxRatePerSecond
+
+	hard := p.cfg.HardLimit()
+	if hard > 0 && p.windowCount > hard {
+		return p.cfg.HardMode()
+	}
+	soft := p.cfg.SoftLimit()
+	if soft > 0 && p.windowCount > soft {
+		return p.cfg.Mode()
+	}
+	return ""
 }

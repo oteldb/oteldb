@@ -3,9 +3,9 @@ package odbsafety
 import (
 	"context"
 	"fmt"
-	"math/rand/v2"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -20,10 +20,10 @@ import (
 type Transformer struct {
 	helper.TransformerOperator
 
-	maxRatePerSecond int
-	redactFields     []string
-	handler          *safetyconfig.Handler[*entry.Entry]
-	now              func() time.Time
+	cfg          safetyconfig.Config
+	redactFields []string
+	handler      *safetyconfig.Handler[*entry.Entry]
+	now          func() time.Time
 
 	rateWindowStart time.Time
 	rateWindowCount int
@@ -31,11 +31,25 @@ type Transformer struct {
 
 var _ operator.Operator = (*Transformer)(nil)
 
+func newSampler(first, thereafter int) func() bool {
+	var count atomic.Uint64
+	return func() bool {
+		c := count.Add(1)
+		if first > 0 && c <= uint64(first) {
+			return true
+		}
+		if thereafter <= 0 {
+			return false
+		}
+		return c%uint64(thereafter) == 0
+	}
+}
+
 func newTransformer(base helper.TransformerOperator, cfg Config) *Transformer {
-	sampler := func() bool { return rand.Float64() < cfg.SampleRate } //#nosec G404
+	sampler := newSampler(cfg.SampleFirst, cfg.SampleThereafter)
 	return &Transformer{
 		TransformerOperator: base,
-		maxRatePerSecond:    cfg.MaxRatePerSecond,
+		cfg:                 cfg.Config,
 		redactFields:        cfg.RedactFields,
 		handler:             safetyconfig.NewHandler[*entry.Entry](cfg.Config, sampler, safetyconfig.NoopMetrics{}),
 		now:                 time.Now,
@@ -44,7 +58,7 @@ func newTransformer(base helper.TransformerOperator, cfg Config) *Transformer {
 
 // ProcessBatch applies safety limiting to a batch of entries.
 func (t *Transformer) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {
-	if len(t.redactFields) == 0 && (t.maxRatePerSecond == 0 || t.handler == nil) {
+	if len(t.redactFields) == 0 && t.cfg.SoftLimit() <= 0 && t.cfg.HardLimit() <= 0 {
 		return t.WriteBatch(ctx, entries)
 	}
 
@@ -56,19 +70,25 @@ func (t *Transformer) ProcessBatch(ctx context.Context, entries []*entry.Entry) 
 			errs = multierr.Append(errs, err)
 		}
 	}
+	if t.handler != nil {
+		t.handler.Flush(ctx, &batch)
+	}
 	errs = multierr.Append(errs, t.WriteBatch(ctx, out))
 	return errs
 }
 
 // Process applies safety limiting to a single entry.
 func (t *Transformer) Process(ctx context.Context, ent *entry.Entry) error {
-	if len(t.redactFields) == 0 && (t.maxRatePerSecond == 0 || t.handler == nil) {
+	if len(t.redactFields) == 0 && t.cfg.SoftLimit() <= 0 && t.cfg.HardLimit() <= 0 {
 		return t.Write(ctx, ent)
 	}
 	out := make([]*entry.Entry, 0, 1)
 	batch := processBatch{ctx: ctx, output: &out}
 	if err := t.process(ctx, ent, &batch); err != nil {
 		return err
+	}
+	if t.handler != nil {
+		t.handler.Flush(ctx, &batch)
 	}
 	return t.WriteBatch(ctx, out)
 }
@@ -83,10 +103,11 @@ func (t *Transformer) process(ctx context.Context, ent *entry.Entry, batch *proc
 	}
 
 	t.redact(ent)
-	if !t.exceeded() || t.handler == nil {
+	mode := t.excessMode()
+	if mode == "" || t.handler == nil {
 		return batch.write(ctx, ent)
 	}
-	if t.handler.Handle(ctx, batch, ent) {
+	if t.handler.Handle(ctx, mode, batch, ent) {
 		return nil
 	}
 	return batch.write(ctx, ent)
@@ -103,9 +124,9 @@ func (t *Transformer) redact(ent *entry.Entry) {
 	}
 }
 
-func (t *Transformer) exceeded() bool {
-	if t.maxRatePerSecond <= 0 {
-		return false
+func (t *Transformer) excessMode() string {
+	if t.cfg.SoftLimit() <= 0 && t.cfg.HardLimit() <= 0 {
+		return ""
 	}
 	now := t.now()
 	if t.rateWindowStart.IsZero() || now.Sub(t.rateWindowStart) >= time.Second || now.Before(t.rateWindowStart) {
@@ -113,19 +134,37 @@ func (t *Transformer) exceeded() bool {
 		t.rateWindowCount = 0
 	}
 	t.rateWindowCount++
-	return t.rateWindowCount > t.maxRatePerSecond
+
+	hard := t.cfg.HardLimit()
+	if hard > 0 && t.rateWindowCount > hard {
+		return t.cfg.HardMode()
+	}
+	soft := t.cfg.SoftLimit()
+	if soft > 0 && t.rateWindowCount > soft {
+		return t.cfg.Mode()
+	}
+	return ""
 }
 
 type processBatch struct {
-	ctx             context.Context
-	output          *[]*entry.Entry
-	compacted       map[string]*entry.Entry
-	truncatedBySlot map[int64]*entry.Entry
+	ctx    context.Context
+	output *[]*entry.Entry
 }
 
 func (b *processBatch) write(_ context.Context, ent *entry.Entry) error {
 	*b.output = append(*b.output, ent)
 	return nil
+}
+
+func (b *processBatch) PassThrough(ent *entry.Entry) bool {
+	if ent.Attributes != nil {
+		if v, ok := ent.Attributes[safetyconfig.PassthroughAttribute]; ok {
+			if b, ok := v.(bool); ok && b {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (b *processBatch) Key(ent *entry.Entry, fields []string) string {
@@ -136,41 +175,29 @@ func (b *processBatch) Time(ent *entry.Entry) time.Time {
 	return entryTime(ent)
 }
 
-func (b *processBatch) Truncate(slot int64, ent *entry.Entry, windowStart, windowEnd time.Time) {
-	if b.truncatedBySlot == nil {
-		b.truncatedBySlot = make(map[int64]*entry.Entry, 1)
-	}
-	out, ok := b.truncatedBySlot[slot]
-	if !ok {
-		out = ent.Copy()
-		out.Body = "<output is truncated>"
-		if out.Attributes == nil {
-			out.Attributes = make(map[string]any, 3)
-		}
-		out.Attributes["oteldb.truncated_count"] = int64(0)
-		out.Attributes["oteldb.window_start"] = windowStart.Format(time.RFC3339Nano)
-		out.Attributes["oteldb.window_end"] = windowEnd.Format(time.RFC3339Nano)
-		b.truncatedBySlot[slot] = out
-		*b.output = append(*b.output, out)
-	}
-	out.Attributes["oteldb.truncated_count"] = out.Attributes["oteldb.truncated_count"].(int64) + 1
+func (b *processBatch) Clone(ent *entry.Entry) *entry.Entry {
+	return ent.Copy()
 }
 
-func (b *processBatch) Compact(key string, ent *entry.Entry) {
-	if b.compacted == nil {
-		b.compacted = make(map[string]*entry.Entry, 1)
+func (b *processBatch) Truncate(_ int64, count int, ent *entry.Entry, windowStart, windowEnd time.Time) {
+	out := ent.Copy()
+	out.Body = "<output is truncated>"
+	if out.Attributes == nil {
+		out.Attributes = make(map[string]any, 3)
 	}
-	out, ok := b.compacted[key]
-	if !ok {
-		out = ent.Copy()
-		if out.Attributes == nil {
-			out.Attributes = make(map[string]any, 1)
-		}
-		out.Attributes["oteldb.collapsed_count"] = int64(0)
-		b.compacted[key] = out
-		*b.output = append(*b.output, out)
+	out.Attributes["oteldb.truncated_count"] = int64(count)
+	out.Attributes["oteldb.window_start"] = windowStart.Format(time.RFC3339Nano)
+	out.Attributes["oteldb.window_end"] = windowEnd.Format(time.RFC3339Nano)
+	*b.output = append(*b.output, out)
+}
+
+func (b *processBatch) Compact(_ string, count int, ent *entry.Entry) {
+	out := ent.Copy()
+	if out.Attributes == nil {
+		out.Attributes = make(map[string]any, 1)
 	}
-	out.Attributes["oteldb.collapsed_count"] = out.Attributes["oteldb.collapsed_count"].(int64) + 1
+	out.Attributes["oteldb.collapsed_count"] = int64(count)
+	*b.output = append(*b.output, out)
 }
 
 func entryTime(ent *entry.Entry) time.Time {

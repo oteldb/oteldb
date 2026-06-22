@@ -13,23 +13,21 @@ import (
 )
 
 type processBatch struct {
-	ctx             context.Context
-	handler         *odbsafety.Handler[plog.LogRecord]
-	records         plog.LogRecordSlice
-	compacted       map[string]plog.LogRecord
-	truncatedBySlot map[int64]plog.LogRecord
+	ctx     context.Context
+	handler *odbsafety.Handler[plog.LogRecord]
+	records plog.LogRecordSlice
 }
 
 func newProcessBatch(ctx context.Context, handler *odbsafety.Handler[plog.LogRecord]) *processBatch {
 	return &processBatch{ctx: ctx, handler: handler}
 }
 
-func (b *processBatch) handle(records plog.LogRecordSlice, record plog.LogRecord) bool {
-	if !b.handler.Enabled() {
+func (b *processBatch) handle(mode string, records plog.LogRecordSlice, record plog.LogRecord) bool {
+	if mode == "" {
 		return false
 	}
 	b.records = records
-	return b.handler.Handle(b.ctx, b, record)
+	return b.handler.Handle(b.ctx, mode, b, record)
 }
 
 func (b *processBatch) Key(record plog.LogRecord, fields []string) string {
@@ -40,36 +38,33 @@ func (b *processBatch) Time(record plog.LogRecord) time.Time {
 	return recordTime(record)
 }
 
-func (b *processBatch) Truncate(slot int64, record plog.LogRecord, windowStart, windowEnd time.Time) {
-	if b.truncatedBySlot == nil {
-		b.truncatedBySlot = make(map[int64]plog.LogRecord, 1)
+func (b *processBatch) PassThrough(record plog.LogRecord) bool {
+	if v, ok := record.Attributes().Get(odbsafety.PassthroughAttribute); ok && v.Type() == pcommon.ValueTypeBool {
+		return v.Bool()
 	}
-	out, ok := b.truncatedBySlot[slot]
-	if !ok {
-		out = b.records.AppendEmpty()
-		record.CopyTo(out)
-		out.Body().SetStr("<output is truncated>")
-		attrs := out.Attributes()
-		attrs.PutInt("oteldb.truncated_count", 0)
-		attrs.PutStr("oteldb.window_start", windowStart.Format(time.RFC3339Nano))
-		attrs.PutStr("oteldb.window_end", windowEnd.Format(time.RFC3339Nano))
-		b.truncatedBySlot[slot] = out
-	}
-	incrementIntAttr(out, "oteldb.truncated_count", 1)
+	return false
 }
 
-func (b *processBatch) Compact(key string, record plog.LogRecord) {
-	if b.compacted == nil {
-		b.compacted = make(map[string]plog.LogRecord, 1)
-	}
-	out, ok := b.compacted[key]
-	if !ok {
-		out = b.records.AppendEmpty()
-		record.CopyTo(out)
-		out.Attributes().PutInt("oteldb.collapsed_count", 0)
-		b.compacted[key] = out
-	}
-	incrementIntAttr(out, "oteldb.collapsed_count", 1)
+func (b *processBatch) Clone(record plog.LogRecord) plog.LogRecord {
+	out := plog.NewLogRecord()
+	record.CopyTo(out)
+	return out
+}
+
+func (b *processBatch) Truncate(_ int64, count int, record plog.LogRecord, windowStart, windowEnd time.Time) {
+	out := b.records.AppendEmpty()
+	record.CopyTo(out)
+	out.Body().SetStr("<output is truncated>")
+	attrs := out.Attributes()
+	attrs.PutInt("oteldb.truncated_count", int64(count))
+	attrs.PutStr("oteldb.window_start", windowStart.Format(time.RFC3339Nano))
+	attrs.PutStr("oteldb.window_end", windowEnd.Format(time.RFC3339Nano))
+}
+
+func (b *processBatch) Compact(_ string, count int, record plog.LogRecord) {
+	out := b.records.AppendEmpty()
+	record.CopyTo(out)
+	out.Attributes().PutInt("oteldb.collapsed_count", int64(count))
 }
 
 func recordTime(record plog.LogRecord) time.Time {
@@ -80,16 +75,6 @@ func recordTime(record plog.LogRecord) time.Time {
 		return ts.AsTime()
 	}
 	return time.Now()
-}
-
-func incrementIntAttr(record plog.LogRecord, key string, delta int64) {
-	attrs := record.Attributes()
-	value, ok := attrs.Get(key)
-	if !ok {
-		attrs.PutInt(key, delta)
-		return
-	}
-	value.SetInt(value.Int() + delta)
 }
 
 func recordKey(record plog.LogRecord, fields []string) string {

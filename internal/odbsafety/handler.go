@@ -17,29 +17,23 @@ type Metrics interface {
 // NoopMetrics disables safety handler metrics.
 type NoopMetrics struct{}
 
-// Dropped implements Metrics.
 func (NoopMetrics) Dropped(context.Context, string) {}
-
-// Sampled implements Metrics.
-func (NoopMetrics) Sampled(context.Context) {}
-
-// Compacted implements Metrics.
-func (NoopMetrics) Compacted(context.Context) {}
-
-// Collapsed implements Metrics.
-func (NoopMetrics) Collapsed(context.Context) {}
+func (NoopMetrics) Sampled(context.Context)         {}
+func (NoopMetrics) Compacted(context.Context)       {}
+func (NoopMetrics) Collapsed(context.Context)       {}
 
 // Recorder adapts a concrete record type to the shared safety handler.
 type Recorder[R any] interface {
+	PassThrough(record R) bool
 	Key(record R, fields []string) string
 	Time(record R) time.Time
-	Truncate(slot int64, record R, windowStart, windowEnd time.Time)
-	Compact(key string, record R)
+	Clone(record R) R
+	Truncate(slot int64, count int, record R, windowStart, windowEnd time.Time)
+	Compact(key string, count int, record R)
 }
 
 // Handler applies shared excess handling state for a concrete record type.
 type Handler[R any] struct {
-	mode              string
 	fields            []string
 	threshold         int
 	maxBuckets        int
@@ -47,15 +41,27 @@ type Handler[R any] struct {
 	window            time.Duration
 	sample            func() bool
 	metrics           Metrics
+	now               func() time.Time
 
-	order   list.List
-	buckets map[string]*bucket
+	order     list.List
+	buckets   map[string]*bucket[R]
+	truncated map[int64]*truncateBucket[R]
 }
 
-type bucket struct {
-	key     string
-	count   int
-	element *list.Element
+type bucket[R any] struct {
+	key          string
+	count        int
+	droppedCount int
+	element      *list.Element
+	record       R
+	lastUpdated  time.Time
+}
+
+type truncateBucket[R any] struct {
+	count       int
+	record      R
+	windowStart time.Time
+	windowEnd   time.Time
 }
 
 // NewHandler creates a shared excess handler.
@@ -67,7 +73,6 @@ func NewHandler[R any](cfg Config, sampler func() bool, metrics Metrics) *Handle
 		sampler = func() bool { return false }
 	}
 	h := &Handler[R]{
-		mode:              cfg.Mode(),
 		fields:            cfg.CompactKeyFields,
 		threshold:         cfg.CompactThreshold,
 		maxBuckets:        cfg.CompactMaxBuckets,
@@ -75,16 +80,18 @@ func NewHandler[R any](cfg Config, sampler func() bool, metrics Metrics) *Handle
 		window:            cfg.CompactWindow,
 		sample:            sampler,
 		metrics:           metrics,
-	}
-	if h.mode == ModeCompact {
-		h.buckets = make(map[string]*bucket, cfg.CompactMaxBuckets)
+		now:               time.Now,
+		buckets:           make(map[string]*bucket[R], cfg.CompactMaxBuckets),
+		truncated:         make(map[int64]*truncateBucket[R]),
 	}
 	return h
 }
 
-// Enabled reports whether the handler performs any excess handling.
-func (h *Handler[R]) Enabled() bool {
-	return h != nil && h.mode != "" && h.mode != ModeConsume
+// SetNow overrides the current time function for testing.
+func (h *Handler[R]) SetNow(now func() time.Time) {
+	if h != nil {
+		h.now = now
+	}
 }
 
 // BucketCount returns the number of active compact buckets.
@@ -96,12 +103,12 @@ func (h *Handler[R]) BucketCount() int {
 }
 
 // Handle applies excess handling. It returns true when the original record must be dropped.
-func (h *Handler[R]) Handle(ctx context.Context, recorder Recorder[R], record R) bool {
-	if !h.Enabled() {
+func (h *Handler[R]) Handle(ctx context.Context, mode string, recorder Recorder[R], record R) bool {
+	if h == nil || mode == "" || mode == ModeConsume || recorder.PassThrough(record) {
 		return false
 	}
 
-	switch h.mode {
+	switch mode {
 	case ModeDrop:
 		h.metrics.Dropped(ctx, "rate_limit")
 		return true
@@ -131,7 +138,18 @@ func (h *Handler[R]) handleTruncate(ctx context.Context, recorder Recorder[R], r
 		return true
 	}
 	windowStart := recorder.Time(record).Truncate(h.window)
-	recorder.Truncate(windowStart.UnixNano(), record, windowStart, windowStart.Add(h.window))
+	slot := windowStart.UnixNano()
+
+	b, ok := h.truncated[slot]
+	if !ok {
+		b = &truncateBucket[R]{
+			record:      recorder.Clone(record),
+			windowStart: windowStart,
+			windowEnd:   windowStart.Add(h.window),
+		}
+		h.truncated[slot] = b
+	}
+	b.count++
 	h.metrics.Dropped(ctx, "truncate")
 	return true
 }
@@ -143,12 +161,18 @@ func (h *Handler[R]) handleCompact(ctx context.Context, recorder Recorder[R], re
 		if len(h.buckets) >= h.maxBuckets {
 			oldest := h.order.Back()
 			if oldest != nil {
-				delete(h.buckets, oldest.Value.(*bucket).key)
+				// Flush it before deleting if it has dropped counts
+				oldB := oldest.Value.(*bucket[R])
+				if oldB.droppedCount > 0 {
+					recorder.Compact(oldB.key, oldB.droppedCount, oldB.record)
+					h.metrics.Compacted(ctx)
+				}
+				delete(h.buckets, oldB.key)
 				h.order.Remove(oldest)
 			}
 			return h.handleSample(ctx)
 		}
-		b = &bucket{key: key}
+		b = &bucket[R]{key: key, record: recorder.Clone(record)}
 		b.element = h.order.PushFront(b)
 		h.buckets[key] = b
 	} else {
@@ -156,6 +180,8 @@ func (h *Handler[R]) handleCompact(ctx context.Context, recorder Recorder[R], re
 	}
 
 	b.count++
+	b.lastUpdated = h.now()
+
 	if b.count < h.threshold {
 		return false
 	}
@@ -163,8 +189,44 @@ func (h *Handler[R]) handleCompact(ctx context.Context, recorder Recorder[R], re
 		return h.handleTruncate(ctx, recorder, record)
 	}
 
-	recorder.Compact(key, record)
-	h.metrics.Compacted(ctx)
+	// Drop the record, accumulate dropped count
+	b.droppedCount++
 	h.metrics.Collapsed(ctx)
 	return true
+}
+
+// Flush emits synthetic records for accumulated drops and cleans up stale state.
+func (h *Handler[R]) Flush(ctx context.Context, recorder Recorder[R]) {
+	if h == nil {
+		return
+	}
+	now := h.now()
+
+	// Flush and cleanup truncated slots that are past their window.
+	for slot, b := range h.truncated {
+		if now.After(b.windowEnd) {
+			recorder.Truncate(slot, b.count, b.record, b.windowStart, b.windowEnd)
+			delete(h.truncated, slot)
+		}
+	}
+
+	// Flush compacted records and cleanup stale buckets
+	var next *list.Element
+	for e := h.order.Front(); e != nil; e = next {
+		next = e.Next()
+		b := e.Value.(*bucket[R])
+
+		// Emit if we dropped anything
+		if b.droppedCount > 0 {
+			recorder.Compact(b.key, b.droppedCount, b.record)
+			h.metrics.Compacted(ctx)
+			b.droppedCount = 0
+		}
+
+		// Delete stale buckets
+		if h.window > 0 && now.Sub(b.lastUpdated) > h.window {
+			delete(h.buckets, b.key)
+			h.order.Remove(e)
+		}
+	}
 }

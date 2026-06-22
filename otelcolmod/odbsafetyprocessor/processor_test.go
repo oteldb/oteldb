@@ -56,19 +56,22 @@ func TestLogsProcessorDropExcess(t *testing.T) {
 
 func TestLogsProcessorSampleExcess(t *testing.T) {
 	tests := []struct {
-		name       string
-		sampleRate float64
-		wantBodies []string
+		name             string
+		sampleFirst      int
+		sampleThereafter int
+		wantBodies       []string
 	}{
 		{
-			name:       "drop sampled-out excess",
-			sampleRate: 0,
-			wantBodies: []string{"a", "b"},
+			name:             "drop sampled-out excess",
+			sampleFirst:      0,
+			sampleThereafter: 0,
+			wantBodies:       []string{"a", "b"},
 		},
 		{
-			name:       "keep sampled-in excess",
-			sampleRate: 1,
-			wantBodies: []string{"a", "b", "c", "d"},
+			name:             "keep sampled-in excess",
+			sampleFirst:      100,
+			sampleThereafter: 1,
+			wantBodies:       []string{"a", "b", "c", "d"},
 		},
 	}
 
@@ -80,7 +83,8 @@ func TestLogsProcessorSampleExcess(t *testing.T) {
 				Config: odbsafety.Config{
 					MaxRatePerSecond: 2,
 					OnExcess:         odbsafety.ModeSample,
-					SampleRate:       tt.sampleRate,
+					SampleFirst:      tt.sampleFirst,
+					SampleThereafter: tt.sampleThereafter,
 				},
 			}, sink, now)
 
@@ -102,6 +106,12 @@ func TestLogsProcessorTruncateExcess(t *testing.T) {
 	}, sink, now)
 
 	require.NoError(t, p.ConsumeLogs(context.Background(), newLogs("a", "b", "c")))
+
+	// Advance time to trigger flush
+	p.now = func() time.Time { return time.Unix(200, 0) }
+	p.handler.SetNow(p.now)
+	require.NoError(t, p.ConsumeLogs(context.Background(), newLogs())) // empty logs just to trigger flush
+
 	records := sinkRecords(t, sink)
 	requireBodies(t, records, []string{"a", "<output is truncated>"})
 	attrs := records[1].Attributes()
@@ -113,6 +123,30 @@ func TestLogsProcessorTruncateExcess(t *testing.T) {
 	require.Equal(t, "1970-01-01T00:01:30Z", windowStart.Str())
 }
 
+// TestLogsProcessorFlushOnEmptyBatch verifies that flushing pending
+// synthetic records doesn't panic when a ConsumeLogs call carries no
+// ResourceLogs/ScopeLogs to host them.
+func TestLogsProcessorFlushOnEmptyBatch(t *testing.T) {
+	now := time.Unix(100, 0)
+	sink := &consumertest.LogsSink{}
+	p := newTestProcessor(t, &Config{
+		Config: odbsafety.Config{
+			MaxRatePerSecond: 1,
+			OnExcess:         odbsafety.ModeTruncate,
+			CompactWindow:    30 * time.Second,
+		},
+	}, sink, now)
+
+	require.NoError(t, p.ConsumeLogs(context.Background(), newLogs("a", "b", "c")))
+
+	p.now = func() time.Time { return time.Unix(200, 0) }
+	p.handler.SetNow(p.now)
+	require.NoError(t, p.ConsumeLogs(context.Background(), plog.NewLogs()))
+
+	records := sinkRecords(t, sink)
+	requireBodies(t, records, []string{"a", "<output is truncated>"})
+}
+
 func TestLogsProcessorCompactExcessByBody(t *testing.T) {
 	now := time.Unix(100, 0)
 	sink := &consumertest.LogsSink{}
@@ -120,7 +154,8 @@ func TestLogsProcessorCompactExcessByBody(t *testing.T) {
 		Config: odbsafety.Config{
 			MaxRatePerSecond:  1,
 			OnExcess:          odbsafety.ModeCompact,
-			SampleRate:        0,
+			SampleFirst:       0,
+			SampleThereafter:  0,
 			CompactWindow:     30 * time.Second,
 			CompactThreshold:  2,
 			CompactMaxBuckets: 100,
@@ -128,6 +163,12 @@ func TestLogsProcessorCompactExcessByBody(t *testing.T) {
 	}, sink, now)
 
 	require.NoError(t, p.ConsumeLogs(context.Background(), newLogs("same", "same", "same", "same")))
+
+	// Advance time to trigger flush
+	p.now = func() time.Time { return time.Unix(200, 0) }
+	p.handler.SetNow(p.now)
+	require.NoError(t, p.ConsumeLogs(context.Background(), newLogs()))
+
 	records := sinkRecords(t, sink)
 	requireBodies(t, records, []string{"same", "same", "same"})
 	collapsed, ok := records[2].Attributes().Get("oteldb.collapsed_count")
@@ -142,7 +183,8 @@ func TestLogsProcessorCompactKeyFields(t *testing.T) {
 		Config: odbsafety.Config{
 			MaxRatePerSecond:  1,
 			OnExcess:          odbsafety.ModeCompact,
-			SampleRate:        0,
+			SampleFirst:       0,
+			SampleThereafter:  0,
 			CompactWindow:     30 * time.Second,
 			CompactThreshold:  1,
 			CompactMaxBuckets: 100,
@@ -157,6 +199,12 @@ func TestLogsProcessorCompactKeyFields(t *testing.T) {
 	records[2].Attributes().PutStr("route", "/b")
 
 	require.NoError(t, p.ConsumeLogs(context.Background(), ld))
+
+	// Advance time to trigger flush
+	p.now = func() time.Time { return time.Unix(200, 0) }
+	p.handler.SetNow(p.now)
+	require.NoError(t, p.ConsumeLogs(context.Background(), newLogs()))
+
 	got := sinkRecords(t, sink)
 	require.Len(t, got, 3)
 	_, ok := got[0].Attributes().Get("oteldb.collapsed_count")
@@ -189,7 +237,8 @@ func TestLogsProcessorCompactEscalatesToTruncate(t *testing.T) {
 		Config: odbsafety.Config{
 			MaxRatePerSecond:  1,
 			OnExcess:          odbsafety.ModeCompact,
-			SampleRate:        0,
+			SampleFirst:       0,
+			SampleThereafter:  0,
 			CompactWindow:     30 * time.Second,
 			CompactThreshold:  2,
 			CompactMaxBuckets: 100,
@@ -200,14 +249,20 @@ func TestLogsProcessorCompactEscalatesToTruncate(t *testing.T) {
 	// "same" ×5: entry 1 passes; entries 2-5 are excess.
 	// compact handler: count=1 passes, count=2 compacts, count=3 compacts, count=4 truncates.
 	require.NoError(t, p.ConsumeLogs(context.Background(), newLogs("same", "same", "same", "same", "same")))
+
+	// Advance time to trigger flush
+	p.now = func() time.Time { return time.Unix(200, 0) }
+	p.handler.SetNow(p.now)
+	require.NoError(t, p.ConsumeLogs(context.Background(), newLogs()))
+
 	records := sinkRecords(t, sink)
-	requireBodies(t, records, []string{"same", "same", "same", "<output is truncated>"})
-	collapsed, ok := records[2].Attributes().Get("oteldb.collapsed_count")
-	require.True(t, ok)
-	require.Equal(t, int64(2), collapsed.Int())
-	truncated, ok := records[3].Attributes().Get("oteldb.truncated_count")
+	requireBodies(t, records, []string{"same", "same", "<output is truncated>", "same"})
+	truncated, ok := records[2].Attributes().Get("oteldb.truncated_count")
 	require.True(t, ok)
 	require.Equal(t, int64(1), truncated.Int())
+	collapsed, ok := records[3].Attributes().Get("oteldb.collapsed_count")
+	require.True(t, ok)
+	require.Equal(t, int64(2), collapsed.Int())
 }
 
 func TestLogsProcessorCompactLRUOverflow(t *testing.T) {
@@ -217,7 +272,8 @@ func TestLogsProcessorCompactLRUOverflow(t *testing.T) {
 		Config: odbsafety.Config{
 			MaxRatePerSecond:  1,
 			OnExcess:          odbsafety.ModeCompact,
-			SampleRate:        0, // drop on LRU overflow
+			SampleFirst:       0,
+			SampleThereafter:  0,
 			CompactWindow:     30 * time.Second,
 			CompactThreshold:  100, // high, so compact never fires
 			CompactMaxBuckets: 2,
@@ -281,7 +337,7 @@ func BenchmarkLogsProcessor(b *testing.B) {
 			for b.Loop() {
 				if bm.name != "disabled" {
 					p.windowStart = now
-					p.windowCount = p.maxRatePerSecond
+					p.windowCount = p.cfg.SoftLimit()
 				}
 				ld := newLogs("same")
 				if err := p.ConsumeLogs(ctx, ld); err != nil {
@@ -326,6 +382,12 @@ func firstRecord(ld plog.Logs) plog.LogRecord {
 }
 
 func allRecords(ld plog.Logs) []plog.LogRecord {
+	if ld.ResourceLogs().Len() == 0 {
+		return nil
+	}
+	if ld.ResourceLogs().At(0).ScopeLogs().Len() == 0 {
+		return nil
+	}
 	records := ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords()
 	out := make([]plog.LogRecord, 0, records.Len())
 	for i := 0; i < records.Len(); i++ {
@@ -337,8 +399,11 @@ func allRecords(ld plog.Logs) []plog.LogRecord {
 func sinkRecords(t *testing.T, sink *consumertest.LogsSink) []plog.LogRecord {
 	t.Helper()
 	logs := sink.AllLogs()
-	require.Len(t, logs, 1)
-	return allRecords(logs[0])
+	var out []plog.LogRecord
+	for _, l := range logs {
+		out = append(out, allRecords(l)...)
+	}
+	return out
 }
 
 func requireBodies(t *testing.T, records []plog.LogRecord, want []string) {
