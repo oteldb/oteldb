@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -31,22 +30,8 @@ type Transformer struct {
 
 var _ operator.Operator = (*Transformer)(nil)
 
-func newSampler(first, thereafter int) func() bool {
-	var count atomic.Uint64
-	return func() bool {
-		c := count.Add(1)
-		if first > 0 && c <= uint64(first) {
-			return true
-		}
-		if thereafter <= 0 {
-			return false
-		}
-		return c%uint64(thereafter) == 0
-	}
-}
-
 func newTransformer(base helper.TransformerOperator, cfg Config) *Transformer {
-	sampler := newSampler(cfg.SampleFirst, cfg.SampleThereafter)
+	sampler := safetyconfig.NewSampler(cfg.Config)
 	return &Transformer{
 		TransformerOperator: base,
 		cfg:                 cfg.Config,

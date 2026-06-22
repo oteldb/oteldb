@@ -2,7 +2,6 @@ package odbsafetyprocessor
 
 import (
 	"context"
-	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
@@ -43,17 +42,7 @@ func newLogsProcessor(settings processor.Settings, cfg *Config, next consumer.Lo
 		now:          time.Now,
 	}
 
-	var count atomic.Uint64
-	sampler := func() bool {
-		c := count.Add(1)
-		if cfg.SampleFirst > 0 && c <= uint64(cfg.SampleFirst) {
-			return true
-		}
-		if cfg.SampleThereafter <= 0 {
-			return false
-		}
-		return c%uint64(cfg.SampleThereafter) == 0
-	}
+	sampler := odbsafety.NewSampler(cfg.Config)
 	p.handler = odbsafety.NewHandler[plog.LogRecord](cfg.Config, sampler, p.metrics)
 	return p
 }

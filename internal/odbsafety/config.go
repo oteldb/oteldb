@@ -33,7 +33,9 @@ type Config struct {
 	OnExcess     string `mapstructure:"on_excess"`
 	HardOnExcess string `mapstructure:"hard_on_excess"`
 
-	SampleRate       float64 `mapstructure:"sample_rate"` // Deprecated
+	// SampleRate is deprecated in favor of SampleFirst/SampleThereafter. It's
+	// used as a probabilistic fallback by NewSampler when both are unset.
+	SampleRate       float64 `mapstructure:"sample_rate"`
 	SampleFirst      int     `mapstructure:"sample_first"`
 	SampleThereafter int     `mapstructure:"sample_thereafter"`
 
