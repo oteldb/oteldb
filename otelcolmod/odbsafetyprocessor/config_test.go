@@ -17,11 +17,11 @@ func TestConfigValidate(t *testing.T) {
 			name: "default",
 		},
 		{
-			name: "negative rate",
+			name: "negative soft rate",
 			mutate: func(c *Config) {
-				c.MaxRatePerSecond = -1
+				c.SoftMaxRatePerSecond = -1
 			},
-			wantErr: "max_rate_per_second must be non-negative, got -1",
+			wantErr: "soft_max_rate_per_second must be non-negative, got -1",
 		},
 		{
 			name: "unknown mode",
@@ -31,11 +31,11 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: `on_excess must be one of consume, drop, sample, compact, truncate, got "explode"`,
 		},
 		{
-			name: "invalid sample rate",
+			name: "negative sample first",
 			mutate: func(c *Config) {
-				c.SampleRate = 1.1
+				c.SampleFirst = -1
 			},
-			wantErr: "sample_rate must be in [0.0, 1.0], got 1.100000",
+			wantErr: "sample_first must be non-negative, got -1",
 		},
 		{
 			name: "truncate requires window",

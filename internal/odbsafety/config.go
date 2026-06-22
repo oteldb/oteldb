@@ -26,25 +26,46 @@ const (
 
 // Config defines shared log safety options.
 type Config struct {
-	MaxRatePerSecond     int `mapstructure:"max_rate_per_second"` // Deprecated, use Soft/Hard
+	// SoftMaxRatePerSecond is the rate above which Mode's excess handling
+	// engages. See SoftLimit.
 	SoftMaxRatePerSecond int `mapstructure:"soft_max_rate_per_second"`
+	// HardMaxRatePerSecond is the rate above which HardMode's excess handling
+	// engages, escalating past the soft limit. See HardLimit.
 	HardMaxRatePerSecond int `mapstructure:"hard_max_rate_per_second"`
 
-	OnExcess     string `mapstructure:"on_excess"`
+	// OnExcess is the excess handling mode applied once the soft limit is
+	// exceeded. See Mode.
+	OnExcess string `mapstructure:"on_excess"`
+	// HardOnExcess is the excess handling mode applied once the hard limit is
+	// exceeded, overriding OnExcess. See HardMode.
 	HardOnExcess string `mapstructure:"hard_on_excess"`
 
-	// SampleRate is deprecated in favor of SampleFirst/SampleThereafter. It's
-	// used as a probabilistic fallback by NewSampler when both are unset.
-	SampleRate       float64 `mapstructure:"sample_rate"`
-	SampleFirst      int     `mapstructure:"sample_first"`
-	SampleThereafter int     `mapstructure:"sample_thereafter"`
+	// SampleFirst is the number of occurrences logged unconditionally before
+	// SampleThereafter-based sampling kicks in, for ModeSample.
+	SampleFirst int `mapstructure:"sample_first"`
+	// SampleThereafter samples 1-in-N occurrences once SampleFirst has been
+	// exceeded, for ModeSample.
+	SampleThereafter int `mapstructure:"sample_thereafter"`
 
-	CompactWindow     time.Duration `mapstructure:"compact_window"`
-	CompactThreshold  int           `mapstructure:"compact_threshold"`
-	CompactMaxBuckets int           `mapstructure:"compact_max_buckets"`
-	CompactKeyFields  []string      `mapstructure:"compact_key_fields"`
-	TruncateThreshold int           `mapstructure:"truncate_threshold"`
+	// CompactWindow is the duration each compaction/truncation bucket covers
+	// before it's flushed, for ModeCompact and ModeTruncate.
+	CompactWindow time.Duration `mapstructure:"compact_window"`
+	// CompactThreshold is the minimum number of records collapsed into a
+	// bucket before it emits a synthetic "N collapsed" record, for ModeCompact.
+	CompactThreshold int `mapstructure:"compact_threshold"`
+	// CompactMaxBuckets caps the number of concurrently tracked compaction
+	// buckets, bounding memory use, for ModeCompact.
+	CompactMaxBuckets int `mapstructure:"compact_max_buckets"`
+	// CompactKeyFields are the record fields used to group records into the
+	// same compaction bucket. If empty, records are keyed by body alone.
+	CompactKeyFields []string `mapstructure:"compact_key_fields"`
+	// TruncateThreshold is the minimum number of records suppressed in a
+	// window before a synthetic "N suppressed" record is emitted, for
+	// ModeTruncate.
+	TruncateThreshold int `mapstructure:"truncate_threshold"`
 
+	// RedactFields are record attribute keys whose values are replaced with
+	// "<redacted>" before excess handling runs.
 	RedactFields []string `mapstructure:"redact_fields"`
 }
 
@@ -55,7 +76,6 @@ func DefaultConfig() Config {
 		HardOnExcess:      ModeDrop,
 		SampleFirst:       100,
 		SampleThereafter:  100,
-		SampleRate:        0.01,
 		CompactWindow:     30 * time.Second,
 		CompactThreshold:  100,
 		CompactMaxBuckets: 10000,
@@ -64,9 +84,6 @@ func DefaultConfig() Config {
 
 // Validate validates shared log safety options.
 func (c Config) Validate() error {
-	if c.MaxRatePerSecond < 0 {
-		return errors.Errorf("max_rate_per_second must be non-negative, got %d", c.MaxRatePerSecond)
-	}
 	if c.SoftMaxRatePerSecond < 0 {
 		return errors.Errorf("soft_max_rate_per_second must be non-negative, got %d", c.SoftMaxRatePerSecond)
 	}
@@ -89,9 +106,6 @@ func (c Config) Validate() error {
 		return err
 	}
 
-	if c.SampleRate < 0 || c.SampleRate > 1 {
-		return errors.Errorf("sample_rate must be in [0.0, 1.0], got %f", c.SampleRate)
-	}
 	if c.SampleFirst < 0 {
 		return errors.Errorf("sample_first must be non-negative, got %d", c.SampleFirst)
 	}
@@ -140,10 +154,7 @@ func (c Config) HardMode() string {
 
 // SoftLimit returns the effective soft rate limit.
 func (c Config) SoftLimit() int {
-	if c.SoftMaxRatePerSecond > 0 {
-		return c.SoftMaxRatePerSecond
-	}
-	return c.MaxRatePerSecond
+	return c.SoftMaxRatePerSecond
 }
 
 // HardLimit returns the effective hard rate limit.

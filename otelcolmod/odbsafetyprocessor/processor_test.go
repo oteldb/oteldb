@@ -21,9 +21,9 @@ func TestLogsProcessorRedactsBelowLimit(t *testing.T) {
 	sink := &consumertest.LogsSink{}
 	p := newTestProcessor(t, &Config{
 		Config: odbsafety.Config{
-			MaxRatePerSecond: 10,
-			OnExcess:         odbsafety.ModeDrop,
-			RedactFields:     []string{"password"},
+			SoftMaxRatePerSecond: 10,
+			OnExcess:             odbsafety.ModeDrop,
+			RedactFields:         []string{"password"},
 		},
 	}, sink, now)
 
@@ -44,8 +44,8 @@ func TestLogsProcessorDropExcess(t *testing.T) {
 	sink := &consumertest.LogsSink{}
 	p := newTestProcessor(t, &Config{
 		Config: odbsafety.Config{
-			MaxRatePerSecond: 2,
-			OnExcess:         odbsafety.ModeDrop,
+			SoftMaxRatePerSecond: 2,
+			OnExcess:             odbsafety.ModeDrop,
 		},
 	}, sink, now)
 
@@ -81,10 +81,10 @@ func TestLogsProcessorSampleExcess(t *testing.T) {
 			sink := &consumertest.LogsSink{}
 			p := newTestProcessor(t, &Config{
 				Config: odbsafety.Config{
-					MaxRatePerSecond: 2,
-					OnExcess:         odbsafety.ModeSample,
-					SampleFirst:      tt.sampleFirst,
-					SampleThereafter: tt.sampleThereafter,
+					SoftMaxRatePerSecond: 2,
+					OnExcess:             odbsafety.ModeSample,
+					SampleFirst:          tt.sampleFirst,
+					SampleThereafter:     tt.sampleThereafter,
 				},
 			}, sink, now)
 
@@ -99,9 +99,9 @@ func TestLogsProcessorTruncateExcess(t *testing.T) {
 	sink := &consumertest.LogsSink{}
 	p := newTestProcessor(t, &Config{
 		Config: odbsafety.Config{
-			MaxRatePerSecond: 1,
-			OnExcess:         odbsafety.ModeTruncate,
-			CompactWindow:    30 * time.Second,
+			SoftMaxRatePerSecond: 1,
+			OnExcess:             odbsafety.ModeTruncate,
+			CompactWindow:        30 * time.Second,
 		},
 	}, sink, now)
 
@@ -131,9 +131,9 @@ func TestLogsProcessorFlushOnEmptyBatch(t *testing.T) {
 	sink := &consumertest.LogsSink{}
 	p := newTestProcessor(t, &Config{
 		Config: odbsafety.Config{
-			MaxRatePerSecond: 1,
-			OnExcess:         odbsafety.ModeTruncate,
-			CompactWindow:    30 * time.Second,
+			SoftMaxRatePerSecond: 1,
+			OnExcess:             odbsafety.ModeTruncate,
+			CompactWindow:        30 * time.Second,
 		},
 	}, sink, now)
 
@@ -152,13 +152,13 @@ func TestLogsProcessorCompactExcessByBody(t *testing.T) {
 	sink := &consumertest.LogsSink{}
 	p := newTestProcessor(t, &Config{
 		Config: odbsafety.Config{
-			MaxRatePerSecond:  1,
-			OnExcess:          odbsafety.ModeCompact,
-			SampleFirst:       0,
-			SampleThereafter:  0,
-			CompactWindow:     30 * time.Second,
-			CompactThreshold:  2,
-			CompactMaxBuckets: 100,
+			SoftMaxRatePerSecond: 1,
+			OnExcess:             odbsafety.ModeCompact,
+			SampleFirst:          0,
+			SampleThereafter:     0,
+			CompactWindow:        30 * time.Second,
+			CompactThreshold:     2,
+			CompactMaxBuckets:    100,
 		},
 	}, sink, now)
 
@@ -181,14 +181,14 @@ func TestLogsProcessorCompactKeyFields(t *testing.T) {
 	sink := &consumertest.LogsSink{}
 	p := newTestProcessor(t, &Config{
 		Config: odbsafety.Config{
-			MaxRatePerSecond:  1,
-			OnExcess:          odbsafety.ModeCompact,
-			SampleFirst:       0,
-			SampleThereafter:  0,
-			CompactWindow:     30 * time.Second,
-			CompactThreshold:  1,
-			CompactMaxBuckets: 100,
-			CompactKeyFields:  []string{"body", "route"},
+			SoftMaxRatePerSecond: 1,
+			OnExcess:             odbsafety.ModeCompact,
+			SampleFirst:          0,
+			SampleThereafter:     0,
+			CompactWindow:        30 * time.Second,
+			CompactThreshold:     1,
+			CompactMaxBuckets:    100,
+			CompactKeyFields:     []string{"body", "route"},
 		},
 	}, sink, now)
 
@@ -221,8 +221,8 @@ func TestLogsProcessorConsumeMode(t *testing.T) {
 	sink := &consumertest.LogsSink{}
 	p := newTestProcessor(t, &Config{
 		Config: odbsafety.Config{
-			MaxRatePerSecond: 1,
-			OnExcess:         odbsafety.ModeConsume,
+			SoftMaxRatePerSecond: 1,
+			OnExcess:             odbsafety.ModeConsume,
 		},
 	}, sink, now)
 
@@ -235,14 +235,14 @@ func TestLogsProcessorCompactEscalatesToTruncate(t *testing.T) {
 	sink := &consumertest.LogsSink{}
 	p := newTestProcessor(t, &Config{
 		Config: odbsafety.Config{
-			MaxRatePerSecond:  1,
-			OnExcess:          odbsafety.ModeCompact,
-			SampleFirst:       0,
-			SampleThereafter:  0,
-			CompactWindow:     30 * time.Second,
-			CompactThreshold:  2,
-			CompactMaxBuckets: 100,
-			TruncateThreshold: 3,
+			SoftMaxRatePerSecond: 1,
+			OnExcess:             odbsafety.ModeCompact,
+			SampleFirst:          0,
+			SampleThereafter:     0,
+			CompactWindow:        30 * time.Second,
+			CompactThreshold:     2,
+			CompactMaxBuckets:    100,
+			TruncateThreshold:    3,
 		},
 	}, sink, now)
 
@@ -270,13 +270,13 @@ func TestLogsProcessorCompactLRUOverflow(t *testing.T) {
 	sink := &consumertest.LogsSink{}
 	p := newTestProcessor(t, &Config{
 		Config: odbsafety.Config{
-			MaxRatePerSecond:  1,
-			OnExcess:          odbsafety.ModeCompact,
-			SampleFirst:       0,
-			SampleThereafter:  0,
-			CompactWindow:     30 * time.Second,
-			CompactThreshold:  100, // high, so compact never fires
-			CompactMaxBuckets: 2,
+			SoftMaxRatePerSecond: 1,
+			OnExcess:             odbsafety.ModeCompact,
+			SampleFirst:          0,
+			SampleThereafter:     0,
+			CompactWindow:        30 * time.Second,
+			CompactThreshold:     100, // high, so compact never fires
+			CompactMaxBuckets:    2,
 		},
 	}, sink, now)
 
@@ -299,27 +299,26 @@ func BenchmarkLogsProcessor(b *testing.B) {
 		{
 			name: "drop-excess",
 			cfg: odbsafety.Config{
-				MaxRatePerSecond: 1,
-				OnExcess:         odbsafety.ModeDrop,
+				SoftMaxRatePerSecond: 1,
+				OnExcess:             odbsafety.ModeDrop,
 			},
 		},
 		{
 			name: "compact-excess",
 			cfg: odbsafety.Config{
-				MaxRatePerSecond:  1,
-				OnExcess:          odbsafety.ModeCompact,
-				SampleRate:        0,
-				CompactWindow:     30 * time.Second,
-				CompactThreshold:  2,
-				CompactMaxBuckets: 100,
+				SoftMaxRatePerSecond: 1,
+				OnExcess:             odbsafety.ModeCompact,
+				CompactWindow:        30 * time.Second,
+				CompactThreshold:     2,
+				CompactMaxBuckets:    100,
 			},
 		},
 		{
 			name: "truncate-excess",
 			cfg: odbsafety.Config{
-				MaxRatePerSecond: 1,
-				OnExcess:         odbsafety.ModeTruncate,
-				CompactWindow:    30 * time.Second,
+				SoftMaxRatePerSecond: 1,
+				OnExcess:             odbsafety.ModeTruncate,
+				CompactWindow:        30 * time.Second,
 			},
 		},
 	}

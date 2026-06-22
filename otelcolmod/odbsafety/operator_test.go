@@ -36,8 +36,8 @@ func TestTransformerDropExcess(t *testing.T) {
 	sink := stanzatest.NewSink()
 	transformer := newTestTransformer(t, &Config{
 		Config: safetyconfig.Config{
-			MaxRatePerSecond: 2,
-			OnExcess:         safetyconfig.ModeDrop,
+			SoftMaxRatePerSecond: 2,
+			OnExcess:             safetyconfig.ModeDrop,
 		},
 	}, sink, now)
 
@@ -50,9 +50,9 @@ func TestTransformerRedactsBelowLimit(t *testing.T) {
 	sink := stanzatest.NewSink()
 	transformer := newTestTransformer(t, &Config{
 		Config: safetyconfig.Config{
-			MaxRatePerSecond: 10,
-			OnExcess:         safetyconfig.ModeDrop,
-			RedactFields:     []string{"password"},
+			SoftMaxRatePerSecond: 10,
+			OnExcess:             safetyconfig.ModeDrop,
+			RedactFields:         []string{"password"},
 		},
 	}, sink, now)
 
@@ -67,9 +67,9 @@ func TestTransformerTruncateExcess(t *testing.T) {
 	sink := stanzatest.NewSink()
 	transformer := newTestTransformer(t, &Config{
 		Config: safetyconfig.Config{
-			MaxRatePerSecond: 1,
-			OnExcess:         safetyconfig.ModeTruncate,
-			CompactWindow:    30 * time.Second,
+			SoftMaxRatePerSecond: 1,
+			OnExcess:             safetyconfig.ModeTruncate,
+			CompactWindow:        30 * time.Second,
 		},
 	}, sink, now)
 
@@ -90,13 +90,13 @@ func TestTransformerCompactExcess(t *testing.T) {
 	sink := stanzatest.NewSink()
 	transformer := newTestTransformer(t, &Config{
 		Config: safetyconfig.Config{
-			MaxRatePerSecond:  1,
-			OnExcess:          safetyconfig.ModeCompact,
-			SampleFirst:       0,
-			SampleThereafter:  0,
-			CompactWindow:     30 * time.Second,
-			CompactThreshold:  2,
-			CompactMaxBuckets: 100,
+			SoftMaxRatePerSecond: 1,
+			OnExcess:             safetyconfig.ModeCompact,
+			SampleFirst:          0,
+			SampleThereafter:     0,
+			CompactWindow:        30 * time.Second,
+			CompactThreshold:     2,
+			CompactMaxBuckets:    100,
 		},
 	}, sink, now)
 
@@ -116,8 +116,8 @@ func TestTransformerConsumeMode(t *testing.T) {
 	sink := stanzatest.NewSink()
 	transformer := newTestTransformer(t, &Config{
 		Config: safetyconfig.Config{
-			MaxRatePerSecond: 1,
-			OnExcess:         safetyconfig.ModeConsume,
+			SoftMaxRatePerSecond: 1,
+			OnExcess:             safetyconfig.ModeConsume,
 		},
 	}, sink, now)
 
@@ -130,10 +130,10 @@ func TestTransformerSampleExcess(t *testing.T) {
 	sink := stanzatest.NewSink()
 	transformer := newTestTransformer(t, &Config{
 		Config: safetyconfig.Config{
-			MaxRatePerSecond: 2,
-			OnExcess:         safetyconfig.ModeSample,
-			SampleFirst:      0,
-			SampleThereafter: 0,
+			SoftMaxRatePerSecond: 2,
+			OnExcess:             safetyconfig.ModeSample,
+			SampleFirst:          0,
+			SampleThereafter:     0,
 		},
 	}, sink, now)
 
@@ -146,14 +146,14 @@ func TestTransformerCompactEscalatesToTruncate(t *testing.T) {
 	sink := stanzatest.NewSink()
 	transformer := newTestTransformer(t, &Config{
 		Config: safetyconfig.Config{
-			MaxRatePerSecond:  1,
-			OnExcess:          safetyconfig.ModeCompact,
-			SampleFirst:       0,
-			SampleThereafter:  0,
-			CompactWindow:     30 * time.Second,
-			CompactThreshold:  2,
-			CompactMaxBuckets: 100,
-			TruncateThreshold: 3,
+			SoftMaxRatePerSecond: 1,
+			OnExcess:             safetyconfig.ModeCompact,
+			SampleFirst:          0,
+			SampleThereafter:     0,
+			CompactWindow:        30 * time.Second,
+			CompactThreshold:     2,
+			CompactMaxBuckets:    100,
+			TruncateThreshold:    3,
 		},
 	}, sink, now)
 
@@ -176,13 +176,13 @@ func TestTransformerCompactLRUOverflow(t *testing.T) {
 	sink := stanzatest.NewSink()
 	transformer := newTestTransformer(t, &Config{
 		Config: safetyconfig.Config{
-			MaxRatePerSecond:  1,
-			OnExcess:          safetyconfig.ModeCompact,
-			SampleFirst:       0,
-			SampleThereafter:  0,
-			CompactWindow:     30 * time.Second,
-			CompactThreshold:  100, // high, so compact never fires
-			CompactMaxBuckets: 2,
+			SoftMaxRatePerSecond: 1,
+			OnExcess:             safetyconfig.ModeCompact,
+			SampleFirst:          0,
+			SampleThereafter:     0,
+			CompactWindow:        30 * time.Second,
+			CompactThreshold:     100, // high, so compact never fires
+			CompactMaxBuckets:    2,
 		},
 	}, sink, now)
 
@@ -217,28 +217,28 @@ func BenchmarkTransformerProcess(b *testing.B) {
 		{
 			name: "drop-excess",
 			cfg: safetyconfig.Config{
-				MaxRatePerSecond: 1,
-				OnExcess:         safetyconfig.ModeDrop,
+				SoftMaxRatePerSecond: 1,
+				OnExcess:             safetyconfig.ModeDrop,
 			},
 		},
 		{
 			name: "compact-excess",
 			cfg: safetyconfig.Config{
-				MaxRatePerSecond:  1,
-				OnExcess:          safetyconfig.ModeCompact,
-				SampleFirst:       0,
-				SampleThereafter:  0,
-				CompactWindow:     30 * time.Second,
-				CompactThreshold:  2,
-				CompactMaxBuckets: 100,
+				SoftMaxRatePerSecond: 1,
+				OnExcess:             safetyconfig.ModeCompact,
+				SampleFirst:          0,
+				SampleThereafter:     0,
+				CompactWindow:        30 * time.Second,
+				CompactThreshold:     2,
+				CompactMaxBuckets:    100,
 			},
 		},
 		{
 			name: "truncate-excess",
 			cfg: safetyconfig.Config{
-				MaxRatePerSecond: 1,
-				OnExcess:         safetyconfig.ModeTruncate,
-				CompactWindow:    30 * time.Second,
+				SoftMaxRatePerSecond: 1,
+				OnExcess:             safetyconfig.ModeTruncate,
+				CompactWindow:        30 * time.Second,
 			},
 		},
 	}
