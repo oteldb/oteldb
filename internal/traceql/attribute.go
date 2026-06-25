@@ -62,7 +62,7 @@ func (s Attribute) String() string {
 	case SpanID:
 		return "span:id"
 	case ParentID:
-		return "span:parentId"
+		return "span:parentID"
 	case TraceID:
 		return "trace:id"
 	case EventName:
@@ -70,9 +70,9 @@ func (s Attribute) String() string {
 	case EventTimeSinceStart:
 		return "event:timeSinceStart"
 	case LinkTraceID:
-		return "link:traceId"
+		return "link:traceID"
 	case LinkSpanID:
-		return "link:spanId"
+		return "link:spanID"
 	case InstrumentationName:
 		return "instrumentation:name"
 	case InstrumentationVersion:
