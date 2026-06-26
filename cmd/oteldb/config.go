@@ -64,6 +64,7 @@ type Config struct {
 	Tempo       TempoConfig       `json:"tempo" yaml:"tempo"`
 	Prometheus  PrometheusConfig  `json:"prometheus" yaml:"prometheus"`
 	Loki        LokiConfig        `json:"loki" yaml:"loki"`
+	Pyroscope   PyroscopeConfig   `json:"pyroscope" yaml:"pyroscope"`
 	HealthCheck HealthCheckConfig `json:"health_check" yaml:"health_check"`
 
 	// Auth is global auth config.
@@ -163,6 +164,18 @@ type TempoConfig struct {
 func (cfg *TempoConfig) setDefaults() {
 	if cfg.Bind == "" {
 		cfg.Bind = ":3200"
+	}
+}
+
+// PyroscopeConfig is Pyroscope API config.
+type PyroscopeConfig struct {
+	Bind string       `json:"bind" yaml:"bind"`
+	Auth []AuthConfig `json:"auth" yaml:"auth"`
+}
+
+func (cfg *PyroscopeConfig) setDefaults() {
+	if cfg.Bind == "" {
+		cfg.Bind = ":4040"
 	}
 }
 
