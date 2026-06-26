@@ -61,6 +61,41 @@ docker compose -f dev/local/ch/docker-compose.yml up -d
 
 You can open Grafana dashboard at http://localhost:3000/d/oteldb/oteldb
 
+## Embedded storage
+
+oteldb can also run on the embedded [storage engine][storage] instead of ClickHouse. The engine is
+in-process and requires no external dependencies, which makes it convenient for local development,
+testing, and small single-node deployments. It serves all signals: metrics (PromQL), traces
+(TraceQL), logs (LogQL) and profiles (Pyroscope).
+
+[storage]: https://github.com/oteldb/storage
+
+Enable it for every signal with a single flag:
+
+```shell
+oteldb --embedded
+```
+
+This is shorthand for setting each signal's backend to `storage` in the config. You can also enable
+it per signal, and switch the engine from the default ephemeral in-memory store to an on-disk one:
+
+```yaml
+# oteldb.yml
+metrics_backend: storage
+traces_backend: storage
+logs_backend: storage
+profiles_backend: storage
+
+storage:
+  backend: file       # "memory" (default, ephemeral) or "file"
+  dir: ./oteldb-data  # data directory for the file backend
+  flush_interval: 1m  # max age of unflushed head data before it is flushed to a part
+```
+
+Any signal left unset (or set to `clickhouse`) keeps using ClickHouse, so the two backends can be
+mixed. Profiles have no ClickHouse implementation and are served only when `profiles_backend` is
+`storage`.
+
 ## License
 
 Apache License 2.0, see [LICENSE](./LICENSE).

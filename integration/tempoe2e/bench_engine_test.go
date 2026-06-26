@@ -13,7 +13,7 @@ import (
 func BenchmarkTraceQL(b *testing.B) {
 	ctx := context.Background()
 
-	set, err := readBatchSet("_testdata/traces.json")
+	set, err := readBatchSet()
 	require.NoError(b, err)
 
 	b.ReportAllocs()

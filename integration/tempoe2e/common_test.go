@@ -29,8 +29,8 @@ import (
 	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
-func readBatchSet(p string) (s tempoe2e.BatchSet, _ error) {
-	f, err := os.Open(p)
+func readBatchSet() (s tempoe2e.BatchSet, _ error) {
+	f, err := os.Open("_testdata/traces.json")
 	if err != nil {
 		return s, err
 	}
@@ -72,7 +72,7 @@ func setupDB(
 }
 
 func loadTestData(ctx context.Context, t *testing.T, inserter tracestorage.Inserter) tempoe2e.BatchSet {
-	set, err := readBatchSet("_testdata/traces.json")
+	set, err := readBatchSet()
 	require.NoError(t, err)
 	require.NotEmpty(t, set.Batches)
 	require.NotEmpty(t, set.Tags)

@@ -24,7 +24,7 @@ func (*noopClickhouse) Ping(context.Context) error         { return nil }
 func BenchmarkInserterTraces(b *testing.B) {
 	ctx := context.Background()
 
-	set, err := readBatchSet("_testdata/traces.json")
+	set, err := readBatchSet()
 	require.NoError(b, err)
 
 	i, err := chstorage.NewInserter(new(noopClickhouse), chstorage.InserterOptions{

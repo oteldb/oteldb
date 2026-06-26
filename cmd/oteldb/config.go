@@ -112,6 +112,16 @@ func (cfg *StorageConfig) setDefaults() {
 	}
 }
 
+// useEmbeddedStorage routes every signal to the embedded storage engine. It is the one-liner
+// behind the --embedded flag, equivalent to setting metrics_backend/traces_backend/logs_backend/
+// profiles_backend all to "storage" in the config.
+func (cfg *Config) useEmbeddedStorage() {
+	cfg.MetricsBackend = MetricsBackendStorage
+	cfg.TracesBackend = MetricsBackendStorage
+	cfg.LogsBackend = MetricsBackendStorage
+	cfg.ProfilesBackend = MetricsBackendStorage
+}
+
 // usesStorageBackend reports whether any signal is served by the embedded storage engine.
 func (cfg *Config) usesStorageBackend() bool {
 	return cfg.MetricsBackend == MetricsBackendStorage ||
