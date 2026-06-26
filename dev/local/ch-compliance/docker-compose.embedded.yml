@@ -1,0 +1,39 @@
+# PromQL compliance against oteldb running on the embedded storage engine (`--embedded`).
+# Same setup as docker-compose.ci.yml but without ClickHouse: oteldb serves and ingests metrics
+# entirely in-process. Prometheus (reference target) scrapes the demo services and remote-writes
+# the same samples into oteldb.
+version: "3"
+
+services:
+  oteldb:
+    image: ghcr.io/oteldb/oteldb
+    build:
+      context: ../../../
+      dockerfile: ./dev/deploy/deploy.Dockerfile
+    command:
+      - --embedded
+    environment:
+      - OTEL_LOG_LEVEL=info
+      - OTEL_TRACES_EXPORTER=none
+      - OTEL_METRICS_EXPORTER=none
+      - OTEL_LOGS_EXPORTER=stdout
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=go-faster.oteldb
+    ports:
+      - "9090:9090"
+
+  prometheus:
+    image: "prom/prometheus:v3.4.1"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - "./prometheus.yml:/etc/prometheus/prometheus.yml"
+    ports:
+      - "9091:9090"
+    restart: unless-stopped
+
+  demo-1:
+    image: "ghcr.io/go-faster/prometheus-demo-service"
+  demo-2:
+    image: "ghcr.io/go-faster/prometheus-demo-service"
+  demo-3:
+    image: "ghcr.io/go-faster/prometheus-demo-service"

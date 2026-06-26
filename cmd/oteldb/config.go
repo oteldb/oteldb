@@ -112,6 +112,26 @@ func (cfg *StorageConfig) setDefaults() {
 	}
 }
 
+// useEmbeddedStorage routes every signal to the embedded storage engine. It is the one-liner
+// behind the --embedded flag, equivalent to setting metrics_backend/traces_backend/logs_backend/
+// profiles_backend all to "storage" in the config.
+func (cfg *Config) useEmbeddedStorage() {
+	cfg.MetricsBackend = MetricsBackendStorage
+	cfg.TracesBackend = MetricsBackendStorage
+	cfg.LogsBackend = MetricsBackendStorage
+	cfg.ProfilesBackend = MetricsBackendStorage
+}
+
+// needsClickHouse reports whether any queryable signal is still served by ClickHouse and therefore
+// the ClickHouse storage (including the zero-config embedded ClickHouse) must be started. Profiles
+// are excluded because they have no ClickHouse implementation. When this returns false (e.g. under
+// --embedded), ClickHouse is skipped entirely and every signal is served from the embedded engine.
+func (cfg *Config) needsClickHouse() bool {
+	return cfg.MetricsBackend != MetricsBackendStorage ||
+		cfg.TracesBackend != MetricsBackendStorage ||
+		cfg.LogsBackend != MetricsBackendStorage
+}
+
 // usesStorageBackend reports whether any signal is served by the embedded storage engine.
 func (cfg *Config) usesStorageBackend() bool {
 	return cfg.MetricsBackend == MetricsBackendStorage ||

@@ -1,0 +1,168 @@
+name: "Storage Compliance"
+
+# End-to-end PromQL/LogQL compliance for oteldb running on the embedded storage engine
+# (`--embedded`, no ClickHouse). Mirrors compliance.yml but points the compliance testers at an
+# embedded oteldb. PromQL is fully compatible (100%, 537/537) once the volatile demo gauge is frozen
+# before the comparison (see the Freeze dataset step), and is gated at 100%. LogQL ingestion is wired
+# via otelcol.embedded.yml (hoists Loki labels to resource
+# attributes so the embedded backend can select streams); the embedded LogQL engine is far less
+# complete, so it is gated at a 25% floor (~28% locally) to catch regressions while it matures.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+
+env:
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: read
+
+jobs:
+  PromQL:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Docker log in
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/checkout@v7
+
+      - name: Install Task
+        uses: go-task/setup-task@v2
+
+      - name: Build binaries
+        run: task build-deploy
+
+      - name: Start
+        working-directory: dev/local/ch-compliance
+        run: docker compose -f docker-compose.embedded.yml up -d --build --force-recreate
+
+      - name: Wait
+        working-directory: dev/local/ch-compliance
+        run: go run ./cmd/compliance-wait -wait 30s
+
+      # Freeze the dataset before comparing. demo_memory_usage_bytes is a gauge the demo services
+      # rewrite every scrape, so a query that reaches the freshest sample (e.g. negative-offset
+      # queries, whose eval time is shifted into the future) can read a different value in the
+      # reference vs the test backend simply because the two queries are not perfectly simultaneous.
+      # Stopping the generators halts new samples; restarting Prometheus drops the now-down targets
+      # without inserting staleness markers, so it carries the last real samples forward exactly as
+      # oteldb does. Both backends then evaluate identical, settled data and agree on every query.
+      - name: Freeze dataset
+        working-directory: dev/local/ch-compliance
+        run: |
+          docker compose -f docker-compose.embedded.yml stop demo-1 demo-2 demo-3
+          docker compose -f docker-compose.embedded.yml restart prometheus
+          go run ./cmd/compliance-wait -wait 15s
+
+      - name: Run
+        working-directory: dev/local/ch-compliance
+        run: |
+          go run github.com/oteldb/oteldb/cmd/promql-compliance-tester \
+          -config-file promql-test-queries.yml -config-file test-oteldb.yml \
+          -output-format json \
+          -end 1m -range 1m > result.embedded.json || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: result.embedded.promql.json
+          path: dev/local/ch-compliance/result.embedded.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Verify
+        working-directory: dev/local/ch-compliance
+        run: go run ./cmd/compliance-verify --target 100.00 result.embedded.json
+
+      - name: Dump oteldb logs
+        if: ${{ always() }}
+        working-directory: dev/local/ch-compliance
+        run: docker compose -f docker-compose.embedded.yml logs oteldb
+
+      - name: Cleanup
+        if: ${{ ! cancelled() }}
+        working-directory: dev/local/ch-compliance
+        run: docker compose -f docker-compose.embedded.yml down --remove-orphans --volumes --timeout 10
+
+  LogQL:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Docker log in
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/checkout@v7
+
+      - name: Install Task
+        uses: go-task/setup-task@v2
+
+      - name: Build binaries
+        run: task build-deploy
+
+      - name: Start
+        working-directory: dev/local/ch-logql-compliance
+        run: docker compose -f docker-compose.embedded.yml up -d --build --force-recreate
+
+      # oteldb ingests the pushed logs (docker-compose.embedded.yml uses otelcol.embedded.yml to
+      # hoist Loki labels into resource attributes, which the embedded backend uses for stream
+      # selection). -skip-reference-errors records queries the reference Loki rejects (e.g. the
+      # experimental rate_counter, which intermittently returns HTTP 400 from Loki 3.0.0) as
+      # unsupported instead of aborting the run. The embedded LogQL engine is far less complete than
+      # the ClickHouse backend, so the score is much lower (~28% locally); gate at a 25% floor to
+      # catch regressions, and ratchet up as the embedded LogQL engine gains coverage.
+      - name: Run
+        working-directory: dev/local/ch-logql-compliance
+        run: |
+          go run github.com/oteldb/oteldb/cmd/logql-compliance-tester \
+          -end 1m -range 1m \
+          -config-file logql-test-queries.yml -config-file test-oteldb.yml \
+          -output-format json -output-file result.embedded.json \
+          -output-unsupported \
+          -query-parallelism 4 \
+          -skip-reference-errors \
+          -target 25.00
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: result.embedded.logql.json
+          path: dev/local/ch-logql-compliance/result.embedded.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Dump oteldb logs
+        if: ${{ always() }}
+        working-directory: dev/local/ch-logql-compliance
+        run: docker compose -f docker-compose.embedded.yml logs oteldb
+
+      - name: Cleanup
+        if: ${{ ! cancelled() }}
+        working-directory: dev/local/ch-logql-compliance
+        run: docker compose -f docker-compose.embedded.yml down --remove-orphans --volumes --timeout 10

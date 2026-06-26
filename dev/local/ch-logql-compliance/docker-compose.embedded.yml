@@ -1,0 +1,45 @@
+# LogQL compliance against oteldb running on the embedded storage engine (`--embedded`).
+# Same setup as docker-compose.ci.yml but without ClickHouse: oteldb serves and ingests logs
+# entirely in-process. otelcol receives logs over the Loki protocol and forwards them to both Loki
+# (reference target) and oteldb (test target) over OTLP.
+version: "3"
+
+services:
+  oteldb:
+    image: ghcr.io/oteldb/oteldb
+    build:
+      context: ../../../
+      dockerfile: ./dev/deploy/deploy.Dockerfile
+    command:
+      - --embedded
+    environment:
+      - OTEL_LOG_LEVEL=info
+      - OTEL_TRACES_EXPORTER=none
+      - OTEL_METRICS_EXPORTER=none
+      - OTEL_LOGS_EXPORTER=stdout
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=go-faster.oteldb
+    ports:
+      - "3100:3100"
+
+  otelcol:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:latest
+    command:
+      - "--config=/conf/otel-collector-config.yaml"
+    volumes:
+      # Embedded-storage variant: hoists Loki labels to resource attributes (see otelcol.embedded.yml).
+      - ./otelcol.embedded.yml:/conf/otel-collector-config.yaml
+    ports:
+      - "3102:3100"
+    restart: unless-stopped
+    depends_on:
+      - oteldb
+
+  loki:
+    image: "grafana/loki:3.0.0"
+    command:
+      - "-config.file=/etc/loki/config.yml"
+    volumes:
+      - ./loki.yml:/etc/loki/config.yml
+    ports:
+      - "3101:3100"
+    restart: unless-stopped

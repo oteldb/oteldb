@@ -1,0 +1,92 @@
+name: "Storage Benchmark"
+
+# End-to-end PromQL read benchmark for oteldb running on the embedded storage engine
+# (`--embedded`, no ClickHouse). Mirrors bench.yml but points otelbench at an embedded oteldb.
+# Empty results are tolerated (--allow-empty=true) because the embedded engine does not yet
+# represent every metric type used by the node-exporter query set.
+
+# Heavyweight (builds images, pulls external services); runs on main and on demand rather than
+# gating every PR. The fast, deterministic gate lives in storage.yml.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  WORKDIR: dev/local/ch-bench-read
+  COMPOSE_FILE: docker-compose.embedded.yml
+  OTEL_EXPORTER_OTLP_INSECURE: "true"
+  CGO_ENABLED: 0
+
+permissions:
+  contents: read
+
+jobs:
+  PromQL:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Docker log in
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/checkout@v7
+
+      - name: Install Task
+        uses: go-task/setup-task@v2
+
+      - name: Build binaries
+        run: task build-deploy
+
+      - name: Reset compose
+        working-directory: ${{ env.WORKDIR }}
+        run: docker compose -f ${{ env.COMPOSE_FILE }} down --remove-orphans --volumes --timeout 10
+
+      - name: Start compose
+        working-directory: ${{ env.WORKDIR }}
+        run: docker compose -f ${{ env.COMPOSE_FILE }} up --detach --build --force-recreate
+
+      - name: Load data
+        run: |
+          wget https://storage.yandexcloud.net/faster-public/oteldb/req.rwq
+          go run github.com/oteldb/oteldb/cmd/otelbench promrw replay -i req.rwq
+
+      - name: Warmup
+        working-directory: ${{ env.WORKDIR }}
+        run: go run github.com/oteldb/oteldb/cmd/otelbench promql bench -i testdata/node-exporter-selected.promql.yml --warmup 10 --allow-empty=true
+
+      - name: Test
+        working-directory: ${{ env.WORKDIR }}
+        run: go run github.com/oteldb/oteldb/cmd/otelbench promql bench -o report.yml -i testdata/node-exporter-selected.promql.yml --allow-empty=true --warmup 5
+
+      - name: Dump oteldb logs
+        if: ${{ always() }}
+        working-directory: ${{ env.WORKDIR }}
+        run: docker compose -f ${{ env.COMPOSE_FILE }} logs oteldb
+
+      - name: Upload report
+        uses: actions/upload-artifact@v7
+        with:
+          name: report.embedded.yml
+          path: ${{ env.WORKDIR }}/report.yml
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Analyze report
+        working-directory: ${{ env.WORKDIR }}
+        run: go run github.com/oteldb/oteldb/cmd/otelbench promql analyze -i report.yml
+
+      - name: Cleanup
+        working-directory: ${{ env.WORKDIR }}
+        if: ${{ ! cancelled() }}
+        run: docker compose -f ${{ env.COMPOSE_FILE }} down --remove-orphans --volumes --timeout 10

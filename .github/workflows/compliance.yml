@@ -135,6 +135,7 @@ jobs:
           -output-format json -output-file result.oteldb.json \
           -output-unsupported \
           -query-parallelism 2 \
+          -skip-reference-errors \
           -target 90.00
 
       - name: Upload artifact

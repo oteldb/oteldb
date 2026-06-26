@@ -1,0 +1,34 @@
+# otelcol config for the embedded-storage LogQL compliance run (docker-compose.embedded.yml).
+#
+# The embedded github.com/oteldb/storage engine derives Loki stream labels from OTLP *resource*
+# attributes, whereas the collector's Loki receiver maps Loki labels to log *record* attributes.
+# Without bridging the two, every `{job=...}` selector matches nothing. This transform hoists the
+# compliance suite's stream labels (job, filename) into resource attributes so the embedded backend
+# exposes them as stream labels. The ClickHouse backend indexes record attributes directly and does
+# not need this (see otelcol.yml).
+receivers:
+  loki:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:3100
+      grpc:
+        endpoint: 0.0.0.0:3101
+    use_incoming_timestamp: true
+processors:
+  transform:
+    log_statements:
+      - context: log
+        statements:
+          - set(resource.attributes["job"], attributes["job"])
+          - set(resource.attributes["filename"], attributes["filename"])
+exporters:
+  otlp/oteldb:
+    endpoint: oteldb:4317
+    tls:
+      insecure: true
+service:
+  pipelines:
+    logs:
+      receivers: [loki]
+      processors: [transform]
+      exporters: [otlp/oteldb]
