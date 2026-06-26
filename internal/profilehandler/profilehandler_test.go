@@ -2,10 +2,12 @@ package profilehandler
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"testing"
 
 	"github.com/go-faster/errors"
+	"github.com/google/pprof/profile"
 	"github.com/stretchr/testify/require"
 
 	"github.com/oteldb/oteldb/internal/profileql"
@@ -138,8 +140,8 @@ func TestLabelValuesProfileType(t *testing.T) {
 	require.Equal(t, pyroscopeapi.LabelValues{cpu.ID()}, values)
 }
 
-func TestRender(t *testing.T) {
-	h := newAPI(mockQuerier{
+func renderAPI() *PyroscopeAPI {
+	return newAPI(mockQuerier{
 		selectMerge: func(context.Context, profilestorage.SelectProfileParams) (*profilestorage.FlameTree, error) {
 			return &profilestorage.FlameTree{
 				Root: &profilestorage.FlameNode{
@@ -151,14 +153,62 @@ func TestRender(t *testing.T) {
 			}, nil
 		},
 	})
+}
 
-	profile, err := h.Render(context.Background(), pyroscopeapi.RenderParams{
+func render(t *testing.T, format pyroscopeapi.RenderFormat) pyroscopeapi.RenderRes {
+	t.Helper()
+	res, err := renderAPI().Render(context.Background(), pyroscopeapi.RenderParams{
 		Query:  pyroscopeapi.NewOptString(`process_cpu:cpu:nanoseconds:cpu:nanoseconds`),
-		Format: pyroscopeapi.RenderFormatJSON,
+		Format: format,
 	})
 	require.NoError(t, err)
-	require.Equal(t, []string{"total", "main"}, profile.Flamebearer.Names)
-	require.Equal(t, 3, profile.Flamebearer.NumTicks)
+	return res
+}
+
+func readAll(t *testing.T, r io.Reader) string {
+	t.Helper()
+	data, err := io.ReadAll(r)
+	require.NoError(t, err)
+	return string(data)
+}
+
+func TestRenderJSON(t *testing.T) {
+	for _, format := range []pyroscopeapi.RenderFormat{pyroscopeapi.RenderFormatJSON, ""} {
+		res := render(t, format)
+		fb, ok := res.(*pyroscopeapi.FlamebearerProfileV1)
+		require.True(t, ok, "expected flamebearer, got %T", res)
+		require.Equal(t, []string{"total", "main"}, fb.Flamebearer.Names)
+		require.Equal(t, 3, fb.Flamebearer.NumTicks)
+	}
+}
+
+func TestRenderCollapsed(t *testing.T) {
+	res := render(t, pyroscopeapi.RenderFormatCollapsed)
+	out, ok := res.(*pyroscopeapi.RenderOKTextPlain)
+	require.True(t, ok, "expected text/plain, got %T", res)
+	require.Equal(t, "main 3\n", readAll(t, out))
+}
+
+func TestRenderPprof(t *testing.T) {
+	res := render(t, pyroscopeapi.RenderFormatPprof)
+	out, ok := res.(*pyroscopeapi.RenderOKApplicationOctetStream)
+	require.True(t, ok, "expected octet-stream, got %T", res)
+
+	p, err := profile.ParseData([]byte(readAll(t, out)))
+	require.NoError(t, err)
+	require.NoError(t, p.CheckValid())
+	require.Len(t, p.Sample, 1)
+	require.Equal(t, int64(3), p.Sample[0].Value[0])
+}
+
+func TestRenderHTML(t *testing.T) {
+	res := render(t, pyroscopeapi.RenderFormatHTML)
+	out, ok := res.(*pyroscopeapi.RenderOKTextHTML)
+	require.True(t, ok, "expected text/html, got %T", res)
+
+	html := readAll(t, out)
+	require.Contains(t, html, "<!DOCTYPE html>")
+	require.Contains(t, html, "window.flamegraph =")
 }
 
 func TestRenderRequiresQuery(t *testing.T) {
@@ -167,11 +217,15 @@ func TestRenderRequiresQuery(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, statusCode(t, err))
 }
 
-func TestRenderUnsupportedFormat(t *testing.T) {
-	h := newAPI(mockQuerier{})
+func TestRenderUnknownFormat(t *testing.T) {
+	h := newAPI(mockQuerier{
+		selectMerge: func(context.Context, profilestorage.SelectProfileParams) (*profilestorage.FlameTree, error) {
+			return &profilestorage.FlameTree{}, nil
+		},
+	})
 	_, err := h.Render(context.Background(), pyroscopeapi.RenderParams{
 		Query:  pyroscopeapi.NewOptString(`process_cpu:cpu:nanoseconds:cpu:nanoseconds`),
-		Format: pyroscopeapi.RenderFormatPprof,
+		Format: pyroscopeapi.RenderFormat("svg"),
 	})
 	require.Equal(t, http.StatusBadRequest, statusCode(t, err))
 }

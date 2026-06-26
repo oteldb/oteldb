@@ -3,7 +3,9 @@
 package profilehandler
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -155,22 +157,16 @@ func (h *PyroscopeAPI) Labels(ctx context.Context, params pyroscopeapi.LabelsPar
 
 // Render implements render operation.
 //
-// Renders the given query as a flamebearer profile.
+// Renders the given query in the requested format (json, pprof, collapsed or
+// html).
 //
 // GET /render
-func (h *PyroscopeAPI) Render(ctx context.Context, params pyroscopeapi.RenderParams) (*pyroscopeapi.FlamebearerProfileV1, error) {
+func (h *PyroscopeAPI) Render(ctx context.Context, params pyroscopeapi.RenderParams) (pyroscopeapi.RenderRes, error) {
 	if h.engine == nil {
 		return nil, &pyroscopeapi.ErrorStatusCode{
 			StatusCode: http.StatusInternalServerError,
 			Response:   pyroscopeapi.Error(appendTrace(ctx, "ProfileQL engine is disabled")),
 		}
-	}
-
-	switch params.Format {
-	case "", pyroscopeapi.RenderFormatJSON:
-		// Only the flamebearer JSON format is supported.
-	default:
-		return nil, badRequest(ctx, "only JSON render format is supported")
 	}
 
 	query, ok := params.Query.Get()
@@ -183,7 +179,7 @@ func (h *PyroscopeAPI) Render(ctx context.Context, params pyroscopeapi.RenderPar
 		return nil, validationErr(ctx, err, "parse time range")
 	}
 
-	profile, err := h.engine.Eval(ctx, query, profileqlengine.EvalParams{
+	result, err := h.engine.Select(ctx, query, profileqlengine.EvalParams{
 		Start:    start,
 		End:      end,
 		MaxNodes: params.MaxNodes.Or(0),
@@ -191,7 +187,36 @@ func (h *PyroscopeAPI) Render(ctx context.Context, params pyroscopeapi.RenderPar
 	if err != nil {
 		return nil, executionErr(ctx, err, "eval")
 	}
-	return profile, nil
+	return h.renderResult(ctx, result, params.Format)
+}
+
+func (h *PyroscopeAPI) renderResult(ctx context.Context, result *profileqlengine.Result, format pyroscopeapi.RenderFormat) (pyroscopeapi.RenderRes, error) {
+	switch format {
+	case "", pyroscopeapi.RenderFormatJSON:
+		return result.Flamebearer(), nil
+	case pyroscopeapi.RenderFormatCollapsed:
+		return &pyroscopeapi.RenderOKTextPlain{
+			Data: bytes.NewReader(result.Collapsed()),
+		}, nil
+	case pyroscopeapi.RenderFormatPprof:
+		data, err := result.Pprof()
+		if err != nil {
+			return nil, executionErr(ctx, err, "encode pprof")
+		}
+		return &pyroscopeapi.RenderOKApplicationOctetStream{
+			Data: bytes.NewReader(data),
+		}, nil
+	case pyroscopeapi.RenderFormatHTML:
+		data, err := result.HTML()
+		if err != nil {
+			return nil, executionErr(ctx, err, "encode html")
+		}
+		return &pyroscopeapi.RenderOKTextHTML{
+			Data: bytes.NewReader(data),
+		}, nil
+	default:
+		return nil, badRequest(ctx, fmt.Sprintf("unknown render format %q", format))
+	}
 }
 
 // parseQuery parses an optional ProfileQL query parameter into a profile type
