@@ -57,7 +57,7 @@ type Invoker interface {
 	// Renders given query. One of `query` or `key` is required.
 	//
 	// GET /render
-	Render(ctx context.Context, params RenderParams) (*FlamebearerProfileV1, error)
+	Render(ctx context.Context, params RenderParams) (RenderRes, error)
 }
 
 // Client implements OAS client.
@@ -709,12 +709,12 @@ func (c *Client) sendLabels(ctx context.Context, params LabelsParams) (res Label
 // Renders given query. One of `query` or `key` is required.
 //
 // GET /render
-func (c *Client) Render(ctx context.Context, params RenderParams) (*FlamebearerProfileV1, error) {
+func (c *Client) Render(ctx context.Context, params RenderParams) (RenderRes, error) {
 	res, err := c.sendRender(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendRender(ctx context.Context, params RenderParams) (res *FlamebearerProfileV1, err error) {
+func (c *Client) sendRender(ctx context.Context, params RenderParams) (res RenderRes, err error) {
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("render"),
 		semconv.HTTPRequestMethodKey.String("GET"),

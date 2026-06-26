@@ -369,6 +369,8 @@ func (s *FlamebearerProfileV1) SetRightTicks(val OptUint64) {
 	s.RightTicks = val
 }
 
+func (*FlamebearerProfileV1) renderRes() {}
+
 type FlamebearerProfileV1Groups map[string]FlamebearerTimelineV1
 
 func (s *FlamebearerProfileV1Groups) init() FlamebearerProfileV1Groups {
@@ -1338,5 +1340,53 @@ func (s *RenderFormat) UnmarshalText(data []byte) error {
 		return errors.Errorf("invalid value: %q", data)
 	}
 }
+
+type RenderOKApplicationOctetStream struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s RenderOKApplicationOctetStream) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+func (*RenderOKApplicationOctetStream) renderRes() {}
+
+type RenderOKTextHTML struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s RenderOKTextHTML) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+func (*RenderOKTextHTML) renderRes() {}
+
+type RenderOKTextPlain struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s RenderOKTextPlain) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+func (*RenderOKTextPlain) renderRes() {}
 
 type SegmentKey string
