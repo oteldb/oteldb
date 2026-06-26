@@ -7,12 +7,11 @@ name: "Storage Compliance"
 # the verify step is informational (continue-on-error) and uploads the full report. Ratchet the
 # target up once a stable baseline is observed.
 
-# Heavyweight (builds images, pulls external services); runs on main and on demand rather than
-# gating every PR. The fast, deterministic gate lives in storage.yml.
 on:
   push:
     branches: [main]
   workflow_dispatch:
+  pull_request:
 
 env:
   REGISTRY: ghcr.io
