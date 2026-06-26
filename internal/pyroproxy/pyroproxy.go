@@ -68,7 +68,7 @@ func (s *Server) Labels(ctx context.Context, params pyroscopeapi.LabelsParams) (
 // One of `query` or `key` is required.
 //
 // GET /render
-func (s *Server) Render(ctx context.Context, params pyroscopeapi.RenderParams) (*pyroscopeapi.FlamebearerProfileV1, error) {
+func (s *Server) Render(ctx context.Context, params pyroscopeapi.RenderParams) (pyroscopeapi.RenderRes, error) {
 	return s.api.Render(ctx, params)
 }
 

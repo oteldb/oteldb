@@ -782,7 +782,7 @@ func (s *Server) handleRenderRequest(args [0]string, argsEscaped bool, w http.Re
 
 	var rawBody []byte
 
-	var response *FlamebearerProfileV1
+	var response RenderRes
 	if m := s.cfg.Middleware; m != nil {
 		mreq := middleware.Request{
 			Context:          ctx,
@@ -827,7 +827,7 @@ func (s *Server) handleRenderRequest(args [0]string, argsEscaped bool, w http.Re
 		type (
 			Request  = struct{}
 			Params   = RenderParams
-			Response = *FlamebearerProfileV1
+			Response = RenderRes
 		)
 		response, err = middleware.HookMiddleware[
 			Request,

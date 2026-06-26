@@ -3,6 +3,7 @@
 package pyroscopeapi
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"mime"
@@ -366,7 +367,7 @@ func decodeLabelsResponse(resp *http.Response) (res Labels, _ error) {
 	return res, errors.Wrap(defRes, "error")
 }
 
-func decodeRenderResponse(resp *http.Response) (res *FlamebearerProfileV1, _ error) {
+func decodeRenderResponse(resp *http.Response) (res RenderRes, _ error) {
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
@@ -408,6 +409,33 @@ func decodeRenderResponse(resp *http.Response) (res *FlamebearerProfileV1, _ err
 			}(); err != nil {
 				return res, errors.Wrap(err, "validate")
 			}
+			return &response, nil
+		case ct == "application/octet-stream":
+			reader := resp.Body
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return res, err
+			}
+
+			response := RenderOKApplicationOctetStream{Data: bytes.NewReader(b)}
+			return &response, nil
+		case ct == "text/html":
+			reader := resp.Body
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return res, err
+			}
+
+			response := RenderOKTextHTML{Data: bytes.NewReader(b)}
+			return &response, nil
+		case ct == "text/plain":
+			reader := resp.Body
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return res, err
+			}
+
+			response := RenderOKTextPlain{Data: bytes.NewReader(b)}
 			return &response, nil
 		default:
 			return res, validate.InvalidContentType(ct)

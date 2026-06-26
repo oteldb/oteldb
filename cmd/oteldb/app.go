@@ -31,9 +31,12 @@ import (
 	"github.com/oteldb/oteldb/internal/lokiapi"
 	"github.com/oteldb/oteldb/internal/lokihandler"
 	"github.com/oteldb/oteldb/internal/otelreceiver"
+	"github.com/oteldb/oteldb/internal/profilehandler"
+	"github.com/oteldb/oteldb/internal/profileql/profileqlengine"
 	"github.com/oteldb/oteldb/internal/promapi"
 	"github.com/oteldb/oteldb/internal/promhandler"
 	"github.com/oteldb/oteldb/internal/promql"
+	"github.com/oteldb/oteldb/internal/pyroscopeapi"
 	"github.com/oteldb/oteldb/internal/tempoapi"
 	"github.com/oteldb/oteldb/internal/tempohandler"
 	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
@@ -132,6 +135,9 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 	}
 	if err := app.trySetupProm(); err != nil {
 		return nil, errors.Wrap(err, "prometheus")
+	}
+	if err := app.trySetupPyroscope(); err != nil {
+		return nil, errors.Wrap(err, "pyroscope")
 	}
 
 	return app, nil
@@ -269,6 +275,34 @@ func (app *App) trySetupTempo() error {
 	}
 
 	addOgen(app, "tempo", s, cfg.Bind, cfg.Auth)
+	return nil
+}
+
+func (app *App) trySetupPyroscope() error {
+	q := app.profileQuerier
+	if q == nil {
+		// Profiles storage backend is not wired in yet (deferred to
+		// oteldb/storage); skip the Pyroscope API.
+		return nil
+	}
+	cfg := app.cfg.Pyroscope
+	cfg.setDefaults()
+
+	engine := profileqlengine.NewEngine(q, profileqlengine.Options{
+		TracerProvider: app.telemetry.TracerProvider(),
+	})
+	pyro := profilehandler.NewPyroscopeAPI(q, engine, profilehandler.PyroscopeAPIOptions{})
+
+	s, err := pyroscopeapi.NewServer(pyro,
+		pyroscopeapi.WithAttributes(attribute.String("oteldb.api", "pyroscope")),
+		pyroscopeapi.WithTracerProvider(app.telemetry.TracerProvider()),
+		pyroscopeapi.WithMeterProvider(app.telemetry.MeterProvider()),
+	)
+	if err != nil {
+		return err
+	}
+
+	addOgen(app, "pyroscope", s, cfg.Bind, cfg.Auth)
 	return nil
 }
 

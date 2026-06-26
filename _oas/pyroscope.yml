@@ -129,9 +129,25 @@ paths:
         "200":
           description: Render
           content:
+            # format=json
             application/json:
               schema:
                 $ref: "#/components/schemas/Render"
+            # format=pprof (gzipped pprof profile)
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            # format=collapsed (folded stacks, one stack per line)
+            text/plain:
+              schema:
+                type: string
+                format: binary
+            # format=html (standalone flamegraph page)
+            text/html:
+              schema:
+                type: string
+                format: binary
         default:
           $ref: "#/components/responses/Error"
   /api/apps:

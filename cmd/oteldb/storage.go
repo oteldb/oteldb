@@ -15,6 +15,7 @@ import (
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
 	"github.com/oteldb/oteldb/internal/logstorage"
 	"github.com/oteldb/oteldb/internal/metricstorage"
+	"github.com/oteldb/oteldb/internal/profilestorage"
 	"github.com/oteldb/oteldb/internal/promql"
 	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
 	"github.com/oteldb/oteldb/internal/tracestorage"
@@ -24,6 +25,10 @@ type otelStorage struct {
 	logQuerier     logQuerier
 	traceQuerier   traceQuerier
 	metricsQuerier metricQuerier
+	// profileQuerier serves the Pyroscope API. It is nil until a profiles
+	// storage backend is wired in (deferred to oteldb/storage), in which case
+	// the Pyroscope API is not registered.
+	profileQuerier profilestorage.Querier
 }
 
 type logQuerier interface {

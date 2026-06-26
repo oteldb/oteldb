@@ -37,7 +37,7 @@ type Handler interface {
 	// Renders given query. One of `query` or `key` is required.
 	//
 	// GET /render
-	Render(ctx context.Context, params RenderParams) (*FlamebearerProfileV1, error)
+	Render(ctx context.Context, params RenderParams) (RenderRes, error)
 	// NewError creates *ErrorStatusCode from error returned by handler.
 	//
 	// Used for common default response.
