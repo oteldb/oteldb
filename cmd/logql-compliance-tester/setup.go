@@ -71,7 +71,9 @@ func setup(ctx context.Context, cfg Config) (*lokicompliance.Comparer, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "creating test API")
 	}
-	return lokicompliance.New(refAPI, testAPI), nil
+	return lokicompliance.New(refAPI, testAPI,
+		lokicompliance.WithSkipReferenceErrors(cfg.SkipReferenceErrors),
+	), nil
 }
 
 func waitForIngest(ctx context.Context, target string, client *http.Client) error {

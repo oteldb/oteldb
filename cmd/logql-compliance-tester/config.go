@@ -13,9 +13,10 @@ import (
 )
 
 type Config struct {
-	Start, End  time.Time
-	Step        time.Duration
-	Parallelism int
+	Start, End          time.Time
+	Step                time.Duration
+	Parallelism         int
+	SkipReferenceErrors bool
 
 	ReferenceTarget lokicompliance.TargetConfig
 	TestTarget      lokicompliance.TargetConfig
@@ -36,16 +37,17 @@ type OutputConfig struct {
 type Flags struct {
 	ConfigFiles arrayFlags
 
-	QueryParallelism  int
-	EndDelta          time.Duration
-	RangeDuration     time.Duration
-	StepDuration      time.Duration
-	OutputFile        string
-	OutputFormat      string
-	OutputPassing     bool
-	OutputUnsupported bool
-	PrintFailed       bool
-	MinimumPercentage float64
+	QueryParallelism    int
+	SkipReferenceErrors bool
+	EndDelta            time.Duration
+	RangeDuration       time.Duration
+	StepDuration        time.Duration
+	OutputFile          string
+	OutputFormat        string
+	OutputPassing       bool
+	OutputUnsupported   bool
+	PrintFailed         bool
+	MinimumPercentage   float64
 }
 
 func (f *Flags) Validate() error {
@@ -60,6 +62,8 @@ func (f *Flags) Register(set *flag.FlagSet) {
 		"The path to the configuration file. If repeated, the specified files will be concatenated before YAML parsing.")
 
 	set.IntVar(&f.QueryParallelism, "query-parallelism", 20, "Maximum number of comparison queries to run in parallel.")
+	set.BoolVar(&f.SkipReferenceErrors, "skip-reference-errors", false,
+		"Record queries the reference API rejects as unsupported instead of aborting the run.")
 
 	set.DurationVar(&f.EndDelta, "end", 12*time.Minute, "The delta between the end time and current time, negated")
 	set.DurationVar(&f.RangeDuration, "range", 10*time.Minute, "The duration of the query range.")
@@ -97,6 +101,7 @@ func parseConfig() (c Config, _ error) {
 	}
 
 	c.Parallelism = flags.QueryParallelism
+	c.SkipReferenceErrors = flags.SkipReferenceErrors
 	c.Output = OutputConfig{
 		OutputFile:        flags.OutputFile,
 		OutputFormat:      flags.OutputFormat,

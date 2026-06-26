@@ -3,10 +3,9 @@ name: "Storage Compliance"
 # End-to-end PromQL/LogQL compliance for oteldb running on the embedded storage engine
 # (`--embedded`, no ClickHouse). Mirrors compliance.yml but points the compliance testers at an
 # embedded oteldb. PromQL is on par with the ClickHouse backend (99.63% locally, 535/537) and is
-# gated at 99.00%. LogQL ingestion is wired (otelcol.embedded.yml hoists Loki labels to resource
-# attributes so the embedded backend can select streams) but stays informational: the compliance
-# tester is fail-fast and aborts on reference-side (Loki) errors for experimental queries, so a
-# clean score cannot be gated. LogQL correctness is gated by lokie2e/TestStorageBackend (storage.yml).
+# gated at 99.00%. LogQL ingestion is wired via otelcol.embedded.yml (hoists Loki labels to resource
+# attributes so the embedded backend can select streams); the embedded LogQL engine is far less
+# complete, so it is gated at a 25% floor (~28% locally) to catch regressions while it matures.
 
 on:
   push:
@@ -115,14 +114,14 @@ jobs:
         working-directory: dev/local/ch-logql-compliance
         run: docker compose -f docker-compose.embedded.yml up -d --build --force-recreate
 
-      # Informational: oteldb ingests the pushed logs (docker-compose.embedded.yml uses
-      # otelcol.embedded.yml to hoist Loki labels into resource attributes, which the embedded
-      # backend uses for stream selection). A clean end-to-end score cannot be gated yet because the
-      # compliance tester is fail-fast and aborts on the first reference-side (Loki) error — e.g. the
-      # experimental rate_counter query returns HTTP 400 from Loki 3.0.0. LogQL correctness against
-      # the embedded backend is gated deterministically by lokie2e/TestStorageBackend in storage.yml.
-      - name: Run (baseline, informational)
-        continue-on-error: true
+      # oteldb ingests the pushed logs (docker-compose.embedded.yml uses otelcol.embedded.yml to
+      # hoist Loki labels into resource attributes, which the embedded backend uses for stream
+      # selection). -skip-reference-errors records queries the reference Loki rejects (e.g. the
+      # experimental rate_counter, which intermittently returns HTTP 400 from Loki 3.0.0) as
+      # unsupported instead of aborting the run. The embedded LogQL engine is far less complete than
+      # the ClickHouse backend, so the score is much lower (~28% locally); gate at a 25% floor to
+      # catch regressions, and ratchet up as the embedded LogQL engine gains coverage.
+      - name: Run
         working-directory: dev/local/ch-logql-compliance
         run: |
           go run github.com/oteldb/oteldb/cmd/logql-compliance-tester \
@@ -130,7 +129,9 @@ jobs:
           -config-file logql-test-queries.yml -config-file test-oteldb.yml \
           -output-format json -output-file result.embedded.json \
           -output-unsupported \
-          -query-parallelism 2
+          -query-parallelism 4 \
+          -skip-reference-errors \
+          -target 25.00
 
       - name: Upload artifact
         if: always()
@@ -138,7 +139,7 @@ jobs:
         with:
           name: result.embedded.logql.json
           path: dev/local/ch-logql-compliance/result.embedded.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
 
       - name: Dump oteldb logs

@@ -46,17 +46,35 @@ type Comparer struct {
 	refAPI         LokiAPI
 	testAPI        LokiAPI
 	compareOptions cmp.Options
+	// skipReferenceErrors, when set, records a query whose reference API call fails unexpectedly as
+	// unsupported instead of aborting the whole run. See [WithSkipReferenceErrors].
+	skipReferenceErrors bool
+}
+
+// Option configures a [Comparer].
+type Option func(*Comparer)
+
+// WithSkipReferenceErrors records queries whose reference API call fails unexpectedly as
+// unsupported (excluded from the compliance percentage) instead of aborting the run. This keeps the
+// run going when the reference Loki rejects a query the suite contains (e.g. an experimental
+// function the reference version does not implement).
+func WithSkipReferenceErrors(v bool) Option {
+	return func(c *Comparer) { c.skipReferenceErrors = v }
 }
 
 // New returns a new Comparer.
-func New(refAPI, testAPI LokiAPI) *Comparer {
+func New(refAPI, testAPI LokiAPI, opts ...Option) *Comparer {
 	var options cmp.Options
 	addFloatCompareOptions(&options)
-	return &Comparer{
+	c := &Comparer{
 		refAPI:         refAPI,
 		testAPI:        testAPI,
 		compareOptions: options,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // Result tracks a single test case's query comparison result.
@@ -68,6 +86,9 @@ type Result struct {
 	UnexpectedFailure string          `json:"unexpectedFailure"`
 	UnexpectedSuccess bool            `json:"unexpectedSuccess"`
 	Unsupported       bool            `json:"unsupported"`
+	// ReferenceFailure is set when the reference API rejected the query and the run was configured to
+	// skip reference errors (see [WithSkipReferenceErrors]); such a result is reported as unsupported.
+	ReferenceFailure string `json:"referenceFailure,omitempty"`
 }
 
 // Success returns true if the comparison result was successful.
@@ -103,6 +124,16 @@ func (c *Comparer) Compare(ctx context.Context, tc *TestCase) (*Result, error) {
 
 	if (refErr != nil) != tc.ShouldFail {
 		if refErr != nil {
+			if c.skipReferenceErrors {
+				// The reference cannot answer this query (e.g. an experimental function it does not
+				// implement); there is nothing to compare against, so record it as unsupported and
+				// keep the run going instead of aborting.
+				return &Result{
+					TestCase:         tc,
+					Unsupported:      true,
+					ReferenceFailure: refErr.Error(),
+				}, nil
+			}
 			return nil, errors.Wrapf(refErr, "querying reference API for %q", tc.Query)
 		}
 		return nil, errors.Errorf("expected reference API query %q to fail, but succeeded", tc.Query)
