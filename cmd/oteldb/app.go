@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/provider/envprovider"
+	"go.opentelemetry.io/collector/featuregate"
 	"go.opentelemetry.io/collector/otelcol"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -71,7 +72,10 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 		telemetry: m,
 	}
 
-	{
+	// ClickHouse is started only when a queryable signal is still served by it. Under --embedded
+	// (every signal on the embedded storage engine) ClickHouse is skipped entirely, including the
+	// zero-config embedded ClickHouse, and no DSN is required.
+	if cfg.needsClickHouse() {
 		dsn := os.Getenv("CH_DSN")
 		if dsn == "" {
 			dsn = cfg.DSN
@@ -102,6 +106,8 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 			return nil, errors.Wrapf(err, "create storage")
 		}
 		app.otelStorage = store
+	} else {
+		app.lg.Info("ClickHouse disabled; serving all signals from the embedded storage engine")
 	}
 
 	// Optionally swap one or more signals onto the embedded storage engine. A single shared
@@ -505,6 +511,11 @@ func (app *App) setupCollector() error {
 	}
 	if app.profilesSink != nil {
 		factoryOpts = append(factoryOpts, otelreceiver.WithProfilesSink(app.profilesSink))
+		// The collector gates its experimental profiles pipeline behind a feature gate; enable it
+		// so the profiles signal (served from the embedded storage engine) can be ingested.
+		if err := featuregate.GlobalRegistry().Set("service.profilesSupport", true); err != nil {
+			return errors.Wrap(err, "enable profiles support feature gate")
+		}
 	}
 
 	col, err := otelcol.NewCollector(otelcol.CollectorSettings{

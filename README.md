@@ -76,7 +76,9 @@ Enable it for every signal with a single flag:
 oteldb --embedded
 ```
 
-This is shorthand for setting each signal's backend to `storage` in the config. You can also enable
+This runs oteldb as a fully self-contained binary: ClickHouse is not started at all (not even the
+zero-config embedded ClickHouse) and no DSN is required. It is shorthand for setting each signal's
+backend to `storage` in the config. You can also enable
 it per signal, and switch the engine from the default ephemeral in-memory store to an on-disk one:
 
 ```yaml
