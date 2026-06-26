@@ -7,8 +7,11 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+	"go.opentelemetry.io/collector/exporter/exporterhelper/xexporterhelper"
+	"go.opentelemetry.io/collector/exporter/xexporter"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/pprofile"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 
@@ -33,6 +36,27 @@ type MetricsSink interface {
 	ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error
 }
 
+// TracesSink ingests OTLP traces batches. When set on the factory (see [WithTracesSink]) the
+// traces exporter writes to it instead of dialing ClickHouse, letting the embedded storage
+// engine serve the traces signal.
+type TracesSink interface {
+	ConsumeTraces(ctx context.Context, td ptrace.Traces) error
+}
+
+// LogsSink ingests OTLP logs batches. When set on the factory (see [WithLogsSink]) the logs
+// exporter writes to it instead of dialing ClickHouse, letting the embedded storage engine
+// serve the logs signal.
+type LogsSink interface {
+	ConsumeLogs(ctx context.Context, ld plog.Logs) error
+}
+
+// ProfilesSink ingests OTLP profiles batches. Profiles have no ClickHouse implementation, so the
+// exporter's profiles signal is only available when a sink is set (see [WithProfilesSink]); the
+// embedded storage engine then serves the profiles signal.
+type ProfilesSink interface {
+	ConsumeProfiles(ctx context.Context, pd pprofile.Profiles) error
+}
+
 // Option configures the exporter factory.
 type Option func(*factory)
 
@@ -41,23 +65,58 @@ func WithMetricsSink(sink MetricsSink) Option {
 	return func(f *factory) { f.metricsSink = sink }
 }
 
-type factory struct {
-	metricsSink MetricsSink
+// WithTracesSink routes ingested traces to sink instead of ClickHouse.
+func WithTracesSink(sink TracesSink) Option {
+	return func(f *factory) { f.tracesSink = sink }
 }
 
-// NewFactory creates new factory of [Exporter].
+// WithLogsSink routes ingested logs to sink instead of ClickHouse.
+func WithLogsSink(sink LogsSink) Option {
+	return func(f *factory) { f.logsSink = sink }
+}
+
+// WithProfilesSink enables the exporter's profiles signal, routing ingested profiles to sink (the
+// embedded storage engine). Without it the exporter does not support the profiles signal.
+func WithProfilesSink(sink ProfilesSink) Option {
+	return func(f *factory) { f.profilesSink = sink }
+}
+
+type factory struct {
+	metricsSink  MetricsSink
+	tracesSink   TracesSink
+	logsSink     LogsSink
+	profilesSink ProfilesSink
+}
+
+// NewFactory creates new factory of [Exporter]. It always supports traces, metrics, and logs; the
+// experimental profiles signal is additionally supported when a profiles sink is configured.
 func NewFactory(opts ...Option) exporter.Factory {
 	f := &factory{}
 	for _, o := range opts {
 		o(f)
 	}
-	return exporter.NewFactory(
-		typ,
-		createDefaultConfig,
-		exporter.WithTraces(createTracesExporter, stability),
-		exporter.WithMetrics(f.createMetricsExporter, stability),
-		exporter.WithLogs(createLogsExporter, stability),
-	)
+	xopts := []xexporter.FactoryOption{
+		xexporter.WithTraces(f.createTracesExporter, stability),
+		xexporter.WithMetrics(f.createMetricsExporter, stability),
+		xexporter.WithLogs(f.createLogsExporter, stability),
+	}
+	if f.profilesSink != nil {
+		xopts = append(xopts, xexporter.WithProfiles(f.createProfilesExporter, stability))
+	}
+	return xexporter.NewFactory(typ, createDefaultConfig, xopts...)
+}
+
+// createProfilesExporter builds the profiles exporter that writes to the configured profiles sink.
+func (f *factory) createProfilesExporter(
+	ctx context.Context,
+	settings exporter.Settings,
+	cfg component.Config,
+) (xexporter.Profiles, error) {
+	if f.profilesSink == nil {
+		return nil, errors.New("profiles ingestion requires the storage backend (set profiles_backend: storage)")
+	}
+	settings.Logger.Info("Routing profiles to storage backend sink")
+	return xexporterhelper.NewProfiles(ctx, settings, cfg, f.profilesSink.ConsumeProfiles)
 }
 
 func createDefaultConfig() component.Config {
@@ -66,28 +125,37 @@ func createDefaultConfig() component.Config {
 	}
 }
 
-func createTracesExporter(
+func (f *factory) createTracesExporter(
 	ctx context.Context,
 	settings exporter.Settings,
 	cfg component.Config,
 ) (exporter.Traces, error) {
 	ecfg := cfg.(*Config)
-	inserter, err := ecfg.connect(ctx, settings)
-	if err != nil {
-		return nil, err
+
+	// Route traces to the configured sink (the embedded storage engine) when set, otherwise
+	// fall back to ClickHouse.
+	var consume func(context.Context, ptrace.Traces) error
+	if f.tracesSink != nil {
+		settings.Logger.Info("Routing traces to storage backend sink")
+		consume = f.tracesSink.ConsumeTraces
+	} else {
+		inserter, err := ecfg.connect(ctx, settings)
+		if err != nil {
+			return nil, err
+		}
+		consume = tracestorage.NewConsumer(inserter).ConsumeTraces
 	}
 
-	consumer := tracestorage.NewConsumer(inserter)
-	consume := consumer.ConsumeTraces
 	if ecfg.Traces.Spans.enabled() {
 		spansCfg := ecfg.Traces.Spans
 		settings.Logger.Info("Span sampling enabled",
 			zap.Bool("drop", spansCfg.Drop),
 			zap.Float64("rate", spansCfg.Rate),
 		)
+		inner := consume
 		consume = func(ctx context.Context, td ptrace.Traces) error {
 			sampleSpans(td, spansCfg)
-			return consumer.ConsumeTraces(ctx, td)
+			return inner(ctx, td)
 		}
 	}
 	return exporterhelper.NewTraces(ctx, settings, cfg, consume)
@@ -129,7 +197,7 @@ func (f *factory) createMetricsExporter(
 	return exporterhelper.NewMetrics(ctx, settings, cfg, consume)
 }
 
-func createLogsExporter(
+func (f *factory) createLogsExporter(
 	ctx context.Context,
 	settings exporter.Settings,
 	cfg component.Config,
@@ -137,6 +205,23 @@ func createLogsExporter(
 	ecfg := cfg.(*Config)
 
 	lg := settings.Logger
+
+	// Route logs to the configured sink (the embedded storage engine) when set, bypassing the
+	// ClickHouse log-processing consumer. Record sampling still applies.
+	if f.logsSink != nil {
+		lg.Info("Routing logs to storage backend sink")
+		consume := f.logsSink.ConsumeLogs
+		if ecfg.Logs.Records.enabled() {
+			recordsCfg := ecfg.Logs.Records
+			inner := consume
+			consume = func(ctx context.Context, ld plog.Logs) error {
+				sampleLogRecords(ld, recordsCfg)
+				return inner(ctx, ld)
+			}
+		}
+		return exporterhelper.NewLogs(ctx, settings, cfg, consume)
+	}
+
 	procCfg := ecfg.Logs.Processing
 	triggerAttrs := parseAttributeRefs(procCfg.TriggerAttributes, "trigger_attributes", lg)
 	formatAttrs := parseAttributeRefs(procCfg.FormatAttributes, "format_attributes", lg)

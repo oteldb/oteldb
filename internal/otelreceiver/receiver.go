@@ -116,6 +116,18 @@ func (s *TelemetrySettings) setDefaults() {
 // storage engine). See [WithMetricsSink].
 type MetricsSink = oteldbexporter.MetricsSink
 
+// TracesSink ingests OTLP traces batches into an alternative backend (the embedded
+// storage engine). See [WithTracesSink].
+type TracesSink = oteldbexporter.TracesSink
+
+// LogsSink ingests OTLP logs batches into an alternative backend (the embedded
+// storage engine). See [WithLogsSink].
+type LogsSink = oteldbexporter.LogsSink
+
+// ProfilesSink ingests OTLP profiles batches into an alternative backend (the embedded
+// storage engine). See [WithProfilesSink].
+type ProfilesSink = oteldbexporter.ProfilesSink
+
 // Option configures [Factories].
 type Option func(*factoriesOptions)
 
@@ -127,6 +139,27 @@ type factoriesOptions struct {
 func WithMetricsSink(sink MetricsSink) Option {
 	return func(o *factoriesOptions) {
 		o.exporterOpts = append(o.exporterOpts, oteldbexporter.WithMetricsSink(sink))
+	}
+}
+
+// WithTracesSink routes ingested traces to sink instead of ClickHouse.
+func WithTracesSink(sink TracesSink) Option {
+	return func(o *factoriesOptions) {
+		o.exporterOpts = append(o.exporterOpts, oteldbexporter.WithTracesSink(sink))
+	}
+}
+
+// WithLogsSink routes ingested logs to sink instead of ClickHouse.
+func WithLogsSink(sink LogsSink) Option {
+	return func(o *factoriesOptions) {
+		o.exporterOpts = append(o.exporterOpts, oteldbexporter.WithLogsSink(sink))
+	}
+}
+
+// WithProfilesSink enables the profiles signal, routing ingested profiles to sink.
+func WithProfilesSink(sink ProfilesSink) Option {
+	return func(o *factoriesOptions) {
+		o.exporterOpts = append(o.exporterOpts, oteldbexporter.WithProfilesSink(sink))
 	}
 }
 

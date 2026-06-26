@@ -451,7 +451,7 @@ require (
 	github.com/openshift/api v0.0.0-20251015095338-264e80a2b6e7 // indirect
 	github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235 // indirect
 	github.com/openzipkin/zipkin-go v0.4.3 // indirect
-	github.com/oteldb/storage v0.1.0
+	github.com/oteldb/storage v0.3.0
 	github.com/outscale/osc-sdk-go/v2 v2.34.0 // indirect
 	github.com/ovh/go-ovh v1.9.0 // indirect
 	github.com/pascaldekloe/name v1.0.1 // indirect
@@ -540,9 +540,9 @@ require (
 	go.opentelemetry.io/collector/consumer/consumererror v0.155.0 // indirect
 	go.opentelemetry.io/collector/consumer/consumererror/xconsumererror v0.155.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.155.0 // indirect
-	go.opentelemetry.io/collector/exporter/exporterhelper/xexporterhelper v0.155.0 // indirect
-	go.opentelemetry.io/collector/exporter/exportertest v0.155.0 // indirect
-	go.opentelemetry.io/collector/exporter/xexporter v0.155.0 // indirect
+	go.opentelemetry.io/collector/exporter/exporterhelper/xexporterhelper v0.155.0
+	go.opentelemetry.io/collector/exporter/exportertest v0.155.0
+	go.opentelemetry.io/collector/exporter/xexporter v0.155.0
 	go.opentelemetry.io/collector/extension/extensionauth v1.61.0 // indirect
 	go.opentelemetry.io/collector/extension/extensioncapabilities v0.155.0 // indirect
 	go.opentelemetry.io/collector/extension/extensionmiddleware v0.155.0 // indirect
@@ -555,7 +555,7 @@ require (
 	go.opentelemetry.io/collector/internal/memorylimiter v0.155.0 // indirect
 	go.opentelemetry.io/collector/internal/sharedcomponent v0.155.0 // indirect
 	go.opentelemetry.io/collector/internal/telemetry v0.155.0 // indirect
-	go.opentelemetry.io/collector/pdata/pprofile v0.155.0 // indirect
+	go.opentelemetry.io/collector/pdata/pprofile v0.155.0
 	go.opentelemetry.io/collector/pdata/testdata v0.155.0 // indirect
 	go.opentelemetry.io/collector/pdata/xpdata v0.155.0 // indirect
 	go.opentelemetry.io/collector/pipeline/xpipeline v0.155.0 // indirect

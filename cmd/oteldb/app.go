@@ -50,9 +50,12 @@ type App struct {
 	shutdown func()
 	otelStorage
 
-	// metricsSink, when set, routes metrics ingestion to the embedded storage engine
-	// instead of ClickHouse (see [MetricsBackendStorage]).
-	metricsSink otelreceiver.MetricsSink
+	// metricsSink/tracesSink/logsSink, when set, route the corresponding signal's ingestion to
+	// the embedded storage engine instead of ClickHouse (see [MetricsBackendStorage]).
+	metricsSink  otelreceiver.MetricsSink
+	tracesSink   otelreceiver.TracesSink
+	logsSink     otelreceiver.LogsSink
+	profilesSink otelreceiver.ProfilesSink
 
 	lg        *zap.Logger
 	telemetry *sdkapp.Telemetry
@@ -101,15 +104,31 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 		app.otelStorage = store
 	}
 
-	// Optionally swap the metrics signal onto the embedded storage engine. Logs and traces
-	// stay on ClickHouse; only the metrics querier and ingestion sink are replaced.
-	if cfg.MetricsBackend == MetricsBackendStorage {
+	// Optionally swap one or more signals onto the embedded storage engine. A single shared
+	// engine instance backs every signal selected via the *_backend config; the rest stay on
+	// ClickHouse. For each swapped signal both the query side (the API handler's querier) and
+	// the ingestion side (the collector exporter's sink) are replaced.
+	if cfg.usesStorageBackend() {
 		b, closeStore, err := setupStorageBackend(ctx, cfg.Storage, app.lg.Named("storage"))
 		if err != nil {
 			return nil, errors.Wrap(err, "setup storage backend")
 		}
-		app.metricsQuerier = b
-		app.metricsSink = b
+		if cfg.MetricsBackend == MetricsBackendStorage {
+			app.metricsQuerier = b
+			app.metricsSink = b
+		}
+		if cfg.TracesBackend == MetricsBackendStorage {
+			app.traceQuerier = b.Traces()
+			app.tracesSink = b
+		}
+		if cfg.LogsBackend == MetricsBackendStorage {
+			app.logQuerier = b.Logs()
+			app.logsSink = b
+		}
+		if cfg.ProfilesBackend == MetricsBackendStorage {
+			app.profileQuerier = b.Profiles()
+			app.profilesSink = b
+		}
 		app.services["storage"] = func(ctx context.Context) error {
 			<-ctx.Done()
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -316,7 +335,11 @@ func (app *App) trySetupLoki() error {
 
 	var optimizers []logqlengine.Optimizer
 	optimizers = append(optimizers, logqlengine.DefaultOptimizers()...)
-	optimizers = append(optimizers, &chstorage.ClickhouseOptimizer{})
+	// The ClickHouse optimizer pushes filtering into chstorage's InputNode; it is a no-op for
+	// other backends, so only enable it when logs are actually served from ClickHouse.
+	if app.cfg.LogsBackend != MetricsBackendStorage {
+		optimizers = append(optimizers, &chstorage.ClickhouseOptimizer{})
+	}
 	engine, err := logqlengine.NewEngine(q, logqlengine.Options{
 		ParseOptions: logql.ParseOptions{
 			AllowDots: true,
@@ -473,6 +496,15 @@ func (app *App) setupCollector() error {
 	var factoryOpts []otelreceiver.Option
 	if app.metricsSink != nil {
 		factoryOpts = append(factoryOpts, otelreceiver.WithMetricsSink(app.metricsSink))
+	}
+	if app.tracesSink != nil {
+		factoryOpts = append(factoryOpts, otelreceiver.WithTracesSink(app.tracesSink))
+	}
+	if app.logsSink != nil {
+		factoryOpts = append(factoryOpts, otelreceiver.WithLogsSink(app.logsSink))
+	}
+	if app.profilesSink != nil {
+		factoryOpts = append(factoryOpts, otelreceiver.WithProfilesSink(app.profilesSink))
 	}
 
 	col, err := otelcol.NewCollector(otelcol.CollectorSettings{
