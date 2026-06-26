@@ -18,6 +18,9 @@ func loadConfig(name string) (cfg Config, _ error) {
 		if dsn := os.Getenv("CH_DSN"); dsn != "" {
 			cfg.DSN = dsn
 		}
+		if backend := os.Getenv("METRICS_BACKEND"); backend != "" {
+			cfg.MetricsBackend = backend
+		}
 	}()
 
 	if name == "" {
@@ -51,6 +54,13 @@ type Config struct {
 	MaxResultBytes   xbytes.Bytes  `json:"max_result_bytes" yaml:"max_result_bytes"`
 	MaxExecutionTime time.Duration `json:"max_execution_time" yaml:"max_execution_time"`
 
+	// MetricsBackend selects the storage backend serving the metrics signal:
+	// "clickhouse" (default) or "storage" (the embedded github.com/oteldb/storage engine).
+	// Logs and traces always use ClickHouse.
+	MetricsBackend string `json:"metrics_backend" yaml:"metrics_backend"`
+	// Storage configures the embedded storage engine, used when MetricsBackend is "storage".
+	Storage StorageConfig `json:"storage" yaml:"storage"`
+
 	Tempo       TempoConfig       `json:"tempo" yaml:"tempo"`
 	Prometheus  PrometheusConfig  `json:"prometheus" yaml:"prometheus"`
 	Loki        LokiConfig        `json:"loki" yaml:"loki"`
@@ -66,7 +76,37 @@ type Config struct {
 	Collector map[string]any `json:"otelcol" yaml:"otelcol"`
 }
 
+// Metrics backend identifiers for [Config.MetricsBackend].
+const (
+	// MetricsBackendClickHouse serves metrics from ClickHouse (the default).
+	MetricsBackendClickHouse = "clickhouse"
+	// MetricsBackendStorage serves metrics from the embedded github.com/oteldb/storage engine.
+	MetricsBackendStorage = "storage"
+)
+
+// StorageConfig configures the embedded storage engine (used when
+// [Config.MetricsBackend] is "storage").
+type StorageConfig struct {
+	// Backend is the engine backend: "memory" (default, ephemeral) or "file".
+	Backend string `json:"backend" yaml:"backend"`
+	// Dir is the data directory for the file backend (parts and WAL).
+	Dir string `json:"dir" yaml:"dir"`
+	// FlushInterval is the max age of unflushed head data before it is flushed to a part.
+	// Zero uses the engine default. Ignored for the ephemeral memory backend.
+	FlushInterval time.Duration `json:"flush_interval" yaml:"flush_interval"`
+}
+
+func (cfg *StorageConfig) setDefaults() {
+	if cfg.Backend == "" {
+		cfg.Backend = "memory"
+	}
+}
+
 func (cfg *Config) setDefaults() {
+	if cfg.MetricsBackend == "" {
+		cfg.MetricsBackend = MetricsBackendClickHouse
+	}
+	cfg.Storage.setDefaults()
 	if len(cfg.CollectorSignals) == 0 {
 		cfg.CollectorSignals = map[string]bool{
 			"metrics": true,

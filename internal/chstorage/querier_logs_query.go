@@ -110,22 +110,14 @@ func (v *LogsQuery[E]) Execute(ctx context.Context, q *Querier) (_ iterators.Ite
 	if err := q.do(ctx, selectQuery{
 		Query: query,
 		OnResult: func(ctx context.Context, block proto.Block) error {
-			if err := out.ForEach(func(r logstorage.Record) error {
+			return out.ForEach(func(r logstorage.Record) error {
 				e, err := v.Mapper(r)
 				if err != nil {
 					return err
 				}
 				data = append(data, e)
 				return nil
-			}); err != nil {
-				return err
-			}
-			if unlimited {
-				if limit := q.sampleRowsLimit; limit > 0 && len(data) > limit {
-					return errors.Wrapf(ErrLogsTooManySamples, "%d > %d rows", len(data), limit)
-				}
-			}
-			return nil
+			})
 		},
 
 		MaxResultBytes: func() int {
@@ -143,6 +135,18 @@ func (v *LogsQuery[E]) Execute(ctx context.Context, q *Querier) (_ iterators.Ite
 			return nil, errors.Wrap(ErrLogsResultTooLarge, exp.Message)
 		}
 		return nil, err
+	}
+
+	// Enforce the sample-rows cap after the result has been fully drained. The
+	// query applies a server-side LIMIT of limit+1, so observing limit+1 rows
+	// means the source data exceeded the cap. We deliberately check here rather
+	// than aborting from within OnResult: returning an error mid-stream leaves
+	// the pooled ClickHouse connection partially read, which can corrupt a
+	// subsequent query that reuses that connection.
+	if unlimited {
+		if limit := q.sampleRowsLimit; limit > 0 && len(data) > limit {
+			return nil, errors.Wrapf(ErrLogsTooManySamples, "%d > %d rows", len(data), limit)
+		}
 	}
 
 	return iterators.Slice(data), nil
@@ -306,9 +310,6 @@ func (v *SampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlengine.Sa
 					Set:       logqlabels.AggregatedLabelsFromSeq(labels),
 				})
 			}
-			if limit := q.sampleRowsLimit; limit > 0 && len(result) > limit {
-				return errors.Wrapf(ErrLogsTooManySamples, "%d > %d rows", len(result), limit)
-			}
 			return nil
 		},
 
@@ -322,6 +323,16 @@ func (v *SampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlengine.Sa
 			return nil, errors.Wrap(ErrLogsResultTooLarge, exp.Message)
 		}
 		return nil, err
+	}
+
+	// Enforce the sample-rows cap after the result has been fully drained. The
+	// query applies a server-side LIMIT of limit+1, so observing limit+1 rows
+	// means the source data exceeded the cap. We deliberately check here rather
+	// than aborting from within OnResult: returning an error mid-stream leaves
+	// the pooled ClickHouse connection partially read, which can corrupt a
+	// subsequent query that reuses that connection.
+	if limit := q.sampleRowsLimit; limit > 0 && len(result) > limit {
+		return nil, errors.Wrapf(ErrLogsTooManySamples, "%d > %d rows", len(result), limit)
 	}
 
 	return iterators.Slice(result), nil
