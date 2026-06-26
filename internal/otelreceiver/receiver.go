@@ -63,9 +63,9 @@ func processorFactoryMap() (map[component.Type]processor.Factory, error) {
 	)
 }
 
-func exporterFactoryMap() (map[component.Type]exporter.Factory, error) {
+func exporterFactoryMap(opts ...oteldbexporter.Option) (map[component.Type]exporter.Factory, error) {
 	return otelcol.MakeFactoryMap(
-		oteldbexporter.NewFactory(),
+		oteldbexporter.NewFactory(opts...),
 	)
 }
 
@@ -112,9 +112,31 @@ func (s *TelemetrySettings) setDefaults() {
 	}
 }
 
+// MetricsSink ingests OTLP metrics batches into an alternative backend (the embedded
+// storage engine). See [WithMetricsSink].
+type MetricsSink = oteldbexporter.MetricsSink
+
+// Option configures [Factories].
+type Option func(*factoriesOptions)
+
+type factoriesOptions struct {
+	exporterOpts []oteldbexporter.Option
+}
+
+// WithMetricsSink routes ingested metrics to sink instead of ClickHouse.
+func WithMetricsSink(sink MetricsSink) Option {
+	return func(o *factoriesOptions) {
+		o.exporterOpts = append(o.exporterOpts, oteldbexporter.WithMetricsSink(sink))
+	}
+}
+
 // Factories returns oteldb factories list.
-func Factories(settings TelemetrySettings) func() (f otelcol.Factories, _ error) {
+func Factories(settings TelemetrySettings, opts ...Option) func() (f otelcol.Factories, _ error) {
 	settings.setDefaults()
+	var fo factoriesOptions
+	for _, o := range opts {
+		o(&fo)
+	}
 	return func() (f otelcol.Factories, _ error) {
 		receivers, err := receiverFactoryMap()
 		if err != nil {
@@ -126,7 +148,7 @@ func Factories(settings TelemetrySettings) func() (f otelcol.Factories, _ error)
 			return f, errors.Wrap(err, "get processor factory map")
 		}
 
-		exporters, err := exporterFactoryMap()
+		exporters, err := exporterFactoryMap(fo.exporterOpts...)
 		if err != nil {
 			return f, errors.Wrap(err, "get exporter factory map")
 		}

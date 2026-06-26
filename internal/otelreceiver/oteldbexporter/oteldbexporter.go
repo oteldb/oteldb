@@ -26,13 +26,36 @@ const (
 
 var typ = component.MustNewType(typeStr)
 
+// MetricsSink ingests OTLP metrics batches. When set on the factory (see
+// [WithMetricsSink]) the metrics exporter writes to it instead of dialing ClickHouse,
+// letting the embedded storage engine serve the metrics signal.
+type MetricsSink interface {
+	ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error
+}
+
+// Option configures the exporter factory.
+type Option func(*factory)
+
+// WithMetricsSink routes ingested metrics to sink instead of ClickHouse.
+func WithMetricsSink(sink MetricsSink) Option {
+	return func(f *factory) { f.metricsSink = sink }
+}
+
+type factory struct {
+	metricsSink MetricsSink
+}
+
 // NewFactory creates new factory of [Exporter].
-func NewFactory() exporter.Factory {
+func NewFactory(opts ...Option) exporter.Factory {
+	f := &factory{}
+	for _, o := range opts {
+		o(f)
+	}
 	return exporter.NewFactory(
 		typ,
 		createDefaultConfig,
 		exporter.WithTraces(createTracesExporter, stability),
-		exporter.WithMetrics(createMetricsExporter, stability),
+		exporter.WithMetrics(f.createMetricsExporter, stability),
 		exporter.WithLogs(createLogsExporter, stability),
 	)
 }
@@ -70,27 +93,37 @@ func createTracesExporter(
 	return exporterhelper.NewTraces(ctx, settings, cfg, consume)
 }
 
-func createMetricsExporter(
+func (f *factory) createMetricsExporter(
 	ctx context.Context,
 	settings exporter.Settings,
 	cfg component.Config,
 ) (exporter.Metrics, error) {
 	ecfg := cfg.(*Config)
-	inserter, err := ecfg.connect(ctx, settings)
-	if err != nil {
-		return nil, err
+
+	// Route metrics to the configured sink (the embedded storage engine) when set,
+	// otherwise fall back to ClickHouse. Traces and logs always use ClickHouse.
+	var consume func(context.Context, pmetric.Metrics) error
+	if f.metricsSink != nil {
+		settings.Logger.Info("Routing metrics to storage backend sink")
+		consume = f.metricsSink.ConsumeMetrics
+	} else {
+		inserter, err := ecfg.connect(ctx, settings)
+		if err != nil {
+			return nil, err
+		}
+		consume = inserter.ConsumeMetrics
 	}
 
-	consume := inserter.ConsumeMetrics
 	if ecfg.Metrics.Exemplars.enabled() {
 		exemplarsCfg := ecfg.Metrics.Exemplars
 		settings.Logger.Info("Exemplar sampling enabled",
 			zap.Bool("drop", exemplarsCfg.Drop),
 			zap.Float64("rate", exemplarsCfg.Rate),
 		)
+		inner := consume
 		consume = func(ctx context.Context, md pmetric.Metrics) error {
 			sampleExemplars(md, exemplarsCfg)
-			return inserter.ConsumeMetrics(ctx, md)
+			return inner(ctx, md)
 		}
 	}
 	return exporterhelper.NewMetrics(ctx, settings, cfg, consume)

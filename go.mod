@@ -1,6 +1,6 @@
 module github.com/oteldb/oteldb
 
-go 1.26.2
+go 1.26.3
 
 tool (
 	github.com/bufbuild/buf/cmd/buf
@@ -155,6 +155,14 @@ require (
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gopkg.in/yaml.v2 v2.4.0
 	sigs.k8s.io/yaml v1.6.0
+)
+
+require (
+	github.com/coreos/go-semver v0.3.1 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
+	go.etcd.io/etcd/api/v3 v3.6.12 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.6.12 // indirect
+	go.etcd.io/etcd/client/v3 v3.6.12 // indirect
 )
 
 require (
@@ -443,6 +451,7 @@ require (
 	github.com/openshift/api v0.0.0-20251015095338-264e80a2b6e7 // indirect
 	github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235 // indirect
 	github.com/openzipkin/zipkin-go v0.4.3 // indirect
+	github.com/oteldb/storage v0.1.0
 	github.com/outscale/osc-sdk-go/v2 v2.34.0 // indirect
 	github.com/ovh/go-ovh v1.9.0 // indirect
 	github.com/pascaldekloe/name v1.0.1 // indirect

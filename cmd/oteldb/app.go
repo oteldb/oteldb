@@ -47,6 +47,10 @@ type App struct {
 	shutdown func()
 	otelStorage
 
+	// metricsSink, when set, routes metrics ingestion to the embedded storage engine
+	// instead of ClickHouse (see [MetricsBackendStorage]).
+	metricsSink otelreceiver.MetricsSink
+
 	lg        *zap.Logger
 	telemetry *sdkapp.Telemetry
 }
@@ -92,6 +96,26 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 			return nil, errors.Wrapf(err, "create storage")
 		}
 		app.otelStorage = store
+	}
+
+	// Optionally swap the metrics signal onto the embedded storage engine. Logs and traces
+	// stay on ClickHouse; only the metrics querier and ingestion sink are replaced.
+	if cfg.MetricsBackend == MetricsBackendStorage {
+		b, closeStore, err := setupStorageBackend(ctx, cfg.Storage, app.lg.Named("storage"))
+		if err != nil {
+			return nil, errors.Wrap(err, "setup storage backend")
+		}
+		app.metricsQuerier = b
+		app.metricsSink = b
+		app.services["storage"] = func(ctx context.Context) error {
+			<-ctx.Done()
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := closeStore(shutdownCtx); err != nil {
+				return errors.Wrap(err, "close storage")
+			}
+			return nil
+		}
 	}
 
 	if err := app.setupHealthCheck(); err != nil {
@@ -412,8 +436,13 @@ func (app *App) setupCollector() error {
 		}
 	}
 
+	var factoryOpts []otelreceiver.Option
+	if app.metricsSink != nil {
+		factoryOpts = append(factoryOpts, otelreceiver.WithMetricsSink(app.metricsSink))
+	}
+
 	col, err := otelcol.NewCollector(otelcol.CollectorSettings{
-		Factories: otelreceiver.Factories(telemetry),
+		Factories: otelreceiver.Factories(telemetry, factoryOpts...),
 		BuildInfo: component.NewDefaultBuildInfo(),
 		LoggingOptions: []zap.Option{
 			zap.WrapCore(func(zapcore.Core) zapcore.Core {
