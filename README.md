@@ -66,7 +66,8 @@ You can open Grafana dashboard at http://localhost:3000/d/oteldb/oteldb
 oteldb can also run on the embedded [storage engine][storage] instead of ClickHouse. The engine is
 in-process and requires no external dependencies, which makes it convenient for local development,
 testing, and small single-node deployments. It serves all signals: metrics (PromQL), traces
-(TraceQL), logs (LogQL) and profiles (Pyroscope).
+(TraceQL), logs (LogQL) and profiles (Pyroscope). PromQL on the embedded engine passes the full
+[ch-compliance][compliance] suite (537/537, 100%).
 
 [storage]: https://github.com/oteldb/storage
 

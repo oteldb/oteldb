@@ -2,8 +2,9 @@ name: "Storage Compliance"
 
 # End-to-end PromQL/LogQL compliance for oteldb running on the embedded storage engine
 # (`--embedded`, no ClickHouse). Mirrors compliance.yml but points the compliance testers at an
-# embedded oteldb. PromQL is on par with the ClickHouse backend (99.63% locally, 535/537) and is
-# gated at 99.00%. LogQL ingestion is wired via otelcol.embedded.yml (hoists Loki labels to resource
+# embedded oteldb. PromQL is fully compatible (100%, 537/537) once the volatile demo gauge is frozen
+# before the comparison (see the Freeze dataset step), and is gated at 100%. LogQL ingestion is wired
+# via otelcol.embedded.yml (hoists Loki labels to resource
 # attributes so the embedded backend can select streams); the embedded LogQL engine is far less
 # complete, so it is gated at a 25% floor (~28% locally) to catch regressions while it matures.
 
@@ -54,6 +55,20 @@ jobs:
         working-directory: dev/local/ch-compliance
         run: go run ./cmd/compliance-wait -wait 30s
 
+      # Freeze the dataset before comparing. demo_memory_usage_bytes is a gauge the demo services
+      # rewrite every scrape, so a query that reaches the freshest sample (e.g. negative-offset
+      # queries, whose eval time is shifted into the future) can read a different value in the
+      # reference vs the test backend simply because the two queries are not perfectly simultaneous.
+      # Stopping the generators halts new samples; restarting Prometheus drops the now-down targets
+      # without inserting staleness markers, so it carries the last real samples forward exactly as
+      # oteldb does. Both backends then evaluate identical, settled data and agree on every query.
+      - name: Freeze dataset
+        working-directory: dev/local/ch-compliance
+        run: |
+          docker compose -f docker-compose.embedded.yml stop demo-1 demo-2 demo-3
+          docker compose -f docker-compose.embedded.yml restart prometheus
+          go run ./cmd/compliance-wait -wait 15s
+
       - name: Run
         working-directory: dev/local/ch-compliance
         run: |
@@ -72,7 +87,7 @@ jobs:
 
       - name: Verify
         working-directory: dev/local/ch-compliance
-        run: go run ./cmd/compliance-verify --target 99.00 result.embedded.json
+        run: go run ./cmd/compliance-verify --target 100.00 result.embedded.json
 
       - name: Dump oteldb logs
         if: ${{ always() }}
