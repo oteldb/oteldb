@@ -26,7 +26,8 @@ services:
     command:
       - "--config=/conf/otel-collector-config.yaml"
     volumes:
-      - ./otelcol.yml:/conf/otel-collector-config.yaml
+      # Embedded-storage variant: hoists Loki labels to resource attributes (see otelcol.embedded.yml).
+      - ./otelcol.embedded.yml:/conf/otel-collector-config.yaml
     ports:
       - "3102:3100"
     restart: unless-stopped
