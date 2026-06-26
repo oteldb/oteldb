@@ -282,13 +282,14 @@ func convertLinks(ls []sigtrace.Link) []tracestorage.Link {
 	return out
 }
 
-// durationInRange reports whether the span's duration is within the optional [min, max] bounds.
-func durationInRange(span tracestorage.Span, min, max time.Duration) bool {
+// durationInRange reports whether the span's duration is within the optional [minDur, maxDur]
+// bounds.
+func durationInRange(span tracestorage.Span, minDur, maxDur time.Duration) bool {
 	d := time.Duration(span.End - span.Start)
-	if min > 0 && d < min {
+	if minDur > 0 && d < minDur {
 		return false
 	}
-	if max > 0 && d > max {
+	if maxDur > 0 && d > maxDur {
 		return false
 	}
 	return true

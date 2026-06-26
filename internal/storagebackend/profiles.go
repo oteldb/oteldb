@@ -3,6 +3,7 @@ package storagebackend
 import (
 	"context"
 	"regexp"
+	"slices"
 	"sort"
 
 	"github.com/go-faster/errors"
@@ -156,8 +157,8 @@ func mergeStack(root *profilestorage.FlameNode, frames []sigprofile.Frame, value
 
 	node := root
 	// frames are leaf-first; walk the call path outermost→leaf so the tree reads root→leaf.
-	for i := len(frames) - 1; i >= 0; i-- {
-		name := frames[i].Function
+	for _, frame := range slices.Backward(frames) {
+		name := frame.Function
 		child := childByName(node, name)
 		if child == nil {
 			child = &profilestorage.FlameNode{Name: name}

@@ -116,11 +116,11 @@ func TestBackendTracesRoundtrip(t *testing.T) {
 
 	// TraceByID returns both spans.
 	var id [16]byte = traceID
-	spans := drain(t, mustTraceByID(t, ctx, tq, id, start, end))
+	spans := drain(t, mustTraceByID(ctx, t, tq, id, start, end))
 	require.Len(t, spans, 2)
 
 	// SearchTags by span attribute returns the matching span.
-	found := drain(t, mustSearchTags(t, ctx, tq, map[string]string{"http.method": "GET"}, start, end))
+	found := drain(t, mustSearchTags(ctx, t, tq, map[string]string{"http.method": "GET"}, start, end))
 	require.Len(t, found, 1)
 	require.Equal(t, "GET /", found[0].Name)
 
@@ -215,14 +215,14 @@ func drain[T any](t *testing.T, it iterators.Iterator[T]) []T {
 	return out
 }
 
-func mustTraceByID(t *testing.T, ctx context.Context, tq *storagebackend.TraceQuerier, id [16]byte, start, end time.Time) iterators.Iterator[tracestorage.Span] {
+func mustTraceByID(ctx context.Context, t *testing.T, tq *storagebackend.TraceQuerier, id [16]byte, start, end time.Time) iterators.Iterator[tracestorage.Span] {
 	t.Helper()
 	it, err := tq.TraceByID(ctx, id, tracestorage.TraceByIDOptions{Start: start, End: end})
 	require.NoError(t, err)
 	return it
 }
 
-func mustSearchTags(t *testing.T, ctx context.Context, tq *storagebackend.TraceQuerier, tags map[string]string, start, end time.Time) iterators.Iterator[tracestorage.Span] {
+func mustSearchTags(ctx context.Context, t *testing.T, tq *storagebackend.TraceQuerier, tags map[string]string, start, end time.Time) iterators.Iterator[tracestorage.Span] {
 	t.Helper()
 	it, err := tq.SearchTags(ctx, tags, tracestorage.SearchTagsOptions{Start: start, End: end})
 	require.NoError(t, err)
