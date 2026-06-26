@@ -1,0 +1,35 @@
+# PromQL read benchmark against oteldb running on the embedded storage engine (`--embedded`).
+# Same data path as docker-compose.ci.yml (otelbench replays req.rwq over Prometheus remote write
+# and benchmarks PromQL) but without ClickHouse or the telemetry sidecars: oteldb serves and
+# ingests metrics entirely in-process. The oteldb.yml config is reused for receiver/API ports;
+# --embedded overrides the storage backend, so the ClickHouse DSN in it is ignored.
+version: "3"
+
+services:
+  oteldb:
+    image: ghcr.io/oteldb/oteldb
+    build:
+      context: ../../../
+      dockerfile: ./dev/deploy/deploy.Dockerfile
+    command:
+      - --config=/etc/otel/cfg.yml
+      - --embedded
+    volumes:
+      - ./oteldb.yml:/etc/otel/cfg.yml:ro
+    environment:
+      - PPROF_ADDR=0.0.0.0:9010
+      - OTEL_LOG_LEVEL=info
+      - OTEL_METRICS_EXPORTER=none
+      - OTEL_LOGS_EXPORTER=none
+      - OTEL_TRACES_EXPORTER=none
+      - GOMAXPROCS=3
+      - GOMEMLIMIT=1GiB
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:13133/liveness"]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    ports:
+      - "127.0.0.1:9090:9090" # promql
+      - "127.0.0.1:9010:9010" # pprof
+      - "127.0.0.1:19291:19291" # prometheus remote write

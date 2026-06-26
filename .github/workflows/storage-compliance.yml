@@ -1,0 +1,148 @@
+name: "Storage Compliance"
+
+# End-to-end PromQL/LogQL compliance for oteldb running on the embedded storage engine
+# (`--embedded`, no ClickHouse). Mirrors compliance.yml but points the compliance testers at an
+# embedded oteldb. The embedded engine does not yet represent every metric type (histograms and
+# summaries are dropped on ingest), so its compliance score is lower than the ClickHouse backend's;
+# the verify step is informational (continue-on-error) and uploads the full report. Ratchet the
+# target up once a stable baseline is observed.
+
+# Heavyweight (builds images, pulls external services); runs on main and on demand rather than
+# gating every PR. The fast, deterministic gate lives in storage.yml.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: read
+
+jobs:
+  PromQL:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Docker log in
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/checkout@v7
+
+      - name: Install Task
+        uses: go-task/setup-task@v2
+
+      - name: Build binaries
+        run: task build-deploy
+
+      - name: Start
+        working-directory: dev/local/ch-compliance
+        run: docker compose -f docker-compose.embedded.yml up -d --build --force-recreate
+
+      - name: Wait
+        working-directory: dev/local/ch-compliance
+        run: go run ./cmd/compliance-wait -wait 30s
+
+      - name: Run
+        working-directory: dev/local/ch-compliance
+        run: |
+          go run github.com/oteldb/oteldb/cmd/promql-compliance-tester \
+          -config-file promql-test-queries.yml -config-file test-oteldb.yml \
+          -output-format json \
+          -end 1m -range 1m > result.embedded.json || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: result.embedded.promql.json
+          path: dev/local/ch-compliance/result.embedded.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Verify (baseline, informational)
+        continue-on-error: true
+        working-directory: dev/local/ch-compliance
+        run: go run ./cmd/compliance-verify --target 75.00 result.embedded.json
+
+      - name: Dump oteldb logs
+        if: ${{ always() }}
+        working-directory: dev/local/ch-compliance
+        run: docker compose -f docker-compose.embedded.yml logs oteldb
+
+      - name: Cleanup
+        if: ${{ ! cancelled() }}
+        working-directory: dev/local/ch-compliance
+        run: docker compose -f docker-compose.embedded.yml down --remove-orphans --volumes --timeout 10
+
+  LogQL:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Docker log in
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/checkout@v7
+
+      - name: Install Task
+        uses: go-task/setup-task@v2
+
+      - name: Build binaries
+        run: task build-deploy
+
+      - name: Start
+        working-directory: dev/local/ch-logql-compliance
+        run: docker compose -f docker-compose.embedded.yml up -d --build --force-recreate
+
+      - name: Run (baseline, informational)
+        continue-on-error: true
+        working-directory: dev/local/ch-logql-compliance
+        run: |
+          go run github.com/oteldb/oteldb/cmd/logql-compliance-tester \
+          -end 1m -range 1m \
+          -config-file logql-test-queries.yml -config-file test-oteldb.yml \
+          -output-format json -output-file result.embedded.json \
+          -output-unsupported \
+          -query-parallelism 2 \
+          -target 75.00
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: result.embedded.logql.json
+          path: dev/local/ch-logql-compliance/result.embedded.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Dump oteldb logs
+        if: ${{ always() }}
+        working-directory: dev/local/ch-logql-compliance
+        run: docker compose -f docker-compose.embedded.yml logs oteldb
+
+      - name: Cleanup
+        if: ${{ ! cancelled() }}
+        working-directory: dev/local/ch-logql-compliance
+        run: docker compose -f docker-compose.embedded.yml down --remove-orphans --volumes --timeout 10

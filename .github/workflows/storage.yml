@@ -1,0 +1,60 @@
+name: "Storage"
+
+# Fast, deterministic CI for the embedded github.com/oteldb/storage engine. These jobs run the
+# in-memory conformance tests and microbenchmarks for every signal served from the embedded engine
+# (the same code path enabled by `oteldb --embedded`). They need no ClickHouse or Docker.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  Conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      - uses: actions/checkout@v7
+
+      - name: Embedded storage conformance tests
+        run: |
+          go test -race -count=1 -run TestStorageBackend \
+            ./integration/prome2e/... \
+            ./integration/lokie2e/... \
+            ./integration/tempoe2e/...
+
+      - name: Storage backend tests
+        run: go test -race -count=1 ./internal/storagebackend/...
+
+  Benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      - uses: actions/checkout@v7
+
+      - name: Embedded storage benchmarks
+        run: |
+          go test -run '^$' -bench 'Storage' -benchmem -benchtime 100x \
+            ./integration/prome2e/... \
+            ./integration/lokie2e/... \
+            ./integration/tempoe2e/... | tee storage-bench.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v7
+        with:
+          name: storage-bench.txt
+          path: storage-bench.txt
+          if-no-files-found: error
+          retention-days: 7
