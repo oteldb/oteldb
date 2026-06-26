@@ -1,12 +1,14 @@
-// Package storagebackend adapts the embeddable github.com/oteldb/storage engine to
-// oteldb's metric query and ingestion interfaces, so the metrics signal can be served from
-// the native Go storage engine instead of ClickHouse.
+// Package storagebackend adapts the embeddable github.com/oteldb/storage engine to oteldb's
+// query and ingestion interfaces, so any signal can be served from the native Go storage
+// engine instead of ClickHouse.
 //
-// Only the metrics path is wired: the storage engine currently implements metrics
-// (gauge/sum) end-to-end, while logs and traces stay on ClickHouse. A Backend implements
-// oteldb's metric querier seam (Prometheus storage.Queryable + ExemplarQueryable, the PromQL
-// engine's MetricsScanners, and metricstorage.MetadataQuerier) and the metrics ingestion
-// sink (ConsumeMetrics) over a single shared *storage.Storage instance.
+// All four signals are wired over a single shared *storage.Storage instance. [Backend]
+// implements the metrics seam directly (Prometheus storage.Queryable + ExemplarQueryable, the
+// PromQL engine's MetricsScanners, metricstorage.MetadataQuerier) and the ingestion sinks for
+// every signal (ConsumeMetrics/ConsumeTraces/ConsumeLogs/ConsumeProfiles). Because the logs and
+// profiles read interfaces declare colliding method names, each non-metric signal's query
+// interface is implemented by a small wrapper obtained via [Backend.Logs], [Backend.Traces],
+// and [Backend.Profiles] (see signals.go).
 package storagebackend
 
 import (
