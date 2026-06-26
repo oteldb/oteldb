@@ -2,10 +2,9 @@ name: "Storage Compliance"
 
 # End-to-end PromQL/LogQL compliance for oteldb running on the embedded storage engine
 # (`--embedded`, no ClickHouse). Mirrors compliance.yml but points the compliance testers at an
-# embedded oteldb. The embedded engine does not yet represent every metric type (histograms and
-# summaries are dropped on ingest), so its compliance score is lower than the ClickHouse backend's;
-# the verify step is informational (continue-on-error) and uploads the full report. Ratchet the
-# target up once a stable baseline is observed.
+# embedded oteldb. PromQL is on par with the ClickHouse backend (99.63% locally, 535/537) and is
+# gated at 99.00%. LogQL has not been baselined yet, so it stays informational (continue-on-error)
+# and uploads its report; ratchet its target up once a stable baseline is observed.
 
 on:
   push:
@@ -70,10 +69,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Verify (baseline, informational)
-        continue-on-error: true
+      - name: Verify
         working-directory: dev/local/ch-compliance
-        run: go run ./cmd/compliance-verify --target 75.00 result.embedded.json
+        run: go run ./cmd/compliance-verify --target 99.00 result.embedded.json
 
       - name: Dump oteldb logs
         if: ${{ always() }}
