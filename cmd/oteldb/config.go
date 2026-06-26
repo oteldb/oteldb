@@ -56,9 +56,18 @@ type Config struct {
 
 	// MetricsBackend selects the storage backend serving the metrics signal:
 	// "clickhouse" (default) or "storage" (the embedded github.com/oteldb/storage engine).
-	// Logs and traces always use ClickHouse.
 	MetricsBackend string `json:"metrics_backend" yaml:"metrics_backend"`
-	// Storage configures the embedded storage engine, used when MetricsBackend is "storage".
+	// TracesBackend selects the storage backend serving the traces signal:
+	// "clickhouse" (default) or "storage".
+	TracesBackend string `json:"traces_backend" yaml:"traces_backend"`
+	// LogsBackend selects the storage backend serving the logs signal:
+	// "clickhouse" (default) or "storage".
+	LogsBackend string `json:"logs_backend" yaml:"logs_backend"`
+	// ProfilesBackend selects the storage backend serving the profiles signal. Profiles have no
+	// ClickHouse implementation, so this is empty (the Pyroscope API stays unregistered) unless
+	// set to "storage" (the embedded github.com/oteldb/storage engine).
+	ProfilesBackend string `json:"profiles_backend" yaml:"profiles_backend"`
+	// Storage configures the embedded storage engine, used when a signal's backend is "storage".
 	Storage StorageConfig `json:"storage" yaml:"storage"`
 
 	Tempo       TempoConfig       `json:"tempo" yaml:"tempo"`
@@ -103,9 +112,23 @@ func (cfg *StorageConfig) setDefaults() {
 	}
 }
 
+// usesStorageBackend reports whether any signal is served by the embedded storage engine.
+func (cfg *Config) usesStorageBackend() bool {
+	return cfg.MetricsBackend == MetricsBackendStorage ||
+		cfg.TracesBackend == MetricsBackendStorage ||
+		cfg.LogsBackend == MetricsBackendStorage ||
+		cfg.ProfilesBackend == MetricsBackendStorage
+}
+
 func (cfg *Config) setDefaults() {
 	if cfg.MetricsBackend == "" {
 		cfg.MetricsBackend = MetricsBackendClickHouse
+	}
+	if cfg.TracesBackend == "" {
+		cfg.TracesBackend = MetricsBackendClickHouse
+	}
+	if cfg.LogsBackend == "" {
+		cfg.LogsBackend = MetricsBackendClickHouse
 	}
 	cfg.Storage.setDefaults()
 	if len(cfg.CollectorSignals) == 0 {
@@ -115,6 +138,28 @@ func (cfg *Config) setDefaults() {
 		}
 	}
 	if cfg.Collector == nil {
+		pipelines := map[string]any{
+			"traces": map[string]any{
+				"receivers": []string{"otlp"},
+				"exporters": []string{"oteldbexporter"},
+			},
+			"metrics": map[string]any{
+				"receivers": []string{"otlp", "prometheusremotewrite"},
+				"exporters": []string{"oteldbexporter"},
+			},
+			"logs": map[string]any{
+				"receivers": []string{"otlp"},
+				"exporters": []string{"oteldbexporter"},
+			},
+		}
+		// The profiles signal is experimental and only representable by the embedded storage
+		// engine, so its pipeline is enabled only when profiles are served from storage.
+		if cfg.ProfilesBackend == MetricsBackendStorage {
+			pipelines["profiles"] = map[string]any{
+				"receivers": []string{"otlp"},
+				"exporters": []string{"oteldbexporter"},
+			}
+		}
 		cfg.Collector = map[string]any{
 			"receivers": map[string]any{
 				"otlp": map[string]any{
@@ -136,20 +181,7 @@ func (cfg *Config) setDefaults() {
 				},
 			},
 			"service": map[string]any{
-				"pipelines": map[string]any{
-					"traces": map[string]any{
-						"receivers": []string{"otlp"},
-						"exporters": []string{"oteldbexporter"},
-					},
-					"metrics": map[string]any{
-						"receivers": []string{"otlp", "prometheusremotewrite"},
-						"exporters": []string{"oteldbexporter"},
-					},
-					"logs": map[string]any{
-						"receivers": []string{"otlp"},
-						"exporters": []string{"oteldbexporter"},
-					},
-				},
+				"pipelines": pipelines,
 			},
 		}
 	}
