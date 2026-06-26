@@ -59,9 +59,22 @@ type EvalParams struct {
 	MaxNodes int
 }
 
-// Eval parses and evaluates the query, returning a flamebearer profile.
-func (e *Engine) Eval(ctx context.Context, query string, params EvalParams) (profile *pyroscopeapi.FlamebearerProfileV1, rerr error) {
-	ctx, span := e.tracer.Start(ctx, "Eval",
+// Result is the outcome of a ProfileQL query: a merged flamegraph tree together
+// with the profile type it was selected for. It can be rendered into the various
+// Pyroscope output formats.
+type Result struct {
+	// Tree is the merged, symbol-resolved flamegraph tree. It may be nil for an
+	// empty result.
+	Tree *profilestorage.FlameTree
+	// Type is the profile type that was selected.
+	Type profileql.ProfileType
+	// MaxNodes is the node limit requested for the query, if any.
+	MaxNodes int
+}
+
+// Select parses and evaluates the query, returning the merged result.
+func (e *Engine) Select(ctx context.Context, query string, params EvalParams) (result *Result, rerr error) {
+	ctx, span := e.tracer.Start(ctx, "Select",
 		trace.WithAttributes(
 			attribute.String("profileql.query", query),
 			xattribute.UnixNano("profileql.params.start", params.Start),
@@ -92,11 +105,26 @@ func (e *Engine) Eval(ctx context.Context, query string, params EvalParams) (pro
 		return nil, errors.Wrap(err, "select merge profile")
 	}
 
-	profile = buildFlamebearerProfile(tree, expr.Type, params.MaxNodes)
 	span.AddEvent("return_result", trace.WithAttributes(
-		attribute.Int("profileql.names", len(profile.Flamebearer.Names)),
-		attribute.Int("profileql.levels", len(profile.Flamebearer.Levels)),
-		attribute.Int("profileql.num_ticks", profile.Flamebearer.NumTicks),
+		attribute.Int64("profileql.total", tree.Total()),
 	))
-	return profile, nil
+	return &Result{
+		Tree:     tree,
+		Type:     expr.Type,
+		MaxNodes: params.MaxNodes,
+	}, nil
+}
+
+// Eval parses and evaluates the query, returning a flamebearer profile.
+func (e *Engine) Eval(ctx context.Context, query string, params EvalParams) (*pyroscopeapi.FlamebearerProfileV1, error) {
+	result, err := e.Select(ctx, query, params)
+	if err != nil {
+		return nil, err
+	}
+	return result.Flamebearer(), nil
+}
+
+// Flamebearer renders the result into the Pyroscope flamebearer JSON format.
+func (r *Result) Flamebearer() *pyroscopeapi.FlamebearerProfileV1 {
+	return buildFlamebearerProfile(r.Tree, r.Type, r.MaxNodes)
 }
