@@ -11,6 +11,9 @@ allow_licenses:
 allow-dependencies-licenses:
   # Have a separate non-GPL license.
   - "pkg:golang/github.com/grafana/loki/pkg/push"
+  # The pyroscope/api module is Apache-2.0 (its own LICENSE file), though the parent
+  # pyroscope repo is AGPL; we use it for the Pyroscope connect QuerierService types.
+  - "pkg:golang/github.com/grafana/pyroscope/api"
   # Simply wrong.
   # See https://github.com/hashicorp/cronexpr/blob/master/LICENSE.
   - "pkg:golang/github.com/hashicorp/cronexpr"
