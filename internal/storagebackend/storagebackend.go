@@ -44,6 +44,10 @@ type Backend struct {
 	// logParallelism is the max number of workers used to materialize log query results across the
 	// fetched record set. <= 1 keeps the sequential path (the default). See [WithLogParallelism].
 	logParallelism int
+	// overTimePushdown routes instant *_over_time queries through the aggregate-sidecar pushdown
+	// ([storage.Storage.AggregateMetricsNamed]) instead of a raw fetch-and-fold. True by default;
+	// see [WithOverTimePushdown].
+	overTimePushdown bool
 }
 
 // Option configures a [Backend].
@@ -57,11 +61,18 @@ func WithLogParallelism(n int) Option {
 	return func(b *Backend) { b.logParallelism = n }
 }
 
+// WithOverTimePushdown toggles the instant *_over_time aggregate pushdown. It is on by default
+// (the sidecar path is faster and correct); passing false restores the raw matrix-selector path
+// (useful as a fallback or for differential testing).
+func WithOverTimePushdown(enabled bool) Option {
+	return func(b *Backend) { b.overTimePushdown = enabled }
+}
+
 // New returns a Backend over store. The ingest side has no tenant callback, so every batch routes
 // to the "default" tenant; the empty tenant id here normalizes to "default" on the read side,
 // keeping reads and writes on the same tenant (which also makes cluster reads owner-aware).
 func New(store *storage.Storage, opts ...Option) *Backend {
-	b := &Backend{store: store}
+	b := &Backend{store: store, overTimePushdown: true}
 	for _, opt := range opts {
 		opt(b)
 	}
@@ -172,6 +183,22 @@ func (s scanners) NewMatrixSelector(
 	node logicalplan.MatrixSelector,
 	call logicalplan.FunctionCall,
 ) (model.VectorOperator, error) {
+	// Instant *_over_time over a supported function: answer from the aggregate sidecar instead of a
+	// raw fetch-and-fold. Range queries keep the matrix selector (their per-step sliding window is a
+	// different shape than the sidecar's step-aligned buckets), and anything with a projection or
+	// post-filter falls back too.
+	if s.b.overTimePushdown && opts.IsInstantQuery() && node.Range > 0 {
+		if fold, ok := overTimeFold[call.Func.Name]; ok {
+			vs := node.VectorSelector
+			if vs.Projection == nil && len(vs.Filters) == 0 {
+				return newAggregateOverTimeOp(
+					s.b.store, s.b.tenant, vs.LabelMatchers, call.Func.Name, fold,
+					opts.Start.UnixMilli(), node.Range.Milliseconds(), vs.Offset.Milliseconds(),
+				), nil
+			}
+		}
+	}
+
 	inner, err := s.windowed(opts, hints)
 	if err != nil {
 		return nil, err
