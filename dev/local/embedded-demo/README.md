@@ -14,6 +14,12 @@ engine.
 docker compose -f dev/local/embedded-demo/docker-compose.yml up --build
 ```
 
+The `oteldb` and `oteldemo` images are built from the local checkout (`pull_policy: build`), so the
+demo always runs the current source rather than a published `ghcr.io` image. After changing oteldb,
+re-run with `--build` (or `up -d --build oteldb`) to rebuild. If the Pyroscope datasource health
+check returns `unimplemented: 404`, the running oteldb predates the connect QuerierService API —
+rebuild it.
+
 Then open Grafana at <http://localhost:3000> (anonymous admin, no login). Four datasources are
 pre-provisioned, one per signal, all pointing at the single oteldb instance:
 

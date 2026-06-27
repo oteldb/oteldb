@@ -14,6 +14,9 @@ services:
   # this engine (no ClickHouse implementation), so --embedded is what makes the profiles signal work.
   oteldb:
     image: ghcr.io/oteldb/oteldb
+    # Always build oteldb from the local checkout so the demo runs the current source (e.g. the
+    # Pyroscope connect API), never a stale published ghcr.io image.
+    pull_policy: build
     build:
       context: ../../../
       dockerfile: dev/Dockerfile
@@ -37,6 +40,9 @@ services:
   # Generates traces, metrics, and logs by calling the server once per second.
   client:
     image: ghcr.io/oteldb/oteldb/oteldemo
+    # Build the oteldemo image from local source (server and profiles reuse this tag), so the new
+    # `profiles` mode is present rather than relying on a published image.
+    pull_policy: build
     build:
       context: ../../../
       dockerfile: dev/Dockerfile
