@@ -62,6 +62,40 @@ func (o *LogQLOptimizer) optimizePipeline(n logqlengine.PipelineNode) {
 		return
 	}
 	sn.conditions = lineFilterConditions(pn.Pipeline)
+	sn.pipelineLabels = labelFilterMatchers(pn.Pipeline)
+}
+
+// labelFilterMatchers extracts the equality label filters (`| L="v"`) that can be resolved against
+// the stored label set: those appearing before any stage that adds, renames, or drops labels (after
+// which a filter could reference a derived label rather than a stored one). Only simple equality
+// predicates on non-empty values are returned; streamFilters then decides per label whether the
+// offload is sound (clean name; resource → Matcher, record → Condition). The filters stay in the
+// engine pipeline, so this only ever skips work.
+func labelFilterMatchers(pipeline []logql.PipelineStage) (out []logql.LabelMatcher) {
+	for _, stage := range pipeline {
+		switch stage := stage.(type) {
+		case *logql.LabelFilter:
+			if m, ok := equalityLabelMatcher(stage.Pred); ok {
+				out = append(out, m)
+			}
+		case *logql.LineFilter, *logql.LineFormat, *logql.DecolorizeExpr:
+			// These do not change the stored label set; keep scanning.
+		default:
+			// A parser, label_format, drop/keep, distinct, or unknown stage may change labels, so a
+			// later filter could reference a derived label. Stop offloading here.
+			return out
+		}
+	}
+	return out
+}
+
+// equalityLabelMatcher returns the underlying matcher of a simple `label = "value"` predicate.
+func equalityLabelMatcher(pred logql.LabelPredicate) (logql.LabelMatcher, bool) {
+	m, ok := logql.UnparenLabelPredicate(pred).(*logql.LabelMatcher)
+	if !ok || m.Op != logql.OpEq || m.Value == "" {
+		return logql.LabelMatcher{}, false
+	}
+	return *m, true
 }
 
 // lineFilterConditions builds storage fetch conditions from the leading offloadable line filters of
