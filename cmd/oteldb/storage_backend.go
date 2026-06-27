@@ -3,9 +3,11 @@ package main
 import (
 	"cmp"
 	"context"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 
 	"github.com/go-faster/errors"
@@ -19,6 +21,7 @@ import (
 	"github.com/oteldb/storage/cluster/etcd"
 
 	"github.com/oteldb/oteldb/internal/storagebackend"
+	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
 // setupStorageBackend constructs the embedded storage engine and an adapter implementing
@@ -64,6 +67,20 @@ func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger,
 		opts = append(opts, clusterOpt)
 	}
 
+	if tenancyOpt, err := tenancyOption(cfg.Policy); err != nil {
+		return nil, nil, errors.Wrap(err, "storage policy")
+	} else if tenancyOpt != nil {
+		opts = append(opts, tenancyOpt)
+		lg.Info("Applying embedded storage tenancy policy",
+			zap.Int("precision_tiers", len(cfg.Policy.Precision)),
+			zap.Int("downsample_tiers", len(cfg.Policy.Downsample)),
+			zap.Bool("recompress", cfg.Policy.Recompress != nil),
+		)
+	}
+
+	caches := resolveCacheSettings(cfg)
+	opts = append(opts, cacheOptions(caches)...)
+
 	store, err := storage.Open(ctx, storage.Options{}, opts...)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "open storage")
@@ -72,6 +89,9 @@ func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger,
 	lg.Info("Using embedded storage engine for metrics",
 		zap.String("backend", cmp.Or(cfg.Backend, "memory")),
 		zap.Int("log_query_parallelism", cfg.LogQueryParallelism),
+		zap.Int64("read_cache_bytes", caches.ReadCache),
+		zap.Int64("decode_cache_bytes", caches.DecodeCache),
+		zap.Bool("aggregate_stats", caches.AggregateStats),
 	)
 	b := storagebackend.New(store,
 		storagebackend.WithLogParallelism(cfg.LogQueryParallelism),
@@ -120,4 +140,66 @@ func clusterOption(cfg *StorageClusterConfig, lg *zap.Logger) (storage.Option, e
 		ShardsPerTenant: cfg.ShardsPerTenant,
 		Root:            cfg.Root,
 	}), nil
+}
+
+// cacheSettings is the resolved, effective cache/optimization configuration that oteldb applies to
+// the storage engine. Unlike the storage library (where these are opt-in), oteldb enables all three
+// by default and treats them as opt-out.
+type cacheSettings struct {
+	ReadCache      int64
+	DecodeCache    int64
+	AggregateStats bool
+}
+
+// resolveCacheSettings resolves the cache/optimization settings from config. Unset fields are sized
+// from the Go memory limit (e.g. a cgroup limit applied by automemlimit), falling back to
+// conservative absolute defaults when no limit is detectable. An explicit zero byte size disables
+// that cache, and an explicit AggregateStats=false disables the sidecar.
+func resolveCacheSettings(cfg StorageConfig) cacheSettings {
+	return cacheSettings{
+		ReadCache:      resolveCacheBytes(cfg.ReadCacheBytes, defaultReadCacheBytes),
+		DecodeCache:    resolveCacheBytes(cfg.DecodeCacheBytes, defaultDecodeCacheBytes),
+		AggregateStats: cfg.AggregateStats == nil || *cfg.AggregateStats,
+	}
+}
+
+// cacheOptions builds the storage options for the resolved cache/optimization settings.
+func cacheOptions(s cacheSettings) []storage.Option {
+	opts := []storage.Option{
+		storage.WithReadCache(s.ReadCache),
+		storage.WithDecodeCache(s.DecodeCache),
+	}
+	if s.AggregateStats {
+		opts = append(opts, storage.WithAggregateStats())
+	}
+	return opts
+}
+
+// resolveCacheBytes returns an explicit configured byte size (including 0 to disable) or, when
+// unset, the default returned by def.
+func resolveCacheBytes(cfg *xbytes.Bytes, def func() int64) int64 {
+	if cfg != nil {
+		return int64(*cfg)
+	}
+	return def()
+}
+
+// defaultReadCacheBytes sizes the backend object read cache (~1/16 of RAM, floor 128 MiB).
+func defaultReadCacheBytes() int64 { return defaultCacheBytes(1.0/16, 128<<20) }
+
+// defaultDecodeCacheBytes sizes the per-tenant decoded-column cache (~1/32 of RAM, floor 64 MiB).
+func defaultDecodeCacheBytes() int64 { return defaultCacheBytes(1.0/32, 64<<20) }
+
+// defaultCacheBytes sizes a cache as the given fraction of the Go memory limit, floored at minBytes.
+// When no limit is set (the default of math.MaxInt64, meaning unbounded), it returns minBytes so the
+// cache gets a sane absolute size rather than a RAM-proportional blow-up.
+func defaultCacheBytes(fraction float64, minBytes int64) int64 {
+	limit := debug.SetMemoryLimit(-1)
+	if limit <= 0 || limit == math.MaxInt64 {
+		return minBytes
+	}
+	if v := int64(float64(limit) * fraction); v > minBytes {
+		return v
+	}
+	return minBytes
 }
