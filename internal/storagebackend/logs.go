@@ -3,13 +3,13 @@ package storagebackend
 import (
 	"context"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/query/fetch"
 	"github.com/oteldb/storage/signal"
 	siglog "github.com/oteldb/storage/signal/log"
@@ -198,17 +198,19 @@ func (n *logStreamNode) materializeRange(batches []*fetch.Batch, offsets []int, 
 // the scan). The in-memory matchSelector still re-checks every surviving record, so this only ever
 // skips work.
 //
-// For an equality (`=`) on a non-empty value:
-//   - if the normalized label maps unambiguously to a single raw resource/scope attribute key (per
-//     LogSeries), it becomes a postings Matcher that prunes whole streams;
-//   - else if the label is "clean" — its normalized form is its own raw key, so a record-attribute
-//     key normalizing to it can only be the name itself — and is not a resource/scope label, it
-//     becomes a per-record attribute Condition that drops non-matching records.
+// Resolution uses the engine's key index (LogKeys), which reports every attribute key in the window
+// together with the scope(s) it was observed in (resource/scope = stream identity, record = the
+// per-record attrs column). For an equality (`=`) on a non-empty value, the normalized label is
+// matched back to its raw key(s):
+//   - a single raw key seen only in stream scope becomes a postings Matcher that prunes whole streams;
+//   - a single raw key seen only in record scope becomes a per-record Condition that drops
+//     non-matching records — this resolves dotted labels too (http_method ← http.method).
 //
-// Ambiguous, dotted record-attribute (e.g. http_method ← http.method), and absent labels are left to
-// matchSelector. Record-attribute Conditions carry only an exact Match (no bloom Equal hint): the
-// value may be non-string, and a typed value bloom token could wrongly part-prune; the Match still
-// drops rows at the fetch layer.
+// Absent labels, collisions (a label mapping to multiple raw keys), and mixed-scope keys (resource on
+// some streams, record on others — soundly pushable as neither) are left to matchSelector.
+// Record-attribute Conditions carry only an exact Match (no bloom Equal hint): the value may be
+// non-string, and a typed value bloom token could wrongly part-prune; the Match still drops rows at
+// the fetch layer.
 func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matchers []fetch.Matcher, conditions []fetch.Condition) {
 	wanted := map[string]string{}
 	addEq := func(matchers []logql.LabelMatcher) {
@@ -224,68 +226,57 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 		return nil, nil
 	}
 
-	series, err := n.q.b.store.LogSeries(ctx, n.q.b.tenant, nil, lo, hi)
+	keys, err := n.q.b.store.LogKeys(ctx, n.q.b.tenant, lo, hi)
 	if err != nil {
 		return nil, nil // best effort: fall back to in-memory filtering.
 	}
 
-	// Map each wanted normalized label to the set of raw stream-attribute keys that normalize to it.
-	rawKeys := map[string]map[string]struct{}{}
-	collect := func(key []byte) {
-		label := otelstorage.KeyToLabel(string(key))
-		if _, ok := wanted[label]; !ok {
-			return
-		}
-		set := rawKeys[label]
-		if set == nil {
-			set = map[string]struct{}{}
-			rawKeys[label] = set
-		}
-		set[string(key)] = struct{}{}
+	// Resolve each wanted normalized label to its raw attribute key(s) and their merged scope. A
+	// label maps to multiple raw keys only on a collision (e.g. http.method and http_method both
+	// present); the scope bitset distinguishes stream identity from per-record attributes.
+	type resolved struct {
+		rawKey string
+		scope  storage.KeyScope
 	}
-	for _, s := range series {
-		for i := range s.Resource.Attributes {
-			collect(s.Resource.Attributes[i].Key)
+	byLabel := map[string][]resolved{}
+	for _, ki := range keys {
+		label := otelstorage.KeyToLabel(string(ki.Key))
+		if _, ok := wanted[label]; !ok {
+			continue
 		}
-		for i := range s.Scope.Attributes {
-			collect(s.Scope.Attributes[i].Key)
-		}
+		byLabel[label] = append(byLabel[label], resolved{rawKey: string(ki.Key), scope: ki.Scope})
 	}
 
 	for label, value := range wanted {
-		want := value
-		switch keys := rawKeys[label]; {
-		case len(keys) == 1:
-			var rawKey string
-			for k := range keys {
-				rawKey = k
-			}
+		cands := byLabel[label]
+		if len(cands) != 1 {
+			// Absent (label not stored) or ambiguous (collision): leave it to matchSelector.
+			continue
+		}
+		c, want := cands[0], value
+		stream := c.scope&(storage.KeyScopeResource|storage.KeyScopeScope) != 0
+		record := c.scope&storage.KeyScopeRecord != 0
+		switch {
+		case stream && !record:
+			// A resource/scope label: prune whole streams via the postings index.
 			matchers = append(matchers, fetch.Matcher{
-				Name: []byte(rawKey),
+				Name: []byte(c.rawKey),
 				// Render the value exactly as the label set does, so this matches matchSelector.
 				Match: func(v signal.Value) bool { return labelValueString(v) == want },
-				Spec:  &fetch.EqualMatcher{Name: rawKey, Value: want},
+				Spec:  &fetch.EqualMatcher{Name: c.rawKey, Value: want},
 			})
-		case len(keys) == 0 && isCleanLabel(label):
-			// Not a resource/scope label in this window; a clean name is its own raw record key.
+		case record && !stream:
+			// A per-record attribute: drop non-matching records at the fetch layer. Match only (no
+			// bloom Equal hint): a typed value token could wrongly part-prune.
 			conditions = append(conditions, fetch.Condition{
-				Column: label,
+				Column: c.rawKey,
 				Match:  func(v signal.Value) bool { return labelValueString(v) == want },
 			})
 		}
-		// len(keys) > 1 (ambiguous) or a dotted record label: leave to matchSelector.
+		// Mixed scope (resource on some streams, record on others) can't be pushed soundly as either
+		// a Matcher or a Condition: leave it to matchSelector.
 	}
 	return matchers, conditions
-}
-
-// isCleanLabel reports whether a normalized label name is its own raw attribute key: it contains no
-// underscore (which KeyToLabel could have produced from a dot or other character) and is unchanged
-// by KeyToLabel, so a record-attribute key normalizing to it can only be the name itself.
-func isCleanLabel(label string) bool {
-	if strings.IndexByte(label, '_') >= 0 {
-		return false
-	}
-	return otelstorage.KeyToLabel(label) == label
 }
 
 // sortEntries orders entries by timestamp ascending for forward queries and descending otherwise.
@@ -408,6 +399,22 @@ func (q *LogQuerier) LabelNames(ctx context.Context, opts logstorage.LabelsOptio
 		names[name] = struct{}{}
 	}); err != nil {
 		return nil, err
+	}
+	// Stream enumeration only surfaces resource/scope labels. Record attributes live in the per-record
+	// column, so add their (normalized) key names from the engine's key index. They are window-global
+	// rather than stream-scoped, so only fold them in for an unfiltered listing — a stream selector
+	// can't soundly restrict them.
+	if len(opts.Query.Matchers) == 0 {
+		lo, hi := seriesWindow(opts.Start, opts.End)
+		keys, err := q.b.store.LogKeys(ctx, q.b.tenant, lo, hi)
+		if err != nil {
+			return nil, errors.Wrap(err, "log keys")
+		}
+		for _, ki := range keys {
+			if ki.Scope&storage.KeyScopeRecord != 0 {
+				names[otelstorage.KeyToLabel(string(ki.Key))] = struct{}{}
+			}
+		}
 	}
 	out := sortedKeys(names)
 	if opts.Limit > 0 && len(out) > opts.Limit {

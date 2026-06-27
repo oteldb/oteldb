@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/app"
 	"go.uber.org/zap"
 
 	"github.com/oteldb/storage"
@@ -17,8 +18,13 @@ import (
 // setupStorageBackend constructs the embedded storage engine and an adapter implementing
 // oteldb's metric query and ingestion interfaces. The returned close func stops and flushes
 // the engine. It is used when [Config.MetricsBackend] is [MetricsBackendStorage].
-func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger) (*storagebackend.Backend, func(context.Context) error, error) {
-	var opts []storage.Option
+func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger, m *app.Telemetry) (*storagebackend.Backend, func(context.Context) error, error) {
+	// The engine logs, traces, and meters through the injected providers (no-op if absent).
+	opts := []storage.Option{
+		storage.WithLogger(lg),
+		storage.WithTracerProvider(m.TracerProvider()),
+		storage.WithMeterProvider(m.MeterProvider()),
+	}
 	switch cfg.Backend {
 	case "", "memory":
 		opts = append(opts,

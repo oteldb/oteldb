@@ -11,13 +11,14 @@ import (
 
 	"github.com/oteldb/oteldb/internal/logql"
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/logstorage"
 )
 
-// TestLogRecordAttrPushdown checks that selecting by a clean record-attribute label (the Loki shape:
-// stream labels arrive as per-record attributes with an empty resource) returns exactly the records
-// matchSelector would, with the equality offloaded to a per-record fetch condition. It also checks
-// that a dotted record-attribute label (http_method ← http.method) — which cannot be resolved to a
-// raw key safely — still returns correct results via the in-memory fallback.
+// TestLogRecordAttrPushdown checks that selecting by a record-attribute label (the Loki shape: stream
+// labels arrive as per-record attributes with an empty resource) returns exactly the records
+// matchSelector would, with the equality offloaded to a per-record fetch condition. Since the LogKeys
+// rewire, a dotted record-attribute label (http_method ← http.method) resolves to its raw key
+// (http.method) via the engine's key index and is also offloaded — still returning correct results.
 func TestLogRecordAttrPushdown(t *testing.T) {
 	b, ctx := newBackend(t)
 	ts := time.Now().Truncate(time.Second)
@@ -73,12 +74,41 @@ func TestLogRecordAttrPushdown(t *testing.T) {
 	require.Equal(t, []string{"b"}, query(eq("job", "syslog")))
 	require.Empty(t, query(eq("job", "none")))
 
-	// Two clean record-attribute equalities (ANDed conditions).
+	// Two record-attribute equalities (ANDed conditions); the dotted one resolves via LogKeys.
 	require.Equal(t, []string{"a", "e"}, query([]logql.LabelMatcher{
 		{Label: "job", Op: logql.OpEq, Value: "varlogs"},
-		{Label: "http_method", Op: logql.OpEq, Value: "GET"}, // dotted -> fallback, still correct
+		{Label: "http_method", Op: logql.OpEq, Value: "GET"}, // dotted -> resolved to http.method, offloaded
 	}))
 
-	// Dotted record-attribute label alone: not offloadable, correct via fallback.
+	// Dotted record-attribute label alone: offloaded via its raw key (http.method).
 	require.Equal(t, []string{"a", "d", "e"}, query(eq("http_method", "GET")))
+}
+
+// TestLogRecordAttrLabelNames checks that LabelNames lists record-attribute keys (sourced from the
+// engine's key index via LogKeys), normalized to LogQL labels, alongside resource/scope labels.
+// Without LogKeys, stream enumeration alone would miss per-record attribute keys entirely.
+func TestLogRecordAttrLabelNames(t *testing.T) {
+	b, ctx := newBackend(t)
+	ts := time.Now().Truncate(time.Second)
+
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", "api") // resource (stream) label
+	sl := rl.ScopeLogs().AppendEmpty()
+	lr := sl.LogRecords().AppendEmpty()
+	lr.SetTimestamp(pcommon.Timestamp(ts.UnixNano()))
+	lr.Body().SetStr("hello")
+	lr.Attributes().PutStr("job", "varlogs")     // clean record-attribute key
+	lr.Attributes().PutStr("http.method", "GET") // dotted record-attribute key -> http_method
+	require.NoError(t, b.ConsumeLogs(ctx, ld))
+
+	lq := b.Logs()
+	start, end := ts.Add(-time.Hour), ts.Add(time.Hour)
+	names, err := lq.LabelNames(ctx, logstorage.LabelsOptions{Start: start, End: end})
+	require.NoError(t, err)
+
+	require.Contains(t, names, "service_name") // resource label
+	require.Contains(t, names, "job")          // clean record-attribute key
+	require.Contains(t, names, "http_method")  // dotted record-attribute key, normalized
+	require.True(t, sort.StringsAreSorted(names), "label names must be sorted")
 }
