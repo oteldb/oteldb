@@ -82,7 +82,7 @@ func TestLogQLOptimizerEquivalence(t *testing.T) {
 		`{service_name="api"} | level = "error"`,                          // offloaded: clean record-attr label filter
 		`{service_name="api"} |= "GET" | level = "info"`,                  // line filter + label filter, both offloaded
 		`{service_name="api"} | level = "error" | level = "info"`,         // contradictory (empty), offloaded
-		`{service_name="api"} | http_method = "GET"`,                      // dotted label filter, not offloaded
+		`{service_name="api"} | http_method = "GET"`,                      // dotted label filter, offloaded via LogKeys
 		`{service_name="api"} | level != "info"`,                          // negated label filter, not offloaded
 		`{service_name="api"} | label_format dummy="x" | level = "error"`, // label_format before: not offloaded
 		`{service_name="api"} | logfmt | level = "error"`,                 // parser before: must NOT offload (parsed field)

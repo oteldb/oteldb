@@ -1018,8 +1018,8 @@ github.com/openzipkin/zipkin-go v0.4.3/go.mod h1:M9wCJZFWCo2RiY+o1eBCEMe0Dp2S5LD
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
 github.com/oteldb/promql-engine v0.7.0-alpha.0 h1:od3skf7eTPMv+3zR6G3WZl7YVzWJUa8b8yP3XpfIgI4=
 github.com/oteldb/promql-engine v0.7.0-alpha.0/go.mod h1:j3kBzxEWSsdIinLTl7ogVolJbI2GC/fa1GU4/NpOr0k=
-github.com/oteldb/storage v0.4.0 h1:xGfd7gJBzYeZY0CA9xn0s1GbuiawB5+Dd9vwfxk1Ryg=
-github.com/oteldb/storage v0.4.0/go.mod h1:Xjn2nr5HKRXlooV93E6NGuriAjsk38h2FGz9ZRZuhWw=
+github.com/oteldb/storage v0.5.0 h1:Txdm78ZTR2Ib0Nk6zksPlaWWmGvgQxH/ac5jwyzrVVw=
+github.com/oteldb/storage v0.5.0/go.mod h1:Op/tbqwo6j2BKK5ItmVu7I5NB44I+ojpz7wh7VAQNvM=
 github.com/outscale/osc-sdk-go/v2 v2.34.0 h1:hHH5W9Fmgt6b8nGUmDyu4vVP+zqJ+W0zflzjgsGEGUQ=
 github.com/outscale/osc-sdk-go/v2 v2.34.0/go.mod h1:6J8WRznaSIEXXVHhhTXisGJQgvE5fYzbf8hAw7YIGfQ=
 github.com/ovh/go-ovh v1.9.0 h1:6K8VoL3BYjVV3In9tPJUdT7qMx9h0GExN9EXx1r2kKE=

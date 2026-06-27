@@ -116,7 +116,7 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 	// ClickHouse. For each swapped signal both the query side (the API handler's querier) and
 	// the ingestion side (the collector exporter's sink) are replaced.
 	if cfg.usesStorageBackend() {
-		b, closeStore, err := setupStorageBackend(ctx, cfg.Storage, app.lg.Named("storage"))
+		b, closeStore, err := setupStorageBackend(ctx, cfg.Storage, app.lg.Named("storage"), app.telemetry)
 		if err != nil {
 			return nil, errors.Wrap(err, "setup storage backend")
 		}
