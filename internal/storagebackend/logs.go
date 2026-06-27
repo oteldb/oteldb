@@ -3,6 +3,7 @@ package storagebackend
 import (
 	"context"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -42,6 +43,10 @@ func (q *LogQuerier) Query(_ context.Context, selector []logql.LabelMatcher) (lo
 type logStreamNode struct {
 	q        *LogQuerier
 	selector []logql.LabelMatcher
+	// conditions are offloaded columnar predicates (e.g. line filters as body conditions) pushed
+	// into the fetch by [LogQLOptimizer]. They prune parts and drop records at the storage layer;
+	// the engine still applies the full pipeline, so they only ever skip work.
+	conditions []fetch.Condition
 }
 
 var _ logqlengine.PipelineNode = (*logStreamNode)(nil)
@@ -54,11 +59,23 @@ func (n *logStreamNode) Traverse(cb logqlengine.NodeVisitor) error { return cb(n
 // them as entries ordered per params.Direction (and truncated to params.Limit).
 func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.EvalParams) (logqlengine.EntryIterator, error) {
 	lo, hi := fetchWindow(params.Start, params.End)
+	// Offload equality matchers: resource/scope labels prune streams via the postings index, clean
+	// record-attribute labels drop records via a per-record condition — both before materialization.
+	matchers, selConds := n.streamFilters(ctx, lo, hi)
 	req := fetch.Request{
-		Tenant: n.q.b.tenant,
-		Signal: signal.Log,
-		Start:  lo,
-		End:    hi,
+		Tenant:   n.q.b.tenant,
+		Signal:   signal.Log,
+		Start:    lo,
+		End:      hi,
+		Matchers: matchers,
+	}
+	// Selector record-attribute conditions plus any offloaded line filters (set by LogQLOptimizer).
+	if len(selConds)+len(n.conditions) > 0 {
+		conds := make([]fetch.Condition, 0, len(selConds)+len(n.conditions))
+		conds = append(conds, selConds...)
+		conds = append(conds, n.conditions...)
+		req.Conditions = conds
+		req.AllConditions = true
 	}
 
 	it, err := n.q.b.store.LogFetcher(n.q.b.tenant).Fetch(ctx, req)
@@ -93,6 +110,97 @@ func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.Eva
 		entries = entries[:params.Limit]
 	}
 	return iterators.Slice(entries), nil
+}
+
+// streamFilters resolves the selector's equality matchers to storage fetch filters so the storage
+// drops data before any record is materialized into an entry with a label set (the expensive part of
+// the scan). The in-memory matchSelector still re-checks every surviving record, so this only ever
+// skips work.
+//
+// For an equality (`=`) on a non-empty value:
+//   - if the normalized label maps unambiguously to a single raw resource/scope attribute key (per
+//     LogSeries), it becomes a postings Matcher that prunes whole streams;
+//   - else if the label is "clean" — its normalized form is its own raw key, so a record-attribute
+//     key normalizing to it can only be the name itself — and is not a resource/scope label, it
+//     becomes a per-record attribute Condition that drops non-matching records.
+//
+// Ambiguous, dotted record-attribute (e.g. http_method ← http.method), and absent labels are left to
+// matchSelector. Record-attribute Conditions carry only an exact Match (no bloom Equal hint): the
+// value may be non-string, and a typed value bloom token could wrongly part-prune; the Match still
+// drops rows at the fetch layer.
+func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matchers []fetch.Matcher, conditions []fetch.Condition) {
+	wanted := map[string]string{}
+	for _, m := range n.selector {
+		if m.Op == logql.OpEq && m.Value != "" {
+			wanted[string(m.Label)] = m.Value
+		}
+	}
+	if len(wanted) == 0 {
+		return nil, nil
+	}
+
+	series, err := n.q.b.store.LogSeries(ctx, n.q.b.tenant, nil, lo, hi)
+	if err != nil {
+		return nil, nil // best effort: fall back to in-memory filtering.
+	}
+
+	// Map each wanted normalized label to the set of raw stream-attribute keys that normalize to it.
+	rawKeys := map[string]map[string]struct{}{}
+	collect := func(key []byte) {
+		label := otelstorage.KeyToLabel(string(key))
+		if _, ok := wanted[label]; !ok {
+			return
+		}
+		set := rawKeys[label]
+		if set == nil {
+			set = map[string]struct{}{}
+			rawKeys[label] = set
+		}
+		set[string(key)] = struct{}{}
+	}
+	for _, s := range series {
+		for i := range s.Resource.Attributes {
+			collect(s.Resource.Attributes[i].Key)
+		}
+		for i := range s.Scope.Attributes {
+			collect(s.Scope.Attributes[i].Key)
+		}
+	}
+
+	for label, value := range wanted {
+		want := value
+		switch keys := rawKeys[label]; {
+		case len(keys) == 1:
+			var rawKey string
+			for k := range keys {
+				rawKey = k
+			}
+			matchers = append(matchers, fetch.Matcher{
+				Name: []byte(rawKey),
+				// Render the value exactly as the label set does, so this matches matchSelector.
+				Match: func(v signal.Value) bool { return labelValueString(v) == want },
+				Spec:  &fetch.EqualMatcher{Name: rawKey, Value: want},
+			})
+		case len(keys) == 0 && isCleanLabel(label):
+			// Not a resource/scope label in this window; a clean name is its own raw record key.
+			conditions = append(conditions, fetch.Condition{
+				Column: label,
+				Match:  func(v signal.Value) bool { return labelValueString(v) == want },
+			})
+		}
+		// len(keys) > 1 (ambiguous) or a dotted record label: leave to matchSelector.
+	}
+	return matchers, conditions
+}
+
+// isCleanLabel reports whether a normalized label name is its own raw attribute key: it contains no
+// underscore (which KeyToLabel could have produced from a dot or other character) and is unchanged
+// by KeyToLabel, so a record-attribute key normalizing to it can only be the name itself.
+func isCleanLabel(label string) bool {
+	if strings.IndexByte(label, '_') >= 0 {
+		return false
+	}
+	return otelstorage.KeyToLabel(label) == label
 }
 
 // sortEntries orders entries by timestamp ascending for forward queries and descending otherwise.

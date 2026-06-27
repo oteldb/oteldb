@@ -19,6 +19,20 @@ func otelAttrs(attrs signal.Attributes) otelstorage.Attrs {
 	return otelstorage.Attrs(m)
 }
 
+// labelValueString renders a storage value to the exact string the LogQL label set exposes for it.
+//
+// The log label set is built via [otelAttrs] (signal → pdata) and read back with pcommon's
+// AsString (see logqlabels.LabelSet.GetString). A pushdown matcher MUST compare values the same
+// way, or it can disagree with the in-memory matchSelector and drop a stream/record the engine
+// would keep — a silent false negative. signal.Value.AppendText is not equivalent: it renders bytes
+// raw (vs base64) and composite values differently. Projecting through putSignalValue + AsString
+// guarantees byte-for-byte parity.
+func labelValueString(v signal.Value) string {
+	pv := pcommon.NewValueEmpty()
+	putSignalValue(pv, v)
+	return pv.AsString()
+}
+
 // putSignalValue writes a storage [signal.Value] into the pdata value dst, preserving type and
 // recursing into slices/maps.
 func putSignalValue(dst pcommon.Value, v signal.Value) {

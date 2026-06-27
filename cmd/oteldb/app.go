@@ -38,6 +38,7 @@ import (
 	"github.com/oteldb/oteldb/internal/promhandler"
 	"github.com/oteldb/oteldb/internal/promql"
 	"github.com/oteldb/oteldb/internal/pyroscopeapi"
+	"github.com/oteldb/oteldb/internal/storagebackend"
 	"github.com/oteldb/oteldb/internal/tempoapi"
 	"github.com/oteldb/oteldb/internal/tempohandler"
 	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
@@ -342,8 +343,12 @@ func (app *App) trySetupLoki() error {
 	var optimizers []logqlengine.Optimizer
 	optimizers = append(optimizers, logqlengine.DefaultOptimizers()...)
 	// The ClickHouse optimizer pushes filtering into chstorage's InputNode; it is a no-op for
-	// other backends, so only enable it when logs are actually served from ClickHouse.
-	if app.cfg.LogsBackend != MetricsBackendStorage {
+	// other backends, so only enable it when logs are actually served from ClickHouse. When logs
+	// are served from the embedded storage engine, the storage optimizer offloads line filters into
+	// the fetch instead.
+	if app.cfg.LogsBackend == MetricsBackendStorage {
+		optimizers = append(optimizers, &storagebackend.LogQLOptimizer{})
+	} else {
 		optimizers = append(optimizers, &chstorage.ClickhouseOptimizer{})
 	}
 	engine, err := logqlengine.NewEngine(q, logqlengine.Options{
