@@ -41,6 +41,24 @@ jobs:
 
       - uses: actions/checkout@v7
 
+      - name: Get Go environment
+        run: |
+          echo "cache=$(go env GOCACHE)" >> $GITHUB_ENV
+          echo "modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
+          echo "goversion=$(go env GOVERSION)" >> $GITHUB_ENV
+
+      # Shared with compliance.yml: every compliance job runs the same `task build-deploy`, so they
+      # reuse one Go build/module cache instead of compiling from cold (the build step dominates).
+      - name: Set up cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ env.cache }}
+            ${{ env.modcache }}
+          key: compliance-${{ runner.os }}-go-${{ env.goversion }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            compliance-${{ runner.os }}-go-${{ env.goversion }}-
+
       - name: Install Task
         uses: go-task/setup-task@v2
 
@@ -118,6 +136,24 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/checkout@v7
+
+      - name: Get Go environment
+        run: |
+          echo "cache=$(go env GOCACHE)" >> $GITHUB_ENV
+          echo "modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
+          echo "goversion=$(go env GOVERSION)" >> $GITHUB_ENV
+
+      # Shared with compliance.yml: every compliance job runs the same `task build-deploy`, so they
+      # reuse one Go build/module cache instead of compiling from cold (the build step dominates).
+      - name: Set up cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ env.cache }}
+            ${{ env.modcache }}
+          key: compliance-${{ runner.os }}-go-${{ env.goversion }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            compliance-${{ runner.os }}-go-${{ env.goversion }}-
 
       - name: Install Task
         uses: go-task/setup-task@v2

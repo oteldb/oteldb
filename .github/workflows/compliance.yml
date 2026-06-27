@@ -43,9 +43,9 @@ jobs:
           path: |
             ${{ env.cache }}
             ${{ env.modcache }}
-          key: Compliance-${{ runner.os }}-go-${{ env.goversion }}-${{ hashFiles('**/go.sum') }}
+          key: compliance-${{ runner.os }}-go-${{ env.goversion }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            promql-compliance-${{ runner.os }}-go-${{ env.goversion }}
+            compliance-${{ runner.os }}-go-${{ env.goversion }}-
 
       - name: Install Task
         uses: go-task/setup-task@v2
@@ -113,9 +113,9 @@ jobs:
           path: |
             ${{ env.cache }}
             ${{ env.modcache }}
-          key: logql-compliance-${{ runner.os }}-go-${{ env.goversion }}-${{ hashFiles('**/go.sum') }}
+          key: compliance-${{ runner.os }}-go-${{ env.goversion }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            logql-compliance-${{ runner.os }}-go-${{ env.goversion }}
+            compliance-${{ runner.os }}-go-${{ env.goversion }}-
 
       - name: Install Task
         uses: go-task/setup-task@v2
