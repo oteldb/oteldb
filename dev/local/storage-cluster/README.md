@@ -68,3 +68,18 @@ storage:
 
 To scale out, add another `oteldb-N` service (with its own `hostname` and data volume) pointing at
 the same etcd — it joins the ring and takes ownership of a share of the data automatically.
+
+## Automated test
+
+The **Cluster E2E** CI job (`.github/workflows/cluster-e2e.yml`) starts this stack with the
+[`docker-compose.ci.yml`](./docker-compose.ci.yml) overlay and runs
+[`cmd/cluster-verify`](./cmd/cluster-verify), which pushes one metric, log, and trace via OTLP to one
+node and asserts they are served by the PromQL/LogQL/TraceQL APIs of other nodes — exercising
+cross-node routing and replication for every signal. Run it locally with:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build oteldb-1 oteldb-2 oteldb-3
+go run ./cmd/cluster-verify -otlp localhost:14317 -prometheus http://localhost:9092 \
+  -loki http://localhost:3100 -tempo http://localhost:3200
+```
+

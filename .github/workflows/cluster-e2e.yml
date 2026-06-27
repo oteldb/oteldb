@@ -1,0 +1,75 @@
+name: "Cluster E2E"
+
+# End-to-end test for the storage-engine cluster (dev/local/storage-cluster): three oteldb nodes on
+# local file backends, replicating over an etcd ring. A metric, a log, and a trace are ingested at
+# one node via OTLP and queried back through the PromQL / LogQL / TraceQL APIs of *other* nodes, so a
+# pass proves cross-node routing + replication across all three signals.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cluster:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: actions/checkout@v7
+
+      - name: Get Go environment
+        run: |
+          echo "cache=$(go env GOCACHE)" >> $GITHUB_ENV
+          echo "modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
+          echo "goversion=$(go env GOVERSION)" >> $GITHUB_ENV
+
+      # Shared with the compliance jobs: same `task build-deploy`, so reuse one Go build/module cache.
+      - name: Set up cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ env.cache }}
+            ${{ env.modcache }}
+          key: compliance-${{ runner.os }}-go-${{ env.goversion }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            compliance-${{ runner.os }}-go-${{ env.goversion }}-
+
+      - name: Install Task
+        uses: go-task/setup-task@v2
+
+      - name: Build binaries
+        run: task build-deploy
+
+      - name: Start cluster
+        working-directory: dev/local/storage-cluster
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build oteldb-1 oteldb-2 oteldb-3
+
+      - name: Verify ingest + cross-node queries
+        run: |
+          go run ./dev/local/storage-cluster/cmd/cluster-verify \
+            -otlp localhost:14317 \
+            -prometheus http://localhost:9092 \
+            -loki http://localhost:3100 \
+            -tempo http://localhost:3200 \
+            -timeout 120s
+
+      - name: Dump cluster logs
+        if: failure()
+        working-directory: dev/local/storage-cluster
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color
+
+      - name: Cleanup
+        if: always()
+        working-directory: dev/local/storage-cluster
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down --remove-orphans --volumes --timeout 10
