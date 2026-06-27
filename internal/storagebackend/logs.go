@@ -42,6 +42,10 @@ func (q *LogQuerier) Query(_ context.Context, selector []logql.LabelMatcher) (lo
 type logStreamNode struct {
 	q        *LogQuerier
 	selector []logql.LabelMatcher
+	// conditions are offloaded columnar predicates (e.g. line filters as body conditions) pushed
+	// into the fetch by [LogQLOptimizer]. They prune parts and drop records at the storage layer;
+	// the engine still applies the full pipeline, so they only ever skip work.
+	conditions []fetch.Condition
 }
 
 var _ logqlengine.PipelineNode = (*logStreamNode)(nil)
@@ -59,6 +63,11 @@ func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.Eva
 		Signal: signal.Log,
 		Start:  lo,
 		End:    hi,
+	}
+	if len(n.conditions) > 0 {
+		// Offloaded line filters: let the storage prune parts and drop non-matching records.
+		req.Conditions = n.conditions
+		req.AllConditions = true
 	}
 
 	it, err := n.q.b.store.LogFetcher(n.q.b.tenant).Fetch(ctx, req)
