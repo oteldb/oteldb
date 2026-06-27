@@ -13,6 +13,7 @@ package storagebackend
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -80,7 +81,24 @@ func (b *Backend) queryable() *storagepromql.Queryable {
 
 // Querier implements storage.Queryable.
 func (b *Backend) Querier(mint, maxt int64) (promstorage.Querier, error) {
-	return b.queryable().Querier(mint, maxt)
+	return b.queryable().Querier(clampQueryMs(mint), clampQueryMs(maxt))
+}
+
+// clampQueryMs clamps a Prometheus millisecond bound to the open-ended sentinels the storage
+// querier recognizes. Unbounded label/metadata queries arrive with Prometheus' MinTime/MaxTime,
+// whose millisecond magnitude overflows int64 when the storage querier multiplies by 1e6 to reach
+// nanoseconds; that yielded a garbage window and empty results (e.g. /api/v1/labels with no range).
+// math.MinInt64/MaxInt64 are passed through verbatim by the storage querier as "unbounded".
+func clampQueryMs(ms int64) int64 {
+	const maxMs = math.MaxInt64 / int64(time.Millisecond) // ms whose *1e6 still fits in int64.
+	switch {
+	case ms < -maxMs:
+		return math.MinInt64
+	case ms > maxMs:
+		return math.MaxInt64
+	default:
+		return ms
+	}
 }
 
 // ExemplarQuerier implements storage.ExemplarQueryable. The storage engine does not store
