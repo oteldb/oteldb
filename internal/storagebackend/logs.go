@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-faster/errors"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/oteldb/storage/query/fetch"
 	"github.com/oteldb/storage/signal"
@@ -87,22 +88,9 @@ func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.Eva
 		return nil, errors.Wrap(err, "drain logs")
 	}
 
-	var entries []logqlengine.Entry
-	for _, batch := range batches {
-		cols := newLogColumns(batch)
-		for i := range batch.Timestamps {
-			record := cols.record(batch, i)
-			set := logqlabels.NewLabelSet()
-			set.SetFromRecord(record)
-			if !matchSelector(set, n.selector) {
-				continue
-			}
-			entries = append(entries, logqlengine.Entry{
-				Timestamp: record.Timestamp,
-				Line:      record.Body,
-				Set:       set,
-			})
-		}
+	entries, err := n.materialize(ctx, batches)
+	if err != nil {
+		return nil, err
 	}
 
 	sortEntries(entries, params.Direction)
@@ -110,6 +98,95 @@ func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.Eva
 		entries = entries[:params.Limit]
 	}
 	return iterators.Slice(entries), nil
+}
+
+// logMaterializeThreshold is the minimum number of fetched records before the parallel materializer
+// is used; below it the sequential path wins (goroutine + merge overhead). It is a var so tests can
+// exercise the parallel path on small inputs.
+var logMaterializeThreshold = 2048
+
+// materialize builds the matching entries from the fetched batches. With [Backend] log parallelism
+// enabled and enough records it splits the flattened record sequence into contiguous chunks built
+// concurrently and merges them in order; otherwise it runs sequentially. Because the chunks are
+// contiguous and merged in order, the merged entries are in the same order as the sequential path,
+// so the later stable sort yields the same output regardless of worker scheduling.
+func (n *logStreamNode) materialize(ctx context.Context, batches []*fetch.Batch) ([]logqlengine.Entry, error) {
+	offsets := make([]int, len(batches)+1)
+	total := 0
+	for b, batch := range batches {
+		offsets[b] = total
+		total += len(batch.Timestamps)
+	}
+	offsets[len(batches)] = total
+
+	workers := n.q.b.logParallelism
+	if workers <= 1 || total < logMaterializeThreshold {
+		return n.materializeRange(batches, offsets, 0, total), nil
+	}
+	if workers > total {
+		workers = total
+	}
+
+	chunkSize := (total + workers - 1) / workers
+	results := make([][]logqlengine.Entry, workers)
+	grp, grpCtx := errgroup.WithContext(ctx)
+	grp.SetLimit(workers)
+	for w := range workers {
+		lo := w * chunkSize
+		hi := min(lo+chunkSize, total)
+		if lo >= hi {
+			break
+		}
+		grp.Go(func() error {
+			if err := grpCtx.Err(); err != nil {
+				return err
+			}
+			results[w] = n.materializeRange(batches, offsets, lo, hi)
+			return nil
+		})
+	}
+	if err := grp.Wait(); err != nil {
+		return nil, err
+	}
+
+	merged := make([]logqlengine.Entry, 0, total)
+	for _, r := range results {
+		merged = append(merged, r...)
+	}
+	return merged, nil
+}
+
+// materializeRange materializes the matching entries for the global record range [lo, hi) over the
+// flattened batch sequence (offsets[b] is the global index of batch b's first record). It is the
+// single materialization primitive shared by the sequential and parallel paths, so both produce the
+// same entries in the same order for a given range. It reads only immutable batch state and builds a
+// fresh label set per record, so it is safe to call concurrently over disjoint ranges.
+func (n *logStreamNode) materializeRange(batches []*fetch.Batch, offsets []int, lo, hi int) []logqlengine.Entry {
+	var out []logqlengine.Entry
+	for b := range batches {
+		bLo, bHi := offsets[b], offsets[b+1]
+		if bHi <= lo || bLo >= hi {
+			continue
+		}
+		batch := batches[b]
+		cols := newLogColumns(batch)
+		start := max(lo-bLo, 0)
+		end := min(hi-bLo, len(batch.Timestamps))
+		for i := start; i < end; i++ {
+			record := cols.record(batch, i)
+			set := logqlabels.NewLabelSet()
+			set.SetFromRecord(record)
+			if !matchSelector(set, n.selector) {
+				continue
+			}
+			out = append(out, logqlengine.Entry{
+				Timestamp: record.Timestamp,
+				Line:      record.Body,
+				Set:       set,
+			})
+		}
+	}
+	return out
 }
 
 // streamFilters resolves the selector's equality matchers to storage fetch filters so the storage
