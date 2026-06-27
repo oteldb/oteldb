@@ -40,3 +40,6 @@ coverage.txt
 
 .gemini/
 gha-creds-*.json
+
+# references
+/_ref

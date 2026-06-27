@@ -15,9 +15,11 @@ func main() {
 		app.Run(server)
 	case "client":
 		app.Run(client)
+	case "profiles":
+		app.Run(profiles)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown mode: %s\n", mode)
-		fmt.Fprintf(os.Stderr, "Usage: %s [server|client]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [server|client|profiles]\n", os.Args[0])
 		os.Exit(1)
 	}
 }

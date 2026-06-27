@@ -36,6 +36,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grafana/loki/pkg/push v0.0.0-20241223090937-bf7301470453
 	github.com/grafana/pyroscope-go v1.3.1
+	github.com/grafana/pyroscope/api v1.5.0
 	github.com/klauspost/compress v1.18.6
 	github.com/kr/logfmt v0.0.0-20210122060352-19f9bcb100e6
 	github.com/mattn/go-isatty v0.0.22
@@ -160,6 +161,8 @@ require (
 require (
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
+	github.com/google/gnostic v0.7.1 // indirect
+	github.com/gorilla/mux v1.8.1 // indirect
 	go.etcd.io/etcd/api/v3 v3.6.12 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.6.12 // indirect
 	go.etcd.io/etcd/client/v3 v3.6.12 // indirect
@@ -184,8 +187,8 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute v1.60.0 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
-	connectrpc.com/connect v1.19.1 // indirect
-	connectrpc.com/otelconnect v0.9.0 // indirect
+	connectrpc.com/connect v1.19.1
+	connectrpc.com/otelconnect v0.9.0
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect
@@ -461,7 +464,7 @@ require (
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/petermattis/goid v0.0.0-20260226131333-17d1149c6ac6 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
-	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
+	github.com/planetscale/vtprotobuf v0.6.1-0.20250313105119-ba97887b0a25 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/prometheus/alertmanager v0.32.1 // indirect

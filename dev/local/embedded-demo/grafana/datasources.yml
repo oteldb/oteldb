@@ -1,0 +1,69 @@
+apiVersion: 1
+
+# One datasource per signal, all served by the single embedded oteldb instance.
+datasources:
+  - name: PromQL
+    type: prometheus
+    access: proxy
+    orgId: 1
+    isDefault: true
+    url: http://oteldb:9090
+    uid: prom-oteldb
+    jsonData:
+      prometheusType: Prometheus
+      exemplarTraceIdDestinations:
+        - datasourceUid: tempo-oteldb
+          name: trace_id
+
+  - name: LogQL
+    type: loki
+    access: proxy
+    orgId: 1
+    url: http://oteldb:3100
+    uid: loki-oteldb
+    jsonData:
+      maxLines: 500
+      derivedFields:
+        - datasourceUid: tempo-oteldb
+          matcherType: label
+          matcherRegex: trace_id
+          name: trace
+          url: "$${__value.raw}"
+          urlDisplayLabel: "View Trace"
+
+  - name: TraceQL
+    type: tempo
+    access: proxy
+    orgId: 1
+    url: http://oteldb:3200
+    uid: tempo-oteldb
+    jsonData:
+      httpMethod: GET
+      tracesToLogsV2:
+        datasourceUid: loki-oteldb
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        customQuery: true
+        query: '{$${__tags}} |= "$${__span.traceId}"'
+        tags:
+          - key: service.name
+            value: service_name
+      tracesToProfiles:
+        datasourceUid: pyroscope-oteldb
+        profileTypeId: "cpu:cpu:nanoseconds:cpu:nanoseconds"
+        tags:
+          - key: service.name
+            value: service_name
+      nodeGraph:
+        enabled: true
+      serviceMap:
+        datasourceUid: prom-oteldb
+
+  # oteldb serves the connect QuerierService API that Grafana's built-in Pyroscope datasource speaks,
+  # so no plugin is needed.
+  - name: Pyroscope
+    type: grafana-pyroscope-datasource
+    access: proxy
+    orgId: 1
+    url: http://oteldb:4040
+    uid: pyroscope-oteldb

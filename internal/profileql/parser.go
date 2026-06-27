@@ -61,17 +61,73 @@ func (p *parser) consumeText(tt lexer.TokenType) (string, lexer.Token, error) {
 	return t.Text, t, nil
 }
 
+// Selector is the result of parsing a label selector with an optional profile
+// type, as produced by [ParseSelector].
+type Selector struct {
+	// Type is the selected profile type, or nil if the selector did not name one.
+	Type *ProfileType
+	// Matchers are the label matchers, excluding the profile-type selection.
+	Matchers []LabelMatcher
+}
+
+// ParseSelector parses an optional leading profile-type selector followed by an
+// optional brace-enclosed matcher list, like [Parse], but the profile type is
+// optional. It is used where the profile type and label selector are supplied
+// separately (for example by the connect QuerierService), so a bare matcher list
+// such as `{service.name="frontend"}` is valid.
+func ParseSelector(input string) (Selector, error) {
+	p, err := newParser(input)
+	if err != nil {
+		return Selector{}, err
+	}
+	matchers, nameValue, nameTok, haveName, err := p.parseSelector()
+	if err != nil {
+		return Selector{}, err
+	}
+	if t := p.next(); t.Type != lexer.EOF {
+		return Selector{}, p.tailToken(t)
+	}
+	sel := Selector{Matchers: matchers}
+	if haveName {
+		pt, err := ParseProfileType(nameValue)
+		if err != nil {
+			return Selector{}, &ParseError{Pos: nameTok.Pos, Err: err}
+		}
+		sel.Type = &pt
+	}
+	return sel, nil
+}
+
 // parseExpr parses a full ProfileQL expression: an optional leading profile-type
 // selector followed by an optional brace-enclosed matcher list. The profile type
-// may be given either as the leading bare token or via a __name__ matcher.
+// may be given either as the leading bare token or via a __name__ matcher, and is
+// required.
 func (p *parser) parseExpr() (Expr, error) {
-	var (
-		e         Expr
-		nameValue string
-		nameTok   lexer.Token
-		haveName  bool
-	)
+	matchers, nameValue, nameTok, haveName, err := p.parseSelector()
+	if err != nil {
+		return Expr{}, err
+	}
+	if !haveName {
+		return Expr{}, &ParseError{
+			Pos: p.peek().Pos,
+			Err: errors.New("query must contain a profile-type selection"),
+		}
+	}
+	pt, err := ParseProfileType(nameValue)
+	if err != nil {
+		return Expr{}, &ParseError{
+			Pos: nameTok.Pos,
+			Err: err,
+		}
+	}
+	return Expr{Type: pt, Matchers: matchers}, nil
+}
 
+// parseSelector parses the shared shape of [Parse] and [ParseSelector]: an
+// optional leading profile-type token and an optional matcher block, returning
+// the non-name matchers and the profile-type name (from the leading token or a
+// __name__ matcher) if one was present.
+func (p *parser) parseSelector() (matchers []LabelMatcher, nameValue string, nameTok lexer.Token, haveName bool, _ error) {
 	// Optional leading profile-type selector (the metric name).
 	if t := p.peek(); t.Type == lexer.Ident {
 		nameValue = t.Text
@@ -82,14 +138,14 @@ func (p *parser) parseExpr() (Expr, error) {
 
 	// Optional matcher block.
 	if t := p.peek(); t.Type == lexer.OpenBrace {
-		matchers, err := p.parseMatchers()
+		ms, err := p.parseMatchers()
 		if err != nil {
-			return Expr{}, err
+			return nil, "", lexer.Token{}, false, err
 		}
-		for _, m := range matchers {
+		for _, m := range ms {
 			if m.Label == LabelName {
 				if m.Op != OpEq {
-					return Expr{}, &ParseError{
+					return nil, "", lexer.Token{}, false, &ParseError{
 						Pos: nameTok.Pos,
 						Err: errors.Errorf("profile-type matcher %q must use %q", LabelName, OpEq),
 					}
@@ -98,26 +154,10 @@ func (p *parser) parseExpr() (Expr, error) {
 				haveName = true
 				continue
 			}
-			e.Matchers = append(e.Matchers, m)
+			matchers = append(matchers, m)
 		}
 	}
-
-	if !haveName {
-		return Expr{}, &ParseError{
-			Pos: p.peek().Pos,
-			Err: errors.New("query must contain a profile-type selection"),
-		}
-	}
-
-	pt, err := ParseProfileType(nameValue)
-	if err != nil {
-		return Expr{}, &ParseError{
-			Pos: nameTok.Pos,
-			Err: err,
-		}
-	}
-	e.Type = pt
-	return e, nil
+	return matchers, nameValue, nameTok, haveName, nil
 }
 
 // parseMatchers parses a brace-enclosed, comma-separated list of label matchers.
