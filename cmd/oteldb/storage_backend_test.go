@@ -3,11 +3,15 @@ package main
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/oteldb/storage"
+	"github.com/oteldb/storage/signal"
+
+	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
 // applyOption applies a storage.Option to a fresh Options and returns it, so tests can inspect what
@@ -108,4 +112,183 @@ storage:
 	require.Equal(t, 3, cfg.Storage.Cluster.RF)
 	require.Equal(t, 8, cfg.Storage.Cluster.ShardsPerTenant)
 	require.Equal(t, "/oteldb", cfg.Storage.Cluster.Root)
+}
+
+func TestTenancyOption(t *testing.T) {
+	t.Run("DisabledWhenEmpty", func(t *testing.T) {
+		opt, err := tenancyOption(nil)
+		require.NoError(t, err)
+		require.Nil(t, opt)
+
+		opt, err = tenancyOption(&StoragePolicyConfig{}) // no tiers, no recompress
+		require.NoError(t, err)
+		require.Nil(t, opt)
+	})
+
+	t.Run("ResolvesPolicyForEveryTenant", func(t *testing.T) {
+		opt, err := tenancyOption(&StoragePolicyConfig{
+			Precision: []PrecisionTierConfig{
+				{After: 7 * 24 * time.Hour, Bits: 32},
+				{After: 30 * 24 * time.Hour, Bits: 16},
+			},
+			Downsample: []DownsampleTierConfig{
+				{After: 24 * time.Hour, Interval: 5 * time.Minute, Agg: "avg"},
+				{After: 7 * 24 * time.Hour, Interval: time.Hour}, // Agg defaults to last.
+			},
+			Recompress: &RecompressConfig{After: 14 * 24 * time.Hour, Level: 9},
+		})
+		require.NoError(t, err)
+		o := applyOption(t, opt)
+		require.NotNil(t, o.Tenancy)
+
+		// The static resolver returns the same policy regardless of tenant.
+		p := o.Tenancy.Resolve(signal.TenantID("any"))
+
+		require.Len(t, p.Precision.Tiers, 2)
+		require.Equal(t, 7*24*time.Hour, p.Precision.Tiers[0].After)
+		require.Equal(t, uint8(32), p.Precision.Tiers[0].Bits)
+		require.Equal(t, uint8(16), p.Precision.Tiers[1].Bits)
+
+		require.Len(t, p.Downsample.Tiers, 2)
+		require.Equal(t, 5*time.Minute, p.Downsample.Tiers[0].Interval)
+		require.Equal(t, signal.AggAvg, p.Downsample.Tiers[0].Agg)
+		require.Equal(t, signal.AggLast, p.Downsample.Tiers[1].Agg, "empty agg defaults to last")
+
+		require.Equal(t, 14*24*time.Hour, p.Recompress.After)
+		require.Equal(t, 9, p.Recompress.Level)
+	})
+
+	t.Run("UnknownAggIsAnError", func(t *testing.T) {
+		_, err := tenancyOption(&StoragePolicyConfig{
+			Downsample: []DownsampleTierConfig{{Interval: time.Minute, Agg: "median"}},
+		})
+		require.Error(t, err)
+	})
+}
+
+// TestStoragePolicyConfigYAML checks the policy block parses from the documented YAML shape and
+// resolves into the storage tenancy policy.
+func TestStoragePolicyConfigYAML(t *testing.T) {
+	const data = `
+storage:
+  backend: file
+  dir: /data
+  policy:
+    precision:
+      - after: 168h
+        bits: 32
+    downsample:
+      - after: 24h
+        interval: 5m
+        agg: avg
+    recompress:
+      after: 336h
+      level: 9
+`
+	f, err := os.CreateTemp("", "oteldb.yml")
+	require.NoError(t, err)
+	defer func() { _ = os.Remove(f.Name()) }()
+	_, err = f.WriteString(data)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	cfg, err := loadConfig(f.Name())
+	require.NoError(t, err)
+
+	require.NotNil(t, cfg.Storage.Policy)
+	opt, err := tenancyOption(cfg.Storage.Policy)
+	require.NoError(t, err)
+	o := applyOption(t, opt)
+
+	p := o.Tenancy.Resolve("default")
+	require.Len(t, p.Precision.Tiers, 1)
+	require.Equal(t, 168*time.Hour, p.Precision.Tiers[0].After)
+	require.Equal(t, uint8(32), p.Precision.Tiers[0].Bits)
+	require.Len(t, p.Downsample.Tiers, 1)
+	require.Equal(t, signal.AggAvg, p.Downsample.Tiers[0].Agg)
+	require.Equal(t, 336*time.Hour, p.Recompress.After)
+	require.Equal(t, 9, p.Recompress.Level)
+}
+
+func TestResolveCacheSettings(t *testing.T) {
+	t.Run("DefaultsEnableAll", func(t *testing.T) {
+		s := resolveCacheSettings(StorageConfig{})
+		// All three are opt-out for oteldb: on by default.
+		require.True(t, s.AggregateStats)
+		require.Greater(t, s.ReadCache, int64(0))
+		require.Greater(t, s.DecodeCache, int64(0))
+	})
+
+	t.Run("ExplicitSizesHonored", func(t *testing.T) {
+		rc, dc := xbytes.Bytes(1<<20), xbytes.Bytes(2<<20)
+		s := resolveCacheSettings(StorageConfig{
+			ReadCacheBytes:   &rc,
+			DecodeCacheBytes: &dc,
+		})
+		require.Equal(t, int64(1<<20), s.ReadCache)
+		require.Equal(t, int64(2<<20), s.DecodeCache)
+	})
+
+	t.Run("ZeroDisablesByteCache", func(t *testing.T) {
+		zero := xbytes.Bytes(0)
+		s := resolveCacheSettings(StorageConfig{ReadCacheBytes: &zero, DecodeCacheBytes: &zero})
+		require.Equal(t, int64(0), s.ReadCache)
+		require.Equal(t, int64(0), s.DecodeCache)
+	})
+
+	t.Run("AggregateStatsFalseDisables", func(t *testing.T) {
+		s := resolveCacheSettings(StorageConfig{AggregateStats: new(bool)})
+		require.False(t, s.AggregateStats)
+	})
+}
+
+func TestCacheOptions(t *testing.T) {
+	apply := func(t *testing.T, opts []storage.Option) storage.Options {
+		t.Helper()
+		var o storage.Options
+		for _, opt := range opts {
+			opt(&o)
+		}
+		return o
+	}
+
+	t.Run("Enabled", func(t *testing.T) {
+		o := apply(t, cacheOptions(cacheSettings{ReadCache: 100, DecodeCache: 200, AggregateStats: true}))
+		require.Equal(t, int64(100), o.ReadCacheBytes)
+		require.Equal(t, int64(200), o.DecodeCacheBytes)
+		require.True(t, o.AggregateStats)
+	})
+
+	t.Run("AggregateStatsOffOmitsSidecar", func(t *testing.T) {
+		o := apply(t, cacheOptions(cacheSettings{AggregateStats: false}))
+		require.False(t, o.AggregateStats, "AggregateStats stays the library default when disabled")
+	})
+}
+
+// TestStorageCacheConfigYAML checks the cache block parses from the documented YAML shape, including
+// the opt-out semantics (an explicit 0 disables a byte cache, aggregate_stats: false disables the
+// sidecar).
+func TestStorageCacheConfigYAML(t *testing.T) {
+	const data = `
+storage:
+  backend: file
+  dir: /data
+  read_cache_bytes: "0"
+  decode_cache_bytes: "64MiB"
+  aggregate_stats: false
+`
+	f, err := os.CreateTemp("", "oteldb.yml")
+	require.NoError(t, err)
+	defer func() { _ = os.Remove(f.Name()) }()
+	_, err = f.WriteString(data)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	cfg, err := loadConfig(f.Name())
+	require.NoError(t, err)
+
+	s := resolveCacheSettings(cfg.Storage)
+	require.Equal(t, int64(0), s.ReadCache, "explicit 0 disables the read cache")
+	require.Equal(t, int64(64<<20), s.DecodeCache)
+	require.False(t, s.AggregateStats, "explicit aggregate_stats:false disables the sidecar")
 }

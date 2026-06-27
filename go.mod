@@ -454,7 +454,7 @@ require (
 	github.com/openshift/api v0.0.0-20251015095338-264e80a2b6e7 // indirect
 	github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235 // indirect
 	github.com/openzipkin/zipkin-go v0.4.3 // indirect
-	github.com/oteldb/storage v0.7.0
+	github.com/oteldb/storage v0.9.0
 	github.com/outscale/osc-sdk-go/v2 v2.34.0 // indirect
 	github.com/ovh/go-ovh v1.9.0 // indirect
 	github.com/pascaldekloe/name v1.0.1 // indirect

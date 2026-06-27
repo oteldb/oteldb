@@ -107,6 +107,22 @@ type StorageConfig struct {
 	// LogQueryParallelism enables concurrent materialization of LogQL query results across up to
 	// this many workers. Zero or one (default) keeps the sequential path. Opt-in.
 	LogQueryParallelism int `json:"log_query_parallelism" yaml:"log_query_parallelism"`
+	// ReadCacheBytes sizes the in-memory LRU object cache over the backend (the object-store read
+	// cache for the cold tier). The storage library keeps this opt-in; oteldb flips the polarity and
+	// enables it by default, sized from available RAM. Set to 0 to disable. No effect for the
+	// ephemeral memory backend.
+	ReadCacheBytes *xbytes.Bytes `json:"read_cache_bytes" yaml:"read_cache_bytes"`
+	// DecodeCacheBytes sizes the per-tenant LRU cache of decoded part columns (plus concurrent
+	// prefetch of a fetch's parts). Enabled by default, sized from available RAM; set to 0 to
+	// disable.
+	DecodeCacheBytes *xbytes.Bytes `json:"decode_cache_bytes" yaml:"decode_cache_bytes"`
+	// AggregateStats writes a per-series aggregate sidecar (count/sum/min/max) alongside each
+	// metric part so range-covering aggregates — and the *_over_time pushdown — can be answered
+	// without decoding. Enabled by default; set to false to disable.
+	AggregateStats *bool `json:"aggregate_stats" yaml:"aggregate_stats"`
+	// Policy configures the per-tenant merge-time storage policy: age-tiered lossy float precision,
+	// downsampling, and cold-data recompression. Empty ⇒ the library default (lossless, no rollup).
+	Policy *StoragePolicyConfig `json:"policy" yaml:"policy"`
 	// Cluster, when set with a non-empty Etcd endpoint list, joins this node to a storage cluster:
 	// nodes coordinate through etcd, form a rendezvous-hash ring, and replicate writes across each
 	// other's local backends. Unset (or empty Etcd) ⇒ a single-node engine.
