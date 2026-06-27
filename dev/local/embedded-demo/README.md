@@ -28,11 +28,9 @@ Use **Explore** and pick a datasource. Try `service.name` `client` / `server` fo
 profiles, `{service_name="server"}` in LogQL, and the `oteldemo.client.sent_requests` counter in
 PromQL.
 
-oteldb implements the **legacy Pyroscope HTTP API** (`/render`, `/labels`, `/label-values`,
-`/api/apps`), not the newer connect `QuerierService` that Grafana's built-in Pyroscope datasource
-speaks. The demo therefore provisions the legacy `pyroscope-datasource` plugin (installed via
-`GF_INSTALL_PLUGINS`), which targets that API — query e.g.
-`cpu:cpu:nanoseconds:cpu:nanoseconds{service.name="server"}` to get a flamegraph.
+oteldb serves the connect `QuerierService` API that Grafana's built-in Pyroscope datasource speaks
+(alongside the legacy Pyroscope HTTP API), so no plugin is needed — pick the **Pyroscope** datasource,
+choose the `cpu` profile type, and optionally filter by `service.name`.
 
 ## How it works
 

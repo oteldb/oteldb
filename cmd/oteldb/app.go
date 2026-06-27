@@ -8,10 +8,13 @@ import (
 	"sync"
 	"time"
 
+	"connectrpc.com/connect"
+	"connectrpc.com/otelconnect"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
 	sdkapp "github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
+	"github.com/grafana/pyroscope/api/gen/proto/go/querier/v1/querierv1connect"
 	"github.com/ogen-go/ogen/ogenerrors"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap"
@@ -328,8 +331,35 @@ func (app *App) trySetupPyroscope() error {
 		return err
 	}
 
-	addOgen(app, "pyroscope", s, cfg.Bind, cfg.Auth)
+	// Serve the connect QuerierService (used by Grafana's built-in Pyroscope datasource) on the same
+	// listener as the legacy Pyroscope HTTP API, routed by path prefix.
+	interceptor, err := otelconnect.NewInterceptor(
+		otelconnect.WithTracerProvider(app.telemetry.TracerProvider()),
+		otelconnect.WithMeterProvider(app.telemetry.MeterProvider()),
+	)
+	if err != nil {
+		return errors.Wrap(err, "create connect interceptor")
+	}
+	querier := profilehandler.NewQuerierService(q, engine)
+	connectPath, connectHandler := querierv1connect.NewQuerierServiceHandler(querier, connect.WithInterceptors(interceptor))
+
+	addOgen(app, "pyroscope", s, cfg.Bind, cfg.Auth, connectMount(connectPath, connectHandler))
 	return nil
+}
+
+// connectMount returns a middleware that serves the connect handler h for requests whose path is
+// under prefix, delegating everything else to the next handler. It lets the connect QuerierService
+// and the legacy Pyroscope ogen API share a single listener.
+func connectMount(prefix string, h http.Handler) httpmiddleware.Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, prefix) {
+				h.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func (app *App) trySetupLoki() error {

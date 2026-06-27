@@ -99,9 +99,7 @@ services:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_DISABLE_LOGIN_FORM=true
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor,traceToMetrics
-      # oteldb serves the legacy Pyroscope HTTP API; this plugin is the matching Grafana datasource.
-      - GF_INSTALL_PLUGINS=pyroscope-panel,pyroscope-datasource
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor,traceToMetrics,flameGraph
     ports:
       - "3000:3000"
     volumes:

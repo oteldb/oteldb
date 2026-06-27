@@ -48,19 +48,22 @@ datasources:
         tags:
           - key: service.name
             value: service_name
+      tracesToProfiles:
+        datasourceUid: pyroscope-oteldb
+        profileTypeId: "cpu:cpu:nanoseconds:cpu:nanoseconds"
+        tags:
+          - key: service.name
+            value: service_name
       nodeGraph:
         enabled: true
       serviceMap:
         datasourceUid: prom-oteldb
 
-  # oteldb implements the legacy Pyroscope HTTP API (/render, /labels, /label-values, /api/apps),
-  # not the newer connect QuerierService that Grafana's built-in grafana-pyroscope-datasource speaks.
-  # The legacy pyroscope-datasource plugin (installed via GF_INSTALL_PLUGINS) targets that API; it
-  # reads the server URL from jsonData.path.
+  # oteldb serves the connect QuerierService API that Grafana's built-in Pyroscope datasource speaks,
+  # so no plugin is needed.
   - name: Pyroscope
-    type: pyroscope-datasource
+    type: grafana-pyroscope-datasource
     access: proxy
     orgId: 1
+    url: http://oteldb:4040
     uid: pyroscope-oteldb
-    jsonData:
-      path: http://oteldb:4040
