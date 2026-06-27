@@ -50,8 +50,8 @@ func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger)
 		zap.String("backend", cmp.Or(cfg.Backend, "memory")),
 		zap.Int("log_query_parallelism", cfg.LogQueryParallelism),
 	)
-	backend := storagebackend.New(store,
+	b := storagebackend.New(store,
 		storagebackend.WithLogParallelism(cfg.LogQueryParallelism),
 	)
-	return backend, store.Close, nil
+	return b, store.Close, nil
 }
