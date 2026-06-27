@@ -76,7 +76,7 @@ jobs:
         with:
           context: .
           file: ./dev/deploy/deploy.Dockerfile
-          push: true
+          push: ${{ github.event_name == 'workflow_dispatch' }}
           tags: "${{ env.IMAGE_TAG }}:${{ env.sha }}"
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -86,7 +86,7 @@ jobs:
         with:
           context: .
           file: ./dev/deploy/deploy.generic.Dockerfile
-          push: true
+          push: ${{ github.event_name == 'workflow_dispatch' }}
           tags: "${{ env.IMAGE_TAG }}/proxy:${{ env.sha }}"
           build-args: |
             BINARY=otelproxy
@@ -98,7 +98,7 @@ jobs:
         with:
           context: .
           file: ./dev/deploy/deploy.generic.Dockerfile
-          push: true
+          push: ${{ github.event_name == 'workflow_dispatch' }}
           tags: "${{ env.IMAGE_TAG }}/chotel:${{ env.sha }}"
           build-args: |
             BINARY=chotel
