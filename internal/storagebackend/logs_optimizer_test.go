@@ -28,14 +28,27 @@ func TestLogQLOptimizerEquivalence(t *testing.T) {
 	rl := ld.ResourceLogs().AppendEmpty()
 	rl.Resource().Attributes().PutStr("service.name", "api")
 	sl := rl.ScopeLogs().AppendEmpty()
-	bodies := []string{
-		"GET /a 200", "POST /b 200", "GET /c 404", "HEAD /d 200",
-		"GET /a 500", "DELETE /e 200", "xGETy embedded", "get lowercase",
+	records := []struct {
+		body, level, method string
+	}{
+		{"GET /a 200", "info", "GET"},
+		{"POST /b 200", "info", "POST"},
+		{"GET /c 404", "error", "GET"},
+		{"HEAD /d 200", "info", "HEAD"},
+		{"GET /a 500", "error", "GET"},
+		{"DELETE /e 200", "warn", "DELETE"},
+		{"xGETy embedded", "info", "GET"},
+		{"get lowercase", "info", "GET"},
+		// A JSON body whose PARSED level ("debug") differs from the STORED level attr ("error"):
+		// after `| json`, a `| level=...` filter must see "debug", so it must NOT be offloaded.
+		{`{"level":"debug","method":"PUT"}`, "error", "PUT"},
 	}
-	for i, body := range bodies {
+	for i, r := range records {
 		rec := sl.LogRecords().AppendEmpty()
 		rec.SetTimestamp(pcommon.Timestamp(ts.Add(time.Duration(i) * time.Millisecond).UnixNano()))
-		rec.Body().SetStr(body)
+		rec.Body().SetStr(r.body)
+		rec.Attributes().PutStr("level", r.level)        // clean record-attribute label
+		rec.Attributes().PutStr("http.method", r.method) // dotted record-attribute label
 	}
 	require.NoError(t, b.ConsumeLogs(ctx, ld))
 
@@ -60,12 +73,22 @@ func TestLogQLOptimizerEquivalence(t *testing.T) {
 
 	for _, query := range []string{
 		`{service_name="api"}`,
-		`{service_name="api"} |= "GET"`,                       // offloaded: positive substring
-		`{service_name="api"} |= "GET" |= "404"`,              // two offloaded filters (AND)
-		`{service_name="api"} != "GET"`,                       // not offloaded (negated)
-		`{service_name="api"} |~ "GET|POST"`,                  // not offloaded (regexp)
-		`{service_name="api"} |= "GET" != "404"`,              // mixed
-		`count_over_time({service_name="api"} |= "GET" [1h])`, // metric query with offloaded filter
+		`{service_name="api"} |= "GET"`,                                   // offloaded: positive substring
+		`{service_name="api"} |= "GET" |= "404"`,                          // two offloaded filters (AND)
+		`{service_name="api"} != "GET"`,                                   // not offloaded (negated)
+		`{service_name="api"} |~ "GET|POST"`,                              // not offloaded (regexp)
+		`{service_name="api"} |= "GET" != "404"`,                          // mixed
+		`count_over_time({service_name="api"} |= "GET" [1h])`,             // metric query with offloaded filter
+		`{service_name="api"} | level = "error"`,                          // offloaded: clean record-attr label filter
+		`{service_name="api"} |= "GET" | level = "info"`,                  // line filter + label filter, both offloaded
+		`{service_name="api"} | level = "error" | level = "info"`,         // contradictory (empty), offloaded
+		`{service_name="api"} | http_method = "GET"`,                      // dotted label filter, not offloaded
+		`{service_name="api"} | level != "info"`,                          // negated label filter, not offloaded
+		`{service_name="api"} | label_format dummy="x" | level = "error"`, // label_format before: not offloaded
+		`{service_name="api"} | logfmt | level = "error"`,                 // parser before: must NOT offload (parsed field)
+		`{service_name="api"} | json | level = "debug"`,                   // parsed level=debug, must NOT offload stored level
+		`{service_name="api"} | json | level = "error"`,                   // parsed level shadows stored; must NOT offload
+		`count_over_time({service_name="api"} | level = "error" [1h])`,    // metric query with label filter
 	} {
 		t.Run(query, func(t *testing.T) {
 			require.Equal(t,

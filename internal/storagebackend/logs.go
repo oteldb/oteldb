@@ -47,6 +47,10 @@ type logStreamNode struct {
 	// into the fetch by [LogQLOptimizer]. They prune parts and drop records at the storage layer;
 	// the engine still applies the full pipeline, so they only ever skip work.
 	conditions []fetch.Condition
+	// pipelineLabels are equality label filters (`| L="v"`) extracted from the pipeline by
+	// [LogQLOptimizer] that can be resolved against the stored label set, just like selector
+	// matchers. streamFilters resolves them to Matchers/Conditions.
+	pipelineLabels []logql.LabelMatcher
 }
 
 var _ logqlengine.PipelineNode = (*logStreamNode)(nil)
@@ -130,11 +134,15 @@ func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.Eva
 // drops rows at the fetch layer.
 func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matchers []fetch.Matcher, conditions []fetch.Condition) {
 	wanted := map[string]string{}
-	for _, m := range n.selector {
-		if m.Op == logql.OpEq && m.Value != "" {
-			wanted[string(m.Label)] = m.Value
+	addEq := func(matchers []logql.LabelMatcher) {
+		for _, m := range matchers {
+			if m.Op == logql.OpEq && m.Value != "" {
+				wanted[string(m.Label)] = m.Value
+			}
 		}
 	}
+	addEq(n.selector)       // stream selector labels
+	addEq(n.pipelineLabels) // offloaded pipeline label filters (| L="v")
 	if len(wanted) == 0 {
 		return nil, nil
 	}
