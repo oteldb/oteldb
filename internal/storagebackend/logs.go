@@ -169,8 +169,9 @@ func (n *logStreamNode) streamMatchers(ctx context.Context, lo, hi int64) []fetc
 		}
 		want := value
 		matchers = append(matchers, fetch.Matcher{
-			Name:  []byte(rawKey),
-			Match: func(v signal.Value) bool { return string(v.AppendText(nil)) == want },
+			Name: []byte(rawKey),
+			// Render the value exactly as the label set does, so this matches matchSelector.
+			Match: func(v signal.Value) bool { return labelValueString(v) == want },
 			Spec:  &fetch.EqualMatcher{Name: rawKey, Value: want},
 		})
 	}

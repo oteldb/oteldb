@@ -1,6 +1,7 @@
 package storagebackend_test
 
 import (
+	"encoding/base64"
 	"regexp"
 	"sort"
 	"testing"
@@ -67,4 +68,41 @@ func TestLogStreamMatcherPushdown(t *testing.T) {
 		}}))
 	// Unfiltered returns every stream.
 	require.Len(t, query(nil), 3)
+}
+
+// TestLogStreamMatcherPushdownBytesValue selects a stream by a bytes-valued resource attribute. The
+// label set renders bytes as base64 (pcommon AsString), so the pushed matcher must too; a naive
+// signal.Value.AppendText (raw bytes) would never equal the base64 query value and would silently
+// prune both streams.
+func TestLogStreamMatcherPushdownBytesValue(t *testing.T) {
+	b, ctx := newBackend(t)
+	ts := time.Now().Truncate(time.Second)
+
+	tokens := map[string][]byte{"one": {0x01, 0x02, 0xff}, "two": {0x10, 0x20, 0x30}}
+	for name, tok := range tokens {
+		ld := plog.NewLogs()
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutEmptyBytes("token").FromRaw(tok)
+		sl := rl.ScopeLogs().AppendEmpty()
+		rec := sl.LogRecords().AppendEmpty()
+		rec.SetTimestamp(pcommon.Timestamp(ts.UnixNano()))
+		rec.Body().SetStr("log " + name)
+		require.NoError(t, b.ConsumeLogs(ctx, ld))
+	}
+
+	// The query value is the base64 projection of token "one".
+	wantB64 := base64.StdEncoding.EncodeToString(tokens["one"])
+
+	lq := b.Logs()
+	node, err := lq.Query(ctx, []logql.LabelMatcher{{Label: "token", Op: logql.OpEq, Value: wantB64}})
+	require.NoError(t, err)
+	it, err := node.EvalPipeline(ctx, logqlengine.EvalParams{Start: ts.Add(-time.Hour), End: ts.Add(time.Hour), Limit: -1})
+	require.NoError(t, err)
+	var lines []string
+	var e logqlengine.Entry
+	for it.Next(&e) {
+		lines = append(lines, e.Line)
+	}
+	require.NoError(t, it.Err())
+	require.Equal(t, []string{"log one"}, lines)
 }
