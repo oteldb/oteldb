@@ -1,0 +1,151 @@
+# Clustered oteldb on the embedded storage engine — no ClickHouse, no shared object store.
+#
+# Three oteldb nodes each keep their shards on a LOCAL file backend and replicate writes to each
+# other (RF=2) over an etcd-coordinated rendezvous-hash ring. Ingest into any node and it routes the
+# write to the owning replicas; query any node and it fans out across the ring and merges. The demo
+# ingests at two different nodes to show ingest-anywhere, and Grafana queries a third.
+#
+#   docker compose -f dev/local/storage-cluster/docker-compose.yml up --build
+#
+# Open Grafana at http://localhost:3000. Stop a node (docker compose stop oteldb-2) and data is still
+# served by its replicas.
+version: "3"
+
+volumes:
+  oteldb-1-data:
+  oteldb-2-data:
+  oteldb-3-data:
+  etcd-data:
+
+# Common definition for an oteldb cluster node. Each node runs --embedded (all signals on the
+# storage engine) and joins the cluster via the shared oteldb.yml; its ring id/address come from
+# its hostname, so the three nodes differ only by hostname and data volume.
+x-oteldb-node: &oteldb-node
+  image: ghcr.io/oteldb/oteldb
+  # Always build from local source so the cluster wiring is present (not a stale published image).
+  pull_policy: build
+  build:
+    context: ../../../
+    dockerfile: dev/Dockerfile
+  command:
+    - --embedded
+    - --config=/etc/oteldb/oteldb.yml
+  environment:
+    - OTEL_LOG_LEVEL=info
+    - OTEL_TRACES_EXPORTER=none
+    - OTEL_METRICS_EXPORTER=none
+    - OTEL_LOGS_EXPORTER=stdout
+  restart: unless-stopped
+  depends_on:
+    etcd:
+      condition: service_healthy
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.17
+    command:
+      - etcd
+      - --name=etcd0
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd0=http://etcd:2380
+    volumes:
+      - etcd-data:/etcd-data
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  oteldb-1:
+    <<: *oteldb-node
+    hostname: oteldb-1
+    volumes:
+      - ./oteldb.yml:/etc/oteldb/oteldb.yml:ro
+      - oteldb-1-data:/data
+    ports:
+      - "9090:9090" # Prometheus / PromQL
+      - "3100:3100" # Loki / LogQL
+      - "3200:3200" # Tempo / TraceQL
+      - "4040:4040" # Pyroscope / ProfileQL
+      - "4317:4317" # OTLP gRPC ingestion
+
+  oteldb-2:
+    <<: *oteldb-node
+    hostname: oteldb-2
+    volumes:
+      - ./oteldb.yml:/etc/oteldb/oteldb.yml:ro
+      - oteldb-2-data:/data
+    ports:
+      - "9091:9090" # this node's PromQL (to show any node answers the full query)
+
+  oteldb-3:
+    <<: *oteldb-node
+    hostname: oteldb-3
+    volumes:
+      - ./oteldb.yml:/etc/oteldb/oteldb.yml:ro
+      - oteldb-3-data:/data
+    ports:
+      - "9092:9090"
+
+  # Handles requests from the client; ingests its telemetry at oteldb-2.
+  server:
+    image: ghcr.io/oteldb/oteldb/oteldemo
+    pull_policy: build
+    build:
+      context: ../../../
+      dockerfile: dev/Dockerfile
+      args:
+        TARGETS: oteldemo
+        ENTRYPOINT_BIN: oteldemo
+    command: ["server"]
+    restart: always
+    environment:
+      - OTEL_LOG_LEVEL=info
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://oteldb-2:4317
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=server
+      - OTEL_METRIC_EXPORT_INTERVAL=5000
+    depends_on:
+      - oteldb-2
+
+  # Calls the server once per second; ingests its telemetry at oteldb-1.
+  client:
+    image: ghcr.io/oteldb/oteldb/oteldemo
+    command: ["client"]
+    restart: always
+    environment:
+      - OTEL_LOG_LEVEL=info
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://oteldb-1:4317
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=client
+      - OTEL_METRIC_EXPORT_INTERVAL=5000
+    depends_on:
+      - oteldb-1
+      - server
+
+  grafana:
+    image: "grafana/grafana-oss:12.3.1"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor,traceToMetrics
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    depends_on:
+      - oteldb-1

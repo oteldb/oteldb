@@ -1,0 +1,14 @@
+# Shared config for every node in the storage cluster. Each node serves all signals from its own
+# local file backend (--embedded is passed on the command line) and joins the cluster via etcd. The
+# node's ring identity and replication address default to its hostname, so all three services use
+# this one file unchanged — only their `hostname:` differs in docker-compose.yml.
+storage:
+  backend: file
+  dir: /data
+  cluster:
+    etcd: ["http://etcd:2379"]
+    # id and addr are derived from the container hostname (e.g. oteldb-1 -> addr oteldb-1:7946).
+    port: 7946
+    # Replication factor: each write is stored on 2 of the 3 nodes (tolerates one node down).
+    rf: 2
+    root: /oteldb
