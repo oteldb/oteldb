@@ -107,6 +107,34 @@ type StorageConfig struct {
 	// LogQueryParallelism enables concurrent materialization of LogQL query results across up to
 	// this many workers. Zero or one (default) keeps the sequential path. Opt-in.
 	LogQueryParallelism int `json:"log_query_parallelism" yaml:"log_query_parallelism"`
+	// Cluster, when set with a non-empty Etcd endpoint list, joins this node to a storage cluster:
+	// nodes coordinate through etcd, form a rendezvous-hash ring, and replicate writes across each
+	// other's local backends. Unset (or empty Etcd) ⇒ a single-node engine.
+	Cluster *StorageClusterConfig `json:"cluster" yaml:"cluster"`
+}
+
+// StorageClusterConfig configures the embedded storage engine's distribution layer (the shared-
+// nothing cluster: each node keeps its shards on its own local backend and replicates them to RF
+// peers). It maps onto storage's cluster.Config.
+type StorageClusterConfig struct {
+	// Etcd is the etcd endpoint list used for membership coordination. Enables cluster mode.
+	Etcd []string `json:"etcd" yaml:"etcd"`
+	// ID is this node's stable ring identity. Empty ⇒ the OS hostname.
+	ID string `json:"id" yaml:"id"`
+	// Zone is this node's failure domain (replicas are spread across zones). Optional.
+	Zone string `json:"zone" yaml:"zone"`
+	// Addr is the host:port peers use to reach this node's replication server. Empty ⇒
+	// "<ID or hostname>:<Port>".
+	Addr string `json:"addr" yaml:"addr"`
+	// Port is the replication-server port used when Addr is derived from the hostname. Zero ⇒ 7946.
+	Port int `json:"port" yaml:"port"`
+	// RF is the replication factor (replicas per write). Zero ⇒ the storage default (3).
+	RF int `json:"rf" yaml:"rf"`
+	// ShardsPerTenant splits each tenant's metric series across this many independently-placed
+	// shards. Zero or one ⇒ a single shard per tenant.
+	ShardsPerTenant int `json:"shards_per_tenant" yaml:"shards_per_tenant"`
+	// Root is the etcd key prefix for this cluster's state. Empty ⇒ "/oteldb".
+	Root string `json:"root" yaml:"root"`
 }
 
 func (cfg *StorageConfig) setDefaults() {

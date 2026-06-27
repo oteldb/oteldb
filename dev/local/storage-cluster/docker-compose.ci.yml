@@ -1,0 +1,19 @@
+# CI override for the cluster E2E job (used with docker-compose.yml).
+#
+# The base demo compiles oteldb inside Docker (dev/Dockerfile). In CI we instead build the binaries
+# on the host with the shared Go cache (`task build-deploy`) and bake them into the image via
+# deploy.Dockerfile — an ADD of prebuilt binaries, which is far faster than a cold in-container
+# compile. We also publish a second node's OTLP port so the host verifier can ingest at oteldb-2 and
+# query oteldb-1 / oteldb-3, proving cross-node serving.
+services:
+  oteldb-1:
+    build:
+      dockerfile: ./dev/deploy/deploy.Dockerfile
+  oteldb-2:
+    build:
+      dockerfile: ./dev/deploy/deploy.Dockerfile
+    ports:
+      - "14317:4317" # OTLP gRPC on node-2 (host-side ingest target for the verifier)
+  oteldb-3:
+    build:
+      dockerfile: ./dev/deploy/deploy.Dockerfile

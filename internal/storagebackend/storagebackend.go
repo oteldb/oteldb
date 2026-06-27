@@ -56,9 +56,9 @@ func WithLogParallelism(n int) Option {
 	return func(b *Backend) { b.logParallelism = n }
 }
 
-// New returns a Backend over store. The query side reads across all tenants and the ingest
-// side derives tenants from each batch's Resource/Scope (via the engine's tenant callback),
-// so the empty tenant id here scopes reads to the federated cross-tenant view.
+// New returns a Backend over store. The ingest side has no tenant callback, so every batch routes
+// to the "default" tenant; the empty tenant id here normalizes to "default" on the read side,
+// keeping reads and writes on the same tenant (which also makes cluster reads owner-aware).
 func New(store *storage.Storage, opts ...Option) *Backend {
 	b := &Backend{store: store}
 	for _, opt := range opts {
@@ -69,8 +69,13 @@ func New(store *storage.Storage, opts ...Option) *Backend {
 
 // queryable builds a fresh Prometheus queryable over the engine's current data. A new
 // fetcher is taken per query so reads observe the latest head and flushed parts.
+//
+// The fetcher is scoped to b.tenant (a named tenant, "" ⇒ "default") rather than the no-arg
+// cross-tenant form: in cluster mode a named tenant is served owner-aware (fanned out to the ring
+// owners), whereas the no-arg form reads only tenants local to this node — so a query node that does
+// not own the tenant would see nothing. The record signals already scope by b.tenant the same way.
 func (b *Backend) queryable() *storagepromql.Queryable {
-	return storagepromql.NewQueryable(b.store.Fetcher(), b.tenant)
+	return storagepromql.NewQueryable(b.store.Fetcher(b.tenant), b.tenant)
 }
 
 // Querier implements storage.Queryable.

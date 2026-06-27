@@ -1,0 +1,56 @@
+apiVersion: 1
+
+# All datasources point at a single node (oteldb-1). In cluster mode any node answers the full
+# query by fanning out across the ring and merging replicas, so this one node serves data that was
+# ingested at oteldb-1 and oteldb-2 alike.
+datasources:
+  - name: PromQL
+    type: prometheus
+    access: proxy
+    orgId: 1
+    isDefault: true
+    url: http://oteldb-1:9090
+    uid: prom-oteldb
+    jsonData:
+      prometheusType: Prometheus
+      exemplarTraceIdDestinations:
+        - datasourceUid: tempo-oteldb
+          name: trace_id
+
+  - name: LogQL
+    type: loki
+    access: proxy
+    orgId: 1
+    url: http://oteldb-1:3100
+    uid: loki-oteldb
+    jsonData:
+      maxLines: 500
+      derivedFields:
+        - datasourceUid: tempo-oteldb
+          matcherType: label
+          matcherRegex: trace_id
+          name: trace
+          url: "$${__value.raw}"
+          urlDisplayLabel: "View Trace"
+
+  - name: TraceQL
+    type: tempo
+    access: proxy
+    orgId: 1
+    url: http://oteldb-1:3200
+    uid: tempo-oteldb
+    jsonData:
+      httpMethod: GET
+      tracesToLogsV2:
+        datasourceUid: loki-oteldb
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        customQuery: true
+        query: '{$${__tags}} |= "$${__span.traceId}"'
+        tags:
+          - key: service.name
+            value: service_name
+      nodeGraph:
+        enabled: true
+      serviceMap:
+        datasourceUid: prom-oteldb
