@@ -1,0 +1,108 @@
+# All-signals demo: a single oteldb running on the embedded storage engine (--embedded, no
+# ClickHouse) ingesting and serving logs, metrics, traces, and profiles. The oteldemo client/server
+# generate logs/metrics/traces over OTLP and a profiles generator pushes OTLP profiles; Grafana is
+# pre-provisioned with a datasource per signal (Loki, Tempo, Prometheus, Pyroscope), all pointing at
+# oteldb.
+#
+#   docker compose -f dev/local/embedded-demo/docker-compose.yml up --build
+#
+# Then open Grafana at http://localhost:3000 (anonymous admin) and explore each datasource.
+version: "3"
+
+services:
+  # oteldb serves every signal from the in-process storage engine. Profiles are only representable by
+  # this engine (no ClickHouse implementation), so --embedded is what makes the profiles signal work.
+  oteldb:
+    image: ghcr.io/oteldb/oteldb
+    build:
+      context: ../../../
+      dockerfile: dev/Dockerfile
+    command:
+      - --embedded
+    environment:
+      - OTEL_LOG_LEVEL=info
+      # oteldb's own telemetry is muted so the demo only shows data from the generators below.
+      - OTEL_TRACES_EXPORTER=none
+      - OTEL_METRICS_EXPORTER=none
+      - OTEL_LOGS_EXPORTER=stdout
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=oteldb
+    ports:
+      - "4317:4317" # OTLP gRPC ingestion (logs, metrics, traces, profiles).
+      - "4318:4318" # OTLP HTTP ingestion.
+      - "9090:9090" # Prometheus / PromQL.
+      - "3100:3100" # Loki / LogQL.
+      - "3200:3200" # Tempo / TraceQL.
+      - "4040:4040" # Pyroscope / ProfileQL.
+
+  # Generates traces, metrics, and logs by calling the server once per second.
+  client:
+    image: ghcr.io/oteldb/oteldb/oteldemo
+    build:
+      context: ../../../
+      dockerfile: dev/Dockerfile
+      args:
+        TARGETS: oteldemo
+        ENTRYPOINT_BIN: oteldemo
+    command: ["client"]
+    restart: always
+    environment:
+      - OTEL_LOG_LEVEL=info
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://oteldb:4317
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=client
+      - OTEL_METRIC_EXPORT_INTERVAL=5000
+    depends_on:
+      - oteldb
+      - server
+
+  # Handles requests from the client, emitting its own traces, metrics, and logs.
+  server:
+    image: ghcr.io/oteldb/oteldb/oteldemo
+    command: ["server"]
+    restart: always
+    environment:
+      - OTEL_LOG_LEVEL=info
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://oteldb:4317
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=server
+      - OTEL_METRIC_EXPORT_INTERVAL=5000
+    depends_on:
+      - oteldb
+
+  # Pushes synthetic OTLP CPU profiles for the client and server services once per second.
+  profiles:
+    image: ghcr.io/oteldb/oteldb/oteldemo
+    command: ["profiles"]
+    restart: always
+    environment:
+      - OTEL_LOG_LEVEL=info
+      - OTEL_TRACES_EXPORTER=none
+      - OTEL_METRICS_EXPORTER=none
+      - OTEL_LOGS_EXPORTER=stdout
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://oteldb:4317
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=profiles-generator
+    depends_on:
+      - oteldb
+
+  grafana:
+    image: "grafana/grafana-oss:12.1.1"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor,traceToMetrics,flameGraph
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    depends_on:
+      - oteldb
