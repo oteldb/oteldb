@@ -48,6 +48,10 @@ func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger)
 
 	lg.Info("Using embedded storage engine for metrics",
 		zap.String("backend", cmp.Or(cfg.Backend, "memory")),
+		zap.Int("log_query_parallelism", cfg.LogQueryParallelism),
 	)
-	return storagebackend.New(store), store.Close, nil
+	b := storagebackend.New(store,
+		storagebackend.WithLogParallelism(cfg.LogQueryParallelism),
+	)
+	return b, store.Close, nil
 }

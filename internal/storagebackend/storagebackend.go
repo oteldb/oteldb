@@ -40,13 +40,31 @@ import (
 type Backend struct {
 	store  *storage.Storage
 	tenant signal.TenantID
+	// logParallelism is the max number of workers used to materialize log query results across the
+	// fetched record set. <= 1 keeps the sequential path (the default). See [WithLogParallelism].
+	logParallelism int
+}
+
+// Option configures a [Backend].
+type Option func(*Backend)
+
+// WithLogParallelism enables concurrent materialization of LogQL query results across up to n
+// workers. The fetched record set is split into contiguous chunks built in parallel and merged in
+// order, so the result is identical to the sequential path regardless of scheduling. Opt-in: n <= 1
+// (the default) keeps the sequential path. Effective only above an internal record-count threshold.
+func WithLogParallelism(n int) Option {
+	return func(b *Backend) { b.logParallelism = n }
 }
 
 // New returns a Backend over store. The query side reads across all tenants and the ingest
 // side derives tenants from each batch's Resource/Scope (via the engine's tenant callback),
 // so the empty tenant id here scopes reads to the federated cross-tenant view.
-func New(store *storage.Storage) *Backend {
-	return &Backend{store: store}
+func New(store *storage.Storage, opts ...Option) *Backend {
+	b := &Backend{store: store}
+	for _, opt := range opts {
+		opt(b)
+	}
+	return b
 }
 
 // queryable builds a fresh Prometheus queryable over the engine's current data. A new
