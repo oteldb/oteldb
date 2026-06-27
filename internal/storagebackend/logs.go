@@ -63,6 +63,9 @@ func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.Eva
 		Signal: signal.Log,
 		Start:  lo,
 		End:    hi,
+		// Offload equality on resource/scope (stream) labels to the postings index, so the storage
+		// prunes non-matching streams before any record is materialized.
+		Matchers: n.streamMatchers(ctx, lo, hi),
 	}
 	if len(n.conditions) > 0 {
 		// Offloaded line filters: let the storage prune parts and drop non-matching records.
@@ -102,6 +105,76 @@ func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.Eva
 		entries = entries[:params.Limit]
 	}
 	return iterators.Slice(entries), nil
+}
+
+// streamMatchers resolves the selector's equality matchers on resource/scope (stream) labels to
+// storage fetch matchers, so the postings index prunes non-matching streams before any record is
+// materialized. The in-memory matchSelector still re-checks every record, so this only ever skips
+// work.
+//
+// A matcher is offloaded only when its label is an equality (`=`) on a non-empty value whose
+// normalized name maps unambiguously to a single raw resource/scope attribute key (discovered via
+// LogSeries). Record-attribute labels (e.g. Loki-style streams) and labels whose normalized name is
+// absent or ambiguous are left to matchSelector, since the postings index keys streams by their raw
+// resource/scope attributes only.
+func (n *logStreamNode) streamMatchers(ctx context.Context, lo, hi int64) []fetch.Matcher {
+	wanted := map[string]string{}
+	for _, m := range n.selector {
+		if m.Op == logql.OpEq && m.Value != "" {
+			wanted[string(m.Label)] = m.Value
+		}
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+
+	series, err := n.q.b.store.LogSeries(ctx, n.q.b.tenant, nil, lo, hi)
+	if err != nil {
+		return nil // best effort: fall back to in-memory filtering.
+	}
+
+	// Map each wanted normalized label to the set of raw stream-attribute keys that normalize to it.
+	rawKeys := map[string]map[string]struct{}{}
+	collect := func(key []byte) {
+		label := otelstorage.KeyToLabel(string(key))
+		if _, ok := wanted[label]; !ok {
+			return
+		}
+		set := rawKeys[label]
+		if set == nil {
+			set = map[string]struct{}{}
+			rawKeys[label] = set
+		}
+		set[string(key)] = struct{}{}
+	}
+	for _, s := range series {
+		for i := range s.Resource.Attributes {
+			collect(s.Resource.Attributes[i].Key)
+		}
+		for i := range s.Scope.Attributes {
+			collect(s.Scope.Attributes[i].Key)
+		}
+	}
+
+	var matchers []fetch.Matcher
+	for label, value := range wanted {
+		keys := rawKeys[label]
+		if len(keys) != 1 {
+			// Absent (record attribute or unknown) or ambiguous: leave it to matchSelector.
+			continue
+		}
+		var rawKey string
+		for k := range keys {
+			rawKey = k
+		}
+		want := value
+		matchers = append(matchers, fetch.Matcher{
+			Name:  []byte(rawKey),
+			Match: func(v signal.Value) bool { return string(v.AppendText(nil)) == want },
+			Spec:  &fetch.EqualMatcher{Name: rawKey, Value: want},
+		})
+	}
+	return matchers
 }
 
 // sortEntries orders entries by timestamp ascending for forward queries and descending otherwise.
