@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -208,6 +209,88 @@ storage:
 	require.Equal(t, signal.AggAvg, p.Downsample.Tiers[0].Agg)
 	require.Equal(t, 336*time.Hour, p.Recompress.After)
 	require.Equal(t, 9, p.Recompress.Level)
+}
+
+func TestS3Backend(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("RequiresBucket", func(t *testing.T) {
+		_, err := s3Backend(ctx, nil)
+		require.Error(t, err)
+
+		_, err = s3Backend(ctx, &StorageS3Config{Region: "us-east-1"}) // no bucket
+		require.Error(t, err)
+	})
+
+	t.Run("StaticCredentials", func(t *testing.T) {
+		b, err := s3Backend(ctx, &StorageS3Config{
+			Bucket:          "oteldb",
+			Prefix:          "data/",
+			Region:          "us-east-1",
+			Endpoint:        "http://minio:9000",
+			ForcePathStyle:  true,
+			AccessKeyID:     "key",
+			SecretAccessKey: "secret",
+		})
+		require.NoError(t, err)
+		require.NotNil(t, b)
+		require.False(t, b.IsEphemeral())
+	})
+
+	t.Run("UnknownRetryProfile", func(t *testing.T) {
+		_, err := s3Backend(ctx, &StorageS3Config{Bucket: "oteldb", AccessKeyID: "k", SecretAccessKey: "s", Retry: "bogus"})
+		require.Error(t, err)
+	})
+
+	t.Run("RetryProfiles", func(t *testing.T) {
+		for _, profile := range []string{"", "none", "default", "lossy"} {
+			b, err := s3Backend(ctx, &StorageS3Config{Bucket: "oteldb", AccessKeyID: "k", SecretAccessKey: "s", Retry: profile})
+			require.NoError(t, err, "profile %q", profile)
+			require.NotNil(t, b)
+		}
+	})
+}
+
+// TestStorageS3ConfigYAML checks the s3 block parses from the documented YAML shape via the real
+// config loader.
+func TestStorageS3ConfigYAML(t *testing.T) {
+	const data = `
+storage:
+  backend: s3
+  wal_dir: /var/lib/oteldb/wal
+  s3:
+    bucket: oteldb
+    prefix: data/
+    region: us-east-1
+    endpoint: http://minio:9000
+    force_path_style: true
+    access_key_id: key
+    secret_access_key: secret
+    session_token: token
+    retry: lossy
+`
+	f, err := os.CreateTemp("", "oteldb.yml")
+	require.NoError(t, err)
+	defer func() { _ = os.Remove(f.Name()) }()
+	_, err = f.WriteString(data)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	cfg, err := loadConfig(f.Name())
+	require.NoError(t, err)
+
+	require.Equal(t, "s3", cfg.Storage.Backend)
+	require.Equal(t, "/var/lib/oteldb/wal", cfg.Storage.WALDir)
+	require.NotNil(t, cfg.Storage.S3)
+	require.Equal(t, "oteldb", cfg.Storage.S3.Bucket)
+	require.Equal(t, "data/", cfg.Storage.S3.Prefix)
+	require.Equal(t, "us-east-1", cfg.Storage.S3.Region)
+	require.Equal(t, "http://minio:9000", cfg.Storage.S3.Endpoint)
+	require.True(t, cfg.Storage.S3.ForcePathStyle)
+	require.Equal(t, "key", cfg.Storage.S3.AccessKeyID)
+	require.Equal(t, "secret", cfg.Storage.S3.SecretAccessKey)
+	require.Equal(t, "token", cfg.Storage.S3.SessionToken)
+	require.Equal(t, "lossy", cfg.Storage.S3.Retry)
 }
 
 func TestResolveCacheSettings(t *testing.T) {
