@@ -67,6 +67,27 @@ func (n *logStreamNode) Traverse(cb logqlengine.NodeVisitor) error { return cb(n
 // them as entries ordered per params.Direction (and truncated to params.Limit).
 func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.EvalParams) (logqlengine.EntryIterator, error) {
 	lo, hi := fetchWindow(params.Start, params.End)
+	batches, err := n.fetchBatches(ctx, lo, hi)
+	if err != nil {
+		return nil, err
+	}
+
+	entries, err := n.materialize(ctx, batches)
+	if err != nil {
+		return nil, err
+	}
+
+	sortEntries(entries, params.Direction)
+	if params.Limit > 0 && len(entries) > params.Limit {
+		entries = entries[:params.Limit]
+	}
+	return iterators.Slice(entries), nil
+}
+
+// fetchBatches resolves the selector to storage fetch filters and returns the matching record
+// batches for [lo, hi]. Shared by the entry-materialization path (EvalPipeline) and the bucketed
+// sampling path (bucketSamplingNode.EvalBucketedSample).
+func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64) ([]*fetch.Batch, error) {
 	// Offload equality matchers: resource/scope labels prune streams via the postings index, clean
 	// record-attribute labels drop records via a per-record condition — both before materialization.
 	matchers, selConds := n.streamFilters(ctx, lo, hi)
@@ -94,17 +115,7 @@ func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.Eva
 	if err != nil {
 		return nil, errors.Wrap(err, "drain logs")
 	}
-
-	entries, err := n.materialize(ctx, batches)
-	if err != nil {
-		return nil, err
-	}
-
-	sortEntries(entries, params.Direction)
-	if params.Limit > 0 && len(entries) > params.Limit {
-		entries = entries[:params.Limit]
-	}
-	return iterators.Slice(entries), nil
+	return batches, nil
 }
 
 // logMaterializeThreshold is the minimum number of fetched records before the parallel materializer
