@@ -86,17 +86,20 @@ func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.Eva
 
 // fetchBatches resolves the selector to storage fetch filters and returns the matching record
 // batches for [lo, hi]. Shared by the entry-materialization path (EvalPipeline) and the bucketed
-// sampling path (bucketSamplingNode.EvalBucketedSample).
-func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64) ([]*fetch.Batch, error) {
+// sampling path (bucketSamplingNode.EvalBucketedSample). A non-empty projection limits the columns
+// materialized for surviving rows (the bucketed path needs only severity/body, not the attributes
+// column whose decode dominates a full materialization); empty ⇒ the fetcher's default full set.
+func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, projection ...string) ([]*fetch.Batch, error) {
 	// Offload equality matchers: resource/scope labels prune streams via the postings index, clean
 	// record-attribute labels drop records via a per-record condition — both before materialization.
 	matchers, selConds := n.streamFilters(ctx, lo, hi)
 	req := fetch.Request{
-		Tenant:   n.q.b.tenant,
-		Signal:   signal.Log,
-		Start:    lo,
-		End:      hi,
-		Matchers: matchers,
+		Tenant:     n.q.b.tenant,
+		Signal:     signal.Log,
+		Start:      lo,
+		End:        hi,
+		Matchers:   matchers,
+		Projection: projection,
 	}
 	// Selector record-attribute conditions plus any offloaded line filters (set by LogQLOptimizer).
 	if len(selConds)+len(n.conditions) > 0 {

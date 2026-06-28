@@ -6,6 +6,8 @@ import (
 
 	"go.opentelemetry.io/collector/pdata/plog"
 
+	siglog "github.com/oteldb/storage/signal/log"
+
 	"github.com/oteldb/oteldb/internal/iterators"
 	"github.com/oteldb/oteldb/internal/logql"
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
@@ -68,8 +70,14 @@ func (n *bucketSamplingNode) EvalBucketedSample(ctx context.Context, params logq
 	}
 	numSteps := int((endNs-startNs)/stepNs) + 1
 
-	// Fetch the trailing window too, so a record before Start still feeds step 0.
-	batches, err := n.src.fetchBatches(ctx, startNs-windowNs, endNs)
+	// Fetch the trailing window too, so a record before Start still feeds step 0. Project only the
+	// columns the bucketing reads — severity (the level group key) and, for bytes sampling, the body
+	// — so the storage skips decoding the attributes column entirely.
+	projection := []string{siglog.ColSeverity, siglog.ColSeverityText}
+	if n.op == bytesSampling {
+		projection = append(projection, siglog.ColBody)
+	}
+	batches, err := n.src.fetchBatches(ctx, startNs-windowNs, endNs, projection...)
 	if err != nil {
 		return nil, err
 	}
