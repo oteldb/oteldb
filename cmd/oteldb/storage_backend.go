@@ -10,6 +10,10 @@ import (
 	"runtime/debug"
 	"strconv"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
 	"go.uber.org/zap"
@@ -17,8 +21,10 @@ import (
 	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/backend"
 	backendfile "github.com/oteldb/storage/backend/file"
+	backends3 "github.com/oteldb/storage/backend/s3"
 	"github.com/oteldb/storage/cluster"
 	"github.com/oteldb/storage/cluster/etcd"
+	"github.com/oteldb/storage/reliability"
 
 	"github.com/oteldb/oteldb/internal/storagebackend"
 	"github.com/oteldb/oteldb/internal/xbytes"
@@ -54,6 +60,20 @@ func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger,
 			storage.WithBackend(fb),
 			storage.WithWALDir(filepath.Join(cfg.Dir, "wal")),
 		)
+		if cfg.FlushInterval > 0 {
+			opts = append(opts, storage.WithFlushInterval(int64(cfg.FlushInterval)))
+		}
+	case "s3":
+		sb, err := s3Backend(ctx, cfg.S3)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "open s3 backend")
+		}
+		opts = append(opts, storage.WithBackend(sb))
+		// The object store is stateless; keep an optional local WAL so the unflushed head survives a
+		// restart rather than only the flushed objects.
+		if cfg.WALDir != "" {
+			opts = append(opts, storage.WithWALDir(cfg.WALDir))
+		}
 		if cfg.FlushInterval > 0 {
 			opts = append(opts, storage.WithFlushInterval(int64(cfg.FlushInterval)))
 		}
@@ -140,6 +160,51 @@ func clusterOption(cfg *StorageClusterConfig, lg *zap.Logger) (storage.Option, e
 		ShardsPerTenant: cfg.ShardsPerTenant,
 		Root:            cfg.Root,
 	}), nil
+}
+
+// s3Backend builds the embedded storage engine's S3 object-store backend from the config. It uses
+// static credentials when both keys are set, otherwise the default AWS credential chain
+// (environment, shared config, IAM role), and applies the requested resilience profile.
+func s3Backend(ctx context.Context, cfg *StorageS3Config) (backend.Backend, error) {
+	if cfg == nil || cfg.Bucket == "" {
+		return nil, errors.New("storage.s3.bucket is required for the s3 backend")
+	}
+
+	o := awss3.Options{
+		Region:       cfg.Region,
+		UsePathStyle: cfg.ForcePathStyle,
+	}
+	if cfg.Endpoint != "" {
+		o.BaseEndpoint = aws.String(cfg.Endpoint)
+	}
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" {
+		o.Credentials = credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, cfg.SessionToken)
+	} else {
+		// Fall back to the default chain (env, shared config, IAM role); resolved lazily on first use.
+		awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "load aws config")
+		}
+		o.Credentials = awsCfg.Credentials
+		if o.Region == "" {
+			o.Region = awsCfg.Region
+		}
+	}
+
+	var s3Opts []backends3.Option
+	switch cfg.Retry {
+	case "", "none":
+		// No extra resilience layer; the AWS SDK's own retryer still applies.
+	case "default":
+		s3Opts = append(s3Opts, backends3.WithRetry(reliability.Default()))
+	case "lossy":
+		s3Opts = append(s3Opts, backends3.WithRetry(reliability.LossyEnvironment()))
+	default:
+		return nil, errors.Errorf("unknown s3 retry profile %q", cfg.Retry)
+	}
+
+	store := backends3.NewAWS(awss3.New(o), cfg.Bucket)
+	return backends3.New(store, cfg.Prefix, s3Opts...), nil
 }
 
 // cacheSettings is the resolved, effective cache/optimization configuration that oteldb applies to
