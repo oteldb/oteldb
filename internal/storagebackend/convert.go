@@ -13,10 +13,16 @@ import (
 // pdataconv ingest converter.
 func otelAttrs(attrs signal.Attributes) otelstorage.Attrs {
 	m := pcommon.NewMap()
+	fillOtelAttrs(m, attrs)
+	return otelstorage.Attrs(m)
+}
+
+// fillOtelAttrs writes storage [signal.Attributes] into an existing pcommon.Map. The caller owns the
+// map, so it can be reused across rows (Clear between uses) to avoid a per-row map allocation.
+func fillOtelAttrs(m pcommon.Map, attrs signal.Attributes) {
 	for _, kv := range attrs {
 		putSignalValue(m.PutEmpty(string(kv.Key)), kv.Value)
 	}
-	return otelstorage.Attrs(m)
 }
 
 // labelValueString renders a storage value to the exact string the LogQL label set exposes for it.
