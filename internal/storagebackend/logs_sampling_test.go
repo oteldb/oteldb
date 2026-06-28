@@ -3,6 +3,7 @@ package storagebackend_test
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -46,7 +47,7 @@ func genSpreadLogs(n int, start time.Time, span time.Duration) plog.Logs {
 }
 
 // runMetric evaluates a metric query and normalizes the matrix to series-label -> ts -> value.
-func runMetric(t *testing.T, ctx context.Context, backend *storagebackend.Backend, query string, bucketed bool, start, end time.Time, step time.Duration) map[string]map[float64]string {
+func runMetric(t *testing.T, ctx context.Context, backend *storagebackend.Backend, query string, bucketed bool, start, end time.Time, step time.Duration) map[string]map[float64]float64 {
 	t.Helper()
 	var opts logqlengine.Options
 	if bucketed {
@@ -63,12 +64,14 @@ func runMetric(t *testing.T, ctx context.Context, backend *storagebackend.Backen
 	require.NoError(t, err)
 	require.Equal(t, lokiapi.MatrixResultQueryResponseData, data.Type, query)
 
-	out := map[string]map[float64]string{}
+	out := map[string]map[float64]float64{}
 	for _, s := range data.MatrixResult.Result {
 		key := fmt.Sprint(s.Metric.Or(lokiapi.LabelSet{}))
-		m := map[float64]string{}
+		m := map[float64]float64{}
 		for _, p := range s.Values {
-			m[p.T] = p.V
+			v, err := strconv.ParseFloat(p.V, 64)
+			require.NoError(t, err)
+			m[p.T] = v
 		}
 		out[key] = m
 	}
@@ -101,8 +104,18 @@ func TestBucketedSamplingMatchesGeneric(t *testing.T) {
 		t.Run(query, func(t *testing.T) {
 			generic := runMetric(t, ctx, backend, query, false, start, end, step)
 			bucketed := runMetric(t, ctx, backend, query, true, start, end, step)
-			require.Equal(t, generic, bucketed)
 			require.NotEmpty(t, bucketed)
+			require.Len(t, bucketed, len(generic))
+			for key, gpoints := range generic {
+				bpoints, ok := bucketed[key]
+				require.Truef(t, ok, "series %q missing in bucketed", key)
+				require.Len(t, bpoints, len(gpoints))
+				for ts, gv := range gpoints {
+					// Float aggregation is non-associative; the generic path even sums in
+					// parallel order. Compare within tolerance, not bit-exact.
+					require.InEpsilonf(t, gv, bpoints[ts], 1e-9, "series %q at %v", key, ts)
+				}
+			}
 		})
 	}
 }

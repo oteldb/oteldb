@@ -82,7 +82,7 @@ func (n *bucketSamplingNode) EvalBucketedSample(ctx context.Context, params logq
 	for _, batch := range batches {
 		cols := newLogColumns(batch)
 		for i, ts := range batch.Timestamps {
-			gk, gmap := n.groupKey(cols, i)
+			gk := n.groupKey(cols, i)
 			var val float64
 			switch n.op {
 			case bytesSampling:
@@ -111,8 +111,9 @@ func (n *bucketSamplingNode) EvalBucketedSample(ctx context.Context, params logq
 				}
 				m[gk] += val
 			}
+			// Build the label map once per distinct group, not per record.
 			if _, ok := groupMaps[gk]; !ok {
-				groupMaps[gk] = gmap
+				groupMaps[gk] = n.groupLabels(gk)
 			}
 		}
 	}
@@ -138,19 +139,27 @@ func (n *bucketSamplingNode) EvalBucketedSample(ctx context.Context, params logq
 	return iterators.Slice(steps), nil
 }
 
-// groupKey returns the grouping key and its label map for record i. Only severity-derived grouping
-// labels are supported (the optimizer guarantees this), so the value is the record's level and the
-// key is that value (every grouping label shares it).
-func (n *bucketSamplingNode) groupKey(cols logColumns, i int) (string, map[string]string) {
+// groupKey returns the grouping key for record i — allocation-free on the hot path. Only
+// severity-derived grouping labels are supported (the optimizer guarantees this), so the key is the
+// record's level value (every grouping label shares it); the empty key is the single ungrouped
+// bucket.
+func (n *bucketSamplingNode) groupKey(cols logColumns, i int) string {
 	if len(n.by) == 0 {
-		return "", nil
+		return ""
 	}
-	lv := levelValue(cols.severity, cols.severityText, i)
+	return levelValue(cols.severity, cols.severityText, i)
+}
+
+// groupLabels builds the label map for a group key. Called once per distinct group, not per record.
+func (n *bucketSamplingNode) groupLabels(key string) map[string]string {
+	if len(n.by) == 0 {
+		return nil
+	}
 	m := make(map[string]string, len(n.by))
 	for _, l := range n.by {
-		m[string(l)] = lv
+		m[string(l)] = key
 	}
-	return lv, m
+	return m
 }
 
 // levelValue mirrors logqlabels.SetFromRecord's level label: the severity number's name, or the raw
