@@ -7,6 +7,38 @@ import (
 	"github.com/oteldb/oteldb/internal/lokiapi"
 )
 
+// discoveryLabels are produced by attribute discovery (service-name detection, log-level detection),
+// which Loki documents as implementation-defined and which the compliance reference disables
+// (discover_service_name: [], discover_log_levels: false). A conformant engine may still synthesize
+// them, so they are stripped from both the reference and test results before comparison — comparing
+// them would penalize an implementation-defined choice. Safe here because no compliance query selects
+// or groups by these labels.
+var discoveryLabels = []string{"service_name", "detected_level", "level"}
+
+// dropDiscoveryLabels removes the implementation-defined discovery labels from every series/stream of
+// a response, in place.
+func dropDiscoveryLabels(data *lokiapi.QueryResponseData) {
+	strip := func(ls lokiapi.LabelSet) {
+		for _, k := range discoveryLabels {
+			delete(ls, k)
+		}
+	}
+	switch data.Type {
+	case lokiapi.StreamsResultQueryResponseData:
+		for _, s := range data.StreamsResult.Result {
+			strip(s.Stream.Value)
+		}
+	case lokiapi.VectorResultQueryResponseData:
+		for _, s := range data.VectorResult.Result {
+			strip(s.Metric.Value)
+		}
+	case lokiapi.MatrixResultQueryResponseData:
+		for _, s := range data.MatrixResult.Result {
+			strip(s.Metric.Value)
+		}
+	}
+}
+
 func sortResponse(data *lokiapi.QueryResponseData) {
 	switch data.Type {
 	case lokiapi.StreamsResultQueryResponseData:
