@@ -23,7 +23,7 @@ func seriesWith(labels map[string]string) lokiapi.Series {
 }
 
 // TestDropDiscoveryLabels verifies that results differing only by the implementation-defined
-// discovery labels compare equal after normalization — the behaviour the compliance comparison
+// discovery labels compare equal after normalization — the behavior the compliance comparison
 // relies on so an engine that synthesizes service_name/detected_level is not penalized.
 func TestDropDiscoveryLabels(t *testing.T) {
 	// Reference (Loki, discovery disabled): just the real stream label.
