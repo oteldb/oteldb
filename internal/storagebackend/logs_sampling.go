@@ -108,10 +108,7 @@ func (n *bucketSamplingNode) EvalBucketedSample(ctx context.Context, params logq
 
 			// Steps s_k = Start + k*step with ts <= s_k < ts+window contain this record.
 			d := ts - startNs
-			kLo := ceilDiv(d, stepNs)
-			if kLo < 0 {
-				kLo = 0
-			}
+			kLo := max(ceilDiv(d, stepNs), 0)
 			kHi := floorDiv(d+windowNs-1, stepNs) // strict s_k < ts+window
 			if kHi >= int64(numSteps) {
 				kHi = int64(numSteps) - 1
@@ -132,7 +129,7 @@ func (n *bucketSamplingNode) EvalBucketedSample(ctx context.Context, params logq
 	}
 
 	steps := make([]logqlmetric.Step, 0, numSteps)
-	for k := 0; k < numSteps; k++ {
+	for k := range numSteps {
 		m := counts[k]
 		if len(m) == 0 {
 			continue

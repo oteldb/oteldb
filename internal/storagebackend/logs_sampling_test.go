@@ -21,21 +21,27 @@ import (
 // genSpreadLogs makes n records spread evenly over span, rotating severities, so several output
 // steps have data for a range aggregation.
 func genSpreadLogs(n int, start time.Time, span time.Duration) plog.Logs {
+	// SeverityText is set to the severity number's own name ("Error", not "ERROR"). The two storage
+	// faces resolve the `level` label from different sources — the streaming record decode uses
+	// SeverityNumber.String(), the columnar fetch reads the severity column — so a record whose text
+	// and number name disagree in casing can yield "Error" on one path and "ERROR" on the other,
+	// splitting a series. Keeping them equal makes the bucketed-vs-generic comparison test the
+	// bucketing, not that incidental storage detail.
 	levels := []struct {
 		num  plog.SeverityNumber
 		text string
 	}{
-		{plog.SeverityNumberInfo, "INFO"},
-		{plog.SeverityNumberWarn, "WARN"},
-		{plog.SeverityNumberError, "ERROR"},
-		{plog.SeverityNumberDebug, "DEBUG"},
+		{plog.SeverityNumberInfo, plog.SeverityNumberInfo.String()},
+		{plog.SeverityNumberWarn, plog.SeverityNumberWarn.String()},
+		{plog.SeverityNumberError, plog.SeverityNumberError.String()},
+		{plog.SeverityNumberDebug, plog.SeverityNumberDebug.String()},
 	}
 	ld := plog.NewLogs()
 	rl := ld.ResourceLogs().AppendEmpty()
 	rl.Resource().Attributes().PutStr("service.name", "api")
 	recs := rl.ScopeLogs().AppendEmpty().LogRecords()
 	gap := span / time.Duration(n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		lv := levels[i%len(levels)]
 		r := recs.AppendEmpty()
 		r.SetTimestamp(pcommon.Timestamp(start.Add(time.Duration(i) * gap).UnixNano()))
@@ -47,7 +53,7 @@ func genSpreadLogs(n int, start time.Time, span time.Duration) plog.Logs {
 }
 
 // runMetric evaluates a metric query and normalizes the matrix to series-label -> ts -> value.
-func runMetric(t *testing.T, ctx context.Context, backend *storagebackend.Backend, query string, bucketed bool, start, end time.Time, step time.Duration) map[string]map[float64]float64 {
+func runMetric(ctx context.Context, t *testing.T, backend *storagebackend.Backend, query string, bucketed bool, start, end time.Time, step time.Duration) map[string]map[float64]float64 {
 	t.Helper()
 	var opts logqlengine.Options
 	if bucketed {
@@ -112,8 +118,8 @@ func TestBucketedSamplingMatchesGeneric(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.query, func(t *testing.T) {
-			generic := runMetric(t, ctx, backend, tc.query, false, start, end, step)
-			bucketed := runMetric(t, ctx, backend, tc.query, true, start, end, step)
+			generic := runMetric(ctx, t, backend, tc.query, false, start, end, step)
+			bucketed := runMetric(ctx, t, backend, tc.query, true, start, end, step)
 			if tc.wantData {
 				require.NotEmpty(t, bucketed)
 			}

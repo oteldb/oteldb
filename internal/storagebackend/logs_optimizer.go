@@ -121,7 +121,7 @@ func storageNode(n logqlengine.PipelineNode) *logStreamNode {
 }
 
 // sumGroupingLabels returns the grouping labels of a `sum [by (...)]` when the bucketed path can
-// honour them: no grouping (sum over all), or a `by(...)` over only severity-derived labels.
+// honor them: no grouping (sum over all), or a `by(...)` over only severity-derived labels.
 func sumGroupingLabels(g *logql.Grouping) ([]logql.Label, bool) {
 	if g == nil {
 		return nil, true
@@ -256,5 +256,3 @@ func valueBytes(v signal.Value) []byte {
 	}
 	return v.Bytes()
 }
-
-

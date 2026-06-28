@@ -16,7 +16,7 @@ import (
 	"github.com/oteldb/oteldb/internal/storagebackend"
 )
 
-// genBenchLogs builds n synthetic log records modelled on the benchmark's
+// genBenchLogs builds n synthetic log records modeled on the benchmark's
 // otelbench stream: one service, rotating severities, http.method/status_code
 // attributes, and a JSON body carrying level/method/status — so line filters,
 // json parsing and metric aggregation all exercise real data.
@@ -41,7 +41,7 @@ func genBenchLogs(n int, start time.Time) plog.Logs {
 	sl := rl.ScopeLogs().AppendEmpty()
 	recs := sl.LogRecords()
 	recs.EnsureCapacity(n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		lv := levels[i%len(levels)]
 		method := methods[i%len(methods)]
 		status := statuses[i%len(statuses)]
