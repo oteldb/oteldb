@@ -91,7 +91,8 @@ func TestLogQLOptimizerEquivalence(t *testing.T) {
 		`count_over_time({service_name="api"} | level = "error" [1h])`,    // metric query with label filter
 	} {
 		t.Run(query, func(t *testing.T) {
-			require.Equal(t,
+			require.Equal(
+				t,
 				normalize(t, run(t, false, query)),
 				normalize(t, run(t, true, query)),
 				"offloaded result must equal engine-only result",

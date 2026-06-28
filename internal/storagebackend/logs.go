@@ -1,7 +1,9 @@
 package storagebackend
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"sort"
 	"time"
 
@@ -65,32 +67,9 @@ func (n *logStreamNode) Traverse(cb logqlengine.NodeVisitor) error { return cb(n
 // them as entries ordered per params.Direction (and truncated to params.Limit).
 func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.EvalParams) (logqlengine.EntryIterator, error) {
 	lo, hi := fetchWindow(params.Start, params.End)
-	// Offload equality matchers: resource/scope labels prune streams via the postings index, clean
-	// record-attribute labels drop records via a per-record condition — both before materialization.
-	matchers, selConds := n.streamFilters(ctx, lo, hi)
-	req := fetch.Request{
-		Tenant:   n.q.b.tenant,
-		Signal:   signal.Log,
-		Start:    lo,
-		End:      hi,
-		Matchers: matchers,
-	}
-	// Selector record-attribute conditions plus any offloaded line filters (set by LogQLOptimizer).
-	if len(selConds)+len(n.conditions) > 0 {
-		conds := make([]fetch.Condition, 0, len(selConds)+len(n.conditions))
-		conds = append(conds, selConds...)
-		conds = append(conds, n.conditions...)
-		req.Conditions = conds
-		req.AllConditions = true
-	}
-
-	it, err := n.q.b.store.LogFetcher(n.q.b.tenant).Fetch(ctx, req)
+	batches, _, err := n.fetchBatches(ctx, lo, hi)
 	if err != nil {
-		return nil, errors.Wrap(err, "fetch logs")
-	}
-	batches, err := fetch.Drain(ctx, it)
-	if err != nil {
-		return nil, errors.Wrap(err, "drain logs")
+		return nil, err
 	}
 
 	entries, err := n.materialize(ctx, batches)
@@ -103,6 +82,43 @@ func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.Eva
 		entries = entries[:params.Limit]
 	}
 	return iterators.Slice(entries), nil
+}
+
+// fetchBatches resolves the selector to storage fetch filters and returns the matching record
+// batches for [lo, hi]. Shared by the entry-materialization path (EvalPipeline) and the bucketed
+// sampling path (bucketSamplingNode.EvalBucketedSample). A non-empty projection limits the columns
+// materialized for surviving rows (the bucketed path needs only severity/body, not the attributes
+// column whose decode dominates a full materialization); empty ⇒ the fetcher's default full set.
+func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, projection ...string) (_ []*fetch.Batch, selectorPushed bool, _ error) {
+	// Offload equality matchers: resource/scope labels prune streams via the postings index, clean
+	// record-attribute labels drop records via a per-record condition — both before materialization.
+	matchers, selConds, selectorPushed := n.streamFilters(ctx, lo, hi)
+	req := fetch.Request{
+		Tenant:     n.q.b.tenant,
+		Signal:     signal.Log,
+		Start:      lo,
+		End:        hi,
+		Matchers:   matchers,
+		Projection: projection,
+	}
+	// Selector record-attribute conditions plus any offloaded line filters (set by LogQLOptimizer).
+	if len(selConds)+len(n.conditions) > 0 {
+		conds := make([]fetch.Condition, 0, len(selConds)+len(n.conditions))
+		conds = append(conds, selConds...)
+		conds = append(conds, n.conditions...)
+		req.Conditions = conds
+		req.AllConditions = true
+	}
+
+	it, err := n.q.b.store.LogFetcher(n.q.b.tenant).Fetch(ctx, req)
+	if err != nil {
+		return nil, false, errors.Wrap(err, "fetch logs")
+	}
+	batches, err := fetch.Drain(ctx, it)
+	if err != nil {
+		return nil, false, errors.Wrap(err, "drain logs")
+	}
+	return batches, selectorPushed, nil
 }
 
 // logMaterializeThreshold is the minimum number of fetched records before the parallel materializer
@@ -222,7 +238,11 @@ func (n *logStreamNode) materializeRange(batches []*fetch.Batch, offsets []int, 
 // Record-attribute Conditions carry only an exact Match (no bloom Equal hint): the value may be
 // non-string, and a typed value bloom token could wrongly part-prune; the Match still drops rows at
 // the fetch layer.
-func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matchers []fetch.Matcher, conditions []fetch.Condition) {
+// streamFilters resolves the selector (and offloaded pipeline labels) to fetch Matchers/Conditions.
+// selectorPushed reports whether every selector matcher is applied exactly by the returned filters,
+// so a fetched record needs no in-memory matchSelector re-check (used by the bucketed sampling fast
+// path). It shares the single LogKeys lookup.
+func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matchers []fetch.Matcher, conditions []fetch.Condition, selectorPushed bool) {
 	wanted := map[string]string{}
 	addEq := func(matchers []logql.LabelMatcher) {
 		for _, m := range matchers {
@@ -234,12 +254,13 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 	addEq(n.selector)       // stream selector labels
 	addEq(n.pipelineLabels) // offloaded pipeline label filters (| L="v")
 	if len(wanted) == 0 {
-		return nil, nil
+		// No equality labels to push: fully pushed only when the selector is empty (match-all).
+		return nil, nil, len(n.selector) == 0
 	}
 
 	keys, err := n.q.b.store.LogKeys(ctx, n.q.b.tenant, lo, hi)
 	if err != nil {
-		return nil, nil // best effort: fall back to in-memory filtering.
+		return nil, nil, false // best effort: fall back to in-memory filtering.
 	}
 
 	// Resolve each wanted normalized label to its raw attribute key(s) and their merged scope. A
@@ -258,6 +279,7 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 		byLabel[label] = append(byLabel[label], resolved{rawKey: string(ki.Key), scope: ki.Scope})
 	}
 
+	pushed := map[string]bool{}
 	for label, value := range wanted {
 		cands := byLabel[label]
 		if len(cands) != 1 {
@@ -276,6 +298,7 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 				Match: func(v signal.Value) bool { return labelValueString(v) == want },
 				Spec:  &fetch.EqualMatcher{Name: c.rawKey, Value: want},
 			})
+			pushed[label] = true
 		case record && !stream:
 			// A per-record attribute: drop non-matching records at the fetch layer. Match only (no
 			// bloom Equal hint): a typed value token could wrongly part-prune.
@@ -283,20 +306,32 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 				Column: c.rawKey,
 				Match:  func(v signal.Value) bool { return labelValueString(v) == want },
 			})
+			pushed[label] = true
 		}
 		// Mixed scope (resource on some streams, record on others) can't be pushed soundly as either
 		// a Matcher or a Condition: leave it to matchSelector.
 	}
-	return matchers, conditions
+
+	// Fully pushed iff every selector matcher is an equality that became a Matcher/Condition.
+	selectorPushed = true
+	for _, m := range n.selector {
+		if m.Op != logql.OpEq || m.Value == "" || !pushed[string(m.Label)] {
+			selectorPushed = false
+			break
+		}
+	}
+	return matchers, conditions, selectorPushed
 }
 
 // sortEntries orders entries by timestamp ascending for forward queries and descending otherwise.
+// Uses slices.SortStableFunc (typed) rather than sort.SliceStable to avoid the reflection-based
+// swapper, which dominates the sort of a large entry slice.
 func sortEntries(entries []logqlengine.Entry, dir logqlengine.Direction) {
-	sort.SliceStable(entries, func(i, j int) bool {
+	slices.SortStableFunc(entries, func(a, b logqlengine.Entry) int {
 		if dir == logqlengine.DirectionBackward {
-			return entries[i].Timestamp > entries[j].Timestamp
+			return cmp.Compare(b.Timestamp, a.Timestamp)
 		}
-		return entries[i].Timestamp < entries[j].Timestamp
+		return cmp.Compare(a.Timestamp, b.Timestamp)
 	})
 }
 
