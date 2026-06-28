@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"golang.org/x/sync/errgroup"
 
@@ -166,7 +167,13 @@ func (n *logStreamNode) materialize(ctx context.Context, batches []*fetch.Batch)
 // same entries in the same order for a given range. It reads only immutable batch state and builds a
 // fresh label set per record, so it is safe to call concurrently over disjoint ranges.
 func (n *logStreamNode) materializeRange(batches []*fetch.Batch, offsets []int, lo, hi int) []logqlengine.Entry {
-	var out []logqlengine.Entry
+	out := make([]logqlengine.Entry, 0, max(hi-lo, 0))
+	// Per-call scratch (safe: each concurrent range owns its own). A record dropped by the selector
+	// reuses the scratch label set and attribute map; a kept record hands them off into the entry and
+	// the scratch is replaced, since the entry's label set aliases the attribute map's values.
+	var attrBuf signal.Attributes
+	set := logqlabels.NewLabelSet()
+	attrMap := pcommon.NewMap()
 	for b := range batches {
 		bLo, bHi := offsets[b], offsets[b+1]
 		if bHi <= lo || bLo >= hi {
@@ -177,10 +184,11 @@ func (n *logStreamNode) materializeRange(batches []*fetch.Batch, offsets []int, 
 		start := max(lo-bLo, 0)
 		end := min(hi-bLo, len(batch.Timestamps))
 		for i := start; i < end; i++ {
-			record := cols.record(batch, i)
-			set := logqlabels.NewLabelSet()
+			set.Reset()
+			record := cols.recordInto(batch, i, &attrBuf, attrMap)
 			set.SetFromRecord(record)
 			if !matchSelector(set, n.selector) {
+				attrMap.Clear() // reuse the map for the next dropped row
 				continue
 			}
 			out = append(out, logqlengine.Entry{
@@ -188,6 +196,9 @@ func (n *logStreamNode) materializeRange(batches []*fetch.Batch, offsets []int, 
 				Line:      record.Body,
 				Set:       set,
 			})
+			// The entry retains set, which aliases attrMap's values, so neither can be reused.
+			set = logqlabels.NewLabelSet()
+			attrMap = pcommon.NewMap()
 		}
 	}
 	return out
@@ -331,8 +342,13 @@ func newLogColumns(batch *fetch.Batch) logColumns {
 	}
 }
 
-// record materializes row i into a [logstorage.Record].
-func (c logColumns) record(batch *fetch.Batch, i int) logstorage.Record {
+// recordInto materializes row i into a [logstorage.Record], decoding the record attributes into the
+// reusable buffer attrBuf (avoiding a per-row slice allocation) and projecting them into the
+// caller-owned attrMap (avoiding a per-row map allocation). The caller must pass an empty attrMap and
+// is responsible for reusing or replacing it after the record's lifetime: a kept record's label set
+// aliases attrMap's values, so it must be replaced; a dropped record's attrMap can be Clear()ed and
+// reused. attrBuf may be nil for a one-shot decode.
+func (c logColumns) recordInto(batch *fetch.Batch, i int, attrBuf *signal.Attributes, attrMap pcommon.Map) logstorage.Record {
 	r := logstorage.Record{
 		Timestamp:     otelstorage.Timestamp(batch.Timestamps[i]),
 		ResourceAttrs: c.resource,
@@ -356,8 +372,19 @@ func (c logColumns) record(batch *fetch.Batch, i int) logstorage.Record {
 		r.SpanID = otelSpanID(c.spanID[i])
 	}
 	if i < len(c.attrs) {
-		if attrs, _, err := signal.DecodeAttributes(c.attrs[i]); err == nil {
-			r.Attrs = otelAttrs(attrs)
+		var (
+			buf signal.Attributes
+			err error
+		)
+		if attrBuf != nil {
+			buf, _, err = signal.AppendAttributes((*attrBuf)[:0], c.attrs[i])
+			*attrBuf = buf
+		} else {
+			buf, _, err = signal.DecodeAttributes(c.attrs[i])
+		}
+		if err == nil {
+			fillOtelAttrs(attrMap, buf)
+			r.Attrs = otelstorage.Attrs(attrMap)
 		}
 	}
 	return r

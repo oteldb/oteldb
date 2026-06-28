@@ -207,6 +207,7 @@ func addOgen[
 				httpmiddleware.InjectLogger(zctx.From(ctx)),
 				httpmiddleware.Instrument(addr, name, routeFinder, app.telemetry),
 				httpmiddleware.LogRequests(routeFinder),
+				httpmiddleware.Explain(),
 			}
 		)
 
