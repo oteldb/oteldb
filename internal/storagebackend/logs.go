@@ -1,7 +1,9 @@
 package storagebackend
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"sort"
 	"time"
 
@@ -291,12 +293,14 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 }
 
 // sortEntries orders entries by timestamp ascending for forward queries and descending otherwise.
+// Uses slices.SortStableFunc (typed) rather than sort.SliceStable to avoid the reflection-based
+// swapper, which dominates the sort of a large entry slice.
 func sortEntries(entries []logqlengine.Entry, dir logqlengine.Direction) {
-	sort.SliceStable(entries, func(i, j int) bool {
+	slices.SortStableFunc(entries, func(a, b logqlengine.Entry) int {
 		if dir == logqlengine.DirectionBackward {
-			return entries[i].Timestamp > entries[j].Timestamp
+			return cmp.Compare(b.Timestamp, a.Timestamp)
 		}
-		return entries[i].Timestamp < entries[j].Timestamp
+		return cmp.Compare(a.Timestamp, b.Timestamp)
 	})
 }
 
