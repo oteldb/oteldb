@@ -16,6 +16,11 @@ const (
 	LabelDetectedLevel = "detected_level" // used by Loki/Grafana in many cases
 )
 
+// DefaultServiceName is the value used for the service_name label when an OTLP
+// record carries no service.name resource attribute. It mirrors the OTel SDK /
+// Loki default so {service_name="unknown_service"} selects those streams.
+const DefaultServiceName = "unknown_service"
+
 // Record is a log record.
 type Record = logparser.Record
 

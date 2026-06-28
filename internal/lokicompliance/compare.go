@@ -157,6 +157,12 @@ func (c *Comparer) Compare(ctx context.Context, tc *TestCase) (*Result, error) {
 		return &Result{TestCase: tc}, nil
 	}
 
+	// Strip implementation-defined discovery labels (service_name, detected_level, level) before
+	// comparing: the reference Loki disables that discovery, but a conformant engine may synthesize
+	// them. Comparing them would penalize an implementation-defined choice.
+	dropDiscoveryLabels(&refResult.Data)
+	dropDiscoveryLabels(&testResult.Data)
+
 	// Sort responses before comparing.
 	sortResponse(&refResult.Data)
 	sortResponse(&testResult.Data)
