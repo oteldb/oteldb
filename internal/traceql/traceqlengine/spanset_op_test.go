@@ -106,6 +106,87 @@ func TestChildSpans(t *testing.T) {
 	}
 }
 
+func TestDescendantSpans(t *testing.T) {
+	tests := []struct {
+		left, right []spanIDs
+		wantResult  []uint64
+	}{
+		{
+			nil,
+			nil,
+			nil,
+		},
+		// Transitive: grandchildren count too. 6's parent (4) is not in left, but 4
+		// descends from 2, so 6 is a descendant of 2 — unlike `>` (childSpans), which
+		// would omit 6.
+		{
+			[]spanIDs{
+				{id: 1},
+				{id: 2},
+				{id: 3},
+			},
+			[]spanIDs{
+				{id: 1},
+				{id: 4, parent: 2},
+				{id: 5, parent: 3},
+				{id: 6, parent: 4},
+				{id: 7, parent: 3},
+			},
+			[]uint64{
+				4, 5, 6, 7,
+			},
+		},
+		// A deep chain whose intermediate spans live only in right: every link descends
+		// from the single left ancestor.
+		{
+			[]spanIDs{
+				{id: 1},
+			},
+			[]spanIDs{
+				{id: 2, parent: 1},
+				{id: 3, parent: 2},
+				{id: 4, parent: 3},
+			},
+			[]uint64{
+				2, 3, 4,
+			},
+		},
+		// No span descends from any left span.
+		{
+			[]spanIDs{
+				{id: 1},
+				{id: 2},
+				{id: 3},
+			},
+			[]spanIDs{
+				{id: 4, parent: 11},
+				{id: 5, parent: 12},
+				{id: 6, parent: 13},
+			},
+			nil,
+		},
+	}
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+			result := descendantSpans(
+				Spanset{
+					Spans: generateSpans(tt.left, "left"),
+				},
+				Spanset{
+					Spans: generateSpans(tt.right, "right"),
+				},
+			)
+
+			var got []uint64
+			for _, span := range result {
+				got = append(got, span.SpanID.AsUint64())
+			}
+			slices.Sort(got)
+			require.Equal(t, tt.wantResult, got)
+		})
+	}
+}
+
 func TestSiblingSpans(t *testing.T) {
 	tests := []struct {
 		left, right []spanIDs

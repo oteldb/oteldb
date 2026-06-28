@@ -1,8 +1,6 @@
 package traceqlengine
 
 import (
-	"fmt"
-
 	"github.com/go-faster/errors"
 
 	"github.com/oteldb/oteldb/internal/otelstorage"
@@ -76,7 +74,15 @@ func buildSpansetOp(op traceql.SpansetOp) (SpansetOp, error) {
 			return siblingSpans(a[0], b[0]), nil
 		}, nil
 	case traceql.SpansetOpDescendant:
-		return nil, &UnsupportedError{Msg: fmt.Sprintf("unsupported spanset op %q", op)}
+		return func(a, b []Spanset) (result []tracestorage.Span, _ error) {
+			if len(a) == 0 && len(b) == 0 {
+				return nil, nil
+			}
+			if len(a) != 1 && len(b) != 1 {
+				return nil, errors.New("can't find descendant spans of multiple spansets at once, try to use coalesce()")
+			}
+			return descendantSpans(a[0], b[0]), nil
+		}, nil
 	default:
 		return nil, errors.Errorf("unexpected spanset op %q", op)
 	}
@@ -127,6 +133,47 @@ func mergeSpans(left, right []Spanset) []tracestorage.Span {
 	}
 
 	return m.result
+}
+
+// descendantSpans returns the spans of right that are transitive descendants of
+// any span in left — the `>>` operator, the transitive closure of childSpans. It
+// walks each right span's parent chain (resolved from the parent links of the
+// spans available in left+right) until it reaches a left span or the root.
+func descendantSpans(left, right Spanset) []tracestorage.Span {
+	leftIDs := map[otelstorage.SpanID]struct{}{}
+	for _, span := range left.Spans {
+		leftIDs[span.SpanID] = struct{}{}
+	}
+	// Parent links of every span we can see, to walk ancestor chains across
+	// intermediate spans that may sit between a left ancestor and a right span.
+	parentOf := make(map[otelstorage.SpanID]otelstorage.SpanID, len(left.Spans)+len(right.Spans))
+	for _, span := range left.Spans {
+		parentOf[span.SpanID] = span.ParentSpanID
+	}
+	for _, span := range right.Spans {
+		parentOf[span.SpanID] = span.ParentSpanID
+	}
+
+	m := spanMerger{}
+	for _, span := range right.Spans {
+		seen := map[otelstorage.SpanID]struct{}{}
+		for cur := span.ParentSpanID; !cur.IsEmpty(); {
+			if _, ok := seen[cur]; ok {
+				break // guard against malformed cyclic parent links
+			}
+			seen[cur] = struct{}{}
+			if _, ok := leftIDs[cur]; ok {
+				m.Add(span)
+				break
+			}
+			next, ok := parentOf[cur]
+			if !ok {
+				break
+			}
+			cur = next
+		}
+	}
+	return m.Result()
 }
 
 func childSpans(left, right Spanset) []tracestorage.Span {
