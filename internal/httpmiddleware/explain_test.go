@@ -23,7 +23,7 @@ func TestExplain(t *testing.T) {
 
 	t.Run("HeaderInstallsCollector", func(t *testing.T) {
 		seen = false
-		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query", nil)
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query", http.NoBody)
 		req.Header.Set(ProfileHeader, "1")
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
@@ -33,7 +33,7 @@ func TestExplain(t *testing.T) {
 
 	t.Run("NoHeaderIsNoop", func(t *testing.T) {
 		seen = true
-		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query", nil)
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query", http.NoBody)
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 		require.Equal(t, http.StatusOK, rec.Code)
