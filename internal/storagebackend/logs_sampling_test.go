@@ -93,18 +93,30 @@ func TestBucketedSamplingMatchesGeneric(t *testing.T) {
 
 	end := start.Add(span)
 	step := 30 * time.Second
-	for _, query := range []string{
-		`sum by (level) (count_over_time({service_name="api"}[1m]))`,
-		`sum by (level) (rate({service_name="api"}[1m]))`,
-		`sum(count_over_time({service_name="api"}[1m]))`,
-		`sum(rate({service_name="api"}[2m]))`,
-		`sum by (level) (bytes_over_time({service_name="api"}[1m]))`,
-		`sum by (detected_level) (count_over_time({service_name="api"}[90s]))`,
-	} {
-		t.Run(query, func(t *testing.T) {
-			generic := runMetric(t, ctx, backend, query, false, start, end, step)
-			bucketed := runMetric(t, ctx, backend, query, true, start, end, step)
-			require.NotEmpty(t, bucketed)
+	// The level label value is the severity number's name (e.g. "Error"), so selectors use that.
+	cases := []struct {
+		query    string
+		wantData bool
+	}{
+		{`sum by (level) (count_over_time({service_name="api"}[1m]))`, true},
+		{`sum by (level) (rate({service_name="api"}[1m]))`, true},
+		{`sum(count_over_time({service_name="api"}[1m]))`, true},
+		{`sum(rate({service_name="api"}[2m]))`, true},
+		{`sum by (level) (bytes_over_time({service_name="api"}[1m]))`, true},
+		{`sum by (detected_level) (count_over_time({service_name="api"}[90s]))`, true},
+		// Selectors NOT fully pushed to the fetch (per-row label, regex, absent): the offload must
+		// fall back to the filtering path, not skip the selector and over-count.
+		{`sum by (level) (count_over_time({level="Error"}[1m]))`, true},
+		{`sum(count_over_time({level=~"Error|Warn"}[1m]))`, true},
+		{`sum by (level) (count_over_time({nonexistent="x"}[1m]))`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.query, func(t *testing.T) {
+			generic := runMetric(t, ctx, backend, tc.query, false, start, end, step)
+			bucketed := runMetric(t, ctx, backend, tc.query, true, start, end, step)
+			if tc.wantData {
+				require.NotEmpty(t, bucketed)
+			}
 			require.Len(t, bucketed, len(generic))
 			for key, gpoints := range generic {
 				bpoints, ok := bucketed[key]

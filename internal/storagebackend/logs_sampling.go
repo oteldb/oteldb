@@ -77,9 +77,14 @@ func (n *bucketSamplingNode) EvalBucketedSample(ctx context.Context, params logq
 	if n.op == bytesSampling {
 		projection = append(projection, siglog.ColBody)
 	}
-	batches, err := n.src.fetchBatches(ctx, startNs-windowNs, endNs, projection...)
+	batches, fullyPushed, err := n.src.fetchBatches(ctx, startNs-windowNs, endNs, projection...)
 	if err != nil {
 		return nil, err
+	}
+	// The fast bucketing skips the in-engine selector re-check, so it is only sound when the fetch
+	// applied the whole selector. Otherwise fall back to the generic streaming path (which filters).
+	if !fullyPushed {
+		return n.streamingFallback(ctx, params, window)
 	}
 
 	// counts[k] maps a group key to its running total at output step k. groupMaps caches the label
@@ -145,6 +150,32 @@ func (n *bucketSamplingNode) EvalBucketedSample(ctx context.Context, params logq
 		})
 	}
 	return iterators.Slice(steps), nil
+}
+
+// streamingFallback evaluates the range aggregation the generic way (stream entries, apply the
+// selector + pipeline, bucket in Go) when the bucketed fast path is not sound. It returns the
+// undivided count/bytes total per (step, stream) — the dispatch divides by the range for rate ops
+// and the outer aggregation regroups — matching the fast path's contract.
+func (n *bucketSamplingNode) streamingFallback(ctx context.Context, params logqlengine.EvalParams, window time.Duration) (logqlengine.StepIterator, error) {
+	iter, err := n.inner.EvalSample(ctx, logqlengine.EvalParams{
+		Start:     params.Start.Add(-window),
+		End:       params.End,
+		Step:      params.Step,
+		Direction: logqlengine.DirectionForward,
+		Limit:     -1,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Aggregate as count/bytes_over_time (undivided), regardless of the rate variant, so the
+	// dispatch's DivideStep applies exactly once.
+	expr := *n.inner.Expr
+	if n.op == bytesSampling {
+		expr.Op = logql.RangeOpBytes
+	} else {
+		expr.Op = logql.RangeOpCount
+	}
+	return logqlmetric.RangeAggregation(iter, &expr, params.Start, params.End, params.Step)
 }
 
 // groupKey returns the grouping key for record i — allocation-free on the hot path. Only
