@@ -3,6 +3,7 @@ package logqlabels
 import (
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/go-faster/errors"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -119,7 +120,11 @@ var severityStrings = func() (r map[plog.SeverityNumber]pcommon.Value) {
 		plog.SeverityNumberFatal3,
 		plog.SeverityNumberFatal4,
 	} {
-		r[n] = pcommon.NewValueStr(n.String())
+		// Canonical OTel SeverityText is upper-case ("ERROR", "WARN", …). plog's
+		// String() is title-case ("Error"); normalize so the conventional
+		// {level="ERROR"} selector matches (and so the embedded engine agrees with
+		// chstorage, which resolves level matchers case-foldedly).
+		r[n] = pcommon.NewValueStr(strings.ToUpper(n.String()))
 	}
 	return r
 }()
@@ -139,11 +144,19 @@ func (l *LabelSet) SetFromRecord(record logstorage.Record) {
 		l.Set(logstorage.LabelSeverity, s)
 		l.Set(logstorage.LabelDetectedLevel, s)
 	} else if severityText := record.SeverityText; severityText != "" {
-		s := pcommon.NewValueStr(severityText)
+		s := pcommon.NewValueStr(strings.ToUpper(severityText))
 		l.Set(logstorage.LabelSeverity, s)
 		l.Set(logstorage.LabelDetectedLevel, s)
 	}
 	l.SetAttrs(record.Attrs, record.ScopeAttrs, record.ResourceAttrs)
+
+	// Loki synthesizes service_name="unknown_service" when service.name is absent
+	// from the OTLP resource; mirror it so the conventional selector works on the
+	// embedded engine too. A record attribute named service_name (set via SetAttrs)
+	// takes precedence.
+	if _, ok := l.Get(logstorage.LabelServiceName); !ok {
+		l.Set(logstorage.LabelServiceName, pcommon.NewValueStr(logstorage.DefaultServiceName))
+	}
 }
 
 // Len returns set length
