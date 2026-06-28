@@ -21,12 +21,10 @@ import (
 // genSpreadLogs makes n records spread evenly over span, rotating severities, so several output
 // steps have data for a range aggregation.
 func genSpreadLogs(n int, start time.Time, span time.Duration) plog.Logs {
-	// SeverityText is set to the severity number's own name ("Error", not "ERROR"). The two storage
-	// faces resolve the `level` label from different sources — the streaming record decode uses
-	// SeverityNumber.String(), the columnar fetch reads the severity column — so a record whose text
-	// and number name disagree in casing can yield "Error" on one path and "ERROR" on the other,
-	// splitting a series. Keeping them equal makes the bucketed-vs-generic comparison test the
-	// bucketing, not that incidental storage detail.
+	// Both query faces derive the `level` label from the severity number and upper-case it (the
+	// generic path via logqlabels.SetFromRecord, the bucketed path via levelValue), so the series key
+	// is the upper-cased severity name ("ERROR") regardless of SeverityText. SeverityText is set to the
+	// number's own name only for readability.
 	levels := []struct {
 		num  plog.SeverityNumber
 		text string
@@ -99,7 +97,8 @@ func TestBucketedSamplingMatchesGeneric(t *testing.T) {
 
 	end := start.Add(span)
 	step := 30 * time.Second
-	// The level label value is the severity number's name (e.g. "Error"), so selectors use that.
+	// The level label is upper-cased by logqlabels.SetFromRecord (e.g. "ERROR"), so selectors use that
+	// casing — a title-case selector would match nothing on either path.
 	cases := []struct {
 		query    string
 		wantData bool
@@ -112,8 +111,8 @@ func TestBucketedSamplingMatchesGeneric(t *testing.T) {
 		{`sum by (detected_level) (count_over_time({service_name="api"}[90s]))`, true},
 		// Selectors NOT fully pushed to the fetch (per-row label, regex, absent): the offload must
 		// fall back to the filtering path, not skip the selector and over-count.
-		{`sum by (level) (count_over_time({level="Error"}[1m]))`, true},
-		{`sum(count_over_time({level=~"Error|Warn"}[1m]))`, true},
+		{`sum by (level) (count_over_time({level="ERROR"}[1m]))`, true},
+		{`sum(count_over_time({level=~"ERROR|WARN"}[1m]))`, true},
 		{`sum by (level) (count_over_time({nonexistent="x"}[1m]))`, false},
 	}
 	for _, tc := range cases {
