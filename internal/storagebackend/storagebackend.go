@@ -167,7 +167,7 @@ func (scanners) Close() error { return nil }
 // call opens a fresh windowed querier over the backend's current data and closes it when done, so
 // the counter carries no lifecycle across steps and observes the latest head/parts every call.
 func (s scanners) SeriesCounter() enginestorage.SeriesCounter {
-	return backendCounter{b: s.b}
+	return backendCounter(s)
 }
 
 // backendCounter adapts [Backend] to the PromQL engine's SeriesCounter seam: it builds a fresh
@@ -180,7 +180,7 @@ func (c backendCounter) CountSeries(ctx context.Context, startMs, endMs int64, m
 	if err != nil {
 		return 0, errors.Wrap(err, "count pushdown: create querier")
 	}
-	defer q.Close()
+	defer func() { _ = q.Close() }()
 
 	sc, ok := q.(enginestorage.SeriesCounter)
 	if !ok {
