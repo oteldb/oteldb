@@ -1,0 +1,39 @@
+# oteldb config for the embedded-engine PromQL benchmark.
+#
+# `--embedded` routes every signal to the embedded github.com/oteldb/storage engine; storage.backend
+# is then what that engine uses. The default is "memory" (ephemeral — everything in head, no parts,
+# sub-ms queries, NOT comparable to REPORT.md). This file pins it to "file" on the mounted volume so
+# the head flushes to compressed parts (the cost that dominates the benchmark) and parts survive a
+# container restart (so CLEANUP=0 re-runs query against the same data without re-ingesting).
+#
+# The ClickHouse DSN below is ignored under --embedded; it's kept only because the oteldbconfig
+# schema expects the receiver/exporter wiring to parse.
+storage:
+  backend: file
+  dir: /data
+  # 10s flush cadence — the benchmark's default. Lower ⇒ more (smaller) parts ⇒ slower merges;
+  # higher ⇒ fewer (larger) parts ⇒ more head memory. Keep at the default for REPORT.md parity.
+  flush_interval: 10s
+
+prometheus:
+  bind: 0.0.0.0:9090
+  max_samples: 10_000_000
+  timeout: 5m
+  enable_negative_offset: true
+
+health_check:
+  bind: 0.0.0.0:13133
+
+otelcol:
+  receivers:
+    prometheusremotewrite:
+      endpoint: 0.0.0.0:19291
+      time_threshold: 100000h
+  exporters:
+    oteldbexporter:
+      dsn: clickhouse://default:default@ignored:9000
+  service:
+    pipelines:
+      metrics:
+        receivers: [prometheusremotewrite]
+        exporters: [oteldbexporter]

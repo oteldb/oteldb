@@ -1,0 +1,28 @@
+# Canonical oteldb PromQL benchmark suite — verbatim query strings from
+# /src/oteldb/benchmark/queries/metrics.promql.yml, translated into otelbench's report YAML
+# (range/instant sections). A number here is directly comparable to the matching row in
+# results/REPORT.md (same ingest, same caps, same HTTP path).
+#
+# Instant queries omit `time` ⇒ otelbench queries at server "now".
+# Range queries inherit start/end from `run.sh` (now-LOOKBACK … now) and step from below.
+step: 15
+
+instant:
+  - query: count(count(node_cpu_seconds_total{job="node_exporter"}) by (cpu))
+    title: Count CPU cores
+  - query: topk(3, avg_over_time(node_memory_MemFree_bytes{job="node_exporter"}[30m]))
+    title: Top 3 free memory
+  - query: quantile_over_time(0.99, node_load1{job="node_exporter"}[1h])
+    title: Load1 0.99 quantile over time
+  - query: count({__name__=~"node_.+"})
+    title: Worst case full series count
+
+range:
+  - query: sum by(instance) (irate(node_cpu_seconds_total{job="node_exporter",mode="user"}[1m])) / on(instance) group_left sum by(instance) (irate(node_cpu_seconds_total{job="node_exporter"}[1m]))
+    title: CPU usage ratio
+  - query: irate(node_schedstat_waiting_seconds_total{job="node_exporter"}[1m])
+    title: CPU wait time
+  - query: sum by(instance) (rate(node_network_receive_bytes_total{job="node_exporter"}[5m]))
+    title: Network receive rate
+  - query: sum by(instance,device) (rate(node_disk_read_bytes_total{job="node_exporter"}[5m]))
+    title: Disk read bytes rate
