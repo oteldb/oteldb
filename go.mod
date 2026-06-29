@@ -85,7 +85,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.155.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.155.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/webhookeventreceiver v0.155.0
-	github.com/oteldb/promql-engine v0.7.0-alpha.0.0.20260629130253-7e21211789e4
+	github.com/oteldb/promql-engine v0.6.0
 	github.com/pierrec/lz4/v4 v4.1.27
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.69.0
@@ -452,7 +452,7 @@ require (
 	github.com/openshift/api v0.0.0-20251015095338-264e80a2b6e7 // indirect
 	github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235 // indirect
 	github.com/openzipkin/zipkin-go v0.4.3 // indirect
-	github.com/oteldb/storage v0.17.0
+	github.com/oteldb/storage v0.18.0
 	github.com/outscale/osc-sdk-go/v2 v2.34.0 // indirect
 	github.com/ovh/go-ovh v1.9.0 // indirect
 	github.com/pascaldekloe/name v1.0.1 // indirect
