@@ -42,6 +42,12 @@ func (s *promScanners) Close() error {
 	return nil
 }
 
+// SeriesCounter returns nil: the ClickHouse backend does not implement the count() pushdown, so
+// count(<selector>) falls back to the aggregate-over-Select path.
+func (s *promScanners) SeriesCounter() enginestorage.SeriesCounter {
+	return nil
+}
+
 // MetricsScanners returns scanners implementation to use with thanos-io PromQL engine.
 func (q *Querier) MetricsScanners() (enginestorage.Scanners, error) {
 	return &promScanners{storage: q}, nil

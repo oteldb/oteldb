@@ -163,6 +163,33 @@ var _ enginestorage.Scanners = scanners{}
 
 func (scanners) Close() error { return nil }
 
+// SeriesCounter returns the count-pushdown capability for the count() fast path. Each CountSeries
+// call opens a fresh windowed querier over the backend's current data and closes it when done, so
+// the counter carries no lifecycle across steps and observes the latest head/parts every call.
+func (s scanners) SeriesCounter() enginestorage.SeriesCounter {
+	return backendCounter{b: s.b}
+}
+
+// backendCounter adapts [Backend] to the PromQL engine's SeriesCounter seam: it builds a fresh
+// querier per CountSeries call (scoped to the call's window) and delegates to the queryable-backed
+// querier's own CountSeries.
+type backendCounter struct{ b *Backend }
+
+func (c backendCounter) CountSeries(ctx context.Context, startMs, endMs int64, matchers ...*labels.Matcher) (uint64, error) {
+	q, err := c.b.queryable().Querier(startMs, endMs)
+	if err != nil {
+		return 0, errors.Wrap(err, "count pushdown: create querier")
+	}
+	defer q.Close()
+
+	sc, ok := q.(enginestorage.SeriesCounter)
+	if !ok {
+		return 0, nil // fetcher without count support ⇒ no series counted (pushdown opted out upstream)
+	}
+
+	return sc.CountSeries(ctx, startMs, endMs, matchers...)
+}
+
 func (s scanners) NewVectorSelector(
 	ctx context.Context,
 	opts *query.Options,
