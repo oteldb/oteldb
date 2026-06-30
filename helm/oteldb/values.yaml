@@ -2,6 +2,9 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
+# oteldb runs as a single node backed by the embedded github.com/oteldb/storage
+# engine with on-disk persistence. Scaling beyond a single replica requires the
+# clustered storage backend and is intentionally not supported by this chart yet.
 replicaCount: 1
 
 image:
@@ -39,6 +42,21 @@ securityContext: {}
 service:
   type: ClusterIP
 
+# Persistence for the embedded storage engine's data directory (config.storage.dir).
+# A PersistentVolumeClaim is created from a volumeClaimTemplate on the StatefulSet.
+persistence:
+  enabled: true
+  # Use an existing PersistentVolumeClaim instead of creating one. When set, size,
+  # storageClass and accessModes below are ignored.
+  existingClaim: ""
+  # storageClass for the provisioned volume. "" uses the cluster default; "-" disables
+  # dynamic provisioning.
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 50Gi
+  annotations: {}
+
 ingress:
   enabled: false
   className: ""
@@ -72,14 +90,18 @@ env:
     value: "DEBUG"
 
 config:
-  # String. Clickhouse connection URL
-  dsn:
-  # String in a format of go duration. TTL to use.
-  ttl:
-  # Boolean. Whether if oteldb should use replicated schema.
-  replicated:
-  # String. Cluster name to use, could be a macro (e.g. "{cluster}")
-  cluster:
+  # Serve every signal from the embedded github.com/oteldb/storage engine, so no
+  # external ClickHouse is required. Set any of these to "clickhouse" (and provide a
+  # dsn) to serve that signal from ClickHouse instead.
+  metrics_backend: storage
+  traces_backend: storage
+  logs_backend: storage
+  profiles_backend: storage
+  # Embedded storage engine configuration. The "file" backend persists parts and the
+  # write-ahead log under dir, which is backed by the persistent volume above.
+  storage:
+    backend: file
+    dir: /var/lib/oteldb
   tempo:
     bind: 0.0.0.0:3200
   prometheus:
@@ -89,15 +111,10 @@ config:
     enable_negative_offset: true
   loki:
     bind: 0.0.0.0:3100
+  pyroscope:
+    bind: 0.0.0.0:4040
   health_check:
     bind: 0.0.0.0:13133
-
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 100
-  cpuUtilizationPercentage: 80
-  memoryUtilizationPercentage: 80
 
 nodeSelector: {}
 
