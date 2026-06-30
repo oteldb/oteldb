@@ -1,64 +1,85 @@
-# embedded-bench — latency investigation & optimization plan
+# embedded-bench — latency investigation, fix, and A/B validation
 
-Captured against a live `embedded-bench` stack (`--embedded`, `file` backend,
+The decode path was the bottleneck; the decode **cache** was the lever. This
+session confirmed that with a controlled A/B and applied the floor-raise fix.
+
+- **Root cause:** the decoded-part cache thrashes — at the old 64 MiB floor the
+  working set never fits, so every fetch re-decodes (80% of allocs in
+  `decodeOf`). Profile evidence below.
+- **Fix applied:** raise the default decode-cache floor 64 MiB → 512 MiB
+  (`cmd/oteldb/storage_backend.go:260`, `defaultDecodeCacheBytes`). This is what
+  an *uncapped* process actually gets (no `GOMEMLIMIT` ⇒ `SetMemoryLimit(-1)`
+  returns `MaxInt64` ⇒ the floor branch).
+- **Validated:** a same-binary A/B (only `decode_cache_bytes` differs) shows
+  **14–100×** speedups on the cache-bound queries. Table below.
+- A separate **correctness** fix shipped in the same build — instant
+  `count(selector)` returned the empty vector on the v0.43.0 release. See
+  `COUNT_BUG.md`; both fixes ride in `oteldb:head-89350324`
+  (oteldb HEAD + local `promql-engine`/`storage`).
+
+## A/B: decode cache 512 MiB vs 64 MiB — the proof
+
+Driven through `/src/oteldb/benchmark` (`benchctl bench metrics 20 --only oteldb`)
+against `oteldb:head-89350324`, **uncapped** (32 cores, no `GOMEMLIMIT`), file
+backend, 100 synthetic hosts ⇒ 142800 series, 30s prewarm. Same binary, same
+harness, same queries — the *only* difference is `storage.decode_cache_bytes`
+(verified in the boot log: `67108864` vs `536870912`). Correctness in both
+runs: **8 OK, 0 failed**.
+
+| query | **512 MiB** p50 | **64 MiB** p50 | slowdown at 64 MiB |
+|---|---:|---:|---:|
+| `top 3 free memory` | 0.8 | 84.9 | **~100×** |
+| `load1 0.99 quantile` | 1.1 | 67.8 | **~60×** |
+| `network receive rate` | 2.3 | 68.6 | **~30×** |
+| `disk read bytes rate` | 4.9 | 71.0 | **~14×** |
+| `cpu wait time` | 30 | 98.5 | 3.3× |
+| `count cpu cores` | 145 | 185 | 1.3× |
+| `cpu usage ratio` | 176 | 232 | 1.3× |
+| `worst case full series count` | 542 | 600 | 1.1× |
+| RSS | 1398 MB | 969 MB | smaller cache ⇒ less RSS |
+
+**Read this as two regimes:**
+
+1. **Cache-bound queries** (`top`, `load`, `network`, `disk`). With 512 MiB their
+   working set stays resident and they run sub-5 ms. With 64 MiB they all
+   collapse onto a **~70–85 ms floor** — flat, regardless of what the query
+   computes. That flat floor is the thrash signature: every fetch re-decodes the
+   same parts, so the cost is decode, not query logic. The bigger cache is a
+   14–100× win here, for free.
+
+2. **Scan-bound queries** (`full_scan_count`, `cpu_usage`, `count_cpu_cores`).
+   Only ~10–30% faster, because they touch the *entire* `node_` namespace / the
+   largest metric and exceed even 512 MiB. A bigger cache can't help a working
+   set that never fits — these need the **per-series decode** fix (§1b), not more
+   cache.
+
+**Confounder, stated honestly:** the two A/B runs scraped independent 30s
+windows, so on-disk data differed (512 MiB run: 82 MiB; 64 MiB run: 126 MiB —
+i.e. the *slower* run also had ~1.5× more data). That cannot explain a 100×
+latency jump or the flat ~70 ms floor across unrelated queries, so the cache is
+unambiguously the driver — but a rigorous A/B should replay a *frozen* dataset
+into both rather than rely on live scrape. Treat the multipliers as
+order-of-magnitude, not three-significant-figure.
+
+## Root cause: decode-cache thrash → re-decode every fetch
+
+Captured against a live embedded-bench stack (`--embedded`, file backend,
 GOMAXPROCS=4, GOMEMLIMIT=2GiB, nodes=100 ⇒ ~140k series, prewarm=10s,
-lookback=120s, 20 runs/query). Raw profiles saved in `pprof/`:
-
-- `pprof/cpu.pb.gz` — 30s CPU under query load.
-- `pprof/allocs.pb.gz` — 20s `alloc_space` delta under load.
-- `pprof/heap.pb.gz` — in-use heap snapshot.
-
-Reproduce with the stack up (`-cleanup=false`):
+lookback=120s). Raw profiles in `pprof/` (`cpu.pb.gz`, `allocs.pb.gz`,
+`heap.pb.gz`). Reproduce with the stack up (`-cleanup=false`):
 
 ```bash
-go run . -cleanup=false                         # bring up + bench
+go run . -cleanup=false
 ./otelbench promql bench --addr http://127.0.0.1:9090 \
   -i queries.promql.yml --warmup 0 --count 40 \
-  --start $(( $(date +%s) - 120 )) --end $(date +%s) -o /dev/null   # drive load
+  --start $(( $(date +%s) - 120 )) --end $(date +%s) -o /dev/null
 curl -o cpu.pb.gz    'http://127.0.0.1:9010/debug/pprof/profile?seconds=30'
 curl -o allocs.pb.gz 'http://127.0.0.1:9010/debug/pprof/allocs?seconds=20'
 go tool pprof -top -cum        pprof/cpu.pb.gz
 go tool pprof -top -cum -sample_index=alloc_space pprof/allocs.pb.gz
 ```
 
-pprof is served by `go-faster/sdk` off `PPROF_ADDR=0.0.0.0:9010`; the binary
-for symbolication is `./oteldb` (host-built, identical to the container copy).
-
-## Current latencies (prewarm=10s)
-
-| query | p50 | p90 | p99 | max |
-|---|---:|---:|---:|---:|
-| `cpu usage ratio` | 85.8 | 113.0 | 162.0 | 162.0 |
-| `cpu wait time` | 15.8 | 18.5 | 23.6 | 23.6 |
-| `count cpu cores` | 81.5 | 95.5 | 112.4 | 112.4 |
-| `disk read bytes rate` | 2.2 | 2.7 | 3.4 | 3.4 |
-| `load1 0.99 quantile over time` | 0.7 | 1.0 | 1.3 | 1.3 |
-| `network receive rate` | 1.0 | 1.3 | 1.8 | 1.8 |
-| `top 3 free memory` | 0.6 | 0.9 | 1.1 | 1.1 |
-| `worst case full series count` | 317.8 | 361.1 | 480.5 | 480.5 |
-
-Five queries are already single-digit ms. The slow outliers are:
-
-1. `count({__name__=~"node_.+"})` — 317 ms p50. A regex-name label scan over
-   the full `node_` namespace; touches every live part and every series.
-2. `count(count(node_cpu_seconds_total) by (cpu))` — 81 ms p50. Nested
-   aggregation with a `by (cpu)` re-group; one fetch per outer + per inner
-   series group.
-3. `sum(irate(...[1m])) / sum(irate(...[1m]))` (cpu usage ratio) — 85 ms p50.
-   Two `irate` subexpressions over `node_cpu_seconds_total` (the largest
-   metric), evaluated and joined.
-4. `irate(node_schedstat_waiting_seconds_total[1m])` — 15 ms p50.
-
-Caveat: `top 3 free memory` (`avg_over_time(...[30m])`) and `load1 … over time`
-(`quantile_over_time(...[1h])`) only look fast because prewarm=10s
-under-populates their `[30m]`/`[1h]` windows. With `-prewarm 70m` they would
-decode far more rows and dominate, exactly as the older REPORT.md showed.
-The root cause below is the same either way; prewarm just changes how many
-parts a range vector fans out to.
-
-## Root cause: decode-cache thrash → re-decode every fetch
-
-The headline number from the allocs profile (20s, ~40 queries):
+The headline from the allocs profile (20s, ~40 queries):
 
 ```
 flat  flat%   sum%       cum    cum%
@@ -68,9 +89,9 @@ flat  flat%   sum%       cum    cum%
 0     0%     0%   22.98GB  48.58%  sync.(*Once).doSlow      # per-fetch decode-once memo
 ```
 
-**80% of all allocations (38 GB) are in `decodeOf`/`decodeInto`.** CPU tells
-the same story: decode + GC together own most of the flat time, with the XOR
-delta-of-delta decoders as the leaf hotspots:
+**80% of all allocations (38 GB) are in `decodeOf`/`decodeInto`.** CPU agrees:
+the XOR delta-of-delta decoders are the leaf hotspots, with GC marking the
+decode buffers right behind them:
 
 ```
 chunk.DecodeFloats            20.98% cum  (2.88s flat)
@@ -82,125 +103,101 @@ runtime.scanObject            14.69% cum  (4.84s flat)   # GC marking decode buf
 runtime.memclrNoHeapPointers   5.97% flat
 ```
 
-### Why the cache doesn't help
+### Why the cache thrashed (the sizing math)
 
-The engine has the right machinery:
-`Engine.decodeOf` (`storage/engine/engine.go:982`) memoizes decoded parts in
-a cross-fetch LRU `decodeCache`, and a per-fetch `partDecodeCache`
-(`engine/part.go:314`) makes each part decode once per fetch.
+The engine has the right machinery: `Engine.decodeOf`
+(`storage/engine/engine.go:982`) memoizes decoded parts in a cross-fetch LRU
+`decodeCache`, and a per-fetch `partDecodeCache` (`engine/part.go:314`) makes
+each part decode once per fetch.
 
-The problem is sizing. The decoded-part cache defaults to `1/32` of the Go
-memory limit, floor 64 MiB (`cmd/oteldb/storage_backend.go:256`). With
-`GOMEMLIMIT=2GiB` that resolves to exactly **64 MiB** (log line confirms:
-`decode_cache_bytes:67108864`).
+A decoded part holds the *whole* `ts`+`value`(+`sf`) columns
+(`engine/part.go:236` `decodeInto`), not the per-series slices the merge
+consumes. For a 10s flush of ~140k series at a 2s scrape that is ~700k rows ×
+16B ≈ **11–16 MiB per decoded part**. At the old 64 MiB floor the cache held
+~4 parts; a `[1m]`/`[5m]` query window touches ~12–30 live parts, and the
+full-namespace `count` touches *every* live part. So the miss rate was
+effectively 100%, the XOR/bitstream decode was paid on every run, and the
+discarded buffers drove the GC churn (`scanObject` 14.7%, `memclr` 6%). The
+512 MiB floor holds ~32–46 parts, covering the steady-state windows — which is
+exactly the 14–100× flip the A/B shows.
 
-A decoded part holds the *whole* `ts` + `value` (+ optional `sf`) columns
-(`part.go:236` `decodeInto`), not the per-series slices the merge actually
-consumes. For a 10s flush of ~140k series at a 2s scrape interval that is
-~700k rows × (8B ts + 8B value) ≈ **11–16 MiB per decoded part**. The cache
-therefore holds ~4 parts; the query window (`[1m]`/`[5m]` ranges, lookback
-120s, flush every 10s) touches ~12–30 live parts, and the full-namespace
-queries touch *every* live part (104 part dirs on disk, ~20 recent). So every
-fetch evicts and re-decodes, the cache miss rate is effectively 100%, and the
-XOR/bitstream decode cost is paid on each of the 160 benchmark runs. The
-decoded buffers are then immediately discarded → the GC churn (`scanObject`
-14.7%, `memclr` 6%) seen in the CPU profile.
-
-The same flow explains the old REPORT.md's slow `[30m]`/`[1h]` queries: more
-range ⇒ more parts touched ⇒ more re-decode; the dataset here just doesn't
-exercise those windows yet.
-
-### Secondary: `sync.Once` at 48% of allocs
-
-`sync.(*Once).doSlow` is 48.6% of allocs. That is the per-fetch
-`partDecodeCache.get` path: on its first access to a given part a fetch calls
-`Engine.decodeOf`, which (on a cross-fetch cache miss) calls `part.decode`.
-Because the cross-fetch cache thrashes, the "first access" happens for nearly
-every part on every fetch, so the one-time `Once` becomes per-fetch-per-part
-cost. Fix the cache and this line collapses with `decodeInto`.
+`sync.(*Once).doSlow` at 48.6% of allocs is the same story: the per-fetch
+`partDecodeCache.get` "first access" path. Because the cross-fetch cache
+thrashed, "first access" happened for nearly every part on every fetch, so the
+one-time `Once` became per-fetch-per-part cost. It collapses with `decodeInto`
+once the cache holds.
 
 ## Optimization plan (ordered by leverage)
 
-### 1. Make the decode cache actually cover the working set — biggest win
+### 1a. Raise the decode-cache floor 64 → 512 MiB — DONE, validated
 
-The single highest-leverage change: stop re-decoding. Two complementary
-moves, do both:
+`defaultDecodeCacheBytes` (`cmd/oteldb/storage_backend.go:260`) floor raised to
+`512<<20`. Config-only, low risk. The A/B above is the confirmation: cache-bound
+queries dropped from a ~70–85 ms thrash floor to sub-5 ms. Cost is ~430 MB more
+RSS (969 → 1398 MB), which an uncapped box has. For capped deployments the
+fraction path (`1/32` of `GOMEMLIMIT`) still applies above the floor.
 
-- **a. Size the default decode cache to the working set, not 1/32 of RAM.**
-  `defaultDecodeCacheBytes` (`cmd/oteldb/storage_backend.go:255`) at floor
-  64 MiB is ~4 parts — far below any realistic query window. Either raise the
-  floor (e.g. 256–512 MiB) or size it off the live part set rather than a
-  RAM fraction. A 256 MiB cache would hold ~16–22 parts and turn the steady-
-  state `cpu`/`count` queries from 80%+ re-decode to almost all cache hits.
-  Low risk, config-only; start here and re-bench.
+### 1b. Decode per-series rows, not whole columns — the durable fix, NOT done
 
-- **b. Decode per-series rows, not whole columns.** `part.decodeInto`
-  (`engine/part.go:236`) decodes the entire `ts`/`value`/`sf` columns for
-  the whole part even when the merge will only read one series' `rowRange`
-  slice out of it. For selectors that touch a small fraction of a part's
-  series (the `cpu`/`network`/`disk` matchers, which hit ~1k of ~140k
-  series), decoding whole columns is pure waste. Add a range-aware decode
-  entry point `decodeRange(rng)` that reads just `[rng.start:rng.end)` per
-  column (the chunk codec already indexes on row offsets), and have
-  `mergeSeries` call it when the touched fraction is small (or always, with
-  the whole-column decode kept as the cache payload for dense queries). This
-  cuts both decode CPU and the per-decode allocation that drives the cache
-  thrash in the first place.
-
-Either of these alone materially helps; (a) is trivial and should be applied
-first to confirm the thrash hypothesis, (b) is the durable fix and also
-shrinks resident heap.
+This is the remaining win, and the *only* lever for the scan-bound queries that
+512 MiB can't cache (`full_scan_count` 542 ms, `cpu_usage` 176 ms,
+`count_cpu_cores` 145 ms — all still slow with the big cache). `part.decodeInto`
+(`engine/part.go:236`) decodes the entire `ts`/`value`/`sf` columns even when
+the merge reads one series' `rowRange` out of it. For selectors touching a small
+fraction of a part's series (the `cpu`/`network`/`disk` matchers hit ~1k of
+~140k), whole-column decode is pure waste. Add a range-aware `decodeRange(rng)`
+that reads just `[rng.start:rng.end)` per column (the chunk codec already indexes
+on row offsets) and have `mergeSeries` call it when the touched fraction is
+small. Cuts decode CPU *and* the per-decode allocation that drove the thrash —
+and shrinks resident heap, partially offsetting 1a's RSS cost.
 
 ### 2. Cache `count` / `count by (...)` aggregates via the stats sidecar
 
-`worst case full series count` (`count({__name__=~"node_.+"})`, 317 ms) and
-`count cpu cores` (`count(count(...) by (cpu))`, 81 ms) are pure card/count
-aggregations. The engine already has an aggregate-pushdown sidecar
-(`part.statsOnce`; `engine.WithAggregateStats` is enabled by default —
-`storage_backend.go:227`). Verify the `count({...})` and `by (...)`-group
-paths actually hit it; the regex `__name__=~"node_.+"` matcher in particular
-often bypasses name-keyed pushdowns and falls back to a full scan. Harbor the
-common `__name__` regex into a name-set pre-filter so the sidecar resolves
-without decoding. Target: bring these two onto the single-digit-ms track the
-engine already shows for `network`/`disk`.
+`worst case full series count` (542 ms) and `count cpu cores` (145 ms) are pure
+card/count aggregations. The engine has an aggregate-pushdown sidecar
+(`part.statsOnce`; `WithAggregateStats` on by default,
+`storage_backend.go:227`). Verify the `count({...})` and `by (...)`-group paths
+actually hit it; the regex `__name__=~"node_.+"` matcher in particular often
+bypasses name-keyed pushdowns and falls back to a full scan. (Note: the count
+*correctness* bug is now fixed — `COUNT_BUG.md` — so this is purely about
+latency, not the empty-result regression.)
 
-### 3. Pool decode buffers on the no-cache / miss path
+### 3. Pool decode buffers on the miss path
 
-When the decode cache does miss (cold start, first run), `part.decode`
-(`engine/part.go:236`) allocates fresh `[]int64`/`[]float64` every time and
-the cross-fetch path never pools them (`decodeOf` line 1008 vs the pooled
-no-cache branch at 987). Wire the cached path to also draw from
-`Engine.decPool` and recycle on `releaseParts`, matching the no-cache branch.
-Kills the GC churn (`scanObject` 14.7%, `memclr` 6%) seen in the CPU profile.
-Small change, broad benefit across all signals.
+On a cache miss `part.decode` allocates fresh `[]int64`/`[]float64` and the
+cross-fetch path never pools them (`decodeOf` ~line 1008 vs the pooled no-cache
+branch at ~987). Wire the cached path to draw from `Engine.decPool` and recycle
+on `releaseParts`. Kills the residual GC churn. With 1a holding the cache this
+matters most on cold start / scan-bound queries.
 
-### 4. (Later) codec-level micro-opts in `chunk.DecodeFloats`/`DecodeTimestamps`
+### 4. (Later) codec micro-opts in `chunk.DecodeFloats`/`DecodeTimestamps`
 
-Once decode stops repeating, the remaining cost is the XOR decode itself.
-`chunk.readDoDPrefix` (6.9%), `xorReadControl` (7%), `bitstream.ReadBits`
-(4%) are branchy; there is headroom to vectorize the DoD prefix loop and/or
-batch `ReadBits`. Low priority — the above items remove ~80% of current
-cost by avoiding the call entirely.
+Once decode stops repeating, the floor is the XOR decode itself —
+`readDoDPrefix` (6.9%), `xorReadControl` (7%), `bitstream.ReadBits` (4%) are
+branchy and vectorizable. Low priority; 1a+1b remove most of the cost by
+avoiding the call.
 
 ## What is NOT the bottleneck
 
-`engine.sortedWindow` (the previous report's #1) is gone from the top — it
-does not appear in either profile's top 25. The `appendSample`/`recordCols`
-resident-heap costs named in past findings are ingest-side and do not show
-on this read-bound bench. The work is now squarely on the **decode path**;
-the levers above are ordered by how much of the 80% alloc / ~50% CPU they
-remove.
+`engine.sortedWindow` (a previous report's #1) is gone from the top 25 of both
+profiles. The `appendSample`/`recordCols` resident-heap costs are ingest-side
+and do not show on this read-bound bench. The work is squarely on the **decode
+path**.
 
 ## Validation
 
-After each change, re-run the loop and compare against the table at the top:
+After each change, re-run and compare against the A/B table:
 
 ```bash
-go run . -replace               # rebuild oteldb, swap in place, re-bench
-# expected: cpu/count queries drop toward the disk/network band (single-digit ms)
+# embedded-bench inner loop (host-built oteldb, file backend):
+go run . -replace                # rebuild oteldb, swap in place, re-bench
+# cross-engine bench (uncapped), oteldb only — what produced the A/B above:
+cd /src/oteldb/benchmark && ./benchctl bench metrics 20 --only oteldb
 ```
 
-For a fair `[30m]`/`[1h]` comparison also run `-prewarm 70m`. Check the cache
-hit rate (expose `DecodeCacheStats` — `storage/engine/decodecache.go:120` —
-on `/metrics`; currently not scraped) before/after change #1 to confirm the
-thrash-to-hit flip.
+For a fair `[30m]`/`[1h]` comparison raise prewarm to `70m` — the default 30s/10s
+under-populates those windows (see `COMPARISON.md`). To re-pin the cache for an
+A/B, set `storage.decode_cache_bytes` (e.g. `"64MiB"`) in the oteldb config and
+recreate the container; confirm via the boot log's `decode_cache_bytes`. Expose
+`DecodeCacheStats` (`storage/engine/decodecache.go:120`) on `/metrics` to watch
+the hit-rate flip directly — currently not scraped.
