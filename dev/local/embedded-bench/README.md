@@ -47,6 +47,7 @@ go run . -replace                 # rebuild oteldb, swap it in place, re-bench (
 | `-runs`       | `20`    | measured runs per query (after warmup)                            |
 | `-warmup`     | `5`     | unmeasured warmup runs                                            |
 | `-lookback`   | `120s`  | range-query window back from now                                  |
+| `-concurrency`| `8`     | concurrent in-flight queries for the verify pass                  |
 | `-gomaxprocs` | `4`     | oteldb CPU cap (matches `BENCH_CPUS`)                             |
 | `-gomemlimit` | `2GiB`  | oteldb soft memory cap (matches `BENCH_MEMLIMIT`)                 |
 | `-health-wait`| `120s`  | max wait for oteldb `/liveness`; tails logs + status on timeout   |
