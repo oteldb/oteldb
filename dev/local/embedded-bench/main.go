@@ -124,7 +124,7 @@ func loadConfig() (config, error) {
 	flag.DurationVar(&cfg.healthWait, "health-wait", envDur("HEALTH_WAIT", 120*time.Second), "max wait for oteldb /liveness")
 
 	flag.StringVar(&cfg.gomaxprocs, "gomaxprocs", envStr("GOMAXPROCS", "4"), "oteldb CPU cap")
-	flag.StringVar(&cfg.gomemlimit, "gomemlimit", envStr("GOMEMLIMIT", "2GiB"), "oteldb soft memory cap")
+	flag.StringVar(&cfg.gomemlimit, "gomemlimit", envStr("GOMEMLIMIT", "1GiB"), "oteldb soft memory cap")
 	flag.StringVar(&cfg.goarch, "goarch", envStr("GOARCH", "amd64"), "target arch (matches the container)")
 
 	flag.BoolVar(&cfg.replace, "replace", envBool("REPLACE", false), "rebuild oteldb, swap it in place (stack already up), re-bench")

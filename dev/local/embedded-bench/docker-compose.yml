@@ -68,7 +68,7 @@ services:
       - OTEL_TRACES_EXPORTER=none
       # Caps — the dominant driver of REPORT.md p90 alongside dataset scale. Override per run.
       - GOMAXPROCS=${GOMAXPROCS:-4}
-      - GOMEMLIMIT=${GOMEMLIMIT:-2GiB}
+      - GOMEMLIMIT=${GOMEMLIMIT:-1GiB}
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:13133/liveness"]
       interval: 1s
