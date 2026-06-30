@@ -252,8 +252,12 @@ func resolveCacheBytes(cfg *xbytes.Bytes, def func() int64) int64 {
 // defaultReadCacheBytes sizes the backend object read cache (~1/16 of RAM, floor 128 MiB).
 func defaultReadCacheBytes() int64 { return defaultCacheBytes(1.0/16, 128<<20) }
 
-// defaultDecodeCacheBytes sizes the per-tenant decoded-column cache (~1/32 of RAM, floor 64 MiB).
-func defaultDecodeCacheBytes() int64 { return defaultCacheBytes(1.0/32, 64<<20) }
+// defaultDecodeCacheBytes sizes the per-tenant decoded-column cache (~1/32 of RAM, floor 512 MiB).
+// The floor was raised from 64 MiB: a decoded part is ~11-16 MiB, and a typical query window touches
+// ~12-30 live parts (full-namespace scans touch every part), so a 64 MiB floor (~4 parts) thrashed
+// to a ~100% miss rate and re-decoded on every fetch. 512 MiB covers the working set. The floor is
+// what an uncapped process (no GOMEMLIMIT ⇒ SetMemoryLimit returns MaxInt64) actually gets.
+func defaultDecodeCacheBytes() int64 { return defaultCacheBytes(1.0/32, 512<<20) }
 
 // defaultCacheBytes sizes a cache as the given fraction of the Go memory limit, floored at minBytes.
 // When no limit is set (the default of math.MaxInt64, meaning unbounded), it returns minBytes so the
