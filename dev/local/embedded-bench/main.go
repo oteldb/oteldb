@@ -17,12 +17,14 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -246,10 +248,18 @@ func (c config) addrLiveness() string {
 	return strings.Replace(c.addr, ":9090", ":13133", 1) + "/liveness"
 }
 
-// bench runs the warmup pass then the measured pass, writing report.yml.
+// bench runs a result-verification pass (one query each, asserting non-empty and positive counts),
+// then the warmup + measured timing passes. The verification pass exists because otelbench reports
+// only latency — a query that silently returns the empty vector (or {0} for a count) still counts
+// as a "successful" run, so a correctness regression surfaces as faster numbers, not a failure.
 func bench(cfg config) error {
 	end := time.Now()
 	start := end.Add(-cfg.lookback)
+
+	fmt.Printf(">> Verify (one query each; non-empty + positive counts)\n")
+	if err := verify(cfg, start, end); err != nil {
+		return err
+	}
 
 	fmt.Printf(">> Warmup (%d runs/query, unmeasured)\n", cfg.warmup)
 	if err := runOtelbench(cfg, 0, cfg.warmup, start, end, ""); err != nil {
@@ -269,10 +279,226 @@ func bench(cfg config) error {
 	return nil
 }
 
+// benchQuery is one entry of the suite: a kind (instant/range), a human title, and the query text.
+type benchQuery struct {
+	kind  string // "instant" | "range"
+	title string
+	query string
+}
+
+// parseSuite reads the bench's queries.promql.yml and returns its instant/range entries. The suite
+// has a fixed, simple schema (a `step:` line, then `instant:`/`range:` sections whose items carry
+// `- query:` and `title:` fields on single lines), so a focused line scanner keeps this orchestrator
+// stdlib-only without pulling in a YAML dependency.
+func parseSuite(path string) ([]benchQuery, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read suite: %w", err)
+	}
+
+	var (
+		out   []benchQuery
+		kind  string
+		cur   *benchQuery
+		flush = func() {
+			if cur != nil && cur.query != "" {
+				out = append(out, *cur)
+			}
+			cur = nil
+		}
+	)
+	for _, raw := range strings.Split(string(data), "\n") {
+		line := strings.TrimRight(raw, "\r ")
+		t := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(t, "instant:"):
+			flush()
+			kind = "instant"
+		case strings.HasPrefix(t, "range:"):
+			flush()
+			kind = "range"
+		case strings.HasPrefix(t, "- query:"):
+			flush()
+			if kind == "" {
+				continue
+			}
+			cur = &benchQuery{kind: kind, query: trimYAMLValue(strings.TrimPrefix(t, "- query:"))}
+		case strings.HasPrefix(t, "query:") && cur != nil:
+			cur.query = trimYAMLValue(strings.TrimPrefix(t, "query:"))
+		case strings.HasPrefix(t, "title:") && cur != nil:
+			cur.title = trimYAMLValue(strings.TrimPrefix(t, "title:"))
+		}
+	}
+	flush()
+
+	if len(out) == 0 {
+		return nil, errors.New("no queries parsed from suite (schema changed?)")
+	}
+	return out, nil
+}
+
+// trimYAMLValue strips the surrounding quotes from a single-line YAML scalar value.
+func trimYAMLValue(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && (s[0] == '"' || s[0] == '\'') && s[len(s)-1] == s[0] {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
+// verify issues each suite query once and asserts it returns data. For count-shaped queries it also
+// asserts the value is positive — the count-pushdown has historically regressed to the empty vector
+// or {0} on instant `count(selector)`, and otelbench would happily report a (faster!) latency for
+// the wrong answer. This pass makes such a regression fail the bench loudly.
+func verify(cfg config, start, end time.Time) error {
+	qPath := cfg.queries
+	if !filepath.IsAbs(qPath) {
+		qPath = filepath.Join(cfg.benchDir, qPath)
+	}
+	queries, err := parseSuite(qPath)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{Timeout: 2 * time.Minute}
+	var problems []string
+
+	for _, q := range queries {
+		u, err := suiteURL(cfg.addr, q, start, end)
+		if err != nil {
+			return fmt.Errorf("build url for %q: %w", q.title, err)
+		}
+
+		body, err := getJSON(client, u)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("  %s: request error: %v", q.title, err))
+			continue
+		}
+
+		var resp struct {
+			Status string `json:"status"`
+			Error  string `json:"error"`
+			Data   struct {
+				ResultType string            `json:"resultType"`
+				Result     []json.RawMessage `json:"result"`
+			} `json:"data"`
+			Warnings []string `json:"warnings"`
+		}
+		if err := json.Unmarshal(body, &resp); err != nil {
+			problems = append(problems, fmt.Sprintf("  %s: decode response: %v", q.title, err))
+			continue
+		}
+		if resp.Status != "success" {
+			problems = append(problems, fmt.Sprintf("  %s: status=%q error=%q", q.title, resp.Status, resp.Error))
+			continue
+		}
+		if len(resp.Data.Result) == 0 {
+			problems = append(problems, fmt.Sprintf("  %s: EMPTY result (query returned no series)", q.title))
+			continue
+		}
+
+		// For count(...) queries, assert the value is positive. Covers both the ungrouped instant
+		// pushdown (a single {} sample) and grouped counts. A zero here means the pushdown counted
+		// nothing over the window — the lookback-clamp regression's signature.
+		if isCountQuery(q) {
+			if nonPositive := firstNonPositiveSample(resp.Data.Result); nonPositive {
+				problems = append(problems, fmt.Sprintf("  %s: count returned a non-positive value (pushdown regression?)", q.title))
+			}
+		}
+
+		fmt.Printf("   %-32s ok (%d series)\n", q.title, len(resp.Data.Result))
+	}
+
+	if len(problems) > 0 {
+		fmt.Fprintln(os.Stderr, "!! verification failed:")
+		for _, p := range problems {
+			fmt.Fprintln(os.Stderr, p)
+		}
+		return fmt.Errorf("%d/%d queries failed verification", len(problems), len(queries))
+	}
+	return nil
+}
+
+// suiteURL builds the Prometheus HTTP API URL for one suite entry over the bench window.
+func suiteURL(addr string, q benchQuery, start, end time.Time) (string, error) {
+	v := url.Values{}
+	v.Set("query", q.query)
+	switch q.kind {
+	case "instant":
+		v.Set("time", strconv.FormatInt(end.Unix(), 10))
+		return addr + "/api/v1/query?" + v.Encode(), nil
+	case "range":
+		v.Set("start", strconv.FormatInt(start.Unix(), 10))
+		v.Set("end", strconv.FormatInt(end.Unix(), 10))
+		v.Set("step", "15")
+		return addr + "/api/v1/query_range?" + v.Encode(), nil
+	default:
+		return "", fmt.Errorf("unknown query kind %q", q.kind)
+	}
+}
+
+func getJSON(c *http.Client, u string) ([]byte, error) {
+	resp, err := c.Get(u)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return body, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return body, nil
+}
+
+// isCountQuery reports whether q is a count() aggregation, by title or query text. The suite titles
+// carry "count" (e.g. "Count CPU cores", "Worst case full series count") and the query text starts
+// with `count(` or wraps a nested count.
+func isCountQuery(q benchQuery) bool {
+	tl := strings.ToLower(q.title + " " + q.query)
+	return strings.Contains(tl, "count")
+}
+
+// firstNonPositiveSample reports whether any sample value in the result set is ≤ 0. A count result
+// is always ≥ 0; a zero means "counted nothing", which for these suites means a bug.
+func firstNonPositiveSample(result []json.RawMessage) bool {
+	for _, raw := range result {
+		// Each result item is {"metric":{...},"value":[t,"v"]} (instant) or {"metric":{...},"values":[[t,"v"],...]} (range).
+		var item struct {
+			Value  *[2]any   `json:"value"`
+			Values []*[2]any `json:"values"`
+		}
+		if err := json.Unmarshal(raw, &item); err != nil {
+			continue
+		}
+		if item.Value != nil {
+			if f, ok := parseJSONSample(*item.Value); ok && f <= 0 {
+				return true
+			}
+		}
+		for _, pair := range item.Values {
+			if f, ok := parseJSONSample(*pair); ok && f <= 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// parseJSONSample parses the value half of a Prometheus [timestamp, "value"] sample pair.
+func parseJSONSample(pair [2]any) (float64, bool) {
+	s, ok := pair[1].(string)
+	if !ok {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	return f, err == nil
+}
+
 // renderReport writes a human-readable REPORT.md (p50/p90/p99 per query) by parsing the benchstat
-// rows otelbench emits for report.yml. otelbench's own formats are pretty (no percentiles) and
-// raw benchstat (one line per run) — neither is good for eyeballing, so we collapse the per-run
-// rows into percentiles grouped by query title.
+// rows otelbench emits for report.yml.
 func renderReport(cfg config, reportPath string) error {
 	out, err := exec.Command(filepath.Join(cfg.benchDir, "otelbench"),
 		"promql", "analyze", "-f", "benchstat", "-i", reportPath).Output()
@@ -372,7 +598,9 @@ func runOtelbench(cfg config, count, warmup int, start, end time.Time, reportOut
 		"--count", strconv.Itoa(count),
 		"--start", strconv.FormatInt(start.Unix(), 10),
 		"--end", strconv.FormatInt(end.Unix(), 10),
-		"--allow-empty",
+		// Fail on empty results: the verify pass already confirmed every query returns data, so an
+		// empty run here is a regression (e.g. the count-pushdown empty-vector bug), not a cold cache.
+		"--allow-empty=false",
 	}
 	if reportOut != "" {
 		args = append(args, "-o", reportOut)
