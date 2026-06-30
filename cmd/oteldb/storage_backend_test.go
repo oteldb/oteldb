@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"math"
 	"os"
+	"runtime/debug"
 	"testing"
 	"time"
 
@@ -323,6 +325,41 @@ func TestResolveCacheSettings(t *testing.T) {
 		s := resolveCacheSettings(StorageConfig{AggregateStats: new(bool)})
 		require.False(t, s.AggregateStats)
 	})
+}
+
+// TestDefaultDecodeCacheBytesRSSSafe checks the decode-cache default sizes off detected memory and
+// stays clamped to [64 MiB, 512 MiB] — a small box gets the floor rather than an unconditional
+// 512 MiB, a large box is capped at the ceiling. See oteldb#1112.
+func TestDefaultDecodeCacheBytesRSSSafe(t *testing.T) {
+	const (
+		floor   = int64(64 << 20)
+		ceiling = int64(512 << 20)
+	)
+	// The test drives the process memory limit directly (detectMemoryBytes reads it); restore after.
+	orig := debug.SetMemoryLimit(-1)
+	t.Cleanup(func() { debug.SetMemoryLimit(orig) })
+
+	for _, tc := range []struct {
+		name  string
+		limit int64
+		want  int64
+	}{
+		{"small box floored", 1 << 30, floor},        // 1 GiB / 32 = 32 MiB -> floor
+		{"mid box proportional", 8 << 30, 256 << 20}, // 8 GiB / 32 = 256 MiB
+		{"exact ceiling", 16 << 30, ceiling},         // 16 GiB / 32 = 512 MiB
+		{"large box capped", 256 << 30, ceiling},     // 256 GiB / 32 -> capped
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			debug.SetMemoryLimit(tc.limit)
+			require.Equal(t, tc.want, defaultDecodeCacheBytes())
+		})
+	}
+
+	// With no explicit limit it sizes off detected host RAM, but always within the clamp.
+	debug.SetMemoryLimit(math.MaxInt64)
+	got := defaultDecodeCacheBytes()
+	require.GreaterOrEqual(t, got, floor)
+	require.LessOrEqual(t, got, ceiling)
 }
 
 func TestCacheOptions(t *testing.T) {

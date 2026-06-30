@@ -16,6 +16,7 @@ import (
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
+	gopsmem "github.com/shirou/gopsutil/v4/mem"
 	"go.uber.org/zap"
 
 	"github.com/oteldb/storage"
@@ -252,12 +253,13 @@ func resolveCacheBytes(cfg *xbytes.Bytes, def func() int64) int64 {
 // defaultReadCacheBytes sizes the backend object read cache (~1/16 of RAM, floor 128 MiB).
 func defaultReadCacheBytes() int64 { return defaultCacheBytes(1.0/16, 128<<20) }
 
-// defaultDecodeCacheBytes sizes the per-tenant decoded-column cache (~1/32 of RAM, floor 512 MiB).
-// The floor was raised from 64 MiB: a decoded part is ~11-16 MiB, and a typical query window touches
-// ~12-30 live parts (full-namespace scans touch every part), so a 64 MiB floor (~4 parts) thrashed
-// to a ~100% miss rate and re-decoded on every fetch. 512 MiB covers the working set. The floor is
-// what an uncapped process (no GOMEMLIMIT ⇒ SetMemoryLimit returns MaxInt64) actually gets.
-func defaultDecodeCacheBytes() int64 { return defaultCacheBytes(1.0/32, 512<<20) }
+// defaultDecodeCacheBytes sizes the decoded-column cache as ~1/32 of detected memory, floored at
+// 64 MiB and capped at 512 MiB. A decoded part is ~11-16 MiB and a typical query window touches
+// ~12-30 live parts (full-namespace scans touch every part), so too small a cache thrashes to a
+// ~100% miss rate and re-decodes on every fetch (a 64 MiB cache held only ~4 parts); 512 MiB covers
+// the working set. Unlike a flat floor this stays RSS-safe: a small box gets ~64 MiB rather than an
+// unconditional 512 MiB, while a large box is capped at the 512 MiB ceiling. See oteldb#1112.
+func defaultDecodeCacheBytes() int64 { return budgetedCacheBytes(1.0/32, 64<<20, 512<<20) }
 
 // defaultCacheBytes sizes a cache as the given fraction of the Go memory limit, floored at minBytes.
 // When no limit is set (the default of math.MaxInt64, meaning unbounded), it returns minBytes so the
@@ -271,4 +273,37 @@ func defaultCacheBytes(fraction float64, minBytes int64) int64 {
 		return v
 	}
 	return minBytes
+}
+
+// budgetedCacheBytes sizes a cache as a fraction of detected memory, clamped to [minBytes, maxBytes].
+// Unlike defaultCacheBytes it does not collapse to the floor when GOMEMLIMIT is unset: it sizes off
+// the detected host/cgroup memory (detectMemoryBytes), so the cache stays proportional to the box —
+// a small host gets minBytes, a large host is capped at maxBytes — instead of an unconditional floor
+// that ignores how much RAM is actually available. Keeps RSS bounded on both ends. See oteldb#1112.
+func budgetedCacheBytes(fraction float64, minBytes, maxBytes int64) int64 {
+	basis := detectMemoryBytes()
+	if basis <= 0 {
+		return minBytes
+	}
+	v := int64(float64(basis) * fraction)
+	if v < minBytes {
+		return minBytes
+	}
+	if v > maxBytes {
+		return maxBytes
+	}
+	return v
+}
+
+// detectMemoryBytes returns the memory budget to size caches against: the Go memory limit when one
+// is set (GOMEMLIMIT, or a cgroup limit applied by automemlimit at startup), otherwise the detected
+// host/cgroup total memory. Returns 0 when memory cannot be detected, so callers fall back to a floor.
+func detectMemoryBytes() int64 {
+	if limit := debug.SetMemoryLimit(-1); limit > 0 && limit != math.MaxInt64 {
+		return limit
+	}
+	if vm, err := gopsmem.VirtualMemory(); err == nil && vm != nil && vm.Total > 0 && vm.Total <= math.MaxInt64 {
+		return int64(vm.Total)
+	}
+	return 0
 }
