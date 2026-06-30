@@ -4,7 +4,8 @@
 // promql-engine sources — then drives a thin docker-compose stack (live node_exporter → vmagent as
 // BENCH_NODES hosts → oteldb --embedded on the `file` backend, capped) and runs the canonical query
 // suite via otelbench. Numbers are comparable to the oteldb column of
-// /src/oteldb/benchmark/results/REPORT.md.
+// /src/oteldb/benchmark/results/REPORT.md. Alongside the latency numbers it samples the oteldb
+// container's peak resident set size (RSS) over the run and records it in REPORT.md.
 //
 // Run from this directory:
 //
@@ -31,6 +32,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -48,6 +50,8 @@ type config struct {
 
 	replace bool
 	cleanup bool
+
+	concurrency int
 
 	addr     string
 	queries  string
@@ -129,6 +133,8 @@ func loadConfig() (config, error) {
 
 	flag.BoolVar(&cfg.replace, "replace", envBool("REPLACE", false), "rebuild oteldb, swap it in place (stack already up), re-bench")
 	flag.BoolVar(&cfg.cleanup, "cleanup", !cfg.replace, "tear the stack down on exit (default true unless -replace)")
+
+	flag.IntVar(&cfg.concurrency, "concurrency", envInt("CONCURRENCY", 8), "concurrent in-flight queries for the verify pass")
 
 	flag.StringVar(&cfg.addr, "addr", envStr("ADDR", "http://127.0.0.1:9090"), "oteldb PromQL API address")
 	flag.StringVar(&cfg.queries, "queries", envStr("BENCH_QUERIES", "queries.promql.yml"), "otelbench query suite file")
@@ -256,27 +262,114 @@ func bench(cfg config) error {
 	end := time.Now()
 	start := end.Add(-cfg.lookback)
 
-	fmt.Printf(">> Verify (one query each; non-empty + positive counts)\n")
+	// Sample the oteldb container's resident set size across the whole bench (verify + warmup +
+	// measured), tracking the peak. RSS is the headline memory cost to pair with the latency numbers:
+	// the file backend mmaps its parts, so the peak shows the real footprint under GOMEMLIMIT.
+	stopRSS := make(chan struct{})
+	peakRSSCh := sampleRSS(cfg, stopRSS)
+
+	fmt.Printf(">> Verify (one query each, %d concurrent; non-empty + positive counts)\n", cfg.concurrency)
 	if err := verify(cfg, start, end); err != nil {
+		close(stopRSS)
+		<-peakRSSCh
 		return err
 	}
 
 	fmt.Printf(">> Warmup (%d runs/query, unmeasured)\n", cfg.warmup)
 	if err := runOtelbench(cfg, 0, cfg.warmup, start, end, ""); err != nil {
+		close(stopRSS)
+		<-peakRSSCh
 		return err
 	}
 
 	fmt.Printf(">> Benchmark (%d measured runs/query, window %s)\n", cfg.runs, cfg.lookback)
 	report := filepath.Join(cfg.benchDir, "report.yml")
 	if err := runOtelbench(cfg, cfg.runs, 0, start, end, report); err != nil {
+		close(stopRSS)
+		<-peakRSSCh
 		return err
 	}
+
+	close(stopRSS)
+	peakRSS := <-peakRSSCh
+	if peakRSS > 0 {
+		fmt.Printf(">> Peak oteldb RSS during bench: %s\n", humanBytes(peakRSS))
+	} else {
+		fmt.Fprintln(os.Stderr, "!! warning: could not sample oteldb RSS (docker compose exec failed)")
+	}
+
 	fmt.Printf(">> Report written to %s\n", report)
-	if err := renderReport(cfg, report); err != nil {
+	if err := renderReport(cfg, report, peakRSS); err != nil {
 		// Non-fatal: the raw report.yml is still there; the markdown render is a convenience.
 		fmt.Fprintf(os.Stderr, "!! warning: render REPORT.md: %v\n", err)
 	}
 	return nil
+}
+
+// sampleRSS polls the oteldb container's RSS (VmRSS from /proc/1/status, where the static oteldb
+// binary runs as PID 1) every 500ms until stop is closed, then sends the peak in bytes. A failed
+// poll (container momentarily unavailable) is skipped; a peak of 0 means no poll ever succeeded.
+func sampleRSS(cfg config, stop <-chan struct{}) <-chan int64 {
+	out := make(chan int64, 1)
+	go func() {
+		var peak int64
+		t := time.NewTicker(500 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				out <- peak
+				return
+			case <-t.C:
+				if rss, ok := readRSS(cfg); ok && rss > peak {
+					peak = rss
+				}
+			}
+		}
+	}()
+	return out
+}
+
+// readRSS reads VmRSS from the oteldb container's /proc/1/status via `docker compose exec`, returning
+// the resident set size in bytes.
+func readRSS(cfg config) (int64, bool) {
+	cmd := exec.Command("docker", "compose", "exec", "-T", "oteldb", "cat", "/proc/1/status")
+	cmd.Dir = cfg.benchDir
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		rest, ok := strings.CutPrefix(line, "VmRSS:")
+		if !ok {
+			continue
+		}
+		// "VmRSS:\t  123456 kB" — value is in kibibytes.
+		fields := strings.Fields(rest)
+		if len(fields) < 1 {
+			return 0, false
+		}
+		kib, err := strconv.ParseInt(fields[0], 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return kib * 1024, true
+	}
+	return 0, false
+}
+
+// humanBytes renders a byte count with a binary (KiB/MiB/GiB…) unit.
+func humanBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 // benchQuery is one entry of the suite: a kind (instant/range), a human title, and the query text.
@@ -350,6 +443,56 @@ func trimYAMLValue(s string) string {
 // asserts the value is positive — the count-pushdown has historically regressed to the empty vector
 // or {0} on instant `count(selector)`, and otelbench would happily report a (faster!) latency for
 // the wrong answer. This pass makes such a regression fail the bench loudly.
+// verifyResult is one suite query's verification outcome: exactly one of line (the success line to
+// print) or problem (a failure description) is non-empty.
+type verifyResult struct {
+	line    string
+	problem string
+}
+
+// verifyOne issues a single suite query and asserts it returns data (and a positive value for
+// count queries). It returns a verifyResult rather than printing/erroring so callers can run it
+// concurrently and aggregate in suite order.
+func verifyOne(client *http.Client, addr string, q benchQuery, start, end time.Time) verifyResult {
+	u, err := suiteURL(addr, q, start, end)
+	if err != nil {
+		return verifyResult{problem: fmt.Sprintf("  %s: build url: %v", q.title, err)}
+	}
+
+	body, err := getJSON(client, u)
+	if err != nil {
+		return verifyResult{problem: fmt.Sprintf("  %s: request error: %v", q.title, err)}
+	}
+
+	var resp struct {
+		Status string `json:"status"`
+		Error  string `json:"error"`
+		Data   struct {
+			ResultType string            `json:"resultType"`
+			Result     []json.RawMessage `json:"result"`
+		} `json:"data"`
+		Warnings []string `json:"warnings"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return verifyResult{problem: fmt.Sprintf("  %s: decode response: %v", q.title, err)}
+	}
+	if resp.Status != "success" {
+		return verifyResult{problem: fmt.Sprintf("  %s: status=%q error=%q", q.title, resp.Status, resp.Error)}
+	}
+	if len(resp.Data.Result) == 0 {
+		return verifyResult{problem: fmt.Sprintf("  %s: EMPTY result (query returned no series)", q.title)}
+	}
+
+	// For count(...) queries, assert the value is positive. Covers both the ungrouped instant
+	// pushdown (a single {} sample) and grouped counts. A zero here means the pushdown counted
+	// nothing over the window — the lookback-clamp regression's signature.
+	if isCountQuery(q) && firstNonPositiveSample(resp.Data.Result) {
+		return verifyResult{problem: fmt.Sprintf("  %s: count returned a non-positive value (pushdown regression?)", q.title)}
+	}
+
+	return verifyResult{line: fmt.Sprintf("   %-32s ok (%d series)\n", q.title, len(resp.Data.Result))}
+}
+
 func verify(cfg config, start, end time.Time) error {
 	qPath := cfg.queries
 	if !filepath.IsAbs(qPath) {
@@ -360,53 +503,31 @@ func verify(cfg config, start, end time.Time) error {
 		return err
 	}
 
+	// Issue the suite concurrently (up to cfg.concurrency in flight). Each query writes its outcome
+	// into results[i] — no shared mutation — so success lines and problems can be printed in suite
+	// order afterwards, keeping deterministic output despite the concurrent fan-out.
 	client := &http.Client{Timeout: 2 * time.Minute}
+	results := make([]verifyResult, len(queries))
+	sem := make(chan struct{}, max(cfg.concurrency, 1))
+	var wg sync.WaitGroup
+	for i, q := range queries {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, q benchQuery) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			results[i] = verifyOne(client, cfg.addr, q, start, end)
+		}(i, q)
+	}
+	wg.Wait()
+
 	var problems []string
-
-	for _, q := range queries {
-		u, err := suiteURL(cfg.addr, q, start, end)
-		if err != nil {
-			return fmt.Errorf("build url for %q: %w", q.title, err)
-		}
-
-		body, err := getJSON(client, u)
-		if err != nil {
-			problems = append(problems, fmt.Sprintf("  %s: request error: %v", q.title, err))
+	for _, r := range results {
+		if r.problem != "" {
+			problems = append(problems, r.problem)
 			continue
 		}
-
-		var resp struct {
-			Status string `json:"status"`
-			Error  string `json:"error"`
-			Data   struct {
-				ResultType string            `json:"resultType"`
-				Result     []json.RawMessage `json:"result"`
-			} `json:"data"`
-			Warnings []string `json:"warnings"`
-		}
-		if err := json.Unmarshal(body, &resp); err != nil {
-			problems = append(problems, fmt.Sprintf("  %s: decode response: %v", q.title, err))
-			continue
-		}
-		if resp.Status != "success" {
-			problems = append(problems, fmt.Sprintf("  %s: status=%q error=%q", q.title, resp.Status, resp.Error))
-			continue
-		}
-		if len(resp.Data.Result) == 0 {
-			problems = append(problems, fmt.Sprintf("  %s: EMPTY result (query returned no series)", q.title))
-			continue
-		}
-
-		// For count(...) queries, assert the value is positive. Covers both the ungrouped instant
-		// pushdown (a single {} sample) and grouped counts. A zero here means the pushdown counted
-		// nothing over the window — the lookback-clamp regression's signature.
-		if isCountQuery(q) {
-			if nonPositive := firstNonPositiveSample(resp.Data.Result); nonPositive {
-				problems = append(problems, fmt.Sprintf("  %s: count returned a non-positive value (pushdown regression?)", q.title))
-			}
-		}
-
-		fmt.Printf("   %-32s ok (%d series)\n", q.title, len(resp.Data.Result))
+		fmt.Print(r.line)
 	}
 
 	if len(problems) > 0 {
@@ -499,7 +620,7 @@ func parseJSONSample(pair [2]any) (float64, bool) {
 
 // renderReport writes a human-readable REPORT.md (p50/p90/p99 per query) by parsing the benchstat
 // rows otelbench emits for report.yml.
-func renderReport(cfg config, reportPath string) error {
+func renderReport(cfg config, reportPath string, peakRSS int64) error {
 	out, err := exec.Command(filepath.Join(cfg.benchDir, "otelbench"),
 		"promql", "analyze", "-f", "benchstat", "-i", reportPath).Output()
 	if err != nil {
@@ -535,6 +656,10 @@ func renderReport(cfg config, reportPath string) error {
 		"nodes=%d (~%d series), window=%s, %d runs/query_\n",
 		cfg.gomaxprocs, cfg.gomemlimit, cfg.nodes, cfg.nodes*1400, cfg.lookback, cfg.runs)
 	fmt.Fprintln(&b)
+	if peakRSS > 0 {
+		fmt.Fprintf(&b, "Peak oteldb RSS during bench: **%s**.\n", humanBytes(peakRSS))
+		fmt.Fprintln(&b)
+	}
 	fmt.Fprintln(&b, "Latencies in milliseconds.")
 	fmt.Fprintln(&b)
 	b.WriteString("| query | runs | p50 | p90 | p99 | max |\n")
