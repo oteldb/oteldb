@@ -218,17 +218,31 @@ func (s scanners) NewMatrixSelector(
 	node logicalplan.MatrixSelector,
 	call logicalplan.FunctionCall,
 ) (model.VectorOperator, error) {
-	// Instant *_over_time over a supported function: answer from the aggregate sidecar instead of a
-	// raw fetch-and-fold. Range queries keep the matrix selector (their per-step sliding window is a
-	// different shape than the sidecar's step-aligned buckets), and anything with a projection or
-	// post-filter falls back too.
-	if s.b.overTimePushdown && opts.IsInstantQuery() && node.Range > 0 {
+	// *_over_time over a sidecar-answerable function (count/sum/min/max/avg/present): answer from the
+	// aggregate pushdown instead of a raw fetch-and-fold, for both instant and range queries. Anything
+	// with a projection, per-series filter, or @ modifier falls back to the matrix selector, as do the
+	// folds the sidecar cannot answer (rate/increase/quantile/…).
+	if s.b.overTimePushdown && node.Range > 0 {
 		if fold, ok := overTimeFold[call.Func.Name]; ok {
 			vs := node.VectorSelector
-			if vs.Projection == nil && len(vs.Filters) == 0 {
-				return newAggregateOverTimeOp(
+			plainInstant := vs.Projection == nil && len(vs.Filters) == 0
+			switch {
+			case opts.IsInstantQuery():
+				if plainInstant {
+					return newAggregateOverTimeOp(
+						s.b.store, s.b.tenant, vs.LabelMatchers, call.Func.Name, fold,
+						opts.Start.UnixMilli(), node.Range.Milliseconds(), vs.Offset.Milliseconds(),
+					), nil
+				}
+			// Range queries evaluate the fold over each step's sliding window (t-range, t]; the range op
+			// folds one aggregate per (series, step) instead of materializing the raw windows. The @
+			// modifier pins the eval timestamp (a shape the plain per-step offset does not model), so
+			// only push down its absence.
+			case opts.Step > 0 && plainInstant && vs.Timestamp == nil && !vs.SelectTimestamp:
+				return newAggregateOverTimeRangeOp(
 					s.b.store, s.b.tenant, vs.LabelMatchers, call.Func.Name, fold,
-					opts.Start.UnixMilli(), node.Range.Milliseconds(), vs.Offset.Milliseconds(),
+					opts.Start.UnixMilli(), opts.End.UnixMilli(), opts.Step.Milliseconds(),
+					node.Range.Milliseconds(), vs.Offset.Milliseconds(), opts.NumStepsPerBatch(),
 				), nil
 			}
 		}
