@@ -2,6 +2,7 @@ package storagebackend_test
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"slices"
 	"sort"
@@ -352,6 +353,11 @@ func instantPlan(
 // query plan (see aggregateOverTimeOp.String).
 const planOpName = "aggregateOverTimeOp"
 
+// rangePlanOpName is the operator-name fragment the range aggregate-pushdown operator reports (see
+// aggregateOverTimeRangeOp.String). It is distinct from planOpName ("aggregateOverTimeOp" is not a
+// substring of "aggregateOverTimeRangeOp"), so the two paths are matched independently.
+const rangePlanOpName = "aggregateOverTimeRangeOp"
+
 func explainContains(node *promqlengine.ExplainOutputNode, substr string) bool {
 	if node == nil {
 		return false
@@ -419,14 +425,37 @@ func TestOverTimePushdownPlanRouting(t *testing.T) {
 		}
 	})
 
-	t.Run("RangeQueryFallsBack", func(t *testing.T) {
-		// Range queries re-evaluate over a sliding window the sidecar's step buckets don't model.
-		q, err := engOn.NewRangeQuery(ctx, on, nil, "count_over_time(ot_gauge[30s])", evalT, evalT.Add(time.Minute), 15*time.Second)
+	t.Run("RangeQueryUsesSidecar", func(t *testing.T) {
+		// Range queries push the reducer folds down per step; @ / projection / unsupported folds fall back.
+		for _, tt := range []struct {
+			query string
+			push  bool
+		}{
+			{"count_over_time(ot_gauge[30s])", true},
+			{"sum_over_time(ot_gauge[30s])", true},
+			{"avg_over_time(ot_gauge[30s])", true},
+			{"present_over_time(ot_gauge[30s])", true},
+			{"count_over_time(ot_gauge[30s] offset 10s)", true},
+			{"rate(ot_gauge[30s])", false},
+			{"last_over_time(ot_gauge[30s])", false},
+			{"count_over_time(ot_gauge[30s] @ 2000000)", false},
+		} {
+			q, err := engOn.NewRangeQuery(ctx, on, nil, tt.query, evalT, evalT.Add(time.Minute), 15*time.Second)
+			require.NoError(t, err)
+			t.Cleanup(q.Close)
+			exp, ok := q.(promqlengine.ExplainableQuery)
+			require.True(t, ok)
+			assert.Equalf(t, tt.push, explainContains(exp.Explain(), rangePlanOpName), "range routing for %s", tt.query)
+		}
+	})
+
+	t.Run("RangeQueryDisabledFallsBack", func(t *testing.T) {
+		q, err := engOff.NewRangeQuery(ctx, off, nil, "count_over_time(ot_gauge[30s])", evalT, evalT.Add(time.Minute), 15*time.Second)
 		require.NoError(t, err)
 		t.Cleanup(q.Close)
 		exp, ok := q.(promqlengine.ExplainableQuery)
 		require.True(t, ok)
-		assert.False(t, explainContains(exp.Explain(), planOpName), "range query must use the matrix selector")
+		assert.False(t, explainContains(exp.Explain(), rangePlanOpName), "WithOverTimePushdown(false) must not use the sidecar")
 	})
 }
 
@@ -512,9 +541,11 @@ func TestOverTimePushdownUnsupportedMatchesRaw(t *testing.T) {
 	}
 }
 
-// TestOverTimePushdownRangeMatchesRaw confirms that range queries — which always take the raw path,
-// since the sidecar models instant evaluation only — are unaffected by enabling the pushdown: a
-// pushdown-on backend returns the same matrix as a vanilla one across every step.
+// TestOverTimePushdownRangeMatchesRaw is the differential oracle for the range pushdown
+// (aggregateOverTimeRangeOp): for every supported fold, matcher subset, offset, and window/step
+// combination — including windows that overlap (range > step), tile with gaps (range < step), and
+// straddle each series' sample edges — the per-step aggregate pushdown must produce exactly the
+// matrix the raw matrix-selector fold produces: same series, same labels, same value at every step.
 func TestOverTimePushdownRangeMatchesRaw(t *testing.T) {
 	ctx := context.Background()
 	base := time.Unix(2_000_000, 0).UTC()
@@ -522,18 +553,41 @@ func TestOverTimePushdownRangeMatchesRaw(t *testing.T) {
 	store := ingestGaugeSeries(ctx, t, base, []gaugeSeries{
 		{foo: "a", samples: rampSamples(-120*time.Second, 0, 10*time.Second, 1)},
 		{foo: "b", samples: rampSamples(-120*time.Second, 0, 20*time.Second, 50)},
+		// c starts late, so it is absent from the earliest steps' windows — exercising a series that
+		// joins the union set partway through the range.
+		{foo: "c", samples: rampSamples(-40*time.Second, 0, 10*time.Second, 100)},
 	})
 	t.Cleanup(func() { _ = store.Close(ctx) })
 
 	d := newDiffBackends(ctx, t, store)
 
-	start, end, step := base.Add(-90*time.Second), base, 15*time.Second
-	for _, q := range []string{
-		"count_over_time(ot_gauge[30s])",
-		"sum_over_time(ot_gauge[40s])",
-		"avg_over_time(ot_gauge[30s])",
-		"sum by (foo) (max_over_time(ot_gauge[40s]))",
-	} {
-		t.Run(q, func(t *testing.T) { d.assertRange(t, q, start, end, step) })
+	start, end := base.Add(-90*time.Second), base
+	for _, step := range []time.Duration{15 * time.Second, 30 * time.Second, 45 * time.Second} {
+		for _, q := range []string{
+			// Every supported fold.
+			"count_over_time(ot_gauge[30s])",
+			"sum_over_time(ot_gauge[30s])",
+			"min_over_time(ot_gauge[30s])",
+			"max_over_time(ot_gauge[30s])",
+			"avg_over_time(ot_gauge[30s])",
+			"present_over_time(ot_gauge[30s])",
+			// range > step (overlapping windows), range == step, range < step (windows with gaps).
+			"sum_over_time(ot_gauge[60s])",
+			"count_over_time(ot_gauge[10s])",
+			// Matcher subsets and an offset.
+			`sum_over_time(ot_gauge{foo=~"a|c"}[30s])`,
+			`count_over_time(ot_gauge{foo!="b"}[60s])`,
+			"count_over_time(ot_gauge[30s] offset 15s)",
+			// Downstream aggregation and arithmetic compose with the per-step operator.
+			"sum by (foo) (max_over_time(ot_gauge[40s]))",
+			"sum(count_over_time(ot_gauge[30s]))",
+			"avg_over_time(ot_gauge[30s]) * 2",
+			// Empty result.
+			`sum_over_time(ot_gauge{foo="zzz"}[30s])`,
+		} {
+			t.Run(fmt.Sprintf("step=%s/%s", step, q), func(t *testing.T) {
+				d.assertRange(t, q, start, end, step)
+			})
+		}
 	}
 }
