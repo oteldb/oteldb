@@ -48,6 +48,12 @@ type Backend struct {
 	// ([storage.Storage.AggregateMetricsNamed]) instead of a raw fetch-and-fold. True by default;
 	// see [WithOverTimePushdown].
 	overTimePushdown bool
+	// labels interns series→Prometheus-label projections for the Backend's lifetime. Each query takes
+	// a fresh fetcher (to observe the latest head) but shares this cache, so the pointer-rich
+	// labels.Labels set is built once per series and reused across queries instead of rebuilt and
+	// re-scanned by GC every query. The cache is keyed by content-addressed series id, so an entry is
+	// valid for the life of the series; it is bounded by resident cardinality.
+	labels *storagepromql.LabelCache
 }
 
 // Option configures a [Backend].
@@ -72,7 +78,7 @@ func WithOverTimePushdown(enabled bool) Option {
 // to the "default" tenant; the empty tenant id here normalizes to "default" on the read side,
 // keeping reads and writes on the same tenant (which also makes cluster reads owner-aware).
 func New(store *storage.Storage, opts ...Option) *Backend {
-	b := &Backend{store: store, overTimePushdown: true}
+	b := &Backend{store: store, overTimePushdown: true, labels: storagepromql.NewLabelCache()}
 	for _, opt := range opts {
 		opt(b)
 	}
@@ -80,14 +86,16 @@ func New(store *storage.Storage, opts ...Option) *Backend {
 }
 
 // queryable builds a fresh Prometheus queryable over the engine's current data. A new
-// fetcher is taken per query so reads observe the latest head and flushed parts.
+// fetcher is taken per query so reads observe the latest head and flushed parts, but the
+// Backend-lifetime label cache (b.labels) is shared across queries so series label projections are
+// interned once instead of rebuilt and GC-rescanned every query.
 //
 // The fetcher is scoped to b.tenant (a named tenant, "" ⇒ "default") rather than the no-arg
 // cross-tenant form: in cluster mode a named tenant is served owner-aware (fanned out to the ring
 // owners), whereas the no-arg form reads only tenants local to this node — so a query node that does
 // not own the tenant would see nothing. The record signals already scope by b.tenant the same way.
 func (b *Backend) queryable() *storagepromql.Queryable {
-	return storagepromql.NewQueryable(b.store.Fetcher(b.tenant), b.tenant)
+	return storagepromql.NewQueryableWithCache(b.store.Fetcher(b.tenant), b.tenant, b.labels)
 }
 
 // Querier implements storage.Queryable.
