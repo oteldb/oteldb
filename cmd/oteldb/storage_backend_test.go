@@ -298,27 +298,31 @@ storage:
 func TestResolveCacheSettings(t *testing.T) {
 	t.Run("DefaultsEnableAll", func(t *testing.T) {
 		s := resolveCacheSettings(StorageConfig{})
-		// All three are opt-out for oteldb: on by default.
+		// All four are opt-out for oteldb: on by default.
 		require.True(t, s.AggregateStats)
 		require.Greater(t, s.ReadCache, int64(0))
 		require.Greater(t, s.DecodeCache, int64(0))
+		require.Greater(t, s.DecodeMemory, int64(0))
 	})
 
 	t.Run("ExplicitSizesHonored", func(t *testing.T) {
-		rc, dc := xbytes.Bytes(1<<20), xbytes.Bytes(2<<20)
+		rc, dc, dm := xbytes.Bytes(1<<20), xbytes.Bytes(2<<20), xbytes.Bytes(3<<20)
 		s := resolveCacheSettings(StorageConfig{
-			ReadCacheBytes:   &rc,
-			DecodeCacheBytes: &dc,
+			ReadCacheBytes:    &rc,
+			DecodeCacheBytes:  &dc,
+			DecodeMemoryBytes: &dm,
 		})
 		require.Equal(t, int64(1<<20), s.ReadCache)
 		require.Equal(t, int64(2<<20), s.DecodeCache)
+		require.Equal(t, int64(3<<20), s.DecodeMemory)
 	})
 
 	t.Run("ZeroDisablesByteCache", func(t *testing.T) {
 		zero := xbytes.Bytes(0)
-		s := resolveCacheSettings(StorageConfig{ReadCacheBytes: &zero, DecodeCacheBytes: &zero})
+		s := resolveCacheSettings(StorageConfig{ReadCacheBytes: &zero, DecodeCacheBytes: &zero, DecodeMemoryBytes: &zero})
 		require.Equal(t, int64(0), s.ReadCache)
 		require.Equal(t, int64(0), s.DecodeCache)
+		require.Equal(t, int64(0), s.DecodeMemory, "explicit 0 disables decode admission control")
 	})
 
 	t.Run("AggregateStatsFalseDisables", func(t *testing.T) {
@@ -362,6 +366,38 @@ func TestDefaultDecodeCacheBytesRSSSafe(t *testing.T) {
 	require.LessOrEqual(t, got, ceiling)
 }
 
+// TestDefaultDecodeMemoryBytesFitsLimit checks the decode-admission budget default fits the process
+// memory budget: half the detected limit minus the caches, floored at 64 MiB, so under concurrent
+// query load the live heap stays under GOMEMLIMIT instead of tripping the pacer. See oteldb#1124.
+func TestDefaultDecodeMemoryBytesFitsLimit(t *testing.T) {
+	const floor = int64(64 << 20)
+	// The test drives the process memory limit directly (detectMemoryBytes reads it); restore after.
+	orig := debug.SetMemoryLimit(-1)
+	t.Cleanup(func() { debug.SetMemoryLimit(orig) })
+
+	for _, tc := range []struct {
+		name                   string
+		limit                  int64
+		readCache, decodeCache int64
+		want                   int64
+	}{
+		// The benchmark box (#1124): 1 GiB limit with the default caches leaves 512−128−64.
+		{"1GiB fits around caches", 1 << 30, 128 << 20, 64 << 20, 320 << 20},
+		{"8GiB scales up", 8 << 30, 512 << 20, 256 << 20, 3328 << 20},
+		{"small box floored", 256 << 20, 128 << 20, 64 << 20, floor},
+		{"caches larger than half floored", 1 << 30, 512 << 20, 512 << 20, floor},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			debug.SetMemoryLimit(tc.limit)
+			require.Equal(t, tc.want, defaultDecodeMemoryBytes(tc.readCache, tc.decodeCache))
+		})
+	}
+
+	// With no explicit limit it sizes off detected host RAM: still enabled, still floored.
+	debug.SetMemoryLimit(math.MaxInt64)
+	require.GreaterOrEqual(t, defaultDecodeMemoryBytes(128<<20, 64<<20), floor)
+}
+
 func TestCacheOptions(t *testing.T) {
 	apply := func(t *testing.T, opts []storage.Option) storage.Options {
 		t.Helper()
@@ -373,9 +409,10 @@ func TestCacheOptions(t *testing.T) {
 	}
 
 	t.Run("Enabled", func(t *testing.T) {
-		o := apply(t, cacheOptions(cacheSettings{ReadCache: 100, DecodeCache: 200, AggregateStats: true}))
+		o := apply(t, cacheOptions(cacheSettings{ReadCache: 100, DecodeCache: 200, DecodeMemory: 300, AggregateStats: true}))
 		require.Equal(t, int64(100), o.ReadCacheBytes)
 		require.Equal(t, int64(200), o.DecodeCacheBytes)
+		require.Equal(t, int64(300), o.DecodeMemoryBytes)
 		require.True(t, o.AggregateStats)
 	})
 
@@ -395,6 +432,7 @@ storage:
   dir: /data
   read_cache_bytes: "0"
   decode_cache_bytes: "64MiB"
+  decode_memory_bytes: "256MiB"
   aggregate_stats: false
 `
 	f, err := os.CreateTemp("", "oteldb.yml")
@@ -410,5 +448,6 @@ storage:
 	s := resolveCacheSettings(cfg.Storage)
 	require.Equal(t, int64(0), s.ReadCache, "explicit 0 disables the read cache")
 	require.Equal(t, int64(64<<20), s.DecodeCache)
+	require.Equal(t, int64(256<<20), s.DecodeMemory)
 	require.False(t, s.AggregateStats, "explicit aggregate_stats:false disables the sidecar")
 }
