@@ -749,7 +749,7 @@ func runTest(
 					selectSpans(set, bySpanID(randomSpanID)),
 				},
 				{
-					fmt.Sprintf(`{ span:parentId = %q }`, randomParentSpanID.String()),
+					fmt.Sprintf(`{ span:parentID = %q }`, randomParentSpanID.String()),
 					selectSpans(set, byParentSpanID(randomParentSpanID)),
 				},
 				{
@@ -780,7 +780,7 @@ func runTest(
 				{`{ .service.instance.id = "clearly-does-not-exist" }`, nil},
 				{`{ trace:id = "clearly-does-not-exist" }`, nil},
 				{`{ span:id = "clearly-does-not-exist" }`, nil},
-				{`{ span:parentId = "clearly-does-not-exist" }`, nil},
+				{`{ span:parentID = "clearly-does-not-exist" }`, nil},
 			}
 			for i, tt := range queries {
 				t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {

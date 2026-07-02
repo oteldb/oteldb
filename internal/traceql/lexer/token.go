@@ -94,9 +94,9 @@ const (
 	NestedSetRight  // nestedSetRight
 	NestedSetParent // nestedSetParent
 	ID              // id
-	TraceID         // traceId
-	SpanID          // spanId
-	ParentID        // parentId
+	TraceID         // traceID
+	SpanID          // spanID
+	ParentID        // parentID
 	TimeSinceStart  // timeSinceStart
 	Version         // version
 )
