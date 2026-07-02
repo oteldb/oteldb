@@ -249,6 +249,17 @@ func (p *PromQL) eachFromReport(ctx context.Context, f *os.File, fn func(ctx con
 		}
 	}
 	for _, q := range report.Instant {
+		// Mirror the range/series time handling: default the evaluation time to the suite's end,
+		// and let the CLI override pin it. Without this an instant query with no explicit time is
+		// evaluated at the server's *now*; against a frozen dataset the plain instant selectors
+		// (5m lookback) silently age out and `count(<selector>)`-shaped queries return the empty
+		// vector — misread as a server correctness bug in oteldb#1126.
+		if !q.Time.Set {
+			q.Time = report.End
+		}
+		if !p.end.IsZero() {
+			q.Time = promproxy.NewOptDateTime(p.end)
+		}
 		id++
 		if err := fn(ctx, id, promproxy.NewInstantQueryQuery(q)); err != nil {
 			return errors.Wrap(err, "callback")
