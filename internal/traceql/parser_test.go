@@ -998,7 +998,7 @@ var tests = []TestCase{
 		false,
 	},
 	{
-		`{ span:parentId = "def" }`,
+		`{ span:parentID = "def" }`,
 		testBinFieldExpr(
 			&Attribute{Prop: ParentID},
 			OpEq,
@@ -1036,7 +1036,7 @@ var tests = []TestCase{
 	},
 	// Scoped intrinsics: link:
 	{
-		`{ link:traceId = "abc" }`,
+		`{ link:traceID = "abc" }`,
 		testBinFieldExpr(
 			&Attribute{Prop: LinkTraceID},
 			OpEq,
@@ -1045,7 +1045,7 @@ var tests = []TestCase{
 		false,
 	},
 	{
-		`{ link:spanId = "def" }`,
+		`{ link:spanID = "def" }`,
 		testBinFieldExpr(
 			&Attribute{Prop: LinkSpanID},
 			OpEq,

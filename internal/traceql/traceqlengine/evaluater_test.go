@@ -182,8 +182,8 @@ func TestEvaluater(t *testing.T) {
 		{fmt.Sprintf(`{ span:id = %q }`, testSpanID.Hex()), true},
 		{fmt.Sprintf(`{ span:id != %q }`, otelstorage.SpanID{}.Hex()), true},
 		// ParentID intrinsic.
-		{fmt.Sprintf(`{ span:parentId = %q }`, testParentSpanID.Hex()), true},
-		{fmt.Sprintf(`{ span:parentId != %q }`, testSpanID.Hex()), true},
+		{fmt.Sprintf(`{ span:parentID = %q }`, testParentSpanID.Hex()), true},
+		{fmt.Sprintf(`{ span:parentID != %q }`, testSpanID.Hex()), true},
 		// TraceID intrinsic.
 		{fmt.Sprintf(`{ trace:id = %q }`, testTraceID.Hex()), true},
 		// Instrumentation intrinsics.
@@ -195,8 +195,8 @@ func TestEvaluater(t *testing.T) {
 		{`{ event:timeSinceStart >= 1s }`, true},
 		{`{ event:timeSinceStart < 2s }`, true},
 		// Link intrinsics.
-		{fmt.Sprintf(`{ link:traceId = %q }`, testLinkTraceID.Hex()), true},
-		{fmt.Sprintf(`{ link:spanId = %q }`, testLinkSpanID.Hex()), true},
+		{fmt.Sprintf(`{ link:traceID = %q }`, testLinkTraceID.Hex()), true},
+		{fmt.Sprintf(`{ link:spanID = %q }`, testLinkSpanID.Hex()), true},
 		// Scoped attribute selectors.
 		{`{ event.custom = "eventValue" }`, true},
 		{`{ event.custom != "other" }`, true},

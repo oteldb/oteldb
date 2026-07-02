@@ -163,9 +163,9 @@ var tokens = map[string]TokenType{
 	"nestedSetRight":  NestedSetRight,
 	"nestedSetParent": NestedSetParent,
 	"id":              ID,
-	"traceId":         TraceID,
-	"spanId":          SpanID,
-	"parentId":        ParentID,
+	"traceID":         TraceID,
+	"spanID":          SpanID,
+	"parentID":        ParentID,
 	"timeSinceStart":  TimeSinceStart,
 	"version":         Version,
 }
