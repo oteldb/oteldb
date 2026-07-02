@@ -178,6 +178,12 @@ func (s scanners) SeriesCounter() enginestorage.SeriesCounter {
 	return backendCounter(s)
 }
 
+// GroupedSeriesCounter returns the grouped-count-pushdown capability for the count by (label)
+// fast path, with the same per-call querier lifecycle as [scanners.SeriesCounter].
+func (s scanners) GroupedSeriesCounter() enginestorage.GroupedSeriesCounter {
+	return backendGroupCounter(s)
+}
+
 // backendCounter adapts [Backend] to the PromQL engine's SeriesCounter seam: it builds a fresh
 // querier per CountSeries call (scoped to the call's window) and delegates to the queryable-backed
 // querier's own CountSeries.
@@ -196,6 +202,30 @@ func (c backendCounter) CountSeries(ctx context.Context, startMs, endMs int64, m
 	}
 
 	return sc.CountSeries(ctx, startMs, endMs, matchers...)
+}
+
+// backendGroupCounter adapts [Backend] to the PromQL engine's GroupedSeriesCounter seam, the
+// grouped analog of [backendCounter]. The storage querier's CountSeriesBy is total — a fetcher
+// chain without the grouped-count capability answers via its exact Fetch-based grouping — so this
+// adapter has no silent-empty path; a querier that lacks the hook entirely (a swapped queryable
+// implementation) is a wiring bug and surfaces as an error rather than an empty vector.
+type backendGroupCounter struct{ b *Backend }
+
+func (c backendGroupCounter) CountSeriesBy(
+	ctx context.Context, startMs, endMs int64, label string, matchers ...*labels.Matcher,
+) (map[string]uint64, error) {
+	q, err := c.b.queryable().Querier(startMs, endMs)
+	if err != nil {
+		return nil, errors.Wrap(err, "count-by pushdown: create querier")
+	}
+	defer func() { _ = q.Close() }()
+
+	sc, ok := q.(enginestorage.GroupedSeriesCounter)
+	if !ok {
+		return nil, errors.New("count-by pushdown: querier does not implement CountSeriesBy")
+	}
+
+	return sc.CountSeriesBy(ctx, startMs, endMs, label, matchers...)
 }
 
 func (s scanners) NewVectorSelector(
