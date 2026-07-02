@@ -575,7 +575,7 @@ func newPromQLBenchmarkCommand() *cobra.Command {
 
 	f.IntVar(&p.Jobs, "jobs", 1, "Number of concurrent jobs (only for concurrent)")
 	f.DurationVarP(&p.Duration, "duration", "d", time.Minute*5, "Duration of benchmark (only for concurrent)")
-	f.BoolVarP(&p.Concurrent, "concurrent", "c", false, "Run queries concurrently")
+	f.BoolVarP(&p.Concurrent, "concurrent", "c", false, "Load-generator mode: run random suite queries concurrently until interrupted (ignores --count/--warmup, writes no report)")
 
 	return cmd
 }
