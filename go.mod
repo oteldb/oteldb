@@ -38,7 +38,7 @@ require (
 	github.com/grafana/loki/pkg/push v0.0.0-20241223090937-bf7301470453
 	github.com/grafana/pyroscope-go v1.3.1
 	github.com/grafana/pyroscope/api v1.5.0
-	github.com/klauspost/compress v1.18.7
+	github.com/klauspost/compress v1.19.0
 	github.com/kr/logfmt v0.0.0-20210122060352-19f9bcb100e6
 	github.com/mattn/go-isatty v0.0.22
 	github.com/maypok86/otter v1.2.4
