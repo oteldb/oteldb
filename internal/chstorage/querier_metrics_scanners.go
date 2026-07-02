@@ -48,6 +48,12 @@ func (s *promScanners) SeriesCounter() enginestorage.SeriesCounter {
 	return nil
 }
 
+// GroupedSeriesCounter returns nil: the ClickHouse backend does not implement the count by (label)
+// pushdown either, so grouped counts likewise fall back to the aggregate-over-Select path.
+func (s *promScanners) GroupedSeriesCounter() enginestorage.GroupedSeriesCounter {
+	return nil
+}
+
 // MetricsScanners returns scanners implementation to use with thanos-io PromQL engine.
 func (q *Querier) MetricsScanners() (enginestorage.Scanners, error) {
 	return &promScanners{storage: q}, nil
