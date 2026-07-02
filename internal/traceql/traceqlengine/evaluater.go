@@ -519,7 +519,7 @@ func (*SpanIDEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx) (r traceql.S
 	return r
 }
 
-// ParentIDEvaluater evaluates `span:parentId` property.
+// ParentIDEvaluater evaluates `span:parentID` property.
 type ParentIDEvaluater struct{}
 
 // Eval implements [Evaluater].
