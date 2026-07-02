@@ -592,7 +592,7 @@ func (*EventTimeSinceStartEvaluater) Eval(span tracestorage.Span, _ EvaluateCtx)
 	return r
 }
 
-// LinkTraceIDEvaluater evaluates `link:traceId` property.
+// LinkTraceIDEvaluater evaluates `link:traceID` property.
 // Returns the hex trace ID of the first link with a non-empty trace ID, or nil if none.
 type LinkTraceIDEvaluater struct{}
 
