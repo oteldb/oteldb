@@ -124,6 +124,12 @@ type StorageConfig struct {
 	// prefetch of a fetch's parts). Enabled by default, sized from available RAM; set to 0 to
 	// disable.
 	DecodeCacheBytes *xbytes.Bytes `json:"decode_cache_bytes" yaml:"decode_cache_bytes"`
+	// DecodeMemoryBytes caps the total in-flight decoded column bytes across concurrent metric
+	// queries (decode admission control, shared across tenants): a query reserves its estimated
+	// decode footprint before reading parts and blocks while the budget is exhausted, so query
+	// concurrency cannot drive the live heap past the process memory limit. Enabled by default,
+	// fitted to the detected memory limit minus the caches and headroom; set to 0 to disable.
+	DecodeMemoryBytes *xbytes.Bytes `json:"decode_memory_bytes" yaml:"decode_memory_bytes"`
 	// AggregateStats writes a per-series aggregate sidecar (count/sum/min/max) alongside each
 	// metric part so range-covering aggregates — and the *_over_time pushdown — can be answered
 	// without decoding. Enabled by default; set to false to disable.

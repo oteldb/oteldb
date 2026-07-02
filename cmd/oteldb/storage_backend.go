@@ -112,6 +112,7 @@ func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger,
 		zap.Int("log_query_parallelism", cfg.LogQueryParallelism),
 		zap.Int64("read_cache_bytes", caches.ReadCache),
 		zap.Int64("decode_cache_bytes", caches.DecodeCache),
+		zap.Int64("decode_memory_bytes", caches.DecodeMemory),
 		zap.Bool("aggregate_stats", caches.AggregateStats),
 	)
 	b := storagebackend.New(store,
@@ -214,6 +215,7 @@ func s3Backend(ctx context.Context, cfg *StorageS3Config) (backend.Backend, erro
 type cacheSettings struct {
 	ReadCache      int64
 	DecodeCache    int64
+	DecodeMemory   int64
 	AggregateStats bool
 }
 
@@ -222,11 +224,17 @@ type cacheSettings struct {
 // conservative absolute defaults when no limit is detectable. An explicit zero byte size disables
 // that cache, and an explicit AggregateStats=false disables the sidecar.
 func resolveCacheSettings(cfg StorageConfig) cacheSettings {
-	return cacheSettings{
+	s := cacheSettings{
 		ReadCache:      resolveCacheBytes(cfg.ReadCacheBytes, defaultReadCacheBytes),
 		DecodeCache:    resolveCacheBytes(cfg.DecodeCacheBytes, defaultDecodeCacheBytes),
 		AggregateStats: cfg.AggregateStats == nil || *cfg.AggregateStats,
 	}
+	// The decode-memory default fits around the caches, so it must resolve after them (an explicit
+	// cache size shrinks or grows the remaining budget accordingly).
+	s.DecodeMemory = resolveCacheBytes(cfg.DecodeMemoryBytes, func() int64 {
+		return defaultDecodeMemoryBytes(s.ReadCache, s.DecodeCache)
+	})
+	return s
 }
 
 // cacheOptions builds the storage options for the resolved cache/optimization settings.
@@ -234,6 +242,7 @@ func cacheOptions(s cacheSettings) []storage.Option {
 	opts := []storage.Option{
 		storage.WithReadCache(s.ReadCache),
 		storage.WithDecodeCache(s.DecodeCache),
+		storage.WithDecodeMemory(s.DecodeMemory),
 	}
 	if s.AggregateStats {
 		opts = append(opts, storage.WithAggregateStats())
@@ -260,6 +269,26 @@ func defaultReadCacheBytes() int64 { return defaultCacheBytes(1.0/16, 128<<20) }
 // the working set. Unlike a flat floor this stays RSS-safe: a small box gets ~64 MiB rather than an
 // unconditional 512 MiB, while a large box is capped at the 512 MiB ceiling. See oteldb#1112.
 func defaultDecodeCacheBytes() int64 { return budgetedCacheBytes(1.0/32, 64<<20, 512<<20) }
+
+// defaultDecodeMemoryBytes fits the engine's decode-admission budget to the process memory budget,
+// so query concurrency cannot drive the live heap past GOMEMLIMIT (past the limit the Go pacer runs
+// GC back-to-back and every in-flight query pays continuous mark cost; see oteldb#1124). Half the
+// detected budget is headroom for everything the budget does not meter — the resident baseline
+// (head, WAL, ingest) and per-query eval transients (coalesce/output buffers) — and the caches are
+// subtracted from the metered half since they are sized separately and are just as resident:
+//
+//	decodeMemory = detected/2 − readCache − decodeCache
+//
+// Floored at 64 MiB so a small box still admits a query at a time instead of degenerating (a query
+// larger than the whole budget is admitted alone, so the floor never rejects anything). When no
+// memory is detectable it returns 0 (admission control off), matching the library default.
+func defaultDecodeMemoryBytes(readCache, decodeCache int64) int64 {
+	basis := detectMemoryBytes()
+	if basis <= 0 {
+		return 0
+	}
+	return max(basis/2-readCache-decodeCache, 64<<20)
+}
 
 // defaultCacheBytes sizes a cache as the given fraction of the Go memory limit, floored at minBytes.
 // When no limit is set (the default of math.MaxInt64, meaning unbounded), it returns minBytes so the
