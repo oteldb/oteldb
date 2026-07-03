@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-faster/yaml"
@@ -20,6 +21,42 @@ func loadConfig(name string) (cfg Config, _ error) {
 		}
 		if backend := os.Getenv("METRICS_BACKEND"); backend != "" {
 			cfg.MetricsBackend = backend
+		}
+		// Per-node storage cluster identity is supplied via the environment so a whole
+		// deployment can share one config file/ConfigMap while each replica contributes its
+		// own stable ring id and peer-reachable address (e.g. a StatefulSet pod's name and
+		// its headless-service FQDN). This is what the Kubernetes operator injects per pod.
+		ensureCluster := func() {
+			if cfg.Storage.Cluster == nil {
+				cfg.Storage.Cluster = &StorageClusterConfig{}
+			}
+		}
+		if v := os.Getenv("OTELDB_CLUSTER_ID"); v != "" {
+			ensureCluster()
+			cfg.Storage.Cluster.ID = v
+		}
+		if v := os.Getenv("OTELDB_CLUSTER_ADDR"); v != "" {
+			ensureCluster()
+			cfg.Storage.Cluster.Addr = v
+		}
+		if v := os.Getenv("OTELDB_CLUSTER_ZONE"); v != "" {
+			ensureCluster()
+			cfg.Storage.Cluster.Zone = v
+		}
+		// The failure domain may instead be discovered at runtime (e.g. an init container reads
+		// the node's topology zone label into a file), since it is not known when the shared
+		// config is rendered. A non-empty OTELDB_CLUSTER_ZONE takes precedence.
+		if p := os.Getenv("OTELDB_CLUSTER_ZONE_FILE"); p != "" && (cfg.Storage.Cluster == nil || cfg.Storage.Cluster.Zone == "") {
+			if b, err := os.ReadFile(filepath.Clean(p)); err == nil {
+				if z := strings.TrimSpace(string(b)); z != "" {
+					ensureCluster()
+					cfg.Storage.Cluster.Zone = z
+				}
+			}
+		}
+		if v := os.Getenv("OTELDB_CLUSTER_ETCD"); v != "" {
+			ensureCluster()
+			cfg.Storage.Cluster.Etcd = strings.Split(v, ",")
 		}
 	}()
 
