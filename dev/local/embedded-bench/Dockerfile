@@ -1,8 +1,7 @@
-# Thin runtime image for the embedded-bench. The oteldb binary is built ON THE HOST (see run.sh)
-# and copied in here — so `docker compose up --build` is one fast ADD layer, not a Go toolchain
-# build. That is the fast iteration loop: edit source → run.sh rebuilds the binary → `up --build
-# --force-recreate` swaps oteldb in seconds while the data volume and vmagent ingest keep running
-# (CLEANUP=0), then re-run the bench against the fresh binary over the same warm data.
+# Thin runtime image for the embedded-bench. The oteldb binary is built ON THE HOST (by the
+# orchestrator, main.go) and copied in here — so `docker compose up --build` is one fast ADD layer,
+# not a Go toolchain build. Both instances (the `file` and `s3` services) share this one image and
+# differ only in their mounted config, so a single host build backs both.
 #
 # Match the host build flags: CGO_ENABLED=0 GOOS=linux GOARCH=$GOARCH (default amd64). A static
 # binary runs unchanged under alpine.

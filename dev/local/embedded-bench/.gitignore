@@ -4,8 +4,9 @@
 /oteldb
 /otelbench
 
-# Benchmark outputs
+# Benchmark outputs (per-backend report-<name>.yml, plus the rendered markdown).
 /report.yml
+/report-*.yml
 /report.txt
 /REPORT.md
 

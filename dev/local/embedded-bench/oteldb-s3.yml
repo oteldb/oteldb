@@ -1,0 +1,50 @@
+# oteldb config for the embedded-engine PromQL benchmark — S3 variant.
+#
+# Same embedded github.com/oteldb/storage engine as oteldb.yml, but its object-store backend is the
+# shared go-faster/fs S3 server (service `fs`, bucket `oteldb-s3`) instead of a local `file` volume.
+# This is the apples-to-apples object-store substrate: durable data lives in S3, only the WAL is
+# local. Everything else (query API limits, receivers, flush cadence) is kept identical to the file
+# variant so a REPORT.md comparison isolates the backend, not the query settings.
+#
+# The ClickHouse DSN below is ignored under --embedded; kept only so the receiver/exporter wiring
+# parses.
+storage:
+  backend: s3
+  # Local write-ahead log — the only on-disk state for the stateless s3 backend (so the unflushed
+  # head survives a restart rather than only the flushed objects).
+  wal_dir: /data/wal
+  s3:
+    bucket: oteldb-s3
+    endpoint: http://fs:9000
+    region: us-east-1
+    force_path_style: true       # go-faster/fs serves path-style (endpoint/bucket/key).
+    access_key_id: bench
+    secret_access_key: benchbench
+  # 10s flush cadence — matches the file variant. Flushing head data to S3 on this interval is what
+  # makes a short bench actually exercise (and measure) the object-store read path rather than
+  # serving only from the in-memory head. The default (0) is size-triggered only, so a one-shot
+  # ingest would never reach S3.
+  flush_interval: 10s
+
+prometheus:
+  bind: 0.0.0.0:9090
+  max_samples: 10_000_000
+  timeout: 5m
+  enable_negative_offset: true
+
+health_check:
+  bind: 0.0.0.0:13133
+
+otelcol:
+  receivers:
+    prometheusremotewrite:
+      endpoint: 0.0.0.0:19291
+      time_threshold: 100000h
+  exporters:
+    oteldbexporter:
+      dsn: clickhouse://default:default@ignored:9000
+  service:
+    pipelines:
+      metrics:
+        receivers: [prometheusremotewrite]
+        exporters: [oteldbexporter]
