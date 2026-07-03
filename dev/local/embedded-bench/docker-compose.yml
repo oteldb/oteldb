@@ -10,12 +10,22 @@
 # comparable to a cell in /src/oteldb/benchmark/results/REPORT.md (same ingest path, same caps, same
 # query suite, same HTTP measurement), without standing up the whole benchctl matrix.
 #
-#   ./run.sh                         # BENCH_NODES=10, prewarm 90s, bench 20 runs
-#   BENCH_NODES=100 ./run.sh         # match REPORT.md cardinality (~140k series)
-#   GOMEMLIMIT=2GiB ./run.sh         # tune the cap
-#   CLEANUP=0 ./run.sh               # leave the stack up to re-run queries / grab pprof
+# The orchestrator (main.go, `go run .`) drives this stack; it is not brought up by hand. Examples:
+#
+#   go run .                         # nodes=100, prewarm 2m30s (≥ lookback), bench 20 runs
+#   go run . -gomemlimit 2GiB        # tune the cap
+#   go run . -cleanup=false          # leave the stack up to re-run queries / grab pprof
+#   go run . -s3=false               # bench only the file backend
+#
+# Two oteldb instances run side by side off the same live ingest stream so a single run compares the
+# storage backends apples-to-apples: `oteldb` on the local `file` backend and `oteldb-s3` on the
+# shared go-faster/fs S3 object store (the same substrate Mimir/Loki/Tempo use in the cross-engine
+# benchmark). vmagent remote-writes the identical stream to both; the orchestrator benches each and
+# renders a side-by-side REPORT.md.
 volumes:
-  oteldb-data: # the embedded `file` backend's data dir (parts live here across restarts)
+  oteldb-data:    # the embedded `file` backend's data dir (parts live here across restarts)
+  oteldb-s3-data: # the s3 backend's local WAL (the only on-disk state; durable parts live in fs)
+  fs-data:        # go-faster/fs filesystem root — holds the oteldb-s3 S3 bucket
 
 services:
   # The real node_exporter — one instance, scraped once per ~2s via the cache below.
@@ -41,15 +51,47 @@ services:
       - ./vmagent-scrape.yml:/etc/vmagent/scrape.yml:ro
     command:
       - -promscrape.config=/etc/vmagent/scrape.yml
+      # Fan the identical stream out to both backends so they ingest the same data at the same time —
+      # the apples-to-apples precondition for the side-by-side report. vmagent buffers + retries per
+      # target, so oteldb-s3 lagging behind fs-init/bucket setup at startup is harmless.
       - -remoteWrite.url=http://oteldb:19291/api/v1/write
+      - -remoteWrite.url=http://oteldb-s3:19291/api/v1/write
     ports: ["127.0.0.1:8429:8429"]
+
+  # Shared S3 object store for the s3 backend. Single go-faster/fs server (the same image and command
+  # the cross-engine benchmark uses); its data lives on the fs-data volume across restarts.
+  fs:
+    image: ${FS_IMAGE:-ghcr.io/go-faster/fs:latest}
+    command: ["s3", "--addr", ":9000", "--root", "/data/s3"]
+    volumes:
+      - fs-data:/data/s3
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:9000/"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # Creates the oteldb-s3 bucket once fs is healthy, then exits. oteldb-s3 waits on this completing.
+  fs-init:
+    image: amazon/aws-cli:2.17.0
+    depends_on:
+      fs: { condition: service_healthy }
+    environment:
+      AWS_ACCESS_KEY_ID: bench
+      AWS_SECRET_ACCESS_KEY: benchbench
+      AWS_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        aws --endpoint-url http://fs:9000 s3 mb s3://oteldb-s3 2>/dev/null || true
+        echo "bucket ready"
 
   # oteldb on the embedded engine (--embedded ⇒ `file` backend, no ClickHouse), capped to the same
   # GOMAXPROCS / GOMEMLIMIT the benchmark applies via BENCH_CPUS / BENCH_MEMLIMIT. The PromQL HTTP
   # API is on :9090; Prometheus remote-write ingest on :19291; pprof on :9010 for profiling runs.
   #
-  # Build: the binary is compiled on the host by run.sh (`go build -o oteldb`) and this image just
-  # COPYs it (./Dockerfile) — so `up --build` is instant and a host rebuild swaps oteldb in place.
+  # Build: the binary is compiled on the host by the orchestrator (`go build -o oteldb`) and this
+  # image just COPYs it (./Dockerfile) — so `up --build` is instant. oteldb-s3 shares the same image.
   oteldb:
     build:
       context: .
@@ -79,3 +121,38 @@ services:
       - "127.0.0.1:9010:9010"   # pprof (go tool pprof http://localhost:9010)
       - "127.0.0.1:13133:13133" # health check (/liveness, /readiness) — published for run.sh's poll
       - "127.0.0.1:19291:19291" # Prometheus remote-write ingest
+
+  # oteldb, S3 variant: same host-built binary and --embedded, but the embedded storage engine's
+  # object-store backend is the shared go-faster/fs S3 (bucket oteldb-s3) instead of a local `file`
+  # volume — only the WAL is local. Ports are shifted +3/+2/+1/+1 off the file variant so both run at
+  # once: PromQL :9093, pprof :9012, health :13134, remote-write ingest :19292.
+  oteldb-s3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      fs-init: { condition: service_completed_successfully }
+    command:
+      - --config=/etc/otel/cfg.yml
+      - --embedded
+    volumes:
+      - ./oteldb-s3.yml:/etc/otel/cfg.yml:ro
+      - oteldb-s3-data:/data
+    environment:
+      - PPROF_ADDR=0.0.0.0:9010
+      - OTEL_LOG_LEVEL=info
+      - OTEL_METRICS_EXPORTER=none
+      - OTEL_LOGS_EXPORTER=none
+      - OTEL_TRACES_EXPORTER=none
+      - GOMAXPROCS=${GOMAXPROCS:-4}
+      - GOMEMLIMIT=${GOMEMLIMIT:-1GiB}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:13133/liveness"]
+      interval: 1s
+      timeout: 1s
+      retries: 60
+    ports:
+      - "127.0.0.1:9093:9090"   # PromQL HTTP API (s3 variant)
+      - "127.0.0.1:9012:9010"   # pprof
+      - "127.0.0.1:13134:13133" # health check
+      - "127.0.0.1:19292:19291" # Prometheus remote-write ingest

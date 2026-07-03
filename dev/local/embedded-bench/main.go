@@ -2,16 +2,17 @@
 // engine over HTTP, replacing the previous run.sh. It builds the oteldb (and otelbench) binaries on
 // the host — where the oteldb repo's go.mod replace directives resolve the local storage /
 // promql-engine sources — then drives a thin docker-compose stack (live node_exporter → vmagent as
-// BENCH_NODES hosts → oteldb --embedded on the `file` backend, capped) and runs the canonical query
-// suite via otelbench. Numbers are comparable to the oteldb column of
-// /src/oteldb/benchmark/results/REPORT.md. Alongside the latency numbers it samples the oteldb
-// container's peak resident set size (RSS) over the run and records it in REPORT.md.
+// BENCH_NODES hosts → two oteldb --embedded instances off the same ingest stream: the `file` backend
+// and the go-faster/fs `s3` backend, capped) and runs the canonical query suite against each via
+// otelbench. Numbers are comparable to the oteldb / oteldb-s3 columns of
+// /src/oteldb/benchmark/results/REPORT.md. Alongside the latency numbers it samples each container's
+// peak resident set size (RSS) and renders a side-by-side REPORT.md.
 //
 // Run from this directory:
 //
-//	go run .                                    # BENCH_NODES=10, prewarm 10s, 20 runs/query
-//	go run . -nodes 100                         # match REPORT.md cardinality
-//	go run . -replace                           # rebuild oteldb, swap it in place, re-bench
+//	go run .                                    # nodes=100, prewarm 2m30s, 20 runs/query, both backends
+//	go run . -s3=false                          # bench only the file backend
+//	go run . -prewarm 70m                       # also populate the [30m]/[1h] instant selectors
 //	go run . -gomaxprocs 2 -gomemlimit 1GiB     # tighten caps
 //
 // Run `go run . -h` for all flags.
@@ -48,15 +49,46 @@ type config struct {
 	gomemlimit string
 	goarch     string
 
-	replace bool
 	cleanup bool
+	s3      bool
 
 	concurrency int
 
 	addr     string
+	addrS3   string
 	queries  string
 	benchDir string
 	repoRoot string
+}
+
+// target is one oteldb instance under test: the `file` backend or the S3 (go-faster/fs) backend.
+// Both run off the same live ingest stream; the orchestrator benches each and reports side by side.
+type target struct {
+	name      string // "file" | "s3" — the column label in REPORT.md.
+	service   string // docker compose service name (for RSS sampling + log tailing).
+	promAddr  string // PromQL HTTP API base, e.g. http://127.0.0.1:9090.
+	healthURL string // /liveness URL for the health poll.
+}
+
+// targets returns the instances to bench: always `file`, plus `s3` unless it was disabled with
+// -s3=false. Health URLs are the PromQL address with the port swapped to the published health port
+// (13133 for file, 13134 for s3), matching docker-compose.yml.
+func (cfg config) targets() []target {
+	ts := []target{{
+		name:      "file",
+		service:   "oteldb",
+		promAddr:  cfg.addr,
+		healthURL: strings.Replace(cfg.addr, ":9090", ":13133", 1) + "/liveness",
+	}}
+	if cfg.s3 {
+		ts = append(ts, target{
+			name:      "s3",
+			service:   "oteldb-s3",
+			promAddr:  cfg.addrS3,
+			healthURL: strings.Replace(cfg.addrS3, ":9093", ":13134", 1) + "/liveness",
+		})
+	}
+	return ts
 }
 
 func main() {
@@ -78,31 +110,38 @@ func run() error {
 		return err
 	}
 
-	// In REPLACE mode the stack is assumed up (node-exporter/vmagent/data volume keep running);
-	// rebuild the one-copy-layer image, swap oteldb, wait for health, then bench. No teardown.
-	if cfg.replace {
-		return replaceAndBench(cfg)
-	}
-
 	// Full bring-up. Tear down on exit unless -cleanup=false.
 	defer maybeCleanup(cfg)
 	if err := fullBringup(cfg); err != nil {
 		return err
 	}
 
-	// Prewarm: let vmagent remote-write enough history for the suite's range vectors.
-	// -prewarm=10s covers [1m]/[5m]; [30m]/[1h] (topk_free_mem, load_quantile) need 30m/70m to be
+	// Prewarm: let vmagent remote-write enough history that the [now-lookback, now] window the range
+	// queries scan is fully populated with flushed parts. The default (2m30s) covers the 120s lookback;
+	// the [30m]/[1h] instant selectors (topk_free_mem, load_quantile) still want -prewarm 70m to be
 	// fully populated — oteldb still answers over whatever has arrived (--allow-empty keeps it going).
 	fmt.Printf(">> Prewarming ingest for %s (nodes=%d ⇒ ~%d series)\n", cfg.prewarm, cfg.nodes, cfg.nodes*1400)
 	time.Sleep(cfg.prewarm)
 
-	// Gate on data: the per-tenant engine is created lazily on the first write, so before vmagent's
-	// first remote-write lands the count() pushdown sees an empty fetcher and 422s. Poll a trivial
-	// selector until it returns a sample — guarantees the engine exists before the suite runs.
-	if err := waitData(cfg); err != nil {
-		return err
+	return benchTargets(cfg)
+}
+
+// benchTargets gates each instance on data (the per-tenant engine is created lazily on the first
+// write, so before vmagent's first remote-write lands the count() pushdown sees an empty fetcher and
+// 422s), benches it, then renders one side-by-side report from the collected results.
+func benchTargets(cfg config) error {
+	var results []targetResult
+	for _, tgt := range cfg.targets() {
+		if err := waitData(cfg, tgt); err != nil {
+			return err
+		}
+		res, err := bench(cfg, tgt)
+		if err != nil {
+			return err
+		}
+		results = append(results, res)
 	}
-	return bench(cfg)
+	return renderComparison(cfg, results)
 }
 
 func loadConfig() (config, error) {
@@ -121,7 +160,11 @@ func loadConfig() (config, error) {
 	}
 
 	flag.IntVar(&cfg.nodes, "nodes", envInt("BENCH_NODES", 100), "synthetic node_exporter hosts vmagent fans out (~1400 series each)")
-	flag.DurationVar(&cfg.prewarm, "prewarm", envDur("PREWARM", 10*time.Second), "ingest window before querying")
+	// Default prewarm covers the 120s lookback with margin. The measured cost is dominated by how many
+	// flushed parts the query window spans, so a prewarm shorter than the lookback leaves the window
+	// only partially populated and the numbers collapse to unrepresentatively fast (and never exercise
+	// the s3 read path). The benchmark's own rule: lookback ≤ prewarm. See loadConfig's warning below.
+	flag.DurationVar(&cfg.prewarm, "prewarm", envDur("PREWARM", 150*time.Second), "ingest window before querying (must be ≥ -lookback to fully populate it)")
 	flag.IntVar(&cfg.runs, "runs", envInt("BENCH_RUNS", 20), "measured runs per query (after warmup)")
 	flag.IntVar(&cfg.warmup, "warmup", envInt("BENCH_WARMUP", 5), "unmeasured warmup runs")
 	flag.DurationVar(&cfg.lookback, "lookback", envDur("LOOKBACK", 120*time.Second), "range-query window back from now")
@@ -131,19 +174,27 @@ func loadConfig() (config, error) {
 	flag.StringVar(&cfg.gomemlimit, "gomemlimit", envStr("GOMEMLIMIT", "1GiB"), "oteldb soft memory cap")
 	flag.StringVar(&cfg.goarch, "goarch", envStr("GOARCH", "amd64"), "target arch (matches the container)")
 
-	flag.BoolVar(&cfg.replace, "replace", envBool("REPLACE", false), "rebuild oteldb, swap it in place (stack already up), re-bench")
-	flag.BoolVar(&cfg.cleanup, "cleanup", !cfg.replace, "tear the stack down on exit (default true unless -replace)")
+	flag.BoolVar(&cfg.cleanup, "cleanup", envBool("CLEANUP", true), "tear the stack down on exit (-cleanup=false leaves it up to re-run / grab pprof)")
+	flag.BoolVar(&cfg.s3, "s3", envBool("BENCH_S3", true), "also bench the S3 (go-faster/fs) backend alongside the file backend")
 
 	flag.IntVar(&cfg.concurrency, "concurrency", envInt("CONCURRENCY", 8), "concurrent in-flight queries for the verify pass")
 
-	flag.StringVar(&cfg.addr, "addr", envStr("ADDR", "http://127.0.0.1:9090"), "oteldb PromQL API address")
+	flag.StringVar(&cfg.addr, "addr", envStr("ADDR", "http://127.0.0.1:9090"), "oteldb (file backend) PromQL API address")
+	flag.StringVar(&cfg.addrS3, "addr-s3", envStr("ADDR_S3", "http://127.0.0.1:9093"), "oteldb-s3 (S3 backend) PromQL API address")
 	flag.StringVar(&cfg.queries, "queries", envStr("BENCH_QUERIES", "queries.promql.yml"), "otelbench query suite file")
 	flag.Parse()
 
-	// In replace mode, never tear down — we don't own the full stack bring-up.
-	if cfg.replace {
-		cfg.cleanup = false
+	// The range queries evaluate over [now-lookback, now]; that window is only as populated as the
+	// prewarm allows. A prewarm shorter than the lookback measures a mostly-empty window — queries
+	// scan a fraction of the parts they would at steady state and report unrepresentatively low
+	// latencies (and barely touch S3, collapsing the file-vs-s3 gap). Warn rather than hard-fail so a
+	// deliberate quick smoke run (-prewarm 10s) is still possible.
+	if cfg.prewarm < cfg.lookback {
+		fmt.Fprintf(os.Stderr, "!! warning: -prewarm=%s < -lookback=%s: the query window will be under-populated "+
+			"and latencies will read low (not comparable to REPORT.md). Use -prewarm ≥ %s.\n",
+			cfg.prewarm, cfg.lookback, cfg.lookback)
 	}
+
 	return cfg, nil
 }
 
@@ -177,8 +228,12 @@ func fullBringup(cfg config) error {
 	if err := genScrape(cfg); err != nil {
 		return err
 	}
-	fmt.Printf(">> Starting stack (oteldb --embedded on file backend, GOMAXPROCS=%s, GOMEMLIMIT=%s, nodes=%d)\n",
-		cfg.gomaxprocs, cfg.gomemlimit, cfg.nodes)
+	backends := "file backend"
+	if cfg.s3 {
+		backends = "file + s3 backends"
+	}
+	fmt.Printf(">> Starting stack (oteldb --embedded on %s, GOMAXPROCS=%s, GOMEMLIMIT=%s, nodes=%d)\n",
+		backends, cfg.gomaxprocs, cfg.gomemlimit, cfg.nodes)
 	// docker compose picks up GOMAXPROCS/GOMEMLIMIT from our env via the compose ${VAR:-…} substitution.
 	cmd := exec.Command("docker", "compose", "up", "-d", "--build", "--remove-orphans")
 	cmd.Dir = cfg.benchDir
@@ -187,28 +242,17 @@ func fullBringup(cfg config) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("docker compose up: %w", err)
 	}
-	return waitHealth(cfg)
+	return waitHealthAll(cfg)
 }
 
-func replaceAndBench(cfg config) error {
-	fmt.Println(">> REPLACE: rebuilding oteldb image (one COPY layer) and swapping the container in place")
-	fmt.Println(">>   (node-exporter / vmagent / data volume keep running — no re-ingest)")
-	cmd := exec.Command("docker", "compose", "up", "-d", "--build", "--force-recreate", "--no-deps", "oteldb")
-	cmd.Dir = cfg.benchDir
-	wire(cmd)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker compose up (replace): %w", err)
+// waitHealthAll waits for every benched instance's /liveness to answer.
+func waitHealthAll(cfg config) error {
+	for _, tgt := range cfg.targets() {
+		if err := waitHealth(cfg, tgt); err != nil {
+			return err
+		}
 	}
-	if err := waitHealth(cfg); err != nil {
-		return err
-	}
-	if err := waitData(cfg); err != nil {
-		return err
-	}
-	// vmagent kept remote-writing, so the new oteldb's head refills within a couple scrapes.
-	fmt.Println(">> Settling 5s for ingest to refill the new oteldb head")
-	time.Sleep(5 * time.Second)
-	return bench(cfg)
+	return nil
 }
 
 // genScrape writes vmagent's scrape config: one node_exporter × BENCH_NODES synthetic hosts.
@@ -225,12 +269,12 @@ func genScrape(cfg config) error {
 
 // waitHealth polls oteldb's published /liveness port until it answers or the deadline expires.
 // On timeout it tails oteldb logs + status so a crash/config error is visible.
-func waitHealth(cfg config) error {
-	fmt.Printf(">> Waiting for oteldb health (up to %s)\n", cfg.healthWait)
+func waitHealth(cfg config, tgt target) error {
+	fmt.Printf(">> Waiting for %s (%s) health (up to %s)\n", tgt.service, tgt.name, cfg.healthWait)
 	client := &http.Client{Timeout: time.Second}
 	deadline := time.Now().Add(cfg.healthWait)
 	for time.Now().Before(deadline) {
-		resp, err := client.Get(cfg.addrLiveness())
+		resp, err := client.Get(tgt.healthURL)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -242,77 +286,88 @@ func waitHealth(cfg config) error {
 		time.Sleep(time.Second)
 	}
 	fmt.Println()
-	fmt.Fprintln(os.Stderr, "!! oteldb did not become healthy; tailing logs:")
-	_ = composeLogs(cfg, "oteldb", 100)
+	fmt.Fprintf(os.Stderr, "!! %s did not become healthy; tailing logs:\n", tgt.service)
+	_ = composeLogs(cfg, tgt.service, 100)
 	fmt.Fprintln(os.Stderr, "!! container status:")
 	_ = composePs(cfg)
-	return errors.New("oteldb health check timed out")
+	return fmt.Errorf("%s health check timed out", tgt.service)
 }
 
-func (c config) addrLiveness() string {
-	// The PromQL API is on :9090; the health endpoint is the same host on :13133.
-	return strings.Replace(c.addr, ":9090", ":13133", 1) + "/liveness"
+// targetResult holds one instance's benched numbers: the per-query latency samples (parsed from the
+// otelbench report) in suite order, plus the peak RSS sampled across the run. renderComparison turns
+// a slice of these into the side-by-side REPORT.md.
+type targetResult struct {
+	target  target
+	order   []string             // query titles in suite order.
+	groups  map[string][]float64 // title → latency samples in nanoseconds.
+	peakRSS int64                // peak container RSS in bytes (0 if unsampled).
 }
 
 // bench runs a result-verification pass (one query each, asserting non-empty and positive counts),
-// then the warmup + measured timing passes. The verification pass exists because otelbench reports
-// only latency — a query that silently returns the empty vector (or {0} for a count) still counts
-// as a "successful" run, so a correctness regression surfaces as faster numbers, not a failure.
-func bench(cfg config) error {
+// then the warmup + measured timing passes, against one instance. The verification pass exists
+// because otelbench reports only latency — a query that silently returns the empty vector (or {0}
+// for a count) still counts as a "successful" run, so a correctness regression surfaces as faster
+// numbers, not a failure. It returns the parsed report + peak RSS for the side-by-side render.
+func bench(cfg config, tgt target) (targetResult, error) {
 	end := time.Now()
 	start := end.Add(-cfg.lookback)
 
-	// Sample the oteldb container's resident set size across the whole bench (verify + warmup +
-	// measured), tracking the peak. RSS is the headline memory cost to pair with the latency numbers:
-	// the file backend mmaps its parts, so the peak shows the real footprint under GOMEMLIMIT.
+	fmt.Printf(">> [%s] Benching %s at %s\n", tgt.name, tgt.service, tgt.promAddr)
+
+	// Sample the instance's resident set size across the whole bench (verify + warmup + measured),
+	// tracking the peak. RSS is the headline memory cost to pair with the latency numbers.
 	stopRSS := make(chan struct{})
-	peakRSSCh := sampleRSS(cfg, stopRSS)
+	peakRSSCh := sampleRSS(cfg, tgt.service, stopRSS)
+	drainRSS := func() int64 { close(stopRSS); return <-peakRSSCh }
 
-	fmt.Printf(">> Verify (one query each, %d concurrent; non-empty + positive counts)\n", cfg.concurrency)
-	if err := verify(cfg, start, end); err != nil {
-		close(stopRSS)
-		<-peakRSSCh
-		return err
+	fmt.Printf(">> [%s] Verify (one query each, %d concurrent; non-empty + positive counts)\n", tgt.name, cfg.concurrency)
+	if err := verify(cfg, tgt, start, end); err != nil {
+		drainRSS()
+		return targetResult{}, err
 	}
 
-	fmt.Printf(">> Warmup (%d runs/query, unmeasured)\n", cfg.warmup)
-	if err := runOtelbench(cfg, 0, cfg.warmup, start, end, ""); err != nil {
-		close(stopRSS)
-		<-peakRSSCh
-		return err
+	fmt.Printf(">> [%s] Warmup (%d runs/query, unmeasured)\n", tgt.name, cfg.warmup)
+	if err := runOtelbench(cfg, tgt, 0, cfg.warmup, start, end, ""); err != nil {
+		drainRSS()
+		return targetResult{}, err
 	}
 
-	fmt.Printf(">> Benchmark (%d measured runs/query, window %s)\n", cfg.runs, cfg.lookback)
-	report := filepath.Join(cfg.benchDir, "report.yml")
-	if err := runOtelbench(cfg, cfg.runs, 0, start, end, report); err != nil {
-		close(stopRSS)
-		<-peakRSSCh
-		return err
+	fmt.Printf(">> [%s] Benchmark (%d measured runs/query, window %s)\n", tgt.name, cfg.runs, cfg.lookback)
+	report := filepath.Join(cfg.benchDir, "report-"+tgt.name+".yml")
+	if err := runOtelbench(cfg, tgt, cfg.runs, 0, start, end, report); err != nil {
+		drainRSS()
+		return targetResult{}, err
 	}
 
-	close(stopRSS)
-	peakRSS := <-peakRSSCh
+	peakRSS := drainRSS()
 	if peakRSS > 0 {
-		fmt.Printf(">> Peak oteldb RSS during bench: %s\n", humanBytes(peakRSS))
+		fmt.Printf(">> [%s] Peak RSS during bench: %s\n", tgt.name, humanBytes(peakRSS))
 	} else {
-		fmt.Fprintln(os.Stderr, "!! warning: could not sample oteldb RSS (docker compose exec failed)")
+		fmt.Fprintf(os.Stderr, "!! [%s] warning: could not sample RSS (docker compose exec failed)\n", tgt.name)
 	}
 
-	fmt.Printf(">> Report written to %s\n", report)
-	if err := renderReport(cfg, report, peakRSS); err != nil {
-		// Non-fatal: the raw report.yml is still there; the markdown render is a convenience.
-		fmt.Fprintf(os.Stderr, "!! warning: render REPORT.md: %v\n", err)
+	order, groups, err := parseReport(cfg, report)
+	if err != nil {
+		return targetResult{}, err
 	}
-	return nil
+	return targetResult{target: tgt, order: order, groups: groups, peakRSS: peakRSS}, nil
 }
 
 // sampleRSS polls the oteldb container's RSS (VmRSS from /proc/1/status, where the static oteldb
 // binary runs as PID 1) every 500ms until stop is closed, then sends the peak in bytes. A failed
 // poll (container momentarily unavailable) is skipped; a peak of 0 means no poll ever succeeded.
-func sampleRSS(cfg config, stop <-chan struct{}) <-chan int64 {
+func sampleRSS(cfg config, service string, stop <-chan struct{}) <-chan int64 {
 	out := make(chan int64, 1)
 	go func() {
 		var peak int64
+		sample := func() {
+			if rss, ok := readRSS(cfg, service); ok && rss > peak {
+				peak = rss
+			}
+		}
+		// Take one reading immediately so even a sub-tick-length bench (e.g. a small -nodes / -runs
+		// smoke run that finishes in under 500ms) still records a non-zero peak.
+		sample()
 		t := time.NewTicker(500 * time.Millisecond)
 		defer t.Stop()
 		for {
@@ -321,19 +376,17 @@ func sampleRSS(cfg config, stop <-chan struct{}) <-chan int64 {
 				out <- peak
 				return
 			case <-t.C:
-				if rss, ok := readRSS(cfg); ok && rss > peak {
-					peak = rss
-				}
+				sample()
 			}
 		}
 	}()
 	return out
 }
 
-// readRSS reads VmRSS from the oteldb container's /proc/1/status via `docker compose exec`, returning
+// readRSS reads VmRSS from the given container's /proc/1/status via `docker compose exec`, returning
 // the resident set size in bytes.
-func readRSS(cfg config) (int64, bool) {
-	cmd := exec.Command("docker", "compose", "exec", "-T", "oteldb", "cat", "/proc/1/status")
+func readRSS(cfg config, service string) (int64, bool) {
+	cmd := exec.Command("docker", "compose", "exec", "-T", service, "cat", "/proc/1/status")
 	cmd.Dir = cfg.benchDir
 	out, err := cmd.Output()
 	if err != nil {
@@ -493,7 +546,7 @@ func verifyOne(client *http.Client, addr string, q benchQuery, start, end time.T
 	return verifyResult{line: fmt.Sprintf("   %-32s ok (%d series)\n", q.title, len(resp.Data.Result))}
 }
 
-func verify(cfg config, start, end time.Time) error {
+func verify(cfg config, tgt target, start, end time.Time) error {
 	qPath := cfg.queries
 	if !filepath.IsAbs(qPath) {
 		qPath = filepath.Join(cfg.benchDir, qPath)
@@ -516,7 +569,7 @@ func verify(cfg config, start, end time.Time) error {
 		go func(i int, q benchQuery) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			results[i] = verifyOne(client, cfg.addr, q, start, end)
+			results[i] = verifyOne(client, tgt.promAddr, q, start, end)
 		}(i, q)
 	}
 	wg.Wait()
@@ -618,13 +671,13 @@ func parseJSONSample(pair [2]any) (float64, bool) {
 	return f, err == nil
 }
 
-// renderReport writes a human-readable REPORT.md (p50/p90/p99 per query) by parsing the benchstat
-// rows otelbench emits for report.yml.
-func renderReport(cfg config, reportPath string, peakRSS int64) error {
+// parseReport runs `otelbench promql analyze` over one instance's report and returns its per-query
+// latency samples (nanoseconds) keyed by title, plus the titles in suite order.
+func parseReport(cfg config, reportPath string) ([]string, map[string][]float64, error) {
 	out, err := exec.Command(filepath.Join(cfg.benchDir, "otelbench"),
 		"promql", "analyze", "-f", "benchstat", "-i", reportPath).Output()
 	if err != nil {
-		return fmt.Errorf("otelbench analyze: %w", err)
+		return nil, nil, fmt.Errorf("otelbench analyze: %w", err)
 	}
 
 	// benchstat line: `BenchmarkPromQL/<Title> 0 <nanos> ns/op [extra cols…]`
@@ -648,31 +701,68 @@ func renderReport(cfg config, reportPath string, peakRSS int64) error {
 		}
 		groups[title] = append(groups[title], nanos)
 	}
+	return order, groups, nil
+}
+
+// renderComparison writes a human-readable REPORT.md placing each benched backend side by side:
+// p50/p90/p99/max per query for every instance, plus each instance's peak RSS. With only the file
+// backend selected (-s3=false) it degenerates to the single-backend table.
+func renderComparison(cfg config, results []targetResult) error {
+	if len(results) == 0 {
+		return errors.New("no results to render")
+	}
 
 	var b strings.Builder
 	fmt.Fprintln(&b, "# embedded-bench — oteldb PromQL report")
 	fmt.Fprintln(&b)
-	fmt.Fprintf(&b, "_oteldb `--embedded` on the `file` backend, GOMAXPROCS=%s GOMEMLIMIT=%s, "+
-		"nodes=%d (~%d series), window=%s, %d runs/query_\n",
-		cfg.gomaxprocs, cfg.gomemlimit, cfg.nodes, cfg.nodes*1400, cfg.lookback, cfg.runs)
-	fmt.Fprintln(&b)
-	if peakRSS > 0 {
-		fmt.Fprintf(&b, "Peak oteldb RSS during bench: **%s**.\n", humanBytes(peakRSS))
-		fmt.Fprintln(&b)
+	backends := make([]string, len(results))
+	for i, r := range results {
+		backends[i] = "`" + r.target.name + "`"
 	}
+	fmt.Fprintf(&b, "_oteldb `--embedded`, backends: %s, GOMAXPROCS=%s GOMEMLIMIT=%s, "+
+		"nodes=%d (~%d series), window=%s, %d runs/query_\n",
+		strings.Join(backends, " vs "), cfg.gomaxprocs, cfg.gomemlimit, cfg.nodes, cfg.nodes*1400, cfg.lookback, cfg.runs)
+	fmt.Fprintln(&b)
+
+	// Peak RSS per backend.
+	for _, r := range results {
+		if r.peakRSS > 0 {
+			fmt.Fprintf(&b, "- Peak `%s` RSS during bench: **%s**.\n", r.target.name, humanBytes(r.peakRSS))
+		}
+	}
+	fmt.Fprintln(&b)
 	fmt.Fprintln(&b, "Latencies in milliseconds.")
 	fmt.Fprintln(&b)
-	b.WriteString("| query | runs | p50 | p90 | p99 | max |\n")
-	b.WriteString("|---|---:|---:|---:|---:|---:|\n")
+
+	// Header: query | runs | <backend> p50 | p90 | p99 | max | … per backend.
+	b.WriteString("| query | runs |")
+	for _, r := range results {
+		fmt.Fprintf(&b, " %s p50 | p90 | p99 | max |", r.target.name)
+	}
+	b.WriteString("\n|---|---:|")
+	for range results {
+		b.WriteString("---:|---:|---:|---:|")
+	}
+	b.WriteString("\n")
+
+	// Row order follows the first backend's suite order (identical across backends — same suite).
+	order := results[0].order
 	if len(order) == 0 {
-		b.WriteString("| _no parsed rows_ | | | | | |\n")
+		b.WriteString("| _no parsed rows_ |\n")
 	}
 	for _, title := range order {
-		xs := groups[title]
-		slices.Sort(xs)
-		fmt.Fprintf(&b, "| `%s` | %d | %.1f | %.1f | %.1f | %.1f |\n",
-			humanTitle(title), len(xs),
-			ms(pct(xs, 0.50)), ms(pct(xs, 0.90)), ms(pct(xs, 0.99)), ms(xs[len(xs)-1]))
+		fmt.Fprintf(&b, "| `%s` | %d |", humanTitle(title), len(results[0].groups[title]))
+		for _, r := range results {
+			xs := append([]float64(nil), r.groups[title]...)
+			if len(xs) == 0 {
+				b.WriteString(" — | — | — | — |")
+				continue
+			}
+			slices.Sort(xs)
+			fmt.Fprintf(&b, " %.1f | %.1f | %.1f | %.1f |",
+				ms(pct(xs, 0.50)), ms(pct(xs, 0.90)), ms(pct(xs, 0.99)), ms(xs[len(xs)-1]))
+		}
+		b.WriteString("\n")
 	}
 
 	report := filepath.Join(cfg.benchDir, "REPORT.md")
@@ -709,7 +799,7 @@ func humanTitle(title string) string {
 
 // runOtelbench invokes the host-built otelbench binary with the suite + window. reportOut is empty
 // for the unmeasured warmup pass (otelbench then prints but writes no file).
-func runOtelbench(cfg config, count, warmup int, start, end time.Time, reportOut string) error {
+func runOtelbench(cfg config, tgt target, count, warmup int, start, end time.Time, reportOut string) error {
 	// Resolve the queries file relative to the bench dir regardless of cwd.
 	qPath := cfg.queries
 	if !filepath.IsAbs(qPath) {
@@ -717,7 +807,7 @@ func runOtelbench(cfg config, count, warmup int, start, end time.Time, reportOut
 	}
 	args := []string{
 		"promql", "bench",
-		"--addr", cfg.addr,
+		"--addr", tgt.promAddr,
 		"-i", qPath,
 		"--warmup", strconv.Itoa(warmup),
 		"--count", strconv.Itoa(count),
@@ -738,21 +828,21 @@ func runOtelbench(cfg config, count, warmup int, start, end time.Time, reportOut
 
 func maybeCleanup(cfg config) {
 	if cfg.cleanup {
-		fmt.Println(">> Stopping (-cleanup=false to keep the stack up for -replace runs)")
+		fmt.Println(">> Stopping (-cleanup=false to keep the stack up to re-run / grab pprof)")
 		_ = exec.Command("docker", "compose", "down", "-v").Run()
 		return
 	}
-	fmt.Printf(">> Leaving stack up: oteldb at %s, pprof at http://127.0.0.1:9010\n", cfg.addr)
-	fmt.Println(">>   iterate with: go run . -replace")
+	fmt.Printf(">> Leaving stack up: oteldb (file) at %s, oteldb-s3 at %s\n", cfg.addr, cfg.addrS3)
+	fmt.Println(">>   pprof: file http://127.0.0.1:9010, s3 http://127.0.0.1:9012")
 }
 
 // waitData polls a trivial selector until it returns a sample, guaranteeing the per-tenant engine
 // exists (it is created lazily on first write) before the count() pushdown runs. Without this the
 // suite's count({...}) query races vmagent's first remote-write and 422s with "count pushdown not
 // supported by fetcher" — the empty pre-write fetcher is not a Counter.
-func waitData(cfg config) error {
-	fmt.Printf(">> Waiting for first queryable sample (up to %s)\n", cfg.healthWait)
-	q := cfg.addr + "/api/v1/query?query=node_load1"
+func waitData(cfg config, tgt target) error {
+	fmt.Printf(">> [%s] Waiting for first queryable sample (up to %s)\n", tgt.name, cfg.healthWait)
+	q := tgt.promAddr + "/api/v1/query?query=node_load1"
 	deadline := time.Now().Add(cfg.healthWait)
 	client := &http.Client{Timeout: 2 * time.Second}
 	for time.Now().Before(deadline) {
