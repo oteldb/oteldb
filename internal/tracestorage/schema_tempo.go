@@ -46,6 +46,20 @@ func (span Span) AsTempoSpan() (s tempoapi.TempoSpan) {
 	return s
 }
 
+// AsTempoSpanFiltered is like [Span.AsTempoSpan], but only attributes whose
+// key is in allowed are converted.
+func (span Span) AsTempoSpanFiltered(allowed map[string]struct{}) (s tempoapi.TempoSpan) {
+	s = tempoapi.TempoSpan{
+		SpanID:            span.SpanID.Hex(),
+		Name:              tempoapi.NewOptString(span.Name),
+		StartTimeUnixNano: time.Unix(0, int64(span.Start)),
+		DurationNanos:     int64(span.End - span.Start),
+		Attributes:        nil,
+	}
+	ConvertToTempoAttrsFiltered(&s.Attributes, span.Attrs, allowed)
+	return s
+}
+
 // ConvertToTempoAttrs converts [otelstorage.Attrs] to Tempo API attributes.
 func ConvertToTempoAttrs(to *tempoapi.Attributes, from otelstorage.Attrs) {
 	if from.IsZero() {
@@ -54,6 +68,25 @@ func ConvertToTempoAttrs(to *tempoapi.Attributes, from otelstorage.Attrs) {
 	m := from.AsMap()
 	*to = slices.Grow(*to, m.Len())
 	m.Range(func(k string, v pcommon.Value) bool {
+		*to = append(*to, tempoapi.KeyValue{
+			Key:   k,
+			Value: otelToTempoValue(v),
+		})
+		return true
+	})
+}
+
+// ConvertToTempoAttrsFiltered is like [ConvertToTempoAttrs], but only
+// attributes whose key is in allowed are converted.
+func ConvertToTempoAttrsFiltered(to *tempoapi.Attributes, from otelstorage.Attrs, allowed map[string]struct{}) {
+	if from.IsZero() || len(allowed) == 0 {
+		return
+	}
+	m := from.AsMap()
+	m.Range(func(k string, v pcommon.Value) bool {
+		if _, ok := allowed[k]; !ok {
+			return true
+		}
 		*to = append(*to, tempoapi.KeyValue{
 			Key:   k,
 			Value: otelToTempoValue(v),
