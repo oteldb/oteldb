@@ -594,10 +594,11 @@ func runTest(
 			a.Equal(int64(expectSpan.StartTimestamp()), start)
 			a.Equal(int64(expectSpan.EndTimestamp()), end)
 
-			a.Equal(
-				getRawMapFromAPI(gotSpan.Attributes),
-				expectSpan.Attributes().AsRaw(),
-			)
+			// TraceQL search only propagates attributes referenced by the
+			// query, so the API response is a subset of the raw span
+			// attributes (unlike logfmt tag search, which returns full
+			// span attributes and is thus an exact match).
+			assertAttrsSubset(a, expectSpan.Attributes().AsRaw(), getRawMapFromAPI(gotSpan.Attributes))
 		}
 	}
 
@@ -881,6 +882,16 @@ func runTest(
 			a.Empty(r.Traces)
 		})
 	})
+}
+
+// assertAttrsSubset asserts that every key/value pair in got is present
+// with the same value in want.
+func assertAttrsSubset(a *require.Assertions, want, got map[string]any) {
+	for k, gotVal := range got {
+		wantVal, ok := want[k]
+		a.Truef(ok, "unexpected attribute %q", k)
+		a.Equalf(wantVal, gotVal, "attribute %q", k)
+	}
 }
 
 func getRawMapFromAPI(obj []tempoapi.KeyValue) map[string]any {
