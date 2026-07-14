@@ -98,6 +98,9 @@ func (e *Engine) evalExpr(ctx context.Context, expr traceql.Expr, params EvalPar
 	if err != nil {
 		return nil, errors.Wrap(err, "build pipeline")
 	}
+	// Only propagate attributes actually referenced by the query, matching
+	// Tempo's search API behavior. See [referencedAttributes].
+	allowedAttrs := referencedAttributes(expr)
 
 	iter, err := e.querier.SelectSpansets(
 		ctx,
@@ -184,12 +187,12 @@ func (e *Engine) evalExpr(ctx context.Context, expr traceql.Expr, params EvalPar
 
 			var spans tempoapi.TempoSpanSet
 			for _, span := range s.Spans {
-				spans.Spans = append(spans.Spans, span.AsTempoSpan())
+				spans.Spans = append(spans.Spans, span.AsTempoSpanFiltered(allowedAttrs))
 			}
 
-			// Add attributes from root.
-			tracestorage.ConvertToTempoAttrs(&spans.Attributes, root.ScopeAttrs)
-			tracestorage.ConvertToTempoAttrs(&spans.Attributes, root.ResourceAttrs)
+			// Add attributes from root, referenced by the query only.
+			tracestorage.ConvertToTempoAttrsFiltered(&spans.Attributes, root.ScopeAttrs, allowedAttrs)
+			tracestorage.ConvertToTempoAttrsFiltered(&spans.Attributes, root.ResourceAttrs, allowedAttrs)
 			result = append(result, tempoapi.TraceSearchMetadata{
 				TraceID:           s.TraceID.Hex(),
 				RootServiceName:   tempoapi.NewOptString(s.RootServiceName),
