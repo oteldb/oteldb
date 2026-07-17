@@ -18,8 +18,13 @@ import (
 )
 
 // BenchmarkLogQLStreamSelector measures a resource-label stream selector over a high-cardinality
-// dataset (many services). The embedded querier offloads the equality matcher to the postings index,
-// so only the selected stream's records are fetched and materialized instead of every service's.
+// dataset (many services). The embedded querier offloads the matcher to the postings index, so only
+// the selected streams' records are fetched and materialized instead of every service's.
+//
+// The cases vary how much the selector prunes. Equality and a regexp selecting one service leave a
+// single stream; an alternation leaves two; a match-all regexp leaves every stream, so it measures
+// the pushdown when there is nothing to prune. MatchAllUnpushable (`!=` on a label no stream has)
+// matches the empty string, so it cannot be pushed and is resolved after the fetch.
 func BenchmarkLogQLStreamSelector(b *testing.B) {
 	ctx := context.Background()
 
@@ -57,14 +62,26 @@ func BenchmarkLogQLStreamSelector(b *testing.B) {
 		Direction: logqlengine.DirectionForward,
 		Limit:     10000,
 	}
-	query, err := engine.NewQuery(ctx, `{service_name="svc-07"}`)
-	require.NoError(b, err)
+	for _, tt := range []struct {
+		name, query string
+	}{
+		{"Equality", `{service_name="svc-07"}`},
+		{"Regexp", `{service_name=~"svc-07"}`},
+		{"RegexpAlternation", `{service_name=~"svc-0(7|8)"}`},
+		{"RegexpMatchAll", `{service_name=~"svc-.+"}`},
+		{"MatchAllUnpushable", `{service_name=~"svc-.+", missing!="x"}`},
+	} {
+		query, err := engine.NewQuery(ctx, tt.query)
+		require.NoError(b, err)
 
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if _, err := query.Eval(ctx, params); err != nil {
-			b.Fatal(err)
-		}
+		b.Run(tt.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := query.Eval(ctx, params); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
