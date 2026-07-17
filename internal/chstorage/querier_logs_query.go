@@ -670,6 +670,14 @@ func (q *Querier) lineFilter(m logql.LineFilter, c *tokenCollector) (e chsql.Exp
 			}
 			return chsql.Contains("body", by.Value)
 		case logql.OpRe, logql.OpNotRe:
+			if len(m.Or) == 0 && op != logql.OpNotRe && !by.IP {
+				// Extract the literals a match must contain and add them as hasToken skip-index
+				// prefilters, pruning parts whose bloom lacks a required token. SkipFirstLastToken
+				// keeps only whole tokens, since the pattern is an unanchored substring match.
+				for _, lit := range chsql.RegexpLiterals(by.Value) {
+					c.Add(chsql.SkipFirstLastToken(lit))
+				}
+			}
 			return chsql.Match(chsql.Ident("body"), chsql.String(by.Value))
 		default:
 			panic(fmt.Sprintf("unexpected line matcher op %v", m.Op))
