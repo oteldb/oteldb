@@ -574,27 +574,34 @@ func runTest(
 		}
 	})
 	t.Run("Explain", func(t *testing.T) {
+		// A `|=` literal only yields hasToken prefilters for tokens that a separator bounds on both
+		// sides within it: the edge tokens of a substring match may be fragments of a larger token
+		// in the body ("HEAD" occurs inside "xHEADy"), so prefiltering on them would prune a
+		// granule holding a real match. A bare word therefore adds no prefilter, while a quoted
+		// JSON fragment still does.
 		for i, tt := range []struct {
-			query    string
-			contains []string
+			query       string
+			contains    []string
+			notContains []string
 		}{
 			{
 				`{http_method=~".+"} |= "HEAD"`,
 				[]string{
 					`Offloading line filters.+|=`,
 					`Pipeline could be fully offloaded to Clickhouse`,
-					`Adding hasToken.+HEAD`,
 				},
+				[]string{`Adding hasToken.+HEAD`},
 			},
 			{
 				`{http_method=~".+"} |= "HEAD" |= "\"error\": \"ENOENT\""`,
 				[]string{
 					`Offloading line filters.+|=`,
 					`Pipeline could be fully offloaded to Clickhouse`,
-					`Adding hasToken.+HEAD`,
+					// Quotes bound both edges, so these stay whole tokens and still prune.
 					`Adding hasToken.+error`,
 					`Adding hasToken.+ENOENT`,
 				},
+				[]string{`Adding hasToken.+HEAD`},
 			},
 			{
 				`{http_method=~".+"} | http_method = "GET"`,
@@ -602,14 +609,15 @@ func runTest(
 					`Offloading pipeline label filters.+http_method=`,
 					`Pipeline could be fully offloaded to Clickhouse`,
 				},
+				nil,
 			},
 			{
 				`{http_method=~".+"} |= "HEAD" | http_method = "GET" | json | status != 200`,
 				[]string{
 					`Offloading line filters.+|=`,
 					`Offloading pipeline label filters.+http_method=`,
-					`Adding hasToken.+HEAD`,
 				},
+				[]string{`Adding hasToken.+HEAD`},
 			},
 
 			{
@@ -617,6 +625,7 @@ func runTest(
 				[]string{
 					`Sampling could be offloaded to Clickhouse`,
 				},
+				nil,
 			},
 			{
 				`sum by (http_method) ( count_over_time({http_method=~".+"} |= "HEAD" [30s]) )`,
@@ -624,8 +633,8 @@ func runTest(
 					`Offloading line filters.+|=`,
 					`Pipeline could be fully offloaded to Clickhouse`,
 					`Sampling could be offloaded to Clickhouse`,
-					`Adding hasToken.+HEAD`,
 				},
+				[]string{`Adding hasToken.+HEAD`},
 			},
 		} {
 			t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
@@ -671,6 +680,19 @@ func runTest(
 							return re.MatchString(s.V)
 						}),
 						"There is should be at least one log entry that matches %q",
+						pattern,
+					)
+				}
+
+				for _, pattern := range tt.notContains {
+					re, err := regexp.Compile(pattern)
+					require.NoError(t, err)
+
+					require.False(t,
+						slices.ContainsFunc(entries, func(s lokiapi.LogEntry) bool {
+							return re.MatchString(s.V)
+						}),
+						"There is should be no log entry that matches %q",
 						pattern,
 					)
 				}

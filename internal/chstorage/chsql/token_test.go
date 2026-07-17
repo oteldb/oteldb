@@ -66,6 +66,9 @@ func TestSkipFirstLastToken(t *testing.T) {
 		{`a.b.c`, `.b.`},         // dot separators
 		{` foo `, ` foo `},       // separators already bound both edges → keep
 		{`помидоры abc огурцы`, ` abc `}, // multibyte edge tokens dropped
+		// Delimiter-bounded edges are already whole tokens, so nothing is stripped and a quoted
+		// JSON fragment still yields prefilters.
+		{`"error": "ENOENT"`, `"error": "ENOENT"`},
 	}
 	for i, tt := range tests {
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
