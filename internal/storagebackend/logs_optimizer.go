@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/oteldb/storage/index/bloom"
 	"github.com/oteldb/storage/query/fetch"
 	"github.com/oteldb/storage/signal"
 	siglog "github.com/oteldb/storage/signal/log"
 
 	"github.com/oteldb/oteldb/internal/logql"
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/xregexp"
 )
 
 // LogQLOptimizer offloads LogQL line filters to the storage fetch layer for the embedded backend.
@@ -20,10 +22,12 @@ import (
 // Match, so the result is identical to evaluating the filter in the engine (the engine still applies
 // the full pipeline on the surviving entries, so the offload only ever skips work).
 //
-// It deliberately does not set a bloom token hint: the body bloom is word-tokenized, so a token hint
-// would wrongly prune a part that holds a sub-word substring match (e.g. `|= "GET"` matching
-// "xGETy"), violating the fetch contract's no-false-negatives guarantee. The offload is therefore a
-// precise per-record prefilter, not a part-pruning hint.
+// The condition also carries a bloom token hint ([bloom.SafeTokens]) so the storage can prune whole
+// parts before scanning. The body bloom is word-tokenized, so the hint keeps only the interior whole
+// tokens of the filter literal and drops its edge tokens, which a sub-word substring match may glue
+// into a larger token (e.g. `|= "GET"` matching "xGETy"). A single-word literal therefore yields no
+// hint (no pruning, but no false negatives), preserving the fetch contract's no-false-negatives
+// guarantee while still pruning on multi-word literals.
 //
 // Add it to a LogQL engine's optimizers when the querier is a storage [LogQuerier]; it is a no-op
 // for any other node type.
@@ -232,21 +236,49 @@ stageLoop:
 	return conds
 }
 
-// lineFilterCondition lowers a positive substring line filter (`|= "x"`) to a body fetch condition
-// with an exact contains Match. Only this shape is offloaded — negated, regexp, IP, and multi-value
-// (`or`) filters are left to the engine.
+// lineFilterCondition lowers a positive line filter to a body fetch condition. A substring filter
+// (`|= "x"`) becomes an exact contains Match plus a safe token hint. A regexp filter (`|~ "re"`) is
+// offloaded only when its required literals yield a token hint, so it prunes parts rather than
+// paying a redundant per-record regexp eval for no benefit. Negated, IP, and multi-value (`or`)
+// filters are left to the engine.
 func lineFilterCondition(lf *logql.LineFilter) (fetch.Condition, bool) {
-	if lf.Op != logql.OpEq || len(lf.Or) > 0 || lf.By.IP || lf.By.Re != nil {
+	if len(lf.Or) > 0 || lf.By.IP {
 		return fetch.Condition{}, false
 	}
-	needle := []byte(lf.By.Value)
-	if len(needle) == 0 {
+
+	switch lf.Op {
+	case logql.OpEq:
+		needle := []byte(lf.By.Value)
+		if len(needle) == 0 {
+			return fetch.Condition{}, false
+		}
+		return fetch.Condition{
+			Column: siglog.ColBody,
+			Match:  func(v signal.Value) bool { return bytes.Contains(valueBytes(v), needle) },
+			// `|=` is an unanchored substring match, so both edges are unpinned.
+			Tokens: bloom.SafeTokens(nil, needle, false, false),
+		}, true
+	case logql.OpRe:
+		re := lf.By.Re
+		if re == nil {
+			return fetch.Condition{}, false
+		}
+		var tokens [][]byte
+		for _, lit := range xregexp.Literals(lf.By.Value) {
+			tokens = bloom.SafeTokens(tokens, []byte(lit), false, false)
+		}
+		if len(tokens) == 0 {
+			// No prunable literal: leave the regexp to the engine rather than eval it twice.
+			return fetch.Condition{}, false
+		}
+		return fetch.Condition{
+			Column: siglog.ColBody,
+			Match:  func(v signal.Value) bool { return re.Match(valueBytes(v)) },
+			Tokens: tokens,
+		}, true
+	default:
 		return fetch.Condition{}, false
 	}
-	return fetch.Condition{
-		Column: siglog.ColBody,
-		Match:  func(v signal.Value) bool { return bytes.Contains(valueBytes(v), needle) },
-	}, true
 }
 
 // valueBytes returns the raw bytes of a string/bytes column value.

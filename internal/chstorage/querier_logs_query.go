@@ -25,6 +25,7 @@ import (
 	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlmetric"
 	"github.com/oteldb/oteldb/internal/logstorage"
 	"github.com/oteldb/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/xregexp"
 )
 
 // ErrLogsTooManySamples means that a LogQL sample query (e.g. count_over_time,
@@ -662,10 +663,22 @@ func (q *Querier) lineFilter(m logql.LineFilter, c *tokenCollector) (e chsql.Exp
 		switch op {
 		case logql.OpEq, logql.OpNotEq:
 			if val := by.Value; len(m.Or) == 0 && op != logql.OpNotEq {
-				c.Add(val)
+				// `|=` is a substring match, so the value's edge tokens may be fragments of a
+				// larger token in the body (`|= "error"` matches "myerror"); adding them as
+				// hasToken skip-index prefilters would wrongly prune real matches. Keep only the
+				// interior whole tokens.
+				c.Add(chsql.SkipFirstLastToken(val))
 			}
 			return chsql.Contains("body", by.Value)
 		case logql.OpRe, logql.OpNotRe:
+			if len(m.Or) == 0 && op != logql.OpNotRe && !by.IP {
+				// Extract the literals a match must contain and add them as hasToken skip-index
+				// prefilters, pruning parts whose bloom lacks a required token. SkipFirstLastToken
+				// keeps only whole tokens, since the pattern is an unanchored substring match.
+				for _, lit := range xregexp.Literals(by.Value) {
+					c.Add(chsql.SkipFirstLastToken(lit))
+				}
+			}
 			return chsql.Match(chsql.Ident("body"), chsql.String(by.Value))
 		default:
 			panic(fmt.Sprintf("unexpected line matcher op %v", m.Op))
