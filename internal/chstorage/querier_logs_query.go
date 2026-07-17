@@ -662,7 +662,11 @@ func (q *Querier) lineFilter(m logql.LineFilter, c *tokenCollector) (e chsql.Exp
 		switch op {
 		case logql.OpEq, logql.OpNotEq:
 			if val := by.Value; len(m.Or) == 0 && op != logql.OpNotEq {
-				c.Add(val)
+				// `|=` is a substring match, so the value's edge tokens may be fragments of a
+				// larger token in the body (`|= "error"` matches "myerror"); adding them as
+				// hasToken skip-index prefilters would wrongly prune real matches. Keep only the
+				// interior whole tokens.
+				c.Add(chsql.SkipFirstLastToken(val))
 			}
 			return chsql.Contains("body", by.Value)
 		case logql.OpRe, logql.OpNotRe:
