@@ -3,7 +3,6 @@ package storagebackend
 import (
 	"bytes"
 	"context"
-	"regexp/syntax"
 
 	"github.com/oteldb/storage/index/bloom"
 	"github.com/oteldb/storage/query/fetch"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/logql"
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
+	"github.com/oteldb/oteldb/internal/xregexp"
 )
 
 // LogQLOptimizer offloads LogQL line filters to the storage fetch layer for the embedded backend.
@@ -264,8 +264,8 @@ func lineFilterCondition(lf *logql.LineFilter) (fetch.Condition, bool) {
 			return fetch.Condition{}, false
 		}
 		var tokens [][]byte
-		for _, lit := range regexpLiterals(lf.By.Value) {
-			tokens = bloom.SafeTokens(tokens, lit, false, false)
+		for _, lit := range xregexp.Literals(lf.By.Value) {
+			tokens = bloom.SafeTokens(tokens, []byte(lit), false, false)
 		}
 		if len(tokens) == 0 {
 			// No prunable literal: leave the regexp to the engine rather than eval it twice.
@@ -278,39 +278,6 @@ func lineFilterCondition(lf *logql.LineFilter) (fetch.Condition, bool) {
 		}, true
 	default:
 		return fetch.Condition{}, false
-	}
-}
-
-// regexpLiterals returns the literal substrings a value must contain to match pattern: the literal
-// runs of a top-level concatenation (every part of a concat must match), descending through captures.
-// Alternation, repetition, character classes, `.` and case-insensitive literals yield nothing, so an
-// un-prunable pattern returns nil. pattern is parsed with Perl flags, matching how the engine
-// compiles the filter. Each literal is a raw substring — the caller must pass it through
-// [bloom.SafeTokens], since an unanchored match may glue the literal's edge tokens onto larger tokens.
-func regexpLiterals(pattern string) [][]byte {
-	re, err := syntax.Parse(pattern, syntax.Perl)
-	if err != nil {
-		return nil
-	}
-	return appendRegexpLiterals(nil, re.Simplify())
-}
-
-func appendRegexpLiterals(dst [][]byte, re *syntax.Regexp) [][]byte {
-	switch re.Op {
-	case syntax.OpLiteral:
-		if re.Flags&syntax.FoldCase != 0 {
-			return dst // case-insensitive: the case-sensitive body bloom cannot test it
-		}
-		return append(dst, []byte(string(re.Rune)))
-	case syntax.OpCapture:
-		return appendRegexpLiterals(dst, re.Sub[0])
-	case syntax.OpConcat:
-		for _, sub := range re.Sub {
-			dst = appendRegexpLiterals(dst, sub)
-		}
-		return dst
-	default:
-		return dst
 	}
 }
 

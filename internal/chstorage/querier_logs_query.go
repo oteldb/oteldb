@@ -25,6 +25,7 @@ import (
 	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlmetric"
 	"github.com/oteldb/oteldb/internal/logstorage"
 	"github.com/oteldb/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/xregexp"
 )
 
 // ErrLogsTooManySamples means that a LogQL sample query (e.g. count_over_time,
@@ -674,7 +675,7 @@ func (q *Querier) lineFilter(m logql.LineFilter, c *tokenCollector) (e chsql.Exp
 				// Extract the literals a match must contain and add them as hasToken skip-index
 				// prefilters, pruning parts whose bloom lacks a required token. SkipFirstLastToken
 				// keeps only whole tokens, since the pattern is an unanchored substring match.
-				for _, lit := range chsql.RegexpLiterals(by.Value) {
+				for _, lit := range xregexp.Literals(by.Value) {
 					c.Add(chsql.SkipFirstLastToken(lit))
 				}
 			}
