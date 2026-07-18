@@ -145,18 +145,20 @@ func decodeValue(d *jx.Decoder, val pcommon.Value) error {
 			return err
 		}
 		if n.IsInt() {
-			v, err := n.Int64()
-			if err != nil {
-				return err
+			if v, err := n.Int64(); err == nil {
+				val.SetInt(v)
+				return nil
 			}
-			val.SetInt(v)
-		} else {
-			v, err := n.Float64()
-			if err != nil {
-				return err
-			}
-			val.SetDouble(v)
+			// An integer outside the int64 range (e.g. a uint64 id/hash) does not fit pcommon's int
+			// value. Preserve it exactly as a string rather than failing the whole block decode.
+			val.SetStr(n.String())
+			return nil
 		}
+		v, err := n.Float64()
+		if err != nil {
+			return err
+		}
+		val.SetDouble(v)
 		return nil
 	case jx.Null:
 		if err := d.Null(); err != nil {

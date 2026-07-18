@@ -189,3 +189,23 @@ func BenchmarkEncodeAttributes(b *testing.B) {
 		b.Fatal("unexpected result")
 	}
 }
+
+func TestDecodeAttributesBigInt(t *testing.T) {
+	// A uint64 attribute value beyond the int64 range must decode without error, preserved as a
+	// string (pcommon's int value is int64-only). Regression: a full-table scan previously crashed
+	// the whole block decode here with "value out of range".
+	attrs, err := decodeAttributes([]byte(`{"id":18446744073709551615}`))
+	require.NoError(t, err)
+	v, ok := attrs.AsMap().Get("id")
+	require.True(t, ok)
+	require.Equal(t, pcommon.ValueTypeStr, v.Type())
+	require.Equal(t, "18446744073709551615", v.Str())
+
+	// An in-range integer still decodes as an int.
+	attrs, err = decodeAttributes([]byte(`{"n":42}`))
+	require.NoError(t, err)
+	v, ok = attrs.AsMap().Get("n")
+	require.True(t, ok)
+	require.Equal(t, pcommon.ValueTypeInt, v.Type())
+	require.Equal(t, int64(42), v.Int())
+}
