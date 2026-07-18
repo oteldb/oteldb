@@ -12,7 +12,7 @@ tool (
 )
 
 require (
-	github.com/ClickHouse/ch-go v0.72.0
+	github.com/ClickHouse/ch-go v0.73.0
 	github.com/MakeNowJust/heredoc/v2 v2.0.1
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/VictoriaMetrics/VictoriaMetrics v1.141.0
