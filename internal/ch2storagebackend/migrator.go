@@ -2,7 +2,11 @@
 // embedded storagebackend engine, by scanning ClickHouse directly (bypassing chstorage's
 // selector-oriented queriers) and re-ingesting the decoded records as OTLP pdata.
 //
-// Only logs and traces are supported so far; metrics are not migrated.
+// Logs, traces, and metrics are supported. Metrics are migrated verbatim: chstorage already
+// stores them as decomposed Prometheus-style series (histograms/summaries exploded into
+// _count/_sum/_bucket{le}/{quantile} series), so each stored series is re-ingested 1:1 as a gauge
+// number point, and exponential histograms (stored natively) are reconstructed as OTLP
+// exponential-histogram datapoints. Exemplars are not migrated (the target engine drops them).
 package ch2storagebackend
 
 import (
@@ -14,6 +18,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/chstorage"
 	"github.com/oteldb/oteldb/internal/logstorage"
+	"github.com/oteldb/oteldb/internal/metricstorage"
 	"github.com/oteldb/oteldb/internal/storagebackend"
 	"github.com/oteldb/oteldb/internal/tracestorage"
 )
@@ -34,10 +39,21 @@ type TracesStats struct {
 	Batches int
 }
 
+// MetricsStats reports the outcome of a [Migrator.MigrateMetrics] run.
+type MetricsStats struct {
+	// Points is the total number of decomposed number points migrated.
+	Points int
+	// ExpHistograms is the total number of exponential-histogram datapoints migrated.
+	ExpHistograms int
+	// Batches is the number of batches ConsumeMetrics was called with.
+	Batches int
+}
+
 // Migrator copies data from chstorage's ClickHouse tables into a [storagebackend.Backend].
 type Migrator struct {
 	logs     *chstorage.LogsSource
 	traces   *chstorage.TracesSource
+	metrics  *chstorage.MetricsSource
 	back     *storagebackend.Backend
 	logger   *zap.Logger
 	throttle time.Duration
@@ -61,10 +77,11 @@ func NewMigrator(client chstorage.ClickHouseClient, tables chstorage.Tables, bac
 		logger = zap.NewNop()
 	}
 	m := &Migrator{
-		logs:   chstorage.NewLogsSource(client, tables, logger.Named("logs_source")),
-		traces: chstorage.NewTracesSource(client, tables, logger.Named("traces_source")),
-		back:   back,
-		logger: logger,
+		logs:    chstorage.NewLogsSource(client, tables, logger.Named("logs_source")),
+		traces:  chstorage.NewTracesSource(client, tables, logger.Named("traces_source")),
+		metrics: chstorage.NewMetricsSource(client, tables, logger.Named("metrics_source")),
+		back:    back,
+		logger:  logger,
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -131,6 +148,46 @@ func (m *Migrator) MigrateTraces(ctx context.Context, since time.Duration, batch
 	})
 	if err != nil {
 		return stats, errors.Wrap(err, "migrate traces")
+	}
+	return stats, nil
+}
+
+// MigrateMetrics migrates metrics stored in ClickHouse into the storagebackend engine. Decomposed
+// number series (gauges/sums and histogram/summary components) are ingested verbatim as gauge
+// datapoints; exponential histograms are reconstructed natively. When since is positive, only the
+// last since of data (relative to the most recent point) is migrated.
+func (m *Migrator) MigrateMetrics(ctx context.Context, since time.Duration, batchSize int) (MetricsStats, error) {
+	var stats MetricsStats
+	err := m.metrics.Do(ctx, since, batchSize,
+		func(ctx context.Context, points []metricstorage.NumberPoint) error {
+			md := metricstorage.NumberPointsToMetrics(points)
+			if err := m.back.ConsumeMetrics(ctx, md); err != nil {
+				return errors.Wrap(err, "consume metrics")
+			}
+			stats.Points += len(points)
+			stats.Batches++
+			m.logger.Info("Migrated metric points batch",
+				zap.Int("batch_points", len(points)),
+				zap.Int("total_points", stats.Points),
+			)
+			return m.sleep(ctx)
+		},
+		func(ctx context.Context, points []metricstorage.ExpHistogramPoint) error {
+			md := metricstorage.ExpHistogramsToMetrics(points)
+			if err := m.back.ConsumeMetrics(ctx, md); err != nil {
+				return errors.Wrap(err, "consume exp histograms")
+			}
+			stats.ExpHistograms += len(points)
+			stats.Batches++
+			m.logger.Info("Migrated exp histograms batch",
+				zap.Int("batch_points", len(points)),
+				zap.Int("total_exp_histograms", stats.ExpHistograms),
+			)
+			return m.sleep(ctx)
+		},
+	)
+	if err != nil {
+		return stats, errors.Wrap(err, "migrate metrics")
 	}
 	return stats, nil
 }
