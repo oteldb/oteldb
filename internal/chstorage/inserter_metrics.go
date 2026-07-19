@@ -321,6 +321,13 @@ func (b *metricsBatch) addHistogramPoints(name, desc, unit string, res, scope la
 				key,
 			)
 		}
+		// An OTLP histogram carries one more bucket count than bounds: the trailing overflow bucket
+		// (observations above the largest explicit bound). Fold the remaining counts into the
+		// cumulative total so the +Inf bucket equals the datapoint count, per Prometheus convention
+		// (otherwise _bucket{le="+Inf"} < _count whenever the overflow bucket is non-empty).
+		for i := len(explicitBounds); i < len(bucketCounts); i++ {
+			cumCount += bucketCounts[i]
+		}
 		// Generate series with "_bucket" suffix and "le" label.
 		{
 			key := [2]string{
