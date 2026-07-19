@@ -56,15 +56,12 @@ func (s *LogsSource) Do(ctx context.Context, since time.Duration, batchSize int,
 		}
 	}
 
-	step := 24 * time.Hour
-	start := mint.Truncate(step)
-	end := maxt.Truncate(step).Add(step)
-	for ts := start; ts.Before(end); ts = ts.Add(step) {
-		if err := s.scanDay(ctx, ts, ts.Add(step), batchSize, batchFn); err != nil {
-			return errors.Wrapf(err, "scan day %s", ts)
+	return forEachDayBucket(mint, maxt, func(from, to time.Time) error {
+		if err := s.scanDay(ctx, from, to, batchSize, batchFn); err != nil {
+			return errors.Wrapf(err, "scan %s", from)
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func (s *LogsSource) scanDay(ctx context.Context, start, end time.Time, batchSize int, batchFn LogsBatchFunc) error {

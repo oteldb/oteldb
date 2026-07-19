@@ -149,15 +149,12 @@ func (s *MetricsSource) scanNumberPoints(
 	missing *int,
 	fn NumberPointsBatchFunc,
 ) error {
-	step := 24 * time.Hour
-	start := mint.Truncate(step)
-	end := maxt.Truncate(step).Add(step)
-	for ts := start; ts.Before(end); ts = ts.Add(step) {
-		if err := s.scanNumberDay(ctx, series, ts, ts.Add(step), batchSize, missing, fn); err != nil {
-			return errors.Wrapf(err, "scan day %s", ts)
+	return forEachDayBucket(mint, maxt, func(from, to time.Time) error {
+		if err := s.scanNumberDay(ctx, series, from, to, batchSize, missing, fn); err != nil {
+			return errors.Wrapf(err, "scan %s", from)
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func (s *MetricsSource) scanNumberDay(
@@ -230,15 +227,12 @@ func (s *MetricsSource) scanExpHistograms(
 	missing *int,
 	fn ExpHistogramsBatchFunc,
 ) error {
-	step := 24 * time.Hour
-	start := mint.Truncate(step)
-	end := maxt.Truncate(step).Add(step)
-	for ts := start; ts.Before(end); ts = ts.Add(step) {
-		if err := s.scanExpDay(ctx, series, ts, ts.Add(step), batchSize, missing, fn); err != nil {
-			return errors.Wrapf(err, "scan day %s", ts)
+	return forEachDayBucket(mint, maxt, func(from, to time.Time) error {
+		if err := s.scanExpDay(ctx, series, from, to, batchSize, missing, fn); err != nil {
+			return errors.Wrapf(err, "scan %s", from)
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func (s *MetricsSource) scanExpDay(
