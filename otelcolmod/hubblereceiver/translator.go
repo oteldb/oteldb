@@ -138,8 +138,8 @@ func translateFlow(resp *observer.GetFlowsResponse, cfg *Config) plog.Logs {
 					s.AppendEmpty().SetStr(ip)
 				}
 			}
-		case l7.GetKafka() != nil:
-			k := l7.GetKafka()
+		case l7.GetKafka() != nil: //nolint:staticcheck // Kafka is deprecated upstream but still populated for backward compat.
+			k := l7.GetKafka() //nolint:staticcheck // Kafka is deprecated upstream but still populated for backward compat.
 			attrs.PutStr("hubble.kafka.api_key", k.GetApiKey())
 			attrs.PutStr("hubble.kafka.topic", k.GetTopic())
 			attrs.PutInt("hubble.kafka.error_code", int64(k.GetErrorCode()))
