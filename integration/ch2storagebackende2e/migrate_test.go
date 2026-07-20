@@ -5,9 +5,11 @@ package ch2storagebackende2e_test
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -74,7 +76,7 @@ func TestMigrateLogs(t *testing.T) {
 
 	_, client, tables := integration.SetupCH(t, integration.SetupCHOptions{
 		Name:           "ch2storagebackend",
-		TablePrefix:    "ch2sb",
+		TablePrefix:    uniqueTablePrefix(),
 		TracerProvider: provider,
 	})
 
@@ -158,6 +160,13 @@ func asLokiTime(t time.Time) lokiapi.LokiTime {
 	return lokiapi.LokiTime(t.Format(time.RFC3339Nano))
 }
 
+// uniqueTablePrefix returns a per-run table prefix so tests stay idempotent against a reused
+// ClickHouse container (which otherwise accumulates data across runs and breaks exact-count
+// assertions).
+func uniqueTablePrefix() string {
+	return "ch2sb_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+}
+
 // buildTraces constructs a single trace with two spans (a root and a child), belonging to
 // one resource/scope.
 func buildTraces(base time.Time, traceID pcommon.TraceID) ptrace.Traces {
@@ -199,7 +208,7 @@ func TestMigrateTraces(t *testing.T) {
 
 	_, client, tables := integration.SetupCH(t, integration.SetupCHOptions{
 		Name:           "ch2storagebackend-traces",
-		TablePrefix:    "ch2sbt",
+		TablePrefix:    uniqueTablePrefix(),
 		TracerProvider: provider,
 	})
 

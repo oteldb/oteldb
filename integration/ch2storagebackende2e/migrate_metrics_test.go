@@ -82,7 +82,7 @@ func TestMigrateMetrics(t *testing.T) {
 
 	_, client, tables := integration.SetupCH(t, integration.SetupCHOptions{
 		Name:           "ch2storagebackend-metrics",
-		TablePrefix:    "ch2sbm",
+		TablePrefix:    uniqueTablePrefix(),
 		TracerProvider: provider,
 	})
 
