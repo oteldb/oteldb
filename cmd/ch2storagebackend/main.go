@@ -1,6 +1,6 @@
 // Command ch2storagebackend migrates data from chstorage's ClickHouse tables into the
 // embedded storagebackend engine, by scanning ClickHouse directly and re-ingesting the
-// decoded records as OTLP pdata. Only logs and traces are supported so far.
+// decoded records as OTLP pdata. Logs, traces, and metrics are supported.
 package main
 
 import (
@@ -33,7 +33,7 @@ func run(ctx context.Context) error {
 		storageDir = flag.String("storage-dir", "", "Directory for the embedded storage engine's file backend (empty uses an ephemeral in-memory backend)")
 		batchSize  = flag.Int("batch", 5_000, "Number of records/spans to convert and ingest per batch")
 		since      = flag.Duration("since", 0, "If positive, only migrate the last since of data (relative to the most recent record), instead of the full table")
-		signals    = flag.String("signals", "logs,traces", "Comma-separated list of signals to migrate (logs, traces)")
+		signals    = flag.String("signals", "logs,traces,metrics", "Comma-separated list of signals to migrate (logs, traces, metrics)")
 		// A bulk migration writes orders of magnitude faster than steady production ingestion, so
 		// the engine's default flush cadence (tuned for the latter) leaves the head/WAL growing
 		// unbounded in RAM for the lifetime of this process. Flush aggressively instead.
@@ -91,6 +91,16 @@ func run(ctx context.Context) error {
 				return errors.Wrap(err, "migrate traces")
 			}
 			lg.Info("Migrated traces", zap.Int("spans", stats.Spans), zap.Int("batches", stats.Batches))
+		case "metrics":
+			stats, err := m.MigrateMetrics(ctx, *since, *batchSize)
+			if err != nil {
+				return errors.Wrap(err, "migrate metrics")
+			}
+			lg.Info("Migrated metrics",
+				zap.Int("points", stats.Points),
+				zap.Int("exp_histograms", stats.ExpHistograms),
+				zap.Int("batches", stats.Batches),
+			)
 		default:
 			return errors.Errorf("unknown signal %q", sig)
 		}
