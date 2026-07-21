@@ -28,6 +28,7 @@ import type {
 import type {
   ActionName,
   ActionResult,
+  EfficiencyStats,
   ErrorResponse,
   HealthReport,
   InstanceInfo,
@@ -405,6 +406,101 @@ export function useGetStorage<TData = Awaited<ReturnType<typeof getStorage>>, TE
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetStorageQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+
+
+/**
+ * Per-tenant, per-signal capacity and efficiency breakdown of the embedded storage engine: series, parts, points, stored bytes, bytes per point and compression ratios. Unlike the other storage endpoints this one performs backend I/O (per-part object sizes) — poll it at dashboard cadence, not per request. Empty when the embedded engine is not active.
+
+ * @summary Embedded storage efficiency statistics
+ */
+export const getEfficiency = (
+    
+ signal?: AbortSignal
+) => {
+      
+      
+      return customFetch<EfficiencyStats>(
+      {url: `/api/v1/storage/efficiency`, method: 'GET', signal
+    },
+      );
+    }
+  
+
+
+
+export const getGetEfficiencyQueryKey = () => {
+    return [
+    `/api/v1/storage/efficiency`
+    ] as const;
+    }
+
+    
+export const getGetEfficiencyQueryOptions = <TData = Awaited<ReturnType<typeof getEfficiency>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>>, }
+) => {
+
+const {query: queryOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEfficiencyQueryKey();
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEfficiency>>> = ({ signal }) => getEfficiency(signal);
+
+      
+
+      
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetEfficiencyQueryResult = NonNullable<Awaited<ReturnType<typeof getEfficiency>>>
+export type GetEfficiencyQueryError = ErrorResponse
+
+
+export function useGetEfficiency<TData = Awaited<ReturnType<typeof getEfficiency>>, TError = ErrorResponse>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getEfficiency>>,
+          TError,
+          Awaited<ReturnType<typeof getEfficiency>>
+        > , 'initialData'
+      >, }
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetEfficiency<TData = Awaited<ReturnType<typeof getEfficiency>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getEfficiency>>,
+          TError,
+          Awaited<ReturnType<typeof getEfficiency>>
+        > , 'initialData'
+      >, }
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetEfficiency<TData = Awaited<ReturnType<typeof getEfficiency>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>>, }
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Embedded storage efficiency statistics
+ */
+
+export function useGetEfficiency<TData = Awaited<ReturnType<typeof getEfficiency>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>>, }
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetEfficiencyQueryOptions(options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
