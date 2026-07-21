@@ -13,6 +13,18 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// GetEfficiency implements getEfficiency operation.
+//
+// Per-tenant, per-signal capacity and efficiency breakdown of the embedded storage engine: series,
+// parts, points, stored bytes, bytes per point and compression ratios. Unlike the other storage
+// endpoints this one performs backend I/O (per-part object sizes) — poll it at dashboard cadence,
+// not per request. Empty when the embedded engine is not active.
+//
+// GET /api/v1/storage/efficiency
+func (UnimplementedHandler) GetEfficiency(ctx context.Context) (r *EfficiencyStats, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetHealth implements getHealth operation.
 //
 // Health of each wired service (query APIs, collector, storage).

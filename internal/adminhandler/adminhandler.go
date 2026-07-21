@@ -50,9 +50,11 @@ type Options struct {
 	CHStorage StorageStatsCollector
 }
 
-// EngineStatsProvider exposes an in-memory snapshot of embedded-storage engine statistics.
+// EngineStatsProvider exposes embedded-storage engine statistics: the in-memory Inspect snapshot
+// and the I/O-bound efficiency breakdown.
 type EngineStatsProvider interface {
 	Inspect() storage.StoreStats
+	EfficiencyStats(ctx context.Context) ([]storage.TenantEfficiency, error)
 }
 
 // BuildInfo is static build information about the running binary.
@@ -166,6 +168,25 @@ func (a *AdminAPI) GetStorage(ctx context.Context) (*adminapi.StorageStats, erro
 			return nil, errors.Wrap(err, "collect clickhouse storage stats")
 		}
 		stats.Clickhouse = adminapi.NewOptClickHouseStats(adminapi.ClickHouseStats{Tables: tables})
+	}
+	return stats, nil
+}
+
+// GetEfficiency implements getEfficiency operation.
+func (a *AdminAPI) GetEfficiency(ctx context.Context) (*adminapi.EfficiencyStats, error) {
+	stats := &adminapi.EfficiencyStats{
+		StorageEnabled: a.opts.Engine != nil,
+		Tenants:        []adminapi.TenantEfficiency{},
+	}
+	if a.opts.Engine == nil {
+		return stats, nil
+	}
+	tenants, err := a.opts.Engine.EfficiencyStats(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "collect efficiency stats")
+	}
+	for _, t := range tenants {
+		stats.Tenants = append(stats.Tenants, mapTenantEfficiency(t))
 	}
 	return stats, nil
 }

@@ -21,6 +21,7 @@ func mapEngineStats(s storage.StoreStats) adminapi.EngineStats {
 				Items:  int64(s.Caches.Decode.Items),
 			},
 		},
+		Maintenance: mapMaintenanceStats(s.Maintenance),
 	}
 	for _, t := range s.Tenants {
 		out.Tenants = append(out.Tenants, mapTenantStats(t))
@@ -29,6 +30,18 @@ func mapEngineStats(s storage.StoreStats) adminapi.EngineStats {
 		out.Cluster = adminapi.NewOptClusterStats(mapClusterStats(*c))
 	}
 	return out
+}
+
+func mapMaintenanceStats(m storage.MaintenanceStats) adminapi.MaintenanceStats {
+	ms := adminapi.MaintenanceStats{
+		Cycles:                   m.Cycles,
+		LastCycleDurationSeconds: time.Duration(m.LastCycleDurationNano).Seconds(),
+		LastCycleTasks:           m.LastCycleTasks,
+	}
+	if m.LastCycleStartUnixNano > 0 {
+		ms.LastCycleStart = adminapi.NewOptDateTime(time.Unix(0, m.LastCycleStartUnixNano).UTC())
+	}
+	return ms
 }
 
 func mapTenantStats(t storage.TenantStats) adminapi.TenantStats {
@@ -94,7 +107,65 @@ func mapClusterStats(c storage.ClusterStats) adminapi.ClusterStats {
 		}
 		cs.Members = append(cs.Members, cm)
 	}
+	if ps := c.PartSync; ps != nil {
+		cs.PartSync = adminapi.NewOptPartSyncStats(mapPartSyncStats(*ps))
+	}
+	if ec := c.EC; ec != nil {
+		cs.Ec = adminapi.NewOptECStats(mapECStats(*ec))
+	}
 	return cs
+}
+
+func mapPartSyncStats(ps storage.PartSyncStats) adminapi.PartSyncStats {
+	out := adminapi.PartSyncStats{
+		Passes:      ps.Passes,
+		Mirrored:    ps.Mirrored,
+		Copied:      ps.Copied,
+		CopiedBytes: ps.CopiedBytes,
+		Pruned:      ps.Pruned,
+		Errors:      ps.Errors,
+	}
+	if ps.LastSyncUnixNano > 0 {
+		out.LastSync = adminapi.NewOptDateTime(time.Unix(0, ps.LastSyncUnixNano).UTC())
+	}
+	return out
+}
+
+func mapECStats(ec storage.ECStats) adminapi.ECStats {
+	return adminapi.ECStats{
+		Converted:         ec.Converted,
+		ConvertErrors:     ec.ConvertErrors,
+		RepairedSlots:     ec.RepairedSlots,
+		RepairErrors:      ec.RepairErrors,
+		PrunedStagedParts: ec.PrunedStagedParts,
+		Reconstructs:      ec.Reconstructs,
+		ReconstructErrors: ec.ReconstructErrors,
+	}
+}
+
+func mapTenantEfficiency(t storage.TenantEfficiency) adminapi.TenantEfficiency {
+	te := adminapi.TenantEfficiency{
+		Tenant:  string(t.Tenant),
+		Signals: make([]adminapi.SignalEfficiency, 0, len(t.Signals)),
+	}
+	for _, s := range t.Signals {
+		se := adminapi.SignalEfficiency{
+			Signal:        mapSignal(s.Signal),
+			Series:        s.Series,
+			Parts:         int64(s.Parts),
+			Points:        s.Points,
+			StoredBytes:   s.StoredBytes,
+			BytesPerPoint: s.BytesPerPoint,
+		}
+		if s.LogicalBytes > 0 {
+			se.LogicalBytes = adminapi.NewOptInt64(s.LogicalBytes)
+		}
+		if s.CompressionRatio > 0 {
+			se.CompressionRatio = adminapi.NewOptFloat64(s.CompressionRatio)
+		}
+		te.Signals = append(te.Signals, se)
+	}
+	return te
 }
 
 // mapSignal maps a storage signal (singular names) onto the admin API signal enum (plural names).
