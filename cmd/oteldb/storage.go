@@ -29,6 +29,11 @@ type otelStorage struct {
 	// storage backend is wired in (deferred to oteldb/storage), in which case
 	// the Pyroscope API is not registered.
 	profileQuerier profilestorage.Querier
+
+	// chClient is the ClickHouse client backing the ClickHouse-served signals. It is nil when no
+	// signal is served from ClickHouse (e.g. under --embedded). Used by the admin API for storage
+	// statistics and a liveness probe.
+	chClient chstorage.ClickHouseClient
 }
 
 type logQuerier interface {
@@ -104,6 +109,7 @@ func setupCH(
 		logQuerier:     querier,
 		traceQuerier:   querier,
 		metricsQuerier: querier,
+		chClient:       c,
 	}, nil
 }
 

@@ -112,6 +112,7 @@ type Config struct {
 	Loki        LokiConfig        `json:"loki" yaml:"loki"`
 	Pyroscope   PyroscopeConfig   `json:"pyroscope" yaml:"pyroscope"`
 	HealthCheck HealthCheckConfig `json:"health_check" yaml:"health_check"`
+	Admin       AdminConfig       `json:"admin" yaml:"admin"`
 
 	// Auth is global auth config.
 	Auth []AuthConfig `json:"auth" yaml:"auth"`
@@ -430,6 +431,18 @@ func (cfg *LokiConfig) setDefaults() {
 	}
 	if cfg.MaxSampleResultBytes == 0 {
 		cfg.MaxSampleResultBytes = 256 * 1024 * 1024 // 256 MiB
+	}
+}
+
+// AdminConfig is the admin panel API config.
+type AdminConfig struct {
+	Bind string       `json:"bind" yaml:"bind"`
+	Auth []AuthConfig `json:"auth" yaml:"auth"`
+}
+
+func (cfg *AdminConfig) setDefaults() {
+	if cfg.Bind == "" {
+		cfg.Bind = ":8090"
 	}
 }
 

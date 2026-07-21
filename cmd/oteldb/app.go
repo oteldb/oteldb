@@ -62,8 +62,13 @@ type App struct {
 	logsSink     otelreceiver.LogsSink
 	profilesSink otelreceiver.ProfilesSink
 
+	// storageBackend is the embedded storage engine, set when any signal is served from it. It backs
+	// the admin panel's first-class storage view. Nil when every signal is on ClickHouse.
+	storageBackend *storagebackend.Backend
+
 	lg        *zap.Logger
 	telemetry *sdkapp.Telemetry
+	startTime time.Time
 }
 
 func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err error) {
@@ -74,6 +79,7 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 		services:  map[string]func(context.Context) error{},
 		lg:        zctx.From(ctx),
 		telemetry: m,
+		startTime: time.Now(),
 	}
 
 	// ClickHouse is started only when a queryable signal is still served by it. Under --embedded
@@ -123,6 +129,7 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 		if err != nil {
 			return nil, errors.Wrap(err, "setup storage backend")
 		}
+		app.storageBackend = b
 		if cfg.MetricsBackend == MetricsBackendStorage {
 			app.metricsQuerier = b
 			app.metricsSink = b
@@ -167,6 +174,9 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 	}
 	if err := app.trySetupPyroscope(); err != nil {
 		return nil, errors.Wrap(err, "pyroscope")
+	}
+	if err := app.setupAdmin(); err != nil {
+		return nil, errors.Wrap(err, "admin")
 	}
 
 	return app, nil

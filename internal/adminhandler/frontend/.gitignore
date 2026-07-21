@@ -1,0 +1,5 @@
+node_modules
+# dist is committed so `go build` can embed the SPA without a bun toolchain.
+# Remove this comment block if you switch to a build-time generation step.
+*.tsbuildinfo
+.vite

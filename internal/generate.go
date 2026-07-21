@@ -8,3 +8,4 @@ package internal
 //go:generate go tool ogen --target sentryapi    --package sentryapi    ../_oas/sentry.yml
 
 //go:generate go tool ogen --target otelbotapi   --package otelbotapi   ../_oas/otelbot.yml
+//go:generate go tool ogen --target adminapi     --package adminapi     ../_oas/admin.yml

@@ -10,6 +10,7 @@ Go module: `github.com/oteldb/oteldb`
 
 Do not load generated files in directories:
 
+ - `internal/adminapi`
  - `internal/lokiapi`
  - `internal/otelbotapi`
  - `internal/promapi`

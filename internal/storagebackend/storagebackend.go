@@ -85,6 +85,19 @@ func New(store *storage.Storage, opts ...Option) *Backend {
 	return b
 }
 
+// Inspect returns an in-memory snapshot of engine statistics (tenants, per-signal series/parts/head
+// and WAL state, caches, and cluster membership when clustered). It performs no backend I/O and is
+// safe to poll at a seconds cadence; it is the admin panel's primary storage view.
+func (b *Backend) Inspect() storage.StoreStats {
+	return b.store.Inspect()
+}
+
+// MaintainNow runs one full maintenance cycle immediately (flush + merge + retention across every
+// owned tenant and signal), i.e. the background maintenance loop's body on demand.
+func (b *Backend) MaintainNow(ctx context.Context) error {
+	return b.store.Admin().MaintainNow(ctx)
+}
+
 // queryable builds a fresh Prometheus queryable over the engine's current data. A new
 // fetcher is taken per query so reads observe the latest head and flushed parts, but the
 // Backend-lifetime label cache (b.labels) is shared across queries so series label projections are

@@ -31,6 +31,10 @@ vmagent-remotewrite-data
 
 # goreleaser
 dist
+# The admin frontend's built SPA is committed so `go:embed` works without a Bun
+# toolchain (re-include it after the broad `dist` rule above).
+!/internal/adminhandler/frontend/dist
+!/internal/adminhandler/frontend/dist/**
 coverage.txt
 .task
 
