@@ -44,24 +44,24 @@ export function Runtime() {
             <AreaChart data={series} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
               <defs>
                 <linearGradient id="heapFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#3b6ef5" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#3b6ef5" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#c8a35c" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#c8a35c" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="#232323" vertical={false} />
+              <CartesianGrid stroke="#3a3a37" vertical={false} />
               <XAxis dataKey="t" hide />
               <YAxis
                 tickFormatter={(v) => fmtBytes(v)}
                 width={64}
-                tick={{ fill: "#8a8a8a", fontSize: 11 }}
-                stroke="#2e2e2e"
+                tick={{ fill: "#a5a299", fontSize: 11 }}
+                stroke="#50504f"
               />
               <Tooltip
                 contentStyle={{
-                  background: "#1a1a1a",
-                  border: "1px solid #2e2e2e",
+                  background: "#2c2c2a",
+                  border: "1px solid #50504f",
                   borderRadius: 8,
-                  color: "#ececec",
+                  color: "#ece8dd",
                   fontSize: 12,
                 }}
                 labelFormatter={() => ""}
@@ -70,7 +70,7 @@ export function Runtime() {
               <Area
                 type="monotone"
                 dataKey="next"
-                stroke="#6a6a6a"
+                stroke="#77756c"
                 strokeDasharray="3 3"
                 fill="none"
                 strokeWidth={1.2}
@@ -79,7 +79,7 @@ export function Runtime() {
               <Area
                 type="monotone"
                 dataKey="heap"
-                stroke="#3b6ef5"
+                stroke="#c8a35c"
                 fill="url(#heapFill)"
                 strokeWidth={1.8}
                 isAnimationActive={false}
