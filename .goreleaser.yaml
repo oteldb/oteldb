@@ -1,6 +1,13 @@
 version: 2
 project_name: oteldb
 
+# Rebuild the admin panel SPA before compiling the binaries so the version
+# embedded via go:embed (internal/adminhandler/frontend/dist) is fresh.
+before:
+  hooks:
+    - sh -c "cd internal/adminhandler/frontend && bun install --frozen-lockfile"
+    - sh -c "cd internal/adminhandler/frontend && bun run build"
+
 builds:
   - id: oteldb
     binary: "oteldb{{ .Ext }}"
