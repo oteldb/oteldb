@@ -1,0 +1,575 @@
+openapi: 3.0.3
+info:
+  title: oteldb admin panel API
+  description: >
+    Administrative API for an oteldb instance: instance info and effective
+    configuration, per-signal component health, ClickHouse storage statistics,
+    and runtime controls.
+  version: 0.1.0
+servers:
+  - url: "http://localhost:8090"
+paths:
+  /api/v1/info:
+    get:
+      operationId: "getInfo"
+      summary: "Instance info and effective config"
+      description: "Build information, uptime and per-signal backend configuration."
+      responses:
+        200:
+          description: Instance info.
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/InstanceInfo"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/health:
+    get:
+      operationId: "getHealth"
+      summary: "Component health"
+      description: "Health of each wired service (query APIs, collector, storage)."
+      responses:
+        200:
+          description: Health report.
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/HealthReport"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/runtime:
+    get:
+      operationId: "getRuntime"
+      summary: "Go runtime statistics"
+      description: "Live heap, GC and goroutine counters of the running process."
+      responses:
+        200:
+          description: Runtime statistics.
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/RuntimeStats"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/storage:
+    get:
+      operationId: "getStorage"
+      summary: "ClickHouse storage statistics"
+      description: >
+        Per-table statistics (rows, on-disk and uncompressed bytes, parts,
+        min/max timestamp) collected from ClickHouse system tables. Empty when
+        no signal is served from ClickHouse.
+      responses:
+        200:
+          description: Storage statistics.
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/StorageStats"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/actions/{action}:
+    post:
+      operationId: "runAction"
+      summary: "Run a runtime control action"
+      description: "Execute a maintenance action against the running process."
+      parameters:
+        - name: action
+          in: path
+          required: true
+          description: "Action to run."
+          schema:
+            $ref: "#/components/schemas/ActionName"
+      responses:
+        200:
+          description: Action result.
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/ActionResult"
+        default:
+          $ref: "#/components/responses/Error"
+components:
+  schemas:
+    InstanceInfo:
+      type: object
+      description: "Instance build info, uptime and per-signal configuration."
+      required:
+        - version
+        - commit
+        - go_version
+        - os
+        - arch
+        - start_time
+        - uptime_seconds
+        - storage_enabled
+        - clickhouse_enabled
+        - signals
+      properties:
+        version:
+          type: string
+          description: "Build version."
+          example: "v0.1.0"
+        commit:
+          type: string
+          description: "VCS commit hash."
+          example: "abcdef0"
+        go_version:
+          type: string
+          description: "Go toolchain version the binary was built with."
+          example: "go1.24.0"
+        os:
+          type: string
+          example: "linux"
+        arch:
+          type: string
+          example: "amd64"
+        start_time:
+          type: string
+          format: date-time
+          description: "Process start time."
+        uptime_seconds:
+          type: number
+          format: double
+          description: "Seconds since process start."
+        storage_enabled:
+          type: boolean
+          description: "Whether the embedded oteldb/storage engine is active."
+        storage_backend:
+          type: string
+          description: "Embedded storage engine backend (memory, file or s3), when enabled."
+          example: "file"
+        clickhouse_enabled:
+          type: boolean
+          description: "Whether the (deprecated) ClickHouse storage is active."
+        signals:
+          type: array
+          description: "Per-signal configuration."
+          items:
+            $ref: "#/components/schemas/SignalInfo"
+    SignalInfo:
+      type: object
+      required:
+        - signal
+        - backend
+        - queryable
+      properties:
+        signal:
+          $ref: "#/components/schemas/Signal"
+        backend:
+          type: string
+          description: "Storage backend serving this signal (clickhouse, storage or none)."
+          example: "clickhouse"
+        queryable:
+          type: boolean
+          description: "Whether a query API is wired for this signal."
+        bind:
+          type: string
+          description: "Listen address of the signal's query API, when queryable."
+          example: ":3100"
+    Signal:
+      type: string
+      description: "Telemetry signal."
+      enum:
+        - metrics
+        - traces
+        - logs
+        - profiles
+    HealthReport:
+      type: object
+      required:
+        - status
+        - components
+      properties:
+        status:
+          $ref: "#/components/schemas/HealthStatus"
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComponentHealth"
+    ComponentHealth:
+      type: object
+      required:
+        - name
+        - status
+      properties:
+        name:
+          type: string
+          description: "Component/service name."
+          example: "loki"
+        status:
+          $ref: "#/components/schemas/HealthStatus"
+        addr:
+          type: string
+          description: "Listen address, when the component is an HTTP server."
+          example: ":3100"
+        error:
+          type: string
+          description: "Last error, when unhealthy."
+    HealthStatus:
+      type: string
+      enum:
+        - healthy
+        - degraded
+        - unhealthy
+    RuntimeStats:
+      type: object
+      required:
+        - goroutines
+        - num_cpu
+        - gomaxprocs
+        - heap_alloc_bytes
+        - heap_inuse_bytes
+        - heap_sys_bytes
+        - stack_inuse_bytes
+        - gc_count
+        - next_gc_bytes
+      properties:
+        goroutines:
+          type: integer
+          format: int64
+        num_cpu:
+          type: integer
+        gomaxprocs:
+          type: integer
+        heap_alloc_bytes:
+          type: integer
+          format: int64
+          description: "Bytes of allocated heap objects (live heap)."
+        heap_inuse_bytes:
+          type: integer
+          format: int64
+        heap_sys_bytes:
+          type: integer
+          format: int64
+        stack_inuse_bytes:
+          type: integer
+          format: int64
+        gc_count:
+          type: integer
+          format: int64
+          description: "Number of completed GC cycles."
+        next_gc_bytes:
+          type: integer
+          format: int64
+          description: "Target heap size of the next GC cycle."
+        mem_limit_bytes:
+          type: integer
+          format: int64
+          description: "Soft memory limit (GOMEMLIMIT), when set."
+    StorageStats:
+      type: object
+      description: "Storage statistics for the embedded engine (primary) and ClickHouse (deprecated)."
+      required:
+        - storage_enabled
+        - clickhouse_enabled
+      properties:
+        storage_enabled:
+          type: boolean
+          description: "Whether the embedded oteldb/storage engine is active."
+        clickhouse_enabled:
+          type: boolean
+          description: "Whether the (deprecated) ClickHouse storage is active."
+        engine:
+          $ref: "#/components/schemas/EngineStats"
+        clickhouse:
+          $ref: "#/components/schemas/ClickHouseStats"
+    EngineStats:
+      type: object
+      description: "Embedded oteldb/storage engine statistics."
+      required:
+        - tenants
+        - caches
+      properties:
+        tenants:
+          type: array
+          items:
+            $ref: "#/components/schemas/TenantStats"
+        caches:
+          $ref: "#/components/schemas/CacheStats"
+        cluster:
+          $ref: "#/components/schemas/ClusterStats"
+    TenantStats:
+      type: object
+      required:
+        - tenant
+        - total_series
+        - total_parts
+        - admission
+        - signals
+      properties:
+        tenant:
+          type: string
+          description: "Tenant identifier."
+          example: "default"
+        total_series:
+          type: integer
+          format: int64
+          description: "Sum of series across all signals."
+        total_parts:
+          type: integer
+          format: int64
+          description: "Sum of flushed parts across all signals."
+        admission:
+          $ref: "#/components/schemas/AdmissionStats"
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/EngineSignalStats"
+    EngineSignalStats:
+      type: object
+      description: "Per-signal engine statistics for a tenant."
+      required:
+        - signal
+        - series
+        - head_items
+        - head_bytes
+        - parts
+        - merge_running
+        - merge_backlog
+        - wal
+        - wal_segments
+        - wal_bytes
+      properties:
+        signal:
+          $ref: "#/components/schemas/Signal"
+        series:
+          type: integer
+          format: int64
+          description: "Distinct series/streams (head and flushed)."
+        head_items:
+          type: integer
+          format: int64
+          description: "Unflushed samples/records in the head."
+        head_bytes:
+          type: integer
+          format: int64
+          description: "Head buffered bytes."
+        parts:
+          type: integer
+          format: int64
+          description: "Flushed immutable parts."
+        min_time:
+          type: string
+          format: date-time
+        max_time:
+          type: string
+          format: date-time
+        merge_running:
+          type: boolean
+        merge_backlog:
+          type: integer
+          format: int64
+        wal:
+          type: boolean
+          description: "Whether a write-ahead log is active for this signal."
+        wal_segments:
+          type: integer
+          format: int64
+        wal_bytes:
+          type: integer
+          format: int64
+          description: "Open WAL segment size."
+    AdmissionStats:
+      type: object
+      description: "Ingestion admission counters for a tenant."
+      required:
+        - accepted
+        - rejected_ooo
+        - rejected_rate
+        - rejected_cardinality
+        - rejected_in_flight
+        - sampled_dropped
+        - overflowed
+      properties:
+        accepted:
+          type: integer
+          format: int64
+        rejected_ooo:
+          type: integer
+          format: int64
+          description: "Rejected as out-of-order."
+        rejected_rate:
+          type: integer
+          format: int64
+          description: "Rejected by rate limit."
+        rejected_cardinality:
+          type: integer
+          format: int64
+          description: "Rejected by cardinality limit."
+        rejected_in_flight:
+          type: integer
+          format: int64
+          description: "Rejected due to in-flight admission pressure."
+        sampled_dropped:
+          type: integer
+          format: int64
+        overflowed:
+          type: integer
+          format: int64
+    CacheStats:
+      type: object
+      required:
+        - decode_cache
+      properties:
+        decode_cache:
+          $ref: "#/components/schemas/DecodeCacheStats"
+    DecodeCacheStats:
+      type: object
+      description: "Decoded-column cache, summed across metric engines."
+      required:
+        - hits
+        - misses
+        - bytes
+        - items
+      properties:
+        hits:
+          type: integer
+          format: int64
+        misses:
+          type: integer
+          format: int64
+        bytes:
+          type: integer
+          format: int64
+        items:
+          type: integer
+          format: int64
+          description: "Cached blocks."
+    ClusterStats:
+      type: object
+      description: "Cluster membership, present only in cluster mode."
+      required:
+        - self
+        - members
+        - owned
+      properties:
+        self:
+          type: string
+          description: "This node's ring id."
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterMember"
+        owned:
+          type: array
+          description: "Shard keys owned by this node."
+          items:
+            type: string
+    ClusterMember:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+        zone:
+          type: string
+        addr:
+          type: string
+    ClickHouseStats:
+      type: object
+      description: "Deprecated ClickHouse storage statistics."
+      required:
+        - tables
+      properties:
+        tables:
+          type: array
+          items:
+            $ref: "#/components/schemas/TableStats"
+    TableStats:
+      type: object
+      required:
+        - database
+        - table
+        - rows
+        - bytes_on_disk
+        - data_uncompressed_bytes
+        - parts
+      properties:
+        database:
+          type: string
+          example: "default"
+        table:
+          type: string
+          example: "logs"
+        rows:
+          type: integer
+          format: int64
+        bytes_on_disk:
+          type: integer
+          format: int64
+          description: "Compressed on-disk size."
+        data_uncompressed_bytes:
+          type: integer
+          format: int64
+        parts:
+          type: integer
+          format: int64
+          description: "Number of active parts."
+        min_time:
+          type: string
+          format: date-time
+          description: "Earliest partition time, when available."
+        max_time:
+          type: string
+          format: date-time
+          description: "Latest partition time, when available."
+    ActionName:
+      type: string
+      description: "Supported runtime control actions."
+      enum:
+        - gc
+        - free-os-memory
+        - storage-maintain
+    ActionResult:
+      type: object
+      required:
+        - action
+        - ok
+        - message
+      properties:
+        action:
+          $ref: "#/components/schemas/ActionName"
+        ok:
+          type: boolean
+        message:
+          type: string
+          description: "Human-readable outcome."
+          example: "GC completed"
+        freed_bytes:
+          type: integer
+          format: int64
+          description: "Heap bytes released, for memory-reclaiming actions."
+    TraceID:
+      type: string
+      description: W3C trace-id
+      pattern: "[[:xdigit:]]{32}"
+      example: 0af7651916cd43dd8448eb211c80319c
+    SpanID:
+      type: string
+      description: W3C parent-id (span)
+      pattern: "[[:xdigit:]]{16}"
+      example: b7ad6b7169203331
+    Error:
+      title: Structured error
+      description: Error occurred while processing request
+      type: object
+      required:
+        - error_message
+      properties:
+        error_message:
+          type: string
+          description: "Human-readable error message"
+          example: "Something went wrong"
+        trace_id:
+          $ref: "#/components/schemas/TraceID"
+        span_id:
+          $ref: "#/components/schemas/SpanID"
+  responses:
+    Error:
+      description: Structured error response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

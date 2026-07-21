@@ -31,6 +31,13 @@ vmagent-remotewrite-data
 
 # goreleaser
 dist
+# The admin frontend's built SPA (internal/adminhandler/frontend/dist) is NOT
+# committed; it is built in CI and on release. Keep the directory (via its
+# .gitkeep placeholder) so the go:embed directive still compiles, but ignore the
+# build output itself.
+!/internal/adminhandler/frontend/dist/
+/internal/adminhandler/frontend/dist/*
+!/internal/adminhandler/frontend/dist/.gitkeep
 coverage.txt
 .task
 

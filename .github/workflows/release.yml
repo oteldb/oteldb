@@ -37,6 +37,13 @@ jobs:
           go-version: stable
           cache: false
 
+      # Bun builds the admin panel SPA via the goreleaser `before` hook, so the
+      # embedded frontend (internal/adminhandler/frontend/dist) is rebuilt fresh.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Get Go environment
         id: go-env
         run: |

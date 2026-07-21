@@ -1,0 +1,39 @@
+name: frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "internal/adminhandler/frontend/**"
+      - "_oas/admin.yml"
+      - ".github/workflows/frontend.yml"
+  pull_request:
+    paths:
+      - "internal/adminhandler/frontend/**"
+      - "_oas/admin.yml"
+      - ".github/workflows/frontend.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: internal/adminhandler/frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      # dist/ is not committed; this verifies the SPA builds (orval + tsc + vite).
+      - name: Build SPA
+        run: bun run build
