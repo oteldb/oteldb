@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
+	"github.com/spf13/cobra"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pprofile"
 	"go.opentelemetry.io/collector/pdata/pprofile/pprofileotlp"
@@ -34,8 +35,25 @@ var profileServices = []string{"client", "server"}
 // demo exercises the profiles signal (served by oteldb's Pyroscope API) alongside logs, metrics, and
 // traces. The OTel Go SDK has no stable profiles exporter, so this dials the collector directly and
 // pushes pprofile batches built with the pdata API (the same shape the storage engine ingests).
-func profiles(ctx context.Context, lg *zap.Logger, _ *app.Telemetry) error {
-	target := otlpEndpoint()
+func newProfilesCommand() *cobra.Command {
+	var endpoint string
+	cmd := &cobra.Command{
+		Use:   "profiles",
+		Short: "Emit synthetic OTLP CPU profiles",
+		Args:  cobra.NoArgs,
+		Run: func(*cobra.Command, []string) {
+			app.Run(func(ctx context.Context, lg *zap.Logger, m *app.Telemetry) error {
+				return profiles(ctx, lg, m, endpoint)
+			})
+		},
+	}
+	cmd.Flags().StringVar(&endpoint, "endpoint", "",
+		"OTLP gRPC endpoint (defaults to OTEL_EXPORTER_OTLP_ENDPOINT, then oteldb:4317)")
+	return cmd
+}
+
+func profiles(ctx context.Context, lg *zap.Logger, _ *app.Telemetry, endpoint string) error {
+	target := otlpEndpoint(endpoint)
 	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return errors.Wrap(err, "dial otlp")
@@ -59,10 +77,13 @@ func profiles(ctx context.Context, lg *zap.Logger, _ *app.Telemetry) error {
 	}
 }
 
-// otlpEndpoint resolves the OTLP gRPC target from OTEL_EXPORTER_OTLP_ENDPOINT, stripping any scheme
-// (gRPC dials host:port). It defaults to the in-cluster oteldb endpoint used by the demo compose.
-func otlpEndpoint() string {
-	ep := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+// otlpEndpoint resolves the OTLP gRPC target from the given override or OTEL_EXPORTER_OTLP_ENDPOINT,
+// stripping any scheme (gRPC dials host:port). It defaults to the in-cluster oteldb endpoint used by
+// the demo compose.
+func otlpEndpoint(ep string) string {
+	if ep == "" {
+		ep = os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	}
 	if ep == "" {
 		ep = "oteldb:4317"
 	}

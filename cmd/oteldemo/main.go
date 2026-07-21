@@ -1,25 +1,28 @@
+// Binary oteldemo generates demo telemetry (logs, metrics, traces, profiles) for oteldb.
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
-	"github.com/go-faster/sdk/app"
+	"github.com/spf13/cobra"
 )
 
 func main() {
-	flag.Parse()
-	switch mode := flag.Arg(0); mode {
-	case "server":
-		app.Run(server)
-	case "client":
-		app.Run(client)
-	case "profiles":
-		app.Run(profiles)
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown mode: %s\n", mode)
-		fmt.Fprintf(os.Stderr, "Usage: %s [server|client|profiles]\n", os.Args[0])
+	rootCmd := &cobra.Command{
+		Use:   "oteldemo",
+		Short: "oteldemo generates demo telemetry for oteldb",
+
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	rootCmd.AddCommand(
+		newServerCommand(),
+		newClientCommand(),
+		newProfilesCommand(),
+	)
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "%+v\n", err)
 		os.Exit(1)
 	}
 }
