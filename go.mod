@@ -17,7 +17,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/VictoriaMetrics/VictoriaMetrics v1.141.0
 	github.com/VictoriaMetrics/easyproto v1.2.0
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.105.0
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.105.2
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cheggaaa/pb/v3 v3.1.7
@@ -38,7 +38,7 @@ require (
 	github.com/grafana/loki/pkg/push v0.0.0-20241223090937-bf7301470453
 	github.com/grafana/pyroscope-go v1.3.1
 	github.com/grafana/pyroscope/api v1.5.0
-	github.com/klauspost/compress v1.19.0
+	github.com/klauspost/compress v1.19.1
 	github.com/kr/logfmt v0.0.0-20210122060352-19f9bcb100e6
 	github.com/mattn/go-isatty v0.0.23
 	github.com/maypok86/otter v1.2.4
@@ -86,7 +86,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.156.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/webhookeventreceiver v0.156.0
 	github.com/oteldb/promql-engine v0.10.0
-	github.com/oteldb/storage v0.31.2
+	github.com/oteldb/storage v0.32.0
 	github.com/pierrec/lz4/v4 v4.1.27
 	github.com/prometheus/client_golang v1.24.0
 	github.com/prometheus/common v0.70.0
@@ -160,7 +160,10 @@ require (
 	sigs.k8s.io/yaml v1.6.0
 )
 
-require github.com/cenkalti/backoff/v7 v7.0.0 // indirect
+require (
+	github.com/cenkalti/backoff/v7 v7.0.0 // indirect
+	github.com/klauspost/reedsolomon v1.14.1 // indirect
+)
 
 require (
 	buf.build/gen/go/bufbuild/bufplugin/protocolbuffers/go v1.36.11-20250718181942-e35f9b667443.1 // indirect
@@ -216,7 +219,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.42.1
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.14 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.32.28
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.28
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.29
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.30 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.30 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.30 // indirect
@@ -231,10 +234,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/kafka v1.52.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/lightsail v1.54.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/rds v1.118.2 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.4.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.32.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.37.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.44.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.4.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.32.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.37.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.44.1 // indirect
 	github.com/aws/smithy-go v1.27.4 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3 // indirect
@@ -522,9 +525,9 @@ require (
 	github.com/yuin/goldmark v1.8.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.etcd.io/bbolt v1.5.0 // indirect
-	go.etcd.io/etcd/api/v3 v3.6.13 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.6.13 // indirect
-	go.etcd.io/etcd/client/v3 v3.6.13 // indirect
+	go.etcd.io/etcd/api/v3 v3.7.0 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.7.0 // indirect
+	go.etcd.io/etcd/client/v3 v3.7.0 // indirect
 	go.lsp.dev/jsonrpc2 v0.10.0 // indirect
 	go.lsp.dev/pkg v0.0.0-20210717090340-384b27a52fb2 // indirect
 	go.lsp.dev/protocol v0.12.0 // indirect
