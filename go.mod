@@ -40,7 +40,7 @@ require (
 	github.com/grafana/pyroscope/api v1.5.0
 	github.com/klauspost/compress v1.19.0
 	github.com/kr/logfmt v0.0.0-20210122060352-19f9bcb100e6
-	github.com/mattn/go-isatty v0.0.22
+	github.com/mattn/go-isatty v0.0.23
 	github.com/maypok86/otter v1.2.4
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.0
