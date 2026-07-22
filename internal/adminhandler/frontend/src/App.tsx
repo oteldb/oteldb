@@ -2,6 +2,7 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { useGetInfo } from "./api/admin";
 import { fmtDur } from "./lib/format";
+import MatrixRain from "./components/MatrixRain";
 import { Overview } from "./pages/Overview";
 import { Runtime } from "./pages/Runtime";
 import { Health } from "./pages/Health";
@@ -56,17 +57,21 @@ export default function App() {
 
       <div className="content">
         <header className="topbar">
-          <h1>oteldb</h1>
-          <span className="sub">admin panel</span>
-          <span className="meta">{uptime}</span>
-          <div className="spacer" />
-          <span className="meta">{version}</span>
-          <button
-            disabled={fetching > 0}
-            onClick={() => qc.invalidateQueries()}
-          >
-            {fetching > 0 ? "Refreshing…" : "Refresh"}
-          </button>
+          <MatrixRain />
+          <div className="topbar__scrim" aria-hidden="true" />
+          <div className="topbar__content">
+            <h1>oteldb</h1>
+            <span className="sub">admin panel</span>
+            <span className="meta">{uptime}</span>
+            <div className="spacer" />
+            <span className="meta">{version}</span>
+            <button
+              disabled={fetching > 0}
+              onClick={() => qc.invalidateQueries()}
+            >
+              {fetching > 0 ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
         </header>
         <main className="page">
           <Routes>
