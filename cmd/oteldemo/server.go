@@ -11,6 +11,7 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -18,7 +19,23 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func server(ctx context.Context, lg *zap.Logger, m *app.Telemetry) error {
+func newServerCommand() *cobra.Command {
+	var addr string
+	cmd := &cobra.Command{
+		Use:   "server",
+		Short: "Run instrumented demo HTTP server",
+		Args:  cobra.NoArgs,
+		Run: func(*cobra.Command, []string) {
+			app.Run(func(ctx context.Context, lg *zap.Logger, m *app.Telemetry) error {
+				return server(ctx, lg, m, addr)
+			})
+		},
+	}
+	cmd.Flags().StringVar(&addr, "addr", "0.0.0.0:8080", "HTTP listen address")
+	return cmd
+}
+
+func server(ctx context.Context, lg *zap.Logger, m *app.Telemetry, addr string) error {
 	g, ctx := errgroup.WithContext(ctx)
 	mux := http.NewServeMux()
 
@@ -64,7 +81,7 @@ func server(ctx context.Context, lg *zap.Logger, m *app.Telemetry) error {
 		w.WriteHeader(http.StatusOK)
 	})
 	srv := &http.Server{
-		Addr:              "0.0.0.0:8080",
+		Addr:              addr,
 		ReadHeaderTimeout: time.Second,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 		Handler: otelhttp.NewHandler(mux, "Hello",
