@@ -274,7 +274,9 @@ type ClusterStats struct {
 	Self    string          `json:"self"`
 	Members []ClusterMember `json:"members"`
 	// Shard keys owned by this node.
-	Owned []string `json:"owned"`
+	Owned    []string         `json:"owned"`
+	PartSync OptPartSyncStats `json:"part_sync"`
+	Ec       OptECStats       `json:"ec"`
 }
 
 // GetSelf returns the value of Self.
@@ -292,6 +294,16 @@ func (s *ClusterStats) GetOwned() []string {
 	return s.Owned
 }
 
+// GetPartSync returns the value of PartSync.
+func (s *ClusterStats) GetPartSync() OptPartSyncStats {
+	return s.PartSync
+}
+
+// GetEc returns the value of Ec.
+func (s *ClusterStats) GetEc() OptECStats {
+	return s.Ec
+}
+
 // SetSelf sets the value of Self.
 func (s *ClusterStats) SetSelf(val string) {
 	s.Self = val
@@ -305,6 +317,16 @@ func (s *ClusterStats) SetMembers(val []ClusterMember) {
 // SetOwned sets the value of Owned.
 func (s *ClusterStats) SetOwned(val []string) {
 	s.Owned = val
+}
+
+// SetPartSync sets the value of PartSync.
+func (s *ClusterStats) SetPartSync(val OptPartSyncStats) {
+	s.PartSync = val
+}
+
+// SetEc sets the value of Ec.
+func (s *ClusterStats) SetEc(val OptECStats) {
+	s.Ec = val
 }
 
 // Ref: #/components/schemas/ComponentHealth
@@ -406,6 +428,125 @@ func (s *DecodeCacheStats) SetBytes(val int64) {
 // SetItems sets the value of Items.
 func (s *DecodeCacheStats) SetItems(val int64) {
 	s.Items = val
+}
+
+// Cumulative erasure-coding activity of this node, present only when the cluster runs with a private
+// (per-node) backend. All zeros when no tenant has an EC policy. A high reconstruct rate on cold reads
+// is expected; growing errors are not.
+// Ref: #/components/schemas/ECStats
+type ECStats struct {
+	// Cold parts erasure-coded by this node as their compaction owner.
+	Converted int64 `json:"converted"`
+	// Failed conversion attempts (retried on a later maintenance tick).
+	ConvertErrors int64 `json:"convert_errors"`
+	// Shard slots rebuilt from surviving shards.
+	RepairedSlots int64 `json:"repaired_slots"`
+	// Failed repair attempts.
+	RepairErrors int64 `json:"repair_errors"`
+	// Parts whose staged foreign shards were pruned after distribution.
+	PrunedStagedParts int64 `json:"pruned_staged_parts"`
+	// Read-path object reconstructions (no local full copy).
+	Reconstructs int64 `json:"reconstructs"`
+	// Reconstructions that failed and surfaced to the query.
+	ReconstructErrors int64 `json:"reconstruct_errors"`
+}
+
+// GetConverted returns the value of Converted.
+func (s *ECStats) GetConverted() int64 {
+	return s.Converted
+}
+
+// GetConvertErrors returns the value of ConvertErrors.
+func (s *ECStats) GetConvertErrors() int64 {
+	return s.ConvertErrors
+}
+
+// GetRepairedSlots returns the value of RepairedSlots.
+func (s *ECStats) GetRepairedSlots() int64 {
+	return s.RepairedSlots
+}
+
+// GetRepairErrors returns the value of RepairErrors.
+func (s *ECStats) GetRepairErrors() int64 {
+	return s.RepairErrors
+}
+
+// GetPrunedStagedParts returns the value of PrunedStagedParts.
+func (s *ECStats) GetPrunedStagedParts() int64 {
+	return s.PrunedStagedParts
+}
+
+// GetReconstructs returns the value of Reconstructs.
+func (s *ECStats) GetReconstructs() int64 {
+	return s.Reconstructs
+}
+
+// GetReconstructErrors returns the value of ReconstructErrors.
+func (s *ECStats) GetReconstructErrors() int64 {
+	return s.ReconstructErrors
+}
+
+// SetConverted sets the value of Converted.
+func (s *ECStats) SetConverted(val int64) {
+	s.Converted = val
+}
+
+// SetConvertErrors sets the value of ConvertErrors.
+func (s *ECStats) SetConvertErrors(val int64) {
+	s.ConvertErrors = val
+}
+
+// SetRepairedSlots sets the value of RepairedSlots.
+func (s *ECStats) SetRepairedSlots(val int64) {
+	s.RepairedSlots = val
+}
+
+// SetRepairErrors sets the value of RepairErrors.
+func (s *ECStats) SetRepairErrors(val int64) {
+	s.RepairErrors = val
+}
+
+// SetPrunedStagedParts sets the value of PrunedStagedParts.
+func (s *ECStats) SetPrunedStagedParts(val int64) {
+	s.PrunedStagedParts = val
+}
+
+// SetReconstructs sets the value of Reconstructs.
+func (s *ECStats) SetReconstructs(val int64) {
+	s.Reconstructs = val
+}
+
+// SetReconstructErrors sets the value of ReconstructErrors.
+func (s *ECStats) SetReconstructErrors(val int64) {
+	s.ReconstructErrors = val
+}
+
+// Embedded storage capacity/efficiency breakdown.
+// Ref: #/components/schemas/EfficiencyStats
+type EfficiencyStats struct {
+	// Whether the embedded oteldb/storage engine is active.
+	StorageEnabled bool               `json:"storage_enabled"`
+	Tenants        []TenantEfficiency `json:"tenants"`
+}
+
+// GetStorageEnabled returns the value of StorageEnabled.
+func (s *EfficiencyStats) GetStorageEnabled() bool {
+	return s.StorageEnabled
+}
+
+// GetTenants returns the value of Tenants.
+func (s *EfficiencyStats) GetTenants() []TenantEfficiency {
+	return s.Tenants
+}
+
+// SetStorageEnabled sets the value of StorageEnabled.
+func (s *EfficiencyStats) SetStorageEnabled(val bool) {
+	s.StorageEnabled = val
+}
+
+// SetTenants sets the value of Tenants.
+func (s *EfficiencyStats) SetTenants(val []TenantEfficiency) {
+	s.Tenants = val
 }
 
 // Per-signal engine statistics for a tenant.
@@ -554,9 +695,10 @@ func (s *EngineSignalStats) SetWalBytes(val int64) {
 // Embedded oteldb/storage engine statistics.
 // Ref: #/components/schemas/EngineStats
 type EngineStats struct {
-	Tenants []TenantStats   `json:"tenants"`
-	Caches  CacheStats      `json:"caches"`
-	Cluster OptClusterStats `json:"cluster"`
+	Tenants     []TenantStats    `json:"tenants"`
+	Caches      CacheStats       `json:"caches"`
+	Maintenance MaintenanceStats `json:"maintenance"`
+	Cluster     OptClusterStats  `json:"cluster"`
 }
 
 // GetTenants returns the value of Tenants.
@@ -567,6 +709,11 @@ func (s *EngineStats) GetTenants() []TenantStats {
 // GetCaches returns the value of Caches.
 func (s *EngineStats) GetCaches() CacheStats {
 	return s.Caches
+}
+
+// GetMaintenance returns the value of Maintenance.
+func (s *EngineStats) GetMaintenance() MaintenanceStats {
+	return s.Maintenance
 }
 
 // GetCluster returns the value of Cluster.
@@ -582,6 +729,11 @@ func (s *EngineStats) SetTenants(val []TenantStats) {
 // SetCaches sets the value of Caches.
 func (s *EngineStats) SetCaches(val CacheStats) {
 	s.Caches = val
+}
+
+// SetMaintenance sets the value of Maintenance.
+func (s *EngineStats) SetMaintenance(val MaintenanceStats) {
+	s.Maintenance = val
 }
 
 // SetCluster sets the value of Cluster.
@@ -864,6 +1016,60 @@ func (s *InstanceInfo) SetSignals(val []SignalInfo) {
 	s.Signals = val
 }
 
+// Background maintenance loop liveness and recency. A growing cycle duration means compaction is
+// falling behind the ingest rate.
+// Ref: #/components/schemas/MaintenanceStats
+type MaintenanceStats struct {
+	// Completed maintenance cycles since process start (the loop-liveness probe).
+	Cycles int64 `json:"cycles"`
+	// Start of the most recent cycle, once one has run.
+	LastCycleStart OptDateTime `json:"last_cycle_start"`
+	// Duration of the most recent completed cycle.
+	LastCycleDurationSeconds float64 `json:"last_cycle_duration_seconds"`
+	// Engine tasks (flush/merge or replica refresh) dispatched in the most recent cycle.
+	LastCycleTasks int64 `json:"last_cycle_tasks"`
+}
+
+// GetCycles returns the value of Cycles.
+func (s *MaintenanceStats) GetCycles() int64 {
+	return s.Cycles
+}
+
+// GetLastCycleStart returns the value of LastCycleStart.
+func (s *MaintenanceStats) GetLastCycleStart() OptDateTime {
+	return s.LastCycleStart
+}
+
+// GetLastCycleDurationSeconds returns the value of LastCycleDurationSeconds.
+func (s *MaintenanceStats) GetLastCycleDurationSeconds() float64 {
+	return s.LastCycleDurationSeconds
+}
+
+// GetLastCycleTasks returns the value of LastCycleTasks.
+func (s *MaintenanceStats) GetLastCycleTasks() int64 {
+	return s.LastCycleTasks
+}
+
+// SetCycles sets the value of Cycles.
+func (s *MaintenanceStats) SetCycles(val int64) {
+	s.Cycles = val
+}
+
+// SetLastCycleStart sets the value of LastCycleStart.
+func (s *MaintenanceStats) SetLastCycleStart(val OptDateTime) {
+	s.LastCycleStart = val
+}
+
+// SetLastCycleDurationSeconds sets the value of LastCycleDurationSeconds.
+func (s *MaintenanceStats) SetLastCycleDurationSeconds(val float64) {
+	s.LastCycleDurationSeconds = val
+}
+
+// SetLastCycleTasks sets the value of LastCycleTasks.
+func (s *MaintenanceStats) SetLastCycleTasks(val int64) {
+	s.LastCycleTasks = val
+}
+
 // NewOptClickHouseStats returns new OptClickHouseStats with value set to v.
 func NewOptClickHouseStats(v ClickHouseStats) OptClickHouseStats {
 	return OptClickHouseStats{
@@ -1002,6 +1208,52 @@ func (o OptDateTime) Or(d time.Time) time.Time {
 	return d
 }
 
+// NewOptECStats returns new OptECStats with value set to v.
+func NewOptECStats(v ECStats) OptECStats {
+	return OptECStats{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptECStats is optional ECStats.
+type OptECStats struct {
+	Value ECStats
+	Set   bool
+}
+
+// IsSet returns true if OptECStats was set.
+func (o OptECStats) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptECStats) Reset() {
+	var v ECStats
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptECStats) SetTo(v ECStats) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptECStats) Get() (v ECStats, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptECStats) Or(d ECStats) ECStats {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptEngineStats returns new OptEngineStats with value set to v.
 func NewOptEngineStats(v EngineStats) OptEngineStats {
 	return OptEngineStats{
@@ -1048,6 +1300,52 @@ func (o OptEngineStats) Or(d EngineStats) EngineStats {
 	return d
 }
 
+// NewOptFloat64 returns new OptFloat64 with value set to v.
+func NewOptFloat64(v float64) OptFloat64 {
+	return OptFloat64{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptFloat64 is optional float64.
+type OptFloat64 struct {
+	Value float64
+	Set   bool
+}
+
+// IsSet returns true if OptFloat64 was set.
+func (o OptFloat64) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptFloat64) Reset() {
+	var v float64
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptFloat64) SetTo(v float64) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptFloat64) Get() (v float64, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptFloat64) Or(d float64) float64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptInt64 returns new OptInt64 with value set to v.
 func NewOptInt64(v int64) OptInt64 {
 	return OptInt64{
@@ -1088,6 +1386,52 @@ func (o OptInt64) Get() (v int64, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptInt64) Or(d int64) int64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptPartSyncStats returns new OptPartSyncStats with value set to v.
+func NewOptPartSyncStats(v PartSyncStats) OptPartSyncStats {
+	return OptPartSyncStats{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptPartSyncStats is optional PartSyncStats.
+type OptPartSyncStats struct {
+	Value PartSyncStats
+	Set   bool
+}
+
+// IsSet returns true if OptPartSyncStats was set.
+func (o OptPartSyncStats) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptPartSyncStats) Reset() {
+	var v PartSyncStats
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptPartSyncStats) SetTo(v PartSyncStats) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptPartSyncStats) Get() (v PartSyncStats, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptPartSyncStats) Or(d PartSyncStats) PartSyncStats {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -1230,6 +1574,96 @@ func (o OptTraceID) Or(d TraceID) TraceID {
 		return v
 	}
 	return d
+}
+
+// Cumulative shared-nothing part-mirroring activity of this node, present only when the cluster runs
+// with a private (per-node) backend.
+// Ref: #/components/schemas/PartSyncStats
+type PartSyncStats struct {
+	// Sync attempts including no-ops (the sync-loop liveness probe).
+	Passes int64 `json:"passes"`
+	// Passes that installed a newer peer copy.
+	Mirrored int64 `json:"mirrored"`
+	// Objects fetched from peers.
+	Copied int64 `json:"copied"`
+	// Total size of objects fetched from peers.
+	CopiedBytes int64 `json:"copied_bytes"`
+	// Stale local objects deleted after the quarantine delay.
+	Pruned int64 `json:"pruned"`
+	// Passes that failed part-way (retried next maintenance tick).
+	Errors int64 `json:"errors"`
+	// When the last mirroring pass completed (the replication-staleness probe).
+	LastSync OptDateTime `json:"last_sync"`
+}
+
+// GetPasses returns the value of Passes.
+func (s *PartSyncStats) GetPasses() int64 {
+	return s.Passes
+}
+
+// GetMirrored returns the value of Mirrored.
+func (s *PartSyncStats) GetMirrored() int64 {
+	return s.Mirrored
+}
+
+// GetCopied returns the value of Copied.
+func (s *PartSyncStats) GetCopied() int64 {
+	return s.Copied
+}
+
+// GetCopiedBytes returns the value of CopiedBytes.
+func (s *PartSyncStats) GetCopiedBytes() int64 {
+	return s.CopiedBytes
+}
+
+// GetPruned returns the value of Pruned.
+func (s *PartSyncStats) GetPruned() int64 {
+	return s.Pruned
+}
+
+// GetErrors returns the value of Errors.
+func (s *PartSyncStats) GetErrors() int64 {
+	return s.Errors
+}
+
+// GetLastSync returns the value of LastSync.
+func (s *PartSyncStats) GetLastSync() OptDateTime {
+	return s.LastSync
+}
+
+// SetPasses sets the value of Passes.
+func (s *PartSyncStats) SetPasses(val int64) {
+	s.Passes = val
+}
+
+// SetMirrored sets the value of Mirrored.
+func (s *PartSyncStats) SetMirrored(val int64) {
+	s.Mirrored = val
+}
+
+// SetCopied sets the value of Copied.
+func (s *PartSyncStats) SetCopied(val int64) {
+	s.Copied = val
+}
+
+// SetCopiedBytes sets the value of CopiedBytes.
+func (s *PartSyncStats) SetCopiedBytes(val int64) {
+	s.CopiedBytes = val
+}
+
+// SetPruned sets the value of Pruned.
+func (s *PartSyncStats) SetPruned(val int64) {
+	s.Pruned = val
+}
+
+// SetErrors sets the value of Errors.
+func (s *PartSyncStats) SetErrors(val int64) {
+	s.Errors = val
+}
+
+// SetLastSync sets the value of LastSync.
+func (s *PartSyncStats) SetLastSync(val OptDateTime) {
+	s.LastSync = val
 }
 
 // Ref: #/components/schemas/RuntimeStats
@@ -1405,6 +1839,110 @@ func (s *Signal) UnmarshalText(data []byte) error {
 	default:
 		return errors.Errorf("invalid value: %q", data)
 	}
+}
+
+// One (tenant, signal)'s flushed-data shape: how many points it stores, in how many bytes, and how
+// well they compress. Stored bytes are this node's on-disk footprint — under erasure coding with
+// slot filtering that is the local shard, not the cluster-wide total.
+// Ref: #/components/schemas/SignalEfficiency
+type SignalEfficiency struct {
+	Signal Signal `json:"signal"`
+	// Distinct series/streams (head and flushed).
+	Series int64 `json:"series"`
+	// Flushed part count.
+	Parts int64 `json:"parts"`
+	// Total samples (metrics) or records (logs/traces/profiles).
+	Points int64 `json:"points"`
+	// Sum of the parts' backend object sizes on this node.
+	StoredBytes int64 `json:"stored_bytes"`
+	// Stored bytes per point — the per-sample storage cost.
+	BytesPerPoint float64 `json:"bytes_per_point"`
+	// Uncompressed logical size of the stored points; present only for metrics (points x 16), the record
+	// signals' per-record logical size is not recorded.
+	LogicalBytes OptInt64 `json:"logical_bytes"`
+	// Logical/stored ratio (e.g. 8.0 = stored at 1/8th of logical); present only when logical size is
+	// known.
+	CompressionRatio OptFloat64 `json:"compression_ratio"`
+}
+
+// GetSignal returns the value of Signal.
+func (s *SignalEfficiency) GetSignal() Signal {
+	return s.Signal
+}
+
+// GetSeries returns the value of Series.
+func (s *SignalEfficiency) GetSeries() int64 {
+	return s.Series
+}
+
+// GetParts returns the value of Parts.
+func (s *SignalEfficiency) GetParts() int64 {
+	return s.Parts
+}
+
+// GetPoints returns the value of Points.
+func (s *SignalEfficiency) GetPoints() int64 {
+	return s.Points
+}
+
+// GetStoredBytes returns the value of StoredBytes.
+func (s *SignalEfficiency) GetStoredBytes() int64 {
+	return s.StoredBytes
+}
+
+// GetBytesPerPoint returns the value of BytesPerPoint.
+func (s *SignalEfficiency) GetBytesPerPoint() float64 {
+	return s.BytesPerPoint
+}
+
+// GetLogicalBytes returns the value of LogicalBytes.
+func (s *SignalEfficiency) GetLogicalBytes() OptInt64 {
+	return s.LogicalBytes
+}
+
+// GetCompressionRatio returns the value of CompressionRatio.
+func (s *SignalEfficiency) GetCompressionRatio() OptFloat64 {
+	return s.CompressionRatio
+}
+
+// SetSignal sets the value of Signal.
+func (s *SignalEfficiency) SetSignal(val Signal) {
+	s.Signal = val
+}
+
+// SetSeries sets the value of Series.
+func (s *SignalEfficiency) SetSeries(val int64) {
+	s.Series = val
+}
+
+// SetParts sets the value of Parts.
+func (s *SignalEfficiency) SetParts(val int64) {
+	s.Parts = val
+}
+
+// SetPoints sets the value of Points.
+func (s *SignalEfficiency) SetPoints(val int64) {
+	s.Points = val
+}
+
+// SetStoredBytes sets the value of StoredBytes.
+func (s *SignalEfficiency) SetStoredBytes(val int64) {
+	s.StoredBytes = val
+}
+
+// SetBytesPerPoint sets the value of BytesPerPoint.
+func (s *SignalEfficiency) SetBytesPerPoint(val float64) {
+	s.BytesPerPoint = val
+}
+
+// SetLogicalBytes sets the value of LogicalBytes.
+func (s *SignalEfficiency) SetLogicalBytes(val OptInt64) {
+	s.LogicalBytes = val
+}
+
+// SetCompressionRatio sets the value of CompressionRatio.
+func (s *SignalEfficiency) SetCompressionRatio(val OptFloat64) {
+	s.CompressionRatio = val
 }
 
 // Ref: #/components/schemas/SignalInfo
@@ -1605,6 +2143,34 @@ func (s *TableStats) SetMinTime(val OptDateTime) {
 // SetMaxTime sets the value of MaxTime.
 func (s *TableStats) SetMaxTime(val OptDateTime) {
 	s.MaxTime = val
+}
+
+// One tenant's per-signal efficiency breakdown.
+// Ref: #/components/schemas/TenantEfficiency
+type TenantEfficiency struct {
+	// Tenant identifier.
+	Tenant  string             `json:"tenant"`
+	Signals []SignalEfficiency `json:"signals"`
+}
+
+// GetTenant returns the value of Tenant.
+func (s *TenantEfficiency) GetTenant() string {
+	return s.Tenant
+}
+
+// GetSignals returns the value of Signals.
+func (s *TenantEfficiency) GetSignals() []SignalEfficiency {
+	return s.Signals
+}
+
+// SetTenant sets the value of Tenant.
+func (s *TenantEfficiency) SetTenant(val string) {
+	s.Tenant = val
+}
+
+// SetSignals sets the value of Signals.
+func (s *TenantEfficiency) SetSignals(val []SignalEfficiency) {
+	s.Signals = val
 }
 
 // Ref: #/components/schemas/TenantStats

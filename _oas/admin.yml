@@ -68,6 +68,26 @@ paths:
                 $ref: "#/components/schemas/StorageStats"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/storage/efficiency:
+    get:
+      operationId: "getEfficiency"
+      summary: "Embedded storage efficiency statistics"
+      description: >
+        Per-tenant, per-signal capacity and efficiency breakdown of the
+        embedded storage engine: series, parts, points, stored bytes,
+        bytes per point and compression ratios. Unlike the other storage
+        endpoints this one performs backend I/O (per-part object sizes) —
+        poll it at dashboard cadence, not per request. Empty when the
+        embedded engine is not active.
+      responses:
+        200:
+          description: Efficiency statistics.
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/EfficiencyStats"
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/actions/{action}:
     post:
       operationId: "runAction"
@@ -280,6 +300,7 @@ components:
       required:
         - tenants
         - caches
+        - maintenance
       properties:
         tenants:
           type: array
@@ -287,8 +308,36 @@ components:
             $ref: "#/components/schemas/TenantStats"
         caches:
           $ref: "#/components/schemas/CacheStats"
+        maintenance:
+          $ref: "#/components/schemas/MaintenanceStats"
         cluster:
           $ref: "#/components/schemas/ClusterStats"
+    MaintenanceStats:
+      type: object
+      description: >
+        Background maintenance loop liveness and recency. A growing cycle
+        duration means compaction is falling behind the ingest rate.
+      required:
+        - cycles
+        - last_cycle_duration_seconds
+        - last_cycle_tasks
+      properties:
+        cycles:
+          type: integer
+          format: int64
+          description: "Completed maintenance cycles since process start (the loop-liveness probe)."
+        last_cycle_start:
+          type: string
+          format: date-time
+          description: "Start of the most recent cycle, once one has run."
+        last_cycle_duration_seconds:
+          type: number
+          format: double
+          description: "Duration of the most recent completed cycle."
+        last_cycle_tasks:
+          type: integer
+          format: int64
+          description: "Engine tasks (flush/merge or replica refresh) dispatched in the most recent cycle."
     TenantStats:
       type: object
       required:
@@ -456,6 +505,95 @@ components:
           description: "Shard keys owned by this node."
           items:
             type: string
+        part_sync:
+          $ref: "#/components/schemas/PartSyncStats"
+        ec:
+          $ref: "#/components/schemas/ECStats"
+    PartSyncStats:
+      type: object
+      description: >
+        Cumulative shared-nothing part-mirroring activity of this node,
+        present only when the cluster runs with a private (per-node) backend.
+      required:
+        - passes
+        - mirrored
+        - copied
+        - copied_bytes
+        - pruned
+        - errors
+      properties:
+        passes:
+          type: integer
+          format: int64
+          description: "Sync attempts including no-ops (the sync-loop liveness probe)."
+        mirrored:
+          type: integer
+          format: int64
+          description: "Passes that installed a newer peer copy."
+        copied:
+          type: integer
+          format: int64
+          description: "Objects fetched from peers."
+        copied_bytes:
+          type: integer
+          format: int64
+          description: "Total size of objects fetched from peers."
+        pruned:
+          type: integer
+          format: int64
+          description: "Stale local objects deleted after the quarantine delay."
+        errors:
+          type: integer
+          format: int64
+          description: "Passes that failed part-way (retried next maintenance tick)."
+        last_sync:
+          type: string
+          format: date-time
+          description: "When the last mirroring pass completed (the replication-staleness probe)."
+    ECStats:
+      type: object
+      description: >
+        Cumulative erasure-coding activity of this node, present only when the
+        cluster runs with a private (per-node) backend. All zeros when no
+        tenant has an EC policy. A high reconstruct rate on cold reads is
+        expected; growing errors are not.
+      required:
+        - converted
+        - convert_errors
+        - repaired_slots
+        - repair_errors
+        - pruned_staged_parts
+        - reconstructs
+        - reconstruct_errors
+      properties:
+        converted:
+          type: integer
+          format: int64
+          description: "Cold parts erasure-coded by this node as their compaction owner."
+        convert_errors:
+          type: integer
+          format: int64
+          description: "Failed conversion attempts (retried on a later maintenance tick)."
+        repaired_slots:
+          type: integer
+          format: int64
+          description: "Shard slots rebuilt from surviving shards."
+        repair_errors:
+          type: integer
+          format: int64
+          description: "Failed repair attempts."
+        pruned_staged_parts:
+          type: integer
+          format: int64
+          description: "Parts whose staged foreign shards were pruned after distribution."
+        reconstructs:
+          type: integer
+          format: int64
+          description: "Read-path object reconstructions (no local full copy)."
+        reconstruct_errors:
+          type: integer
+          format: int64
+          description: "Reconstructions that failed and surfaced to the query."
     ClusterMember:
       type: object
       required:
@@ -515,6 +653,83 @@ components:
           type: string
           format: date-time
           description: "Latest partition time, when available."
+    EfficiencyStats:
+      type: object
+      description: "Embedded storage capacity/efficiency breakdown."
+      required:
+        - storage_enabled
+        - tenants
+      properties:
+        storage_enabled:
+          type: boolean
+          description: "Whether the embedded oteldb/storage engine is active."
+        tenants:
+          type: array
+          items:
+            $ref: "#/components/schemas/TenantEfficiency"
+    TenantEfficiency:
+      type: object
+      description: "One tenant's per-signal efficiency breakdown."
+      required:
+        - tenant
+        - signals
+      properties:
+        tenant:
+          type: string
+          description: "Tenant identifier."
+          example: "default"
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignalEfficiency"
+    SignalEfficiency:
+      type: object
+      description: >
+        One (tenant, signal)'s flushed-data shape: how many points it stores,
+        in how many bytes, and how well they compress. Stored bytes are this
+        node's on-disk footprint — under erasure coding with slot filtering
+        that is the local shard, not the cluster-wide total.
+      required:
+        - signal
+        - series
+        - parts
+        - points
+        - stored_bytes
+        - bytes_per_point
+      properties:
+        signal:
+          $ref: "#/components/schemas/Signal"
+        series:
+          type: integer
+          format: int64
+          description: "Distinct series/streams (head and flushed)."
+        parts:
+          type: integer
+          format: int64
+          description: "Flushed part count."
+        points:
+          type: integer
+          format: int64
+          description: "Total samples (metrics) or records (logs/traces/profiles)."
+        stored_bytes:
+          type: integer
+          format: int64
+          description: "Sum of the parts' backend object sizes on this node."
+        bytes_per_point:
+          type: number
+          format: double
+          description: "Stored bytes per point — the per-sample storage cost."
+        logical_bytes:
+          type: integer
+          format: int64
+          description: >
+            Uncompressed logical size of the stored points; present only for
+            metrics (points x 16), the record signals' per-record logical size
+            is not recorded.
+        compression_ratio:
+          type: number
+          format: double
+          description: "Logical/stored ratio (e.g. 8.0 = stored at 1/8th of logical); present only when logical size is known."
     ActionName:
       type: string
       description: "Supported runtime control actions."

@@ -7,6 +7,8 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ClusterMember } from './clusterMember';
+import type { PartSyncStats } from './partSyncStats';
+import type { ECStats } from './eCStats';
 
 /**
  * Cluster membership, present only in cluster mode.
@@ -17,4 +19,6 @@ export interface ClusterStats {
   members: ClusterMember[];
   /** Shard keys owned by this node. */
   owned: string[];
+  part_sync?: PartSyncStats;
+  ec?: ECStats;
 }

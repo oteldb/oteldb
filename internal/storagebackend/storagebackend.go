@@ -92,6 +92,13 @@ func (b *Backend) Inspect() storage.StoreStats {
 	return b.store.Inspect()
 }
 
+// EfficiencyStats returns the per-tenant, per-signal capacity/efficiency breakdown (stored bytes,
+// bytes per point, compression ratios). Unlike Inspect it performs backend I/O (per-part object
+// sizes) — poll it at dashboard cadence, not per request.
+func (b *Backend) EfficiencyStats(ctx context.Context) ([]storage.TenantEfficiency, error) {
+	return b.store.EfficiencyStats(ctx)
+}
+
 // MaintainNow runs one full maintenance cycle immediately (flush + merge + retention across every
 // owned tenant and signal), i.e. the background maintenance loop's body on demand.
 func (b *Backend) MaintainNow(ctx context.Context) error {

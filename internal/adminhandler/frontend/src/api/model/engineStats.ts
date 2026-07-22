@@ -8,6 +8,7 @@
  */
 import type { TenantStats } from './tenantStats';
 import type { CacheStats } from './cacheStats';
+import type { MaintenanceStats } from './maintenanceStats';
 import type { ClusterStats } from './clusterStats';
 
 /**
@@ -16,5 +17,6 @@ import type { ClusterStats } from './clusterStats';
 export interface EngineStats {
   tenants: TenantStats[];
   caches: CacheStats;
+  maintenance: MaintenanceStats;
   cluster?: ClusterStats;
 }

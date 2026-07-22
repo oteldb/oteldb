@@ -8,6 +8,15 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// GetEfficiency implements getEfficiency operation.
+	//
+	// Per-tenant, per-signal capacity and efficiency breakdown of the embedded storage engine: series,
+	// parts, points, stored bytes, bytes per point and compression ratios. Unlike the other storage
+	// endpoints this one performs backend I/O (per-part object sizes) — poll it at dashboard cadence,
+	// not per request. Empty when the embedded engine is not active.
+	//
+	// GET /api/v1/storage/efficiency
+	GetEfficiency(ctx context.Context) (*EfficiencyStats, error)
 	// GetHealth implements getHealth operation.
 	//
 	// Health of each wired service (query APIs, collector, storage).
