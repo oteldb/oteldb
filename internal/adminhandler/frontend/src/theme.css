@@ -94,9 +94,25 @@ a:hover { text-decoration: underline; }
 
 .content { min-width: 0; display: flex; flex-direction: column; }
 .topbar {
-  display: flex; align-items: center; gap: 14px; padding: 15px 30px;
   border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5;
   background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(8px);
+  overflow: hidden;
+}
+/* Digital rain lives behind the bar; a scrim keeps the controls legible. */
+.topbar .matrix-canvas { z-index: 0; }
+.topbar__scrim {
+  position: absolute; inset: 0; z-index: 0;
+  background: linear-gradient(
+    90deg,
+    var(--bg) 0%,
+    color-mix(in srgb, var(--bg) 32%, transparent) 26%,
+    color-mix(in srgb, var(--bg) 32%, transparent) 68%,
+    var(--bg) 100%
+  );
+}
+.topbar__content {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; gap: 14px; padding: 15px 30px;
 }
 .topbar h1 { font-size: 15px; margin: 0; font-weight: 700; color: var(--fg-strong); font-family: var(--mono); letter-spacing: -.01em; }
 .topbar .sub { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .13em; font-weight: 600; }
@@ -203,6 +219,14 @@ tbody tr:hover { background: var(--surface-2); }
   .sidebar .foot, .nav-group { display: none; }
   .nav-item { margin-left: 0; padding-left: 12px; border-left: none; border-bottom: 2px solid transparent; }
   .nav-item.active { border-left-color: transparent; border-bottom-color: var(--accent); }
+}
+
+/* Matrix digital-rain canvas (decorative; theme-token colored: accent trail,
+   strong-foreground leading glyph, base-colored fade). Sized to its parent
+   (the topbar), where it sits behind the controls. */
+.matrix-canvas {
+  position: absolute; inset: 0; display: block;
+  width: 100%; height: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {
