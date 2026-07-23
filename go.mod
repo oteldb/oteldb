@@ -44,7 +44,7 @@ require (
 	github.com/maypok86/otter v1.2.4
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.0
-	github.com/ogen-go/ogen v1.22.0
+	github.com/ogen-go/ogen v1.23.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector v0.156.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector v0.156.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/failoverconnector v0.156.0
@@ -600,15 +600,15 @@ require (
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.4 // indirect
-	golang.org/x/crypto v0.53.0 // indirect
-	golang.org/x/mod v0.37.0 // indirect
-	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/mod v0.38.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/term v0.44.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/term v0.45.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	golang.org/x/tools v0.47.0 // indirect
+	golang.org/x/tools v0.48.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
 	google.golang.org/api v0.278.0 // indirect
 	google.golang.org/genproto v0.0.0-20260414002931-afd174a4e478 // indirect
