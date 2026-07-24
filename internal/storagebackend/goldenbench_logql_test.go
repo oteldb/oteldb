@@ -253,6 +253,7 @@ type goldenLogQLCase struct {
 
 // BenchmarkGoldenLogQL is the definitive LogQL-over-storage read set. Sub-benchmarks:
 //
+//	full_scan             — regex over every stream, unbounded: no pruning, everything materialized
 //	select_service        — bare stream selector on one stream (postings pruning + part scan)
 //	select_multi_stream   — bare selector matching half the streams (wide scan, many streams merged)
 //	select_regexp         — regexp stream matcher (pushed to the postings index, not post-filtered)
@@ -271,7 +272,23 @@ func BenchmarkGoldenLogQL(b *testing.B) {
 	// The prod half of the corpus: the wide-scan selector's stream set.
 	prod := []string{"svc-0", "svc-1", "svc-2", "svc-3", goldenLogQLLogfmtService}
 
+	// Every stream, derived from the same source the corpus is built from.
+	all := make([]string, 0, goldenLogQLServices+1)
+	for _, st := range goldenLogQLStreams() {
+		all = append(all, st.service)
+	}
+
 	for _, tc := range []goldenLogQLCase{
+		{
+			// The worst case, mirroring storage's own query/promql_full_scan_count: a regex over
+			// every stream prunes nothing in the postings index, and no limit bounds the result, so
+			// the whole window is fetched and materialized. It is the ceiling the other log cases
+			// are read against.
+			name:  "full_scan",
+			query: `{service_name=~".+"}`,
+			scans: all,
+			want:  (goldenLogQLServices + 1) * goldenLogQLPerRound * (goldenLogQLParts + 1),
+		},
 		{
 			name:  "select_service",
 			query: `{service_name="svc-0"}`,
