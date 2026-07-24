@@ -298,7 +298,54 @@ var traceqlCases = []traceqlCase{
 		query: `{resource.service.name = "frontend"} >> {resource.service.name = "cart"}`,
 		want:  traceqlTraces,
 	},
+	// The relational family. Every operand is spelled from traceqlShape rather than a literal, so a
+	// change to the corpus shape cannot silently turn one of these into an always-false query.
+	//
+	// rootName/rootServiceName are spanset-level intrinsics: the engine resolves the trace's root
+	// once per trace (engine.go picks the parentless span) and every span of that trace then compares
+	// against the same constant, so these are whole-corpus scans, not selectors.
+	{
+		name:  "root_name",
+		query: `{rootName = "` + traceqlRootName + `"}`,
+		want:  traceqlTraces,
+	},
+	{
+		name:  "root_service_name",
+		query: `{rootServiceName = "` + traceqlRootService + `"}`,
+		want:  traceqlTraces,
+	},
+	// The same both-sides-must-match constraint as `descendant` applies to `~` and `>`: the engine
+	// indexes a[0]/b[0] after checking only that *both* sides are empty, so a pair where one side
+	// misses on some trace panics. authorize and GET /cart are both direct children of the root, and
+	// checkout.process is the child of POST /checkout, in every single trace.
+	{
+		name:  "sibling",
+		query: `{name = "` + traceqlSiblingLeft + `"} ~ {name = "` + traceqlSiblingRight + `"}`,
+		want:  traceqlTraces,
+	},
+	{
+		name:  "child",
+		query: `{name = "` + traceqlChildParent + `"} > {name = "` + traceqlChildName + `"}`,
+		want:  traceqlTraces,
+	},
 }
+
+// The operands of the relational cases, taken from traceqlShape so they track the corpus.
+//
+// There is deliberately no `parent.<attr>` case: `parent.` scoped predicates parse (traceql.Attribute
+// carries a Parent bool) but traceqlengine cannot build them — buildAttributeEvaluater's default
+// branch does `if attr.Parent { break }` on a TODO, so the query fails with
+// `unsupported attribute "parent.span.…"` before it ever reaches a span.
+var (
+	traceqlRootName    = traceqlShape[0].name // the parentless span's name
+	traceqlRootService = traceqlShape[0].service
+	// Two direct children of the root, hence siblings in every trace.
+	traceqlSiblingLeft  = traceqlShape[1].name
+	traceqlSiblingRight = traceqlShape[2].name
+	// A parent/child pair present in every trace.
+	traceqlChildParent = traceqlShape[4].name
+	traceqlChildName   = traceqlShape[5].name
+)
 
 // traceqlPushdownCase describes one storage-level sub-benchmark: the same predicate lowered to a
 // [fetch.Condition] instead of being applied by the TraceQL engine after materialization.
@@ -416,6 +463,14 @@ func traceqlFetchRows(b *testing.B, f *traceqlFixture, conds []fetch.Condition) 
 //	duration_gt      — a numeric comparison outside the int memo's domain
 //	attr_and_status  — a selective attribute filter ANDed with a status filter
 //	descendant       — the structural walk (frontend root >> payments descendant)
+//
+// The relational family, all engine-side (SelectSpansets pushes nothing down):
+//
+//	root_name         — the rootName intrinsic: a per-trace constant resolved from the parentless span
+//	root_service_name — the rootServiceName intrinsic, resolved from that span's resource
+//	sibling           — the `~` operator over two direct children of the root
+//	child             — the `>` operator over a parent/child pair present in every trace
+//
 //	pushdown/…       — the same predicates lowered to the storage fetch contract
 func BenchmarkGoldenTraceQL(b *testing.B) {
 	f := traceqlNewFixture(b)
