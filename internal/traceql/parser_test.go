@@ -1160,9 +1160,8 @@ var tests = []TestCase{
 var errorTests = []string{
 	// Trailing tokens must not be silently ignored.
 	`{ true } garbage`,
-	`{ true } << { true }`,
-	`{ true } !> { true }`,
-	`{ true } &> { true }`,
+	`{ true } >>> { true }`,
+	`{ true } &! { true }`,
 	`{ true } + { true }`,
 	`{ true } = { true }`,
 	`{} == 10`,
@@ -1180,6 +1179,50 @@ var errorTests = []string{
 	// Scalar filter requires an aggregate.
 	`3 = 2`,
 	`{ .foo = "a" } | 3 > 2`,
+}
+
+func TestParseSpansetOps(t *testing.T) {
+	ops := []struct {
+		input string
+		want  SpansetOp
+	}{
+		{`&&`, SpansetOpAnd},
+		{`||`, SpansetOpUnion},
+		{`>`, SpansetOpChild},
+		{`<`, SpansetOpParent},
+		{`>>`, SpansetOpDescendant},
+		{`<<`, SpansetOpAncestor},
+		{`~`, SpansetOpSibling},
+		{`!>`, SpansetOpNotChild},
+		{`!<`, SpansetOpNotParent},
+		{`!>>`, SpansetOpNotDescendant},
+		{`!<<`, SpansetOpNotAncestor},
+		{`!~`, SpansetOpNotSibling},
+		{`&>`, SpansetOpUnionChild},
+		{`&<`, SpansetOpUnionParent},
+		{`&>>`, SpansetOpUnionDescendant},
+		{`&<<`, SpansetOpUnionAncestor},
+		{`&~`, SpansetOpUnionSibling},
+	}
+	for _, tt := range ops {
+		t.Run(tt.input, func(t *testing.T) {
+			require.Equal(t, tt.input, tt.want.String())
+
+			input := fmt.Sprintf(`{ .a } %s { .b }`, tt.input)
+			got, err := Parse(input)
+			require.NoErrorf(t, err, "input: %s", input)
+
+			pipeline, ok := got.(*SpansetPipeline)
+			require.True(t, ok)
+			require.Len(t, pipeline.Pipeline, 1)
+
+			expr, ok := pipeline.Pipeline[0].(*BinarySpansetExpr)
+			require.Truef(t, ok, "got %T", pipeline.Pipeline[0])
+			require.Equal(t, tt.want, expr.Op)
+			require.Equal(t, &SpansetFilter{Expr: &Attribute{Name: "a"}}, expr.Left)
+			require.Equal(t, &SpansetFilter{Expr: &Attribute{Name: "b"}}, expr.Right)
+		})
+	}
 }
 
 func TestParseErrors(t *testing.T) {

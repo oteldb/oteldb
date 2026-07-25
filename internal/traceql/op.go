@@ -224,6 +224,18 @@ const (
 	SpansetOpDescendant
 	SpansetOpUnion
 	SpansetOpSibling
+	SpansetOpParent
+	SpansetOpAncestor
+	SpansetOpNotChild
+	SpansetOpNotParent
+	SpansetOpNotDescendant
+	SpansetOpNotAncestor
+	SpansetOpNotSibling
+	SpansetOpUnionChild
+	SpansetOpUnionParent
+	SpansetOpUnionDescendant
+	SpansetOpUnionAncestor
+	SpansetOpUnionSibling
 )
 
 // String implements fmt.Stringer.
@@ -232,13 +244,37 @@ func (op SpansetOp) String() string {
 	case SpansetOpAnd:
 		return "&&"
 	case SpansetOpChild:
-		return "<"
+		return ">"
 	case SpansetOpDescendant:
 		return ">>"
 	case SpansetOpUnion:
 		return "||"
 	case SpansetOpSibling:
 		return "~"
+	case SpansetOpParent:
+		return "<"
+	case SpansetOpAncestor:
+		return "<<"
+	case SpansetOpNotChild:
+		return "!>"
+	case SpansetOpNotParent:
+		return "!<"
+	case SpansetOpNotDescendant:
+		return "!>>"
+	case SpansetOpNotAncestor:
+		return "!<<"
+	case SpansetOpNotSibling:
+		return "!~"
+	case SpansetOpUnionChild:
+		return "&>"
+	case SpansetOpUnionParent:
+		return "&<"
+	case SpansetOpUnionDescendant:
+		return "&>>"
+	case SpansetOpUnionAncestor:
+		return "&<<"
+	case SpansetOpUnionSibling:
+		return "&~"
 	default:
 		return fmt.Sprintf("<unknown op %d>", op)
 	}
@@ -251,10 +287,33 @@ func (op SpansetOp) Precedence() int {
 		return 1
 	case SpansetOpChild,
 		SpansetOpDescendant,
-		SpansetOpSibling:
+		SpansetOpSibling,
+		SpansetOpParent,
+		SpansetOpAncestor,
+		SpansetOpNotChild,
+		SpansetOpNotParent,
+		SpansetOpNotDescendant,
+		SpansetOpNotAncestor,
+		SpansetOpNotSibling,
+		SpansetOpUnionChild,
+		SpansetOpUnionParent,
+		SpansetOpUnionDescendant,
+		SpansetOpUnionAncestor,
+		SpansetOpUnionSibling:
 		return 2
 	default:
 		return -1
+	}
+}
+
+// IsStructural whether op relates two spansets by their position in the trace
+// tree, rather than by set membership.
+func (op SpansetOp) IsStructural() bool {
+	switch op {
+	case SpansetOpAnd, SpansetOpUnion:
+		return false
+	default:
+		return op.Precedence() > 0
 	}
 }
 

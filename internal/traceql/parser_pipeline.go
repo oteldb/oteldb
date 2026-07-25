@@ -214,6 +214,30 @@ func (p *parser) peekSpansetOp() (op SpansetOp, _ bool) {
 		return SpansetOpUnion, true
 	case lexer.Tilde:
 		return SpansetOpSibling, true
+	case lexer.Lt:
+		return SpansetOpParent, true
+	case lexer.Ance:
+		return SpansetOpAncestor, true
+	case lexer.NotChild:
+		return SpansetOpNotChild, true
+	case lexer.NotParent:
+		return SpansetOpNotParent, true
+	case lexer.NotDesc:
+		return SpansetOpNotDescendant, true
+	case lexer.NotAnce:
+		return SpansetOpNotAncestor, true
+	case lexer.NotRe:
+		return SpansetOpNotSibling, true
+	case lexer.UnionChild:
+		return SpansetOpUnionChild, true
+	case lexer.UnionParent:
+		return SpansetOpUnionParent, true
+	case lexer.UnionDesc:
+		return SpansetOpUnionDescendant, true
+	case lexer.UnionAnce:
+		return SpansetOpUnionAncestor, true
+	case lexer.UnionSibling:
+		return SpansetOpUnionSibling, true
 	default:
 		return op, false
 	}

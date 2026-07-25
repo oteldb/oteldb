@@ -210,6 +210,49 @@ var tests = []TestCase{
 		},
 		false,
 	},
+	// Structural operators. Longest match wins, so "!" must not eat ">>".
+	{
+		`>>><<<`,
+		[]Token{
+			{Type: Desc, Text: ">>"},
+			{Type: Gt, Text: ">"},
+			{Type: Ance, Text: "<<"},
+			{Type: Lt, Text: "<"},
+		},
+		false,
+	},
+	{
+		`!> !< !>> !<< !~ !=`,
+		[]Token{
+			{Type: NotChild, Text: "!>"},
+			{Type: NotParent, Text: "!<"},
+			{Type: NotDesc, Text: "!>>"},
+			{Type: NotAnce, Text: "!<<"},
+			{Type: NotRe, Text: "!~"},
+			{Type: NotEq, Text: "!="},
+		},
+		false,
+	},
+	{
+		`&> &< &>> &<< &~ &&`,
+		[]Token{
+			{Type: UnionChild, Text: "&>"},
+			{Type: UnionParent, Text: "&<"},
+			{Type: UnionDesc, Text: "&>>"},
+			{Type: UnionAnce, Text: "&<<"},
+			{Type: UnionSibling, Text: "&~"},
+			{Type: And, Text: "&&"},
+		},
+		false,
+	},
+	{
+		`-.a`,
+		[]Token{
+			{Type: Sub, Text: "-"},
+			{Type: Ident, Text: ".a"},
+		},
+		false,
+	},
 }
 
 func TestTokenizeErrors(t *testing.T) {

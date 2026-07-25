@@ -99,6 +99,21 @@ const (
 	ParentID        // parentID
 	TimeSinceStart  // timeSinceStart
 	Version         // version
+
+	// Structural spanset operators.
+	//
+	// NOTE: child is [Gt], parent is [Lt], descendant is [Desc],
+	// sibling is [Tilde] and not-sibling is [NotRe].
+	Ance         // <<
+	NotChild     // !>
+	NotParent    // !<
+	NotDesc      // !>>
+	NotAnce      // !<<
+	UnionChild   // &>
+	UnionParent  // &<
+	UnionDesc    // &>>
+	UnionAnce    // &<<
+	UnionSibling // &~
 )
 
 var tokens = map[string]TokenType{
@@ -140,6 +155,16 @@ var tokens = map[string]TokenType{
 	"|":               Pipe,
 	">>":              Desc,
 	"~":               Tilde,
+	"<<":              Ance,
+	"!>":              NotChild,
+	"!<":              NotParent,
+	"!>>":             NotDesc,
+	"!<<":             NotAnce,
+	"&>":              UnionChild,
+	"&<":              UnionParent,
+	"&>>":             UnionDesc,
+	"&<<":             UnionAnce,
+	"&~":              UnionSibling,
 	"duration":        SpanDuration,
 	"childCount":      ChildCount,
 	"name":            Name,

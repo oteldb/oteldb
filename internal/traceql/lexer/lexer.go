@@ -183,19 +183,24 @@ func (l *lexer) nextToken(r rune, text string) (tok Token, _ bool) {
 			return tok, true
 		}
 	}
-	peeked := text + string(peekCh)
-
-	tt, ok := tokens[peeked]
-	if ok {
-		tok.Type = tt
-		tok.Text = peeked
+	// Greedily consume the longest known operator, e.g. "!" -> "!>" -> "!>>".
+	//
+	// Only extend while the result is still a known token, so a partial match
+	// never consumes runes belonging to the next token.
+	longest := text
+	tt, ok := tokens[text]
+	for {
+		candidate := longest + string(l.scanner.Peek())
+		ct, cok := tokens[candidate]
+		if !cok {
+			break
+		}
 		l.scanner.Next()
-		return tok, true
+		longest, tt, ok = candidate, ct, true
 	}
-
-	tt, ok = tokens[text]
 	if ok {
 		tok.Type = tt
+		tok.Text = longest
 		return tok, true
 	}
 
