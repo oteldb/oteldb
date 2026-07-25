@@ -139,6 +139,21 @@ func TestEvaluater(t *testing.T) {
 		// Nilable static.
 		{`{ nil = nil }`, true},
 		{`{ nil != nil }`, false},
+		// `x != nil` is an existence check, defined on typed intrinsics too.
+		{`{ name != nil }`, true},
+		{`{ name = nil }`, false},
+		{`{ duration != nil }`, true},
+		{`{ status != nil }`, true},
+		{`{ kind != nil }`, true},
+		{`{ statusMessage != nil }`, true},
+		{`{ span:id != nil }`, true},
+		{`{ nil != name }`, true},
+		// Absent attributes do not exist, present ones do.
+		{`{ .http.method != nil }`, true},
+		{`{ .http.method = nil }`, false},
+		{`{ .missing != nil }`, false},
+		{`{ .missing = nil }`, true},
+		{`{ span.missing = nil }`, true},
 		// Duration attribute.
 		// Duration is 2s.
 		{`{ duration < 10s }`, true},

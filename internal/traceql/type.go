@@ -20,6 +20,11 @@ func (p *parser) checkBinaryExpr(
 ) error {
 	lt := left.ValueType()
 	rt := right.ValueType()
+	// `x != nil` and `x = nil` are existence checks, so they are defined on
+	// every operand type, not just on attributes of an unknown type.
+	if op.IsEqual() && (lt == TypeNil || rt == TypeNil) {
+		return nil
+	}
 	if !op.CheckType(lt) {
 		return &TypeError{
 			Msg: fmt.Sprintf("binary operator %q not defined on %q", op, lt),

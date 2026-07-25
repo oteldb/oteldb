@@ -1147,6 +1147,24 @@ var tests = []TestCase{
 		false,
 	},
 	{
+		`{ name != nil }`,
+		testBinFieldExpr(
+			&Attribute{Prop: SpanName},
+			OpNotEq,
+			&Static{Type: TypeNil},
+		),
+		false,
+	},
+	{
+		`{ nil != duration }`,
+		testBinFieldExpr(
+			&Static{Type: TypeNil},
+			OpNotEq,
+			&Attribute{Prop: SpanDuration},
+		),
+		false,
+	},
+	{
 		`{ .a = maxInt }`,
 		testBinFieldExpr(
 			&Attribute{Name: "a"},
@@ -1176,6 +1194,10 @@ var errorTests = []string{
 	`{ foo }`,
 	// rootServiceName is not a trace-scoped intrinsic, rootService is.
 	`{ trace:rootServiceName = "a" }`,
+	// nil is only comparable for equality, not ordering.
+	`{ name > nil }`,
+	`{ duration >= nil }`,
+	`{ nil < .a }`,
 	// Scalar filter requires an aggregate.
 	`3 = 2`,
 	`{ .foo = "a" } | 3 > 2`,
