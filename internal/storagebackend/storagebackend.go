@@ -52,6 +52,10 @@ type Backend struct {
 	// candidate traces before materializing spans, instead of scanning the whole window. True by
 	// default; see [WithTraceQLPushdown].
 	traceQLPushdown bool
+	// traceQLLimitPushdown bounds the candidate traces of a *provably exact* TraceQL query by the
+	// query's limit, so only that many are materialized. True by default; see
+	// [WithTraceQLLimitPushdown].
+	traceQLLimitPushdown bool
 	// labels interns series→Prometheus-label projections for the Backend's lifetime. Each query takes
 	// a fresh fetcher (to observe the latest head) but shares this cache, so the pointer-rich
 	// labels.Labels set is built once per series and reused across queries instead of rebuilt and
@@ -85,15 +89,25 @@ func WithTraceQLPushdown(enabled bool) Option {
 	return func(b *Backend) { b.traceQLPushdown = enabled }
 }
 
+// WithTraceQLLimitPushdown toggles bounding a TraceQL query's candidate traces by its limit, which
+// caps how many traces are materialized with their attributes, events and links. It is on by
+// default and applies only where it is provably invisible (see [TraceQuerier.limitApplies]);
+// passing false materializes every candidate, for differential testing or as a fallback. It has no
+// effect without [WithTraceQLPushdown].
+func WithTraceQLLimitPushdown(enabled bool) Option {
+	return func(b *Backend) { b.traceQLLimitPushdown = enabled }
+}
+
 // New returns a Backend over store. The ingest side has no tenant callback, so every batch routes
 // to the "default" tenant; the empty tenant id here normalizes to "default" on the read side,
 // keeping reads and writes on the same tenant (which also makes cluster reads owner-aware).
 func New(store *storage.Storage, opts ...Option) *Backend {
 	b := &Backend{
-		store:            store,
-		overTimePushdown: true,
-		traceQLPushdown:  true,
-		labels:           storagepromql.NewLabelCache(),
+		store:                store,
+		overTimePushdown:     true,
+		traceQLPushdown:      true,
+		traceQLLimitPushdown: true,
+		labels:               storagepromql.NewLabelCache(),
 	}
 	for _, opt := range opts {
 		opt(b)

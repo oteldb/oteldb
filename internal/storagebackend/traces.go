@@ -38,17 +38,24 @@ var (
 // pruning anything: on the golden corpus a selective query is ~4x faster and a match-everything one
 // ~18% slower than the plain scan.
 //
-// params.Limit is deliberately not applied here: it counts *matching* traces, and the candidate set
-// is only a superset of them. Truncating it in scan order would cap the result at "however many of
-// the first N candidates happen to match", which for a selective query is usually fewer than N and
-// often zero. The engine applies the limit once the matchers have run.
+// params.Limit bounds the candidate traces only when the query is provably exact on both sides —
+// see [TraceQuerier.limitApplies]. It is never applied to the traces this returns: the engine
+// evaluates the expression and applies the limit to the *matches*, so truncating a candidate set
+// that is a superset would under-report them.
 func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.SelectSpansetsParams) (iterators.Iterator[traceqlengine.Trace], error) {
-	traceIDs, pushed, err := q.candidateTraces(ctx, params)
+	traceIDs, pd, err := q.candidateTraces(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	if pushed && len(traceIDs) == 0 {
+	if pd.pushed && len(traceIDs) == 0 {
 		return iterators.Empty[traceqlengine.Trace](), nil
+	}
+
+	if q.limitApplies(params, pd, len(traceIDs)) {
+		traceIDs, err = q.boundCandidates(ctx, params, traceIDs)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	spans, err := q.scanSpans(ctx, params.Start, params.End, traceIDs)
@@ -70,6 +77,128 @@ func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.
 		traces = append(traces, traceqlengine.Trace{TraceID: id, Spans: byTrace[id]})
 	}
 	return iterators.Slice(traces), nil
+}
+
+// limitApplies reports whether params.Limit may bound the candidate traces.
+//
+// It needs both halves of the exactness argument to hold, and fails closed on either:
+//
+//   - the engine's, that the matcher list is the whole query, so a trace holding one span that
+//     satisfies every matcher is a result ([traceqlengine.SelectSpansetsParams.Exact]);
+//   - the pushdown's, that the candidate traces are exactly those traces and not a superset
+//     ([tracePushdown.exact]).
+//
+// Without both, N candidates are not N results and bounding them would under-report matches — the
+// bug the plain scan had. Bounding a candidate set no larger than the limit is a no-op, so it is
+// skipped: the caller then never pays for [TraceQuerier.boundCandidates]. [WithTraceQLLimitPushdown]
+// turns it off wholesale.
+func (q *TraceQuerier) limitApplies(params traceqlengine.SelectSpansetsParams, pd tracePushdown, candidates int) bool {
+	return q.b.traceQLLimitPushdown &&
+		pd.pushed && pd.exact && params.Exact &&
+		params.Limit > 0 && candidates >= params.Limit*traceLimitBoundFactor
+}
+
+// traceLimitBoundFactor is how much larger than the limit the candidate set must be for bounding it
+// to pay for itself. [TraceQuerier.boundCandidates] costs one extra scan of the candidates' cheap
+// columns and saves materializing all but the limit of them, so a candidate set only slightly above
+// the limit comes out behind. On the golden corpus the crossover is between 2.5x (a ~13% loss) and
+// 25x (a ~60% win); 4 sits past it. Purely a cost heuristic — bounding is invisible either way.
+const traceLimitBoundFactor = 4
+
+// boundCandidates narrows the candidates to the first limit traces [TraceQuerier.scanSpans] would
+// yield, so only those are materialized with their attributes, events and links.
+//
+// It resolves that prefix with a second fetch over the candidates that projects only the timestamp
+// and duration columns — no attribute, event or link blob is decoded. That fetch is the *same
+// request* as the materializing one but for the projection, so it visits the traces in the same
+// order, and a trace's bounds over it are the bounds the engine computes over the materialized
+// spans. Restricting the materializing fetch to a subset of the same candidates preserves that
+// order, so the traces the engine sees are exactly the ones it would have kept unbounded.
+//
+// The engine drops a trace that is not wholly inside the window ([traceqlengine.timeRange]), which
+// a fetch does not: a span starting inside it may end after it. That check is reproduced here so a
+// dropped trace does not consume one of the limit's slots.
+func (q *TraceQuerier) boundCandidates(
+	ctx context.Context, params traceqlengine.SelectSpansetsParams, candidates map[otelstorage.TraceID]struct{},
+) (map[otelstorage.TraceID]struct{}, error) {
+	lo, hi := fetchWindow(params.Start, params.End)
+	it, err := q.b.store.TraceFetcher(q.b.tenant).Fetch(ctx, fetch.Request{
+		Tenant:        q.b.tenant,
+		Signal:        signal.Trace,
+		Start:         lo,
+		End:           hi,
+		Conditions:    []fetch.Condition{traceIDCondition(candidates)},
+		AllConditions: true,
+		Projection:    []string{sigtrace.ColTraceID, sigtrace.ColDuration},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "fetch candidate bounds")
+	}
+	batches, err := fetch.Drain(ctx, it)
+	if err != nil {
+		return nil, errors.Wrap(err, "drain candidate bounds")
+	}
+
+	type bounds struct{ start, end int64 }
+	var (
+		order  []otelstorage.TraceID
+		byID   = map[otelstorage.TraceID]bounds{}
+		zeroID otelstorage.TraceID
+	)
+	for _, batch := range batches {
+		idCol, ok := batch.Column(sigtrace.ColTraceID)
+		if !ok {
+			continue
+		}
+		var durations []int64
+		if c, ok := batch.Column(sigtrace.ColDuration); ok {
+			durations = c.Int64
+		}
+		for i, start := range batch.Timestamps {
+			id := zeroID
+			if i < len(idCol.Bytes) {
+				id = otelTraceID(idCol.Bytes[i])
+			}
+			end := start
+			if i < len(durations) {
+				end += durations[i]
+			}
+
+			b, seen := byID[id]
+			if !seen {
+				order = append(order, id)
+				b = bounds{start: start, end: end}
+			}
+			b.start = min(b.start, start)
+			b.end = max(b.end, end)
+			byID[id] = b
+		}
+	}
+
+	out := make(map[otelstorage.TraceID]struct{}, params.Limit)
+	for _, id := range order {
+		if len(out) >= params.Limit {
+			break
+		}
+		if !traceWithin(byID[id].start, byID[id].end, params.Start, params.End) {
+			continue
+		}
+		out[id] = struct{}{}
+	}
+	return out, nil
+}
+
+// traceWithin mirrors the engine's per-trace window check ([traceqlengine.timeRange.within]) over a
+// trace's unix-nanosecond bounds. The duration half of that check is not reproduced: a trace
+// duration bound makes the query inexact, so the limit is never bounded when one is set.
+func traceWithin(start, end int64, from, to time.Time) bool {
+	if !from.IsZero() && start < from.UnixNano() {
+		return false
+	}
+	if !to.IsZero() && end > to.UnixNano() {
+		return false
+	}
+	return true
 }
 
 // TraceByID implements [tracestorage.Querier]. It fetches every span of one trace by id.
@@ -159,20 +288,21 @@ func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, op
 }
 
 // candidateTraces resolves the query's span matchers to storage filters and returns the ids of the
-// traces holding at least one span that can match. pushed reports whether any filter was pushed at
-// all; when it is false the ids are nil and the caller scans the whole window.
+// traces holding at least one span that can match, with the pushdown that selected them. A zero
+// pushdown means nothing was pushed: the ids are nil and the caller scans the whole window.
 //
 // A union of matchers needs one fetch per branch, since conditions AND within a request.
 func (q *TraceQuerier) candidateTraces(
 	ctx context.Context, params traceqlengine.SelectSpansetsParams,
-) (_ map[otelstorage.TraceID]struct{}, pushed bool, _ error) {
+) (_ map[otelstorage.TraceID]struct{}, _ tracePushdown, _ error) {
 	if !q.b.traceQLPushdown {
-		return nil, false, nil
+		return nil, tracePushdown{}, nil
 	}
 	pd, ok := buildTracePushdown(params.Op, params.Matchers)
 	if !ok {
-		return nil, false, nil
+		return nil, tracePushdown{}, nil
 	}
+	pd.pushed = true
 
 	lo, hi := fetchWindow(params.Start, params.End)
 	ids := map[otelstorage.TraceID]struct{}{}
@@ -194,11 +324,11 @@ func (q *TraceQuerier) candidateTraces(
 
 		it, err := q.b.store.TraceFetcher(q.b.tenant).Fetch(ctx, req)
 		if err != nil {
-			return nil, false, errors.Wrap(err, "fetch candidate traces")
+			return nil, tracePushdown{}, errors.Wrap(err, "fetch candidate traces")
 		}
 		batches, err := fetch.Drain(ctx, it)
 		if err != nil {
-			return nil, false, errors.Wrap(err, "drain candidate traces")
+			return nil, tracePushdown{}, errors.Wrap(err, "drain candidate traces")
 		}
 		for _, batch := range batches {
 			col, ok := batch.Column(sigtrace.ColTraceID)
@@ -210,7 +340,7 @@ func (q *TraceQuerier) candidateTraces(
 			}
 		}
 	}
-	return ids, true, nil
+	return ids, pd, nil
 }
 
 // scanSpans fetches and materializes the spans in the window. A non-nil traceIDs restricts the scan

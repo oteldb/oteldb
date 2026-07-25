@@ -37,6 +37,17 @@ type SelectSpansetsParams struct {
 	MaxDuration time.Duration
 
 	Limit int
+
+	// Exact reports that Op/Matchers capture the *whole* query: the expression is a bare spanset
+	// filter (no structural operator, no pipeline stage) whose predicate is a conjunction of
+	// attribute-to-literal comparisons, and no trace-duration bound is set. A trace holding one
+	// span that satisfies every matcher is then a result, so a querier may bound the traces it
+	// materializes to Limit — subject to its own filters being exact too.
+	//
+	// It is false for anything the engine does not recognize; see [traceql.IsExactSpansetFilter].
+	// It does not cover the [timeRange] check the engine still applies per trace: a querier
+	// bounding by Limit must reproduce it (a trace ending after End is dropped).
+	Exact bool
 }
 
 // MemoryQuerier is a simple in-memory querier, used for tests.

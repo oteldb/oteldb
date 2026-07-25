@@ -58,9 +58,12 @@ const (
 	traceqlRoutes = 64
 	// traceqlErrorEvery makes every Nth trace fail, so `status = error` selects 1/N of the corpus.
 	traceqlErrorEvery = 10
-	// traceqlLimit is deliberately >= traceqlTraces, so no case is ever cut short by the engine's
-	// post-filter limit and every want below is a true match count.
+	// traceqlLimit is deliberately >= traceqlTraces, so every case asserts on the query's true match
+	// count rather than on a prefix of it. The limited/… family measures a realistic limit.
 	traceqlLimit = traceqlTraces
+	// traceqlSmallLimit is the Tempo search default, i.e. the limit a real query arrives with. It is
+	// far below the corpus size, so the queries whose candidate set is exact bound it.
+	traceqlSmallLimit = 20
 	// traceqlSelectedRoute is the route the attribute-filter case selects.
 	traceqlSelectedRoute = "/route/7"
 	// traceqlRouteTraces is how many traces carry traceqlSelectedRoute (i%64 == 7 over 500 traces).
@@ -211,9 +214,9 @@ type traceqlFixture struct {
 }
 
 // traceqlNewFixture ingests the canonical corpus into a memory-backed store and flushes + compacts
-// it, so every query below reads immutable parts rather than the head. opts configure the backend
-// (the equivalence test builds a second one with the pushdown disabled).
-func traceqlNewFixture(b testing.TB, opts ...storagebackend.Option) *traceqlFixture {
+// it, so every query below reads immutable parts rather than the head. A differently configured
+// backend over the same store comes from [traceqlEngineOver], so the corpus is only ingested once.
+func traceqlNewFixture(b testing.TB) *traceqlFixture {
 	b.Helper()
 
 	ctx := context.Background()
@@ -222,7 +225,7 @@ func traceqlNewFixture(b testing.TB, opts ...storagebackend.Option) *traceqlFixt
 	require.NoError(b, err)
 	b.Cleanup(func() { _ = store.Close(ctx) })
 
-	be := storagebackend.New(store, opts...)
+	be := storagebackend.New(store)
 
 	td, logical := traceqlCorpus()
 	require.NoError(b, be.ConsumeTraces(ctx, td))
@@ -253,14 +256,37 @@ func (f *traceqlFixture) evalParams() traceqlengine.EvalParams {
 
 // traceqlEval runs one TraceQL query and returns the number of matched traces.
 func traceqlEval(b *testing.B, f *traceqlFixture, query string) int {
+	return traceqlEvalParams(b, f, query, f.evalParams())
+}
+
+// traceqlEvalParams runs one TraceQL query with explicit parameters.
+func traceqlEvalParams(b *testing.B, f *traceqlFixture, query string, params traceqlengine.EvalParams) int {
 	b.Helper()
 
-	res, err := f.engine.Eval(context.Background(), query, f.evalParams())
+	return traceqlEvalOn(b, f.engine, query, params)
+}
+
+// traceqlEvalOn runs one TraceQL query on an explicit engine.
+func traceqlEvalOn(b *testing.B, engine *traceqlengine.Engine, query string, params traceqlengine.EvalParams) int {
+	b.Helper()
+
+	res, err := engine.Eval(context.Background(), query, params)
 	if err != nil {
 		b.Fatal(err)
 	}
 
 	return len(res.Traces)
+}
+
+// traceqlEngineOver builds a second engine over the fixture's store, so a differently configured
+// backend can be A/B'd against it without ingesting the corpus twice.
+func traceqlEngineOver(b testing.TB, f *traceqlFixture, opts ...storagebackend.Option) *traceqlengine.Engine {
+	b.Helper()
+
+	return traceqlengine.NewEngine(
+		storagebackend.New(f.store, opts...).Traces(),
+		traceqlengine.Options{},
+	)
 }
 
 // traceqlCase describes one end-to-end TraceQL sub-benchmark.
@@ -473,6 +499,11 @@ func traceqlFetchRows(b *testing.B, f *traceqlFixture, conds []fetch.Condition) 
 //	sibling           — the `~` operator over two direct children of the root
 //	child             — the `>` operator over a parent/child pair present in every trace
 //
+//	limited/…/{off,on} — the same queries at a realistic limit, with and without bounding the
+//	                     candidate traces by it. Only the exactly-pushable shapes differ; the rest
+//	                     (the stream matchers, the root intrinsics, the structural operators) must
+//	                     stay flat, since bounding is refused for them.
+//
 //	pushdown/…       — the same predicates lowered to the storage fetch contract
 func BenchmarkGoldenTraceQL(b *testing.B) {
 	f := traceqlNewFixture(b)
@@ -493,6 +524,38 @@ func BenchmarkGoldenTraceQL(b *testing.B) {
 				traceqlEval(b, f, tc.query)
 			}
 		})
+	}
+
+	// The limited/… family runs the same queries at a realistic limit, with the limit bounding the
+	// candidate traces and without it. Both variants live in one binary so the A/B is not a
+	// comparison across two runs (and therefore across whatever else the machine was doing).
+	unbounded := traceqlEngineOver(b, f, storagebackend.WithTraceQLLimitPushdown(false))
+	for _, tc := range traceqlCases {
+		for _, variant := range []struct {
+			name   string
+			engine *traceqlengine.Engine
+		}{
+			{name: "off", engine: unbounded},
+			{name: "on", engine: f.engine},
+		} {
+			b.Run("limited/"+tc.name+"/"+variant.name, func(b *testing.B) {
+				params := f.evalParams()
+				params.Limit = traceqlSmallLimit
+
+				want := min(tc.want, traceqlSmallLimit)
+				if got := traceqlEvalOn(b, variant.engine, tc.query, params); got != want {
+					b.Fatalf("%s matched %d traces, want %d", tc.query, got, want)
+				}
+
+				b.SetBytes(f.logical)
+				b.ReportAllocs()
+				b.ResetTimer()
+
+				for range b.N {
+					traceqlEvalOn(b, variant.engine, tc.query, params)
+				}
+			})
+		}
 	}
 
 	for _, tc := range traceqlPushdownCases {

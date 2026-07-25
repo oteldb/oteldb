@@ -20,6 +20,10 @@ import (
 type traceFilter struct {
 	matchers   []fetch.Matcher
 	conditions []fetch.Condition
+	// exact reports that the filter keeps a span if and only if the engine's own evaluater would:
+	// it is not merely a superset. A stream-level matcher is never exact, since it decides whole
+	// streams by resource *and* scope labels while the engine reads one of the two per span.
+	exact bool
 }
 
 // tracePushdown selects the candidate traces of a TraceQL query: the union of its filter groups.
@@ -27,6 +31,14 @@ type traceFilter struct {
 // superset of the query's result — the engine still evaluates the full expression on them.
 type tracePushdown struct {
 	groups []traceFilter
+	// pushed reports that the pushdown was built and run, i.e. that the candidate ids are
+	// meaningful. A zero tracePushdown means the caller scans the whole window instead.
+	pushed bool
+	// exact reports that the candidate traces are exactly the traces holding a span the pushed
+	// filters keep — every matcher was lowered, and every lowering is exact. It says nothing about
+	// whether the matcher list is the whole query; that is
+	// [traceqlengine.SelectSpansetsParams.Exact].
+	exact bool
 }
 
 // buildTracePushdown lowers the span matchers extracted from a TraceQL expression to storage
@@ -54,9 +66,16 @@ func buildTracePushdown(op traceql.SpansetOp, matchers []traceql.SpanMatcher) (t
 		return tracePushdown{groups: groups}, true
 	}
 
-	var group traceFilter
+	var (
+		group traceFilter
+		exact = true
+	)
 	for _, m := range matchers {
 		f, ok := lowerSpanMatcher(m)
+		if !ok || !f.exact {
+			// A dropped matcher, or one lowered to a superset, widens the candidate set.
+			exact = false
+		}
 		if !ok {
 			continue
 		}
@@ -66,7 +85,7 @@ func buildTracePushdown(op traceql.SpansetOp, matchers []traceql.SpanMatcher) (t
 	if len(group.matchers)+len(group.conditions) == 0 {
 		return tracePushdown{}, false
 	}
-	return tracePushdown{groups: []traceFilter{group}}, true
+	return tracePushdown{groups: []traceFilter{group}, exact: exact}, true
 }
 
 // lowerSpanMatcher lowers one span matcher to a storage filter, reporting false when its property,
@@ -160,6 +179,10 @@ func lowerAttributeMatcher(m traceql.SpanMatcher, pred func(traceql.Static) bool
 		// Resource and scope attributes are both stream labels, so one matcher covers either scope.
 		// That is exactly what `resource.` means to the engine (it reads scope attributes too), and a
 		// superset for `instrumentation.` (which reads only scope attributes) — the engine re-checks.
+		//
+		// Not exact, therefore: it decides a whole stream on either label set, while the engine reads
+		// one of the two (and prefers the scope's on a conflict), so a kept stream may hold no span
+		// the engine keeps.
 		return traceFilter{matchers: []fetch.Matcher{{
 			Name:  []byte(attr.Name),
 			Match: func(v signal.Value) bool { return pred(attrStatic(v)) },
@@ -172,8 +195,10 @@ func lowerAttributeMatcher(m traceql.SpanMatcher, pred func(traceql.Static) bool
 
 // spanCondition builds a filter of one per-span condition over column, evaluating pred on the
 // column value projected to a [traceql.Static] by conv.
+// A per-span condition is exact: the column is always present and conv mirrors the engine's
+// evaluater, so the condition keeps a span if and only if the engine would.
 func spanCondition(column string, conv func(signal.Value) traceql.Static, pred func(traceql.Static) bool) traceFilter {
-	return traceFilter{conditions: []fetch.Condition{{
+	return traceFilter{exact: true, conditions: []fetch.Condition{{
 		Column: column,
 		Match:  func(v signal.Value) bool { return pred(conv(v)) },
 	}}}

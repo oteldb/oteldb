@@ -241,9 +241,15 @@ func (r timeRange) within(start, end time.Time) bool {
 
 func extractPredicates(expr traceql.Expr, params EvalParams) SelectSpansetsParams {
 	op, matchers := traceql.ExtractMatchers(expr)
+	// A trace-duration bound is applied per trace after the querier returns, so it makes the
+	// matcher list an approximation of the query even for a bare filter.
+	exact := op == traceql.SpansetOpAnd &&
+		params.MinDuration == 0 && params.MaxDuration == 0 &&
+		traceql.IsExactSpansetFilter(expr)
 	return SelectSpansetsParams{
 		Op:          op,
 		Matchers:    matchers,
+		Exact:       exact,
 		Start:       params.Start,
 		End:         params.End,
 		MinDuration: params.MinDuration,
