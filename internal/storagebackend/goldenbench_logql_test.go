@@ -183,28 +183,28 @@ func goldenLogQLRound(round int, logical map[string]int64) plog.Logs {
 // own immutable part, plus one final round left in the head. Reads therefore merge many parts with a
 // live head — the shape a running store actually serves. No compaction is forced, so the cross-part
 // merge and per-part pruning stay in the measured path.
-func goldenLogQLFixture(b *testing.B) *goldenLogQLCorpus {
-	b.Helper()
+func goldenLogQLFixture(tb testing.TB) *goldenLogQLCorpus {
+	tb.Helper()
 
 	ctx := context.Background()
 	store, err := storage.InMemory()
-	require.NoError(b, err)
-	b.Cleanup(func() { _ = store.Close(ctx) })
+	require.NoError(tb, err)
+	tb.Cleanup(func() { _ = store.Close(ctx) })
 
 	backend := storagebackend.New(store)
 	logical := make(map[string]int64)
 
 	for round := range goldenLogQLParts {
-		require.NoError(b, backend.ConsumeLogs(ctx, goldenLogQLRound(round, logical)))
-		require.NoError(b, store.Admin().Flush(ctx, "", signal.Log))
+		require.NoError(tb, backend.ConsumeLogs(ctx, goldenLogQLRound(round, logical)))
+		require.NoError(tb, store.Admin().Flush(ctx, "", signal.Log))
 	}
 	// One more round stays in the head.
-	require.NoError(b, backend.ConsumeLogs(ctx, goldenLogQLRound(goldenLogQLParts, logical)))
+	require.NoError(tb, backend.ConsumeLogs(ctx, goldenLogQLRound(goldenLogQLParts, logical)))
 
 	engine, err := logqlengine.NewEngine(backend.Logs(), logqlengine.Options{
 		Optimizers: []logqlengine.Optimizer{&storagebackend.LogQLOptimizer{}},
 	})
-	require.NoError(b, err)
+	require.NoError(tb, err)
 
 	rounds := goldenLogQLParts + 1
 	start := time.Unix(0, goldenLogQLStartTS)

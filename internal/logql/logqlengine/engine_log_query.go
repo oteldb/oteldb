@@ -187,9 +187,15 @@ func (n *ProcessorNode) EvalPipeline(ctx context.Context, params EvalParams) (_ 
 		return nil, errors.Wrap(err, "build pipeline")
 	}
 
-	// Do not limit storage query.
+	// Limit the storage query only when nothing below can drop an entry: then the storage top-N and
+	// the final top-N agree. A stage that may drop (a filter) or a non-nop prefilter breaks the
+	// agreement — fetching only N would under-report — so the storage query stays unlimited and
+	// [entryIterator] applies the limit after the pipeline. The [entryIterator] limit stays in place
+	// either way; it is the backstop.
 	qparams := params
-	qparams.Limit = -1
+	if !n.keepsEveryEntry() {
+		qparams.Limit = -1
+	}
 	iter, err := n.Input.EvalPipeline(ctx, qparams)
 	if err != nil {
 		return nil, err
