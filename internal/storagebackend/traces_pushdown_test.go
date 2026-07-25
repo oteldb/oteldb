@@ -13,6 +13,7 @@ import (
 	"github.com/oteldb/storage"
 
 	"github.com/oteldb/oteldb/internal/storagebackend"
+	"github.com/oteldb/oteldb/internal/tempoapi"
 	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
 )
 
@@ -121,12 +122,11 @@ func traceqlGoldenQueries() []string {
 	return out
 }
 
-// TestTraceQLRootPushdownDropsRootlessTraces pins the one place the pushdown is not a pure superset.
-// The engine falls back to an arbitrary span as a trace's root when no span is parentless (the real
-// root was never ingested, or starts outside the window — the span fetch is windowed), while the
-// root pushdown selects parentless spans only. Such a trace is therefore dropped, i.e. rootName
-// means "the trace's actual root span" as it does in Tempo.
-func TestTraceQLRootPushdownDropsRootlessTraces(t *testing.T) {
+// TestTraceQLRootlessTraces covers a trace with no parentless span, which happens when the root was
+// never ingested or starts outside the query window (the span fetch is windowed). Its root name and
+// service are empty, as Tempo reports them, and the pushdown agrees with the plain scan on both the
+// predicate that misses it and the one that selects it.
+func TestTraceQLRootlessTraces(t *testing.T) {
 	ctx := context.Background()
 
 	store, err := storage.InMemory()
@@ -152,18 +152,37 @@ func TestTraceQLRootPushdownDropsRootlessTraces(t *testing.T) {
 	}
 	require.NoError(t, b.ConsumeTraces(ctx, td))
 
-	params := traceqlengine.EvalParams{Start: ts.Add(-time.Hour), End: ts.Add(time.Hour), Limit: 10}
-	eval := func(t *testing.T, be *storagebackend.Backend) int {
+	var (
+		params = traceqlengine.EvalParams{Start: ts.Add(-time.Hour), End: ts.Add(time.Hour), Limit: 10}
+		plain  = storagebackend.New(store, storagebackend.WithTraceQLPushdown(false))
+	)
+	eval := func(t *testing.T, be *storagebackend.Backend, query string) *tempoapi.Traces {
 		t.Helper()
 
-		res, err := traceqlengine.NewEngine(be.Traces(), traceqlengine.Options{}).
-			Eval(ctx, `{rootName = "orphan"}`, params)
+		res, err := traceqlengine.NewEngine(be.Traces(), traceqlengine.Options{}).Eval(ctx, query, params)
 		require.NoError(t, err)
 
-		return len(res.Traces)
+		return res
 	}
 
-	require.Equal(t, 1, eval(t, storagebackend.New(store, storagebackend.WithTraceQLPushdown(false))),
-		"the engine matches its fallback root")
-	require.Equal(t, 0, eval(t, b), "the pushdown selects parentless spans only")
+	tests := []struct {
+		query string
+		want  int
+	}{
+		// The trace has no root span, so it has no root name to match — the pushdown selects
+		// parentless spans, and dropping the trace is what the engine does anyway.
+		{query: `{rootName = "orphan"}`, want: 0},
+		{query: `{rootServiceName = "api"}`, want: 0},
+		// An empty root name is exactly what a rootless trace has. It is deliberately not pushed (the
+		// filter could never select it), so this falls back to the plain scan.
+		{query: `{rootName = ""}`, want: 1},
+		{query: `{rootServiceName = ""}`, want: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			got := eval(t, b, tt.query)
+			require.Len(t, got.Traces, tt.want)
+			require.Equal(t, eval(t, plain, tt.query), got, "pushdown must agree with the plain scan")
+		})
+	}
 }

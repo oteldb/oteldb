@@ -205,14 +205,12 @@ func lowerSpanMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 //
 // # Rootless traces
 //
-// This is where the pushdown is not a pure superset. The engine picks the trace's *first* parentless
-// span as its root, and falls back to an arbitrary span (Spans[0]) when the trace has none — which
-// happens whenever the real root was not ingested or starts outside the query window, since the span
-// fetch is windowed. A trace with several parentless spans is still covered (the term matches on any
-// of them, and the engine re-checks its own pick), but a rootless trace whose arbitrary fallback
-// root satisfies the predicate is dropped instead of returned. `rootName`/`rootServiceName`
-// therefore mean "the trace's actual root span", as they do in Tempo, rather than "whatever the
-// engine picked".
+// A trace whose root span was never ingested (or starts outside the query window — the span fetch is
+// windowed) has no parentless span, and the engine reports its root name and service as empty. This
+// filter cannot select such a trace, so a predicate that accepts the empty string is not pushed at
+// all; every other predicate is false on it in the engine too, and dropping it is exact. A trace
+// with several parentless spans is covered as a superset: the term matches on any of them, and the
+// engine re-checks against the first one, which is the root it uses.
 func lowerRootMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 	if m.Op == 0 || m.Attribute.Parent {
 		return nil, false
@@ -228,6 +226,12 @@ func lowerRootMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 		Match:  func(v signal.Value) bool { return len(v.Str()) == 0 },
 	}
 
+	// A rootless trace has an empty root name and service, so a predicate that accepts the empty
+	// string matches traces this filter — which selects parentless spans — cannot see at all.
+	if matchesEmptyRoot(pred) {
+		return nil, false
+	}
+
 	switch m.Attribute.Prop {
 	case traceql.RootSpanName:
 		name := spanCondition(sigtrace.ColName, stringStatic, pred)
@@ -236,9 +240,9 @@ func lowerRootMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 		}
 		return []traceFilter{{conditions: append([]fetch.Condition{isRoot}, name.conditions...)}}, true
 	case traceql.RootServiceName:
-		// The engine reports an empty root service name for a root without the attribute, which a
-		// stream matcher (it selects streams that *have* the label) cannot express.
-		if !falseOnMissing(pred) || (m.Static.Type == traceql.TypeString && m.Static.AsString() == "") {
+		// A root without a service.name also reports the empty service name, which a stream matcher
+		// (it selects streams that *have* the label) cannot express — already refused above.
+		if !falseOnMissing(pred) {
 			return nil, false
 		}
 
@@ -314,6 +318,15 @@ func lowerAttributeMatcher(m traceql.SpanMatcher, pred func(traceql.Static) bool
 		// Event and link attributes live inside the serialized events/links blobs.
 		return nil, false
 	}
+}
+
+// matchesEmptyRoot reports whether the predicate accepts the empty string, which is what the engine
+// reports as the root name and service of a trace with no parentless span.
+func matchesEmptyRoot(pred func(traceql.Static) bool) bool {
+	var empty traceql.Static
+	empty.SetString("")
+
+	return pred(empty)
 }
 
 // falseOnMissing reports whether the predicate rejects a missing attribute, which the engine

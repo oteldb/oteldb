@@ -149,9 +149,12 @@ func TestBuildTracePushdown(t *testing.T) {
 				matchers:   []string{"service.name"},
 			}},
 		},
-		// An empty root service name is what the engine reports for a root *without* the attribute,
-		// which a stream matcher cannot select.
+		// An empty root name or service is what the engine reports for a *rootless* trace (and for a
+		// root without a service.name), which a filter over parentless spans cannot select.
 		{query: `{rootServiceName = ""}`},
+		{query: `{rootName = ""}`},
+		{query: `{rootName != "GET /"}`},
+		{query: `{rootName =~ ".*"}`},
 		// A root intrinsic constrains a different span than a span-level matcher does, so it lands in
 		// its own term and the two candidate sets intersect.
 		{
