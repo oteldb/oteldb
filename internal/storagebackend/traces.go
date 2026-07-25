@@ -2,6 +2,7 @@ package storagebackend
 
 import (
 	"context"
+	"maps"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -23,16 +24,35 @@ var (
 	_ traceqlengine.Querier = (*TraceQuerier)(nil)
 )
 
-// SelectSpansets implements [traceqlengine.Querier]. It returns every trace whose spans fall in the
-// window, grouped by trace id; the TraceQL engine evaluates the spanset matchers on the result
-// (mirroring the in-memory reference querier).
+// SelectSpansets implements [traceqlengine.Querier]. It returns the traces whose spans fall in the
+// window, grouped by trace id; the TraceQL engine evaluates the spanset matchers on the result.
 //
-// params.Limit is deliberately not applied here: it counts *matching* traces, and nothing has been
-// matched yet. Truncating the candidate set in scan order would cap the result at "however many of
-// the first N scanned traces happen to match", which for a selective query is usually fewer than N
-// and often zero. The engine applies the limit once the matchers have run.
+// The query's span matchers are first lowered to storage filters ([buildTracePushdown]) and run as a
+// trace_id-only scan, so only the candidate traces are materialized with their attributes, events
+// and links. The candidate set is a superset of the result and whole traces are returned, so the
+// engine sees exactly what a full window scan would give it — structural operators and the
+// spanset-level intrinsics still work. Nothing pushable (a bare `{}`, a `traceDuration` bound)
+// falls back to the full window scan.
+//
+// Resolving the candidates is itself a scan (of the filter columns and trace_id, not of the
+// attribute/event/link blobs), so a predicate that matches nearly every trace pays for it without
+// pruning anything: on the golden corpus a selective query is ~4x faster and a match-everything one
+// ~18% slower than the plain scan.
+//
+// params.Limit is deliberately not applied here: it counts *matching* traces, and the candidate set
+// is only a superset of them. Truncating it in scan order would cap the result at "however many of
+// the first N candidates happen to match", which for a selective query is usually fewer than N and
+// often zero. The engine applies the limit once the matchers have run.
 func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.SelectSpansetsParams) (iterators.Iterator[traceqlengine.Trace], error) {
-	spans, err := q.scanSpans(ctx, params.Start, params.End)
+	traceIDs, pushed, err := q.candidateTraces(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	if pushed && len(traceIDs) == 0 {
+		return iterators.Empty[traceqlengine.Trace](), nil
+	}
+
+	spans, err := q.scanSpans(ctx, params.Start, params.End, traceIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +89,7 @@ func (q *TraceQuerier) TraceByID(ctx context.Context, id otelstorage.TraceID, _ 
 // SearchTags implements [tracestorage.Querier]. It returns the spans whose attributes match every
 // requested tag and whose duration is within the optional bounds.
 func (q *TraceQuerier) SearchTags(ctx context.Context, tags map[string]string, opts tracestorage.SearchTagsOptions) (iterators.Iterator[tracestorage.Span], error) {
-	spans, err := q.scanSpans(ctx, opts.Start, opts.End)
+	spans, err := q.scanSpans(ctx, opts.Start, opts.End, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +109,7 @@ func (q *TraceQuerier) SearchTags(ctx context.Context, tags map[string]string, o
 // TagNames implements [tracestorage.Querier]. It enumerates the distinct attribute names seen on the
 // spans in the window, restricted to the requested scope.
 func (q *TraceQuerier) TagNames(ctx context.Context, opts tracestorage.TagNamesOptions) ([]tracestorage.TagName, error) {
-	spans, err := q.scanSpans(ctx, opts.Start, opts.End)
+	spans, err := q.scanSpans(ctx, opts.Start, opts.End, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +134,7 @@ func (q *TraceQuerier) TagNames(ctx context.Context, opts tracestorage.TagNamesO
 // TagValues implements [tracestorage.Querier]. It enumerates the distinct values the attribute takes
 // across the spans in the window.
 func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, opts tracestorage.TagValuesOptions) (iterators.Iterator[tracestorage.Tag], error) {
-	spans, err := q.scanSpans(ctx, opts.Start, opts.End)
+	spans, err := q.scanSpans(ctx, opts.Start, opts.End, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -139,14 +159,104 @@ func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, op
 	return iterators.Slice(out), nil
 }
 
-// scanSpans fetches and materializes every span in the window.
-func (q *TraceQuerier) scanSpans(ctx context.Context, start, end time.Time) ([]tracestorage.Span, error) {
+// candidateTraces resolves the query's span matchers to storage filters and returns the ids of the
+// traces holding at least one span that can match. pushed reports whether any filter was pushed at
+// all; when it is false the ids are nil and the caller scans the whole window.
+//
+// Each of the pushdown's terms is resolved to its own id set — one fetch per group, unioned, since
+// conditions AND within a request — and the terms then intersect.
+func (q *TraceQuerier) candidateTraces(
+	ctx context.Context, params traceqlengine.SelectSpansetsParams,
+) (_ map[otelstorage.TraceID]struct{}, pushed bool, _ error) {
+	if !q.b.traceQLPushdown {
+		return nil, false, nil
+	}
+	pd, ok := buildTracePushdown(params.Op, params.Matchers)
+	if !ok {
+		return nil, false, nil
+	}
+
+	lo, hi := fetchWindow(params.Start, params.End)
+
+	var ids map[otelstorage.TraceID]struct{}
+	for _, term := range pd.terms {
+		got := map[otelstorage.TraceID]struct{}{}
+		for _, group := range term.groups {
+			if err := q.collectTraceIDs(ctx, lo, hi, group, got); err != nil {
+				return nil, false, err
+			}
+		}
+
+		if ids == nil {
+			ids = got
+		} else {
+			maps.DeleteFunc(ids, func(id otelstorage.TraceID, _ struct{}) bool {
+				_, ok := got[id]
+				return !ok
+			})
+		}
+		if len(ids) == 0 {
+			break
+		}
+	}
+	return ids, true, nil
+}
+
+// collectTraceIDs runs one filter group over the window and adds the trace id of every surviving
+// span to ids.
+func (q *TraceQuerier) collectTraceIDs(
+	ctx context.Context, lo, hi int64, group traceFilter, ids map[otelstorage.TraceID]struct{},
+) error {
+	req := fetch.Request{
+		Tenant:   q.b.tenant,
+		Signal:   signal.Trace,
+		Start:    lo,
+		End:      hi,
+		Matchers: group.matchers,
+		// Only the trace id of a surviving span is needed; the filter columns are decoded
+		// regardless, but the attrs/events/links blobs are not.
+		Projection: []string{sigtrace.ColTraceID},
+	}
+	if len(group.conditions) > 0 {
+		req.Conditions = group.conditions
+		req.AllConditions = true
+	}
+
+	it, err := q.b.store.TraceFetcher(q.b.tenant).Fetch(ctx, req)
+	if err != nil {
+		return errors.Wrap(err, "fetch candidate traces")
+	}
+	batches, err := fetch.Drain(ctx, it)
+	if err != nil {
+		return errors.Wrap(err, "drain candidate traces")
+	}
+	for _, batch := range batches {
+		col, ok := batch.Column(sigtrace.ColTraceID)
+		if !ok {
+			continue
+		}
+		for _, raw := range col.Bytes {
+			ids[otelTraceID(raw)] = struct{}{}
+		}
+	}
+	return nil
+}
+
+// scanSpans fetches and materializes the spans in the window. A non-nil traceIDs restricts the scan
+// to those traces, so the spans of every other trace are never materialized.
+func (q *TraceQuerier) scanSpans(
+	ctx context.Context, start, end time.Time, traceIDs map[otelstorage.TraceID]struct{},
+) ([]tracestorage.Span, error) {
 	lo, hi := fetchWindow(start, end)
 	req := fetch.Request{
 		Tenant: q.b.tenant,
 		Signal: signal.Trace,
 		Start:  lo,
 		End:    hi,
+	}
+	if traceIDs != nil {
+		req.Conditions = []fetch.Condition{traceIDCondition(traceIDs)}
+		req.AllConditions = true
 	}
 
 	it, err := q.b.store.TraceFetcher(q.b.tenant).Fetch(ctx, req)
@@ -163,6 +273,29 @@ func (q *TraceQuerier) scanSpans(ctx context.Context, start, end time.Time) ([]t
 		spans = append(spans, materializeSpans(batch)...)
 	}
 	return spans, nil
+}
+
+// traceIDCondition builds the per-span condition keeping only the spans of the given traces. A
+// single id also carries the equality-bloom hint, so a trace-by-id shaped query prunes to the parts
+// that hold it.
+func traceIDCondition(traceIDs map[otelstorage.TraceID]struct{}) fetch.Condition {
+	cond := fetch.Condition{
+		Column: sigtrace.ColTraceID,
+		Match: func(v signal.Value) bool {
+			raw := v.Str()
+			if len(raw) != len(otelstorage.TraceID{}) {
+				return false
+			}
+			_, ok := traceIDs[otelTraceID(raw)]
+			return ok
+		},
+	}
+	if len(traceIDs) == 1 {
+		for id := range traceIDs {
+			cond.Equal = &fetch.EqualMatcher{Name: sigtrace.ColTraceID, Value: string(id[:])}
+		}
+	}
+	return cond
 }
 
 // materializeSpans converts one trace batch into spans, decoding the per-span columns and the

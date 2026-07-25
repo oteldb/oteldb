@@ -210,6 +210,41 @@ func TestEngine(t *testing.T) {
 			false,
 		},
 
+		// A trace with no parentless span (its root was never ingested, or starts outside the
+		// window) has no root name and no root service, exactly as Tempo reports it.
+		{
+			`{ rootName = "Span #1" }`,
+			[]spanIDs{
+				{id: 2, parent: 1},
+				{id: 3, parent: 2},
+			},
+			nil,
+			nil,
+			false,
+		},
+		{
+			`{ rootServiceName = "test.service" }`,
+			[]spanIDs{
+				{id: 2, parent: 1},
+				{id: 3, parent: 2},
+			},
+			nil,
+			nil,
+			false,
+		},
+		{
+			`{ rootName = "" && rootServiceName = "" }`,
+			[]spanIDs{
+				{id: 2, parent: 1},
+				{id: 3, parent: 2},
+			},
+			nil,
+			[]uint64{
+				2, 3,
+			},
+			false,
+		},
+
 		// Invalid query
 		{
 			`{ .a = }`,
