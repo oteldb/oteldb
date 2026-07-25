@@ -16,11 +16,12 @@ package storagebackend_test
 // Two families live here:
 //
 //   - The unprefixed cases run the real TraceQL engine end-to-end (parse → SelectSpansets → filter →
-//     tempoapi result). Note that [storagebackend.TraceQuerier.SelectSpansets] does not push its
-//     matchers into storage: every one of them is a full window scan plus a full span
-//     materialization, and TraceQL filters afterwards in memory.
-//   - The pushdown/… cases lower the same predicates to the storage fetch contract directly. They
-//     are what the TraceQL path *would* cost with push-down, and they are the cases that isolate the
+//     tempoapi result). [storagebackend.TraceQuerier.SelectSpansets] lowers what it can of the
+//     query's matchers to storage filters and materializes only the candidate traces; a case whose
+//     predicate has no per-span column form (`{}`, the root intrinsics) still costs a full window
+//     scan plus a full span materialization.
+//   - The pushdown/… cases lower the same predicates to the storage fetch contract directly, without
+//     the engine. They are the floor the end-to-end cases are measured against, and they isolate the
 //     record engine's condition memoization (per-distinct-value for narrow int columns such as kind
 //     and status_code, per-dictionary-entry for byte and attribute columns).
 
@@ -210,8 +211,9 @@ type traceqlFixture struct {
 }
 
 // traceqlNewFixture ingests the canonical corpus into a memory-backed store and flushes + compacts
-// it, so every query below reads immutable parts rather than the head.
-func traceqlNewFixture(b testing.TB) *traceqlFixture {
+// it, so every query below reads immutable parts rather than the head. opts configure the backend
+// (the equivalence test builds a second one with the pushdown disabled).
+func traceqlNewFixture(b testing.TB, opts ...storagebackend.Option) *traceqlFixture {
 	b.Helper()
 
 	ctx := context.Background()
@@ -220,7 +222,7 @@ func traceqlNewFixture(b testing.TB) *traceqlFixture {
 	require.NoError(b, err)
 	b.Cleanup(func() { _ = store.Close(ctx) })
 
-	be := storagebackend.New(store)
+	be := storagebackend.New(store, opts...)
 
 	td, logical := traceqlCorpus()
 	require.NoError(b, be.ConsumeTraces(ctx, td))

@@ -48,6 +48,10 @@ type Backend struct {
 	// ([storage.Storage.AggregateMetricsNamed]) instead of a raw fetch-and-fold. True by default;
 	// see [WithOverTimePushdown].
 	overTimePushdown bool
+	// traceQLPushdown lowers a TraceQL query's span matchers to storage filters and resolves the
+	// candidate traces before materializing spans, instead of scanning the whole window. True by
+	// default; see [WithTraceQLPushdown].
+	traceQLPushdown bool
 	// labels interns series→Prometheus-label projections for the Backend's lifetime. Each query takes
 	// a fresh fetcher (to observe the latest head) but shares this cache, so the pointer-rich
 	// labels.Labels set is built once per series and reused across queries instead of rebuilt and
@@ -74,11 +78,23 @@ func WithOverTimePushdown(enabled bool) Option {
 	return func(b *Backend) { b.overTimePushdown = enabled }
 }
 
+// WithTraceQLPushdown toggles the TraceQL span-matcher pushdown. It is on by default (the filtered
+// candidate-trace scan is faster and returns the same traces); passing false restores the plain full
+// window scan, for differential testing or as a fallback.
+func WithTraceQLPushdown(enabled bool) Option {
+	return func(b *Backend) { b.traceQLPushdown = enabled }
+}
+
 // New returns a Backend over store. The ingest side has no tenant callback, so every batch routes
 // to the "default" tenant; the empty tenant id here normalizes to "default" on the read side,
 // keeping reads and writes on the same tenant (which also makes cluster reads owner-aware).
 func New(store *storage.Storage, opts ...Option) *Backend {
-	b := &Backend{store: store, overTimePushdown: true, labels: storagepromql.NewLabelCache()}
+	b := &Backend{
+		store:            store,
+		overTimePushdown: true,
+		traceQLPushdown:  true,
+		labels:           storagepromql.NewLabelCache(),
+	}
 	for _, opt := range opts {
 		opt(b)
 	}
