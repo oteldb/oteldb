@@ -137,25 +137,31 @@ func (e *Engine) evalExpr(ctx context.Context, expr traceql.Expr, params EvalPar
 		}
 
 		var (
-			root  = elem.Spans[0]
-			start = root.Start.AsTime()
-			end   = root.End.AsTime()
+			// The trace's root is its parentless span, if it has one at all: a trace whose root was
+			// never ingested (or starts outside the query window) has no root name or service, exactly
+			// as Tempo reports it. The extent is taken over every span either way.
+			root  *tracestorage.Span
+			start = elem.Spans[0].Start.AsTime()
+			end   = elem.Spans[0].End.AsTime()
 		)
-		for _, span := range elem.Spans[1:] {
+		for i, span := range elem.Spans {
 			if st := span.Start.AsTime(); st.Before(start) {
 				start = st
 			}
 			if et := span.End.AsTime(); et.After(end) {
 				end = et
 			}
-			if !root.ParentSpanID.IsEmpty() && span.ParentSpanID.IsEmpty() {
-				root = span
+			if root == nil && span.ParentSpanID.IsEmpty() {
+				root = &elem.Spans[i]
 			}
 		}
 
-		var rootServiceName string
-		if name, ok := root.ServiceName(); ok {
-			rootServiceName = name
+		var rootSpanName, rootServiceName string
+		if root != nil {
+			rootSpanName = root.Name
+			if name, ok := root.ServiceName(); ok {
+				rootServiceName = name
+			}
 		}
 
 		if !tr.within(start, end) {
@@ -167,7 +173,7 @@ func (e *Engine) evalExpr(ctx context.Context, expr traceql.Expr, params EvalPar
 			{
 				TraceID:         elem.TraceID,
 				Spans:           elem.Spans,
-				RootSpanName:    root.Name,
+				RootSpanName:    rootSpanName,
 				RootServiceName: rootServiceName,
 				Start:           start,
 				TraceDuration:   end.Sub(start),
@@ -190,9 +196,12 @@ func (e *Engine) evalExpr(ctx context.Context, expr traceql.Expr, params EvalPar
 				spans.Spans = append(spans.Spans, span.AsTempoSpanFiltered(allowedAttrs))
 			}
 
-			// Add attributes from root, referenced by the query only.
-			tracestorage.ConvertToTempoAttrsFiltered(&spans.Attributes, root.ScopeAttrs, allowedAttrs)
-			tracestorage.ConvertToTempoAttrsFiltered(&spans.Attributes, root.ResourceAttrs, allowedAttrs)
+			// Add attributes from root, referenced by the query only. A trace without a root span
+			// contributes none, as it contributes no root name or service.
+			if root != nil {
+				tracestorage.ConvertToTempoAttrsFiltered(&spans.Attributes, root.ScopeAttrs, allowedAttrs)
+				tracestorage.ConvertToTempoAttrsFiltered(&spans.Attributes, root.ResourceAttrs, allowedAttrs)
+			}
 			result = append(result, tempoapi.TraceSearchMetadata{
 				TraceID:           s.TraceID.Hex(),
 				RootServiceName:   tempoapi.NewOptString(s.RootServiceName),
