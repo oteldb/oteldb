@@ -78,7 +78,8 @@ func (n *bucketSamplingNode) EvalBucketedSample(ctx context.Context, params logq
 	if n.op == bytesSampling {
 		projection = append(projection, siglog.ColBody)
 	}
-	batches, fullyPushed, err := n.src.fetchBatches(ctx, startNs-windowNs, endNs, projection...)
+	// No limit: a range aggregation must see every record in the window.
+	batches, fullyPushed, err := n.src.fetchBatches(ctx, startNs-windowNs, endNs, fetchOptions{projection: projection})
 	if err != nil {
 		return nil, err
 	}

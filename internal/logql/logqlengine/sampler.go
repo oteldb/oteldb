@@ -43,6 +43,11 @@ func (n *SamplingNode) Traverse(cb NodeVisitor) error {
 
 // EvalSample implements [SampleNode].
 func (n *SamplingNode) EvalSample(ctx context.Context, params EvalParams) (SampleIterator, error) {
+	// A metric query's entry limit bounds the returned series, not the lines a range aggregation
+	// samples: truncating the input would silently under-count. The API passes its default limit
+	// down for metric queries too, so drop it here rather than relying on the pipeline node to do
+	// it (a bare selector has no [ProcessorNode] at all).
+	params.Limit = -1
 	iter, err := n.Input.EvalPipeline(ctx, params)
 	if err != nil {
 		return nil, err

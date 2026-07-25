@@ -30,10 +30,19 @@ var (
 	_ logqlengine.Querier = (*LogQuerier)(nil)
 )
 
-// Capabilities implements [logqlengine.Querier]. The storage backend does not push any pipeline
-// filtering down, so it advertises no supported ops; the LogQL engine applies the whole pipeline
-// (line filters, parsers, label filters) on top of the raw entry stream this backend returns.
+// Capabilities implements [logqlengine.Querier].
+//
+// Every stream selector matcher shape is applied by this backend: [matchSelector] re-checks each
+// materialized record against the whole selector with LogQL semantics (absent label reads as ""),
+// and selector regexps are compiled anchored, matching the engine's own label matcher exactly. So
+// the label ops are advertised and the engine builds no redundant prefilter — which also lets a
+// bare selector query push its limit into the fetch (see [logStreamNode.EvalPipeline]).
+//
+// No line op is advertised: line filters are not applied by this backend. [LogQLOptimizer] may
+// offload some of them as fetch conditions, but those only ever skip work — the engine still
+// evaluates the whole pipeline on the surviving entries.
 func (q *LogQuerier) Capabilities() (caps logqlengine.QuerierCapabilities) {
+	caps.Label.Add(logql.OpEq, logql.OpNotEq, logql.OpRe, logql.OpNotRe)
 	return caps
 }
 
@@ -62,12 +71,21 @@ var _ logqlengine.PipelineNode = (*logStreamNode)(nil)
 // Traverse implements [logqlengine.Node].
 func (n *logStreamNode) Traverse(cb logqlengine.NodeVisitor) error { return cb(n) }
 
-// EvalPipeline implements [logqlengine.PipelineNode]. It fetches every record in the window, builds
+// EvalPipeline implements [logqlengine.PipelineNode]. It fetches the records in the window, builds
 // each record's label set, keeps the records whose set satisfies the stream selector, and returns
 // them as entries ordered per params.Direction (and truncated to params.Limit).
+//
+// A positive params.Limit is offered to the fetch as an ordered top-N pushdown. The engine only
+// passes one down when nothing above this node can drop an entry, and [fetchBatches] takes it only
+// when the selector is fully pushed, so no post-fetch filter can reduce the result below the limit.
+// The fetch answers with a superset (it keeps every row tying at the boundary timestamp), so the
+// sort+truncate below still decides the exact result.
 func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.EvalParams) (logqlengine.EntryIterator, error) {
 	lo, hi := fetchWindow(params.Start, params.End)
-	batches, _, err := n.fetchBatches(ctx, lo, hi)
+	batches, _, err := n.fetchBatches(ctx, lo, hi, fetchOptions{
+		limit:   params.Limit,
+		reverse: params.Direction == logqlengine.DirectionBackward,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -84,12 +102,25 @@ func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.Eva
 	return iterators.Slice(entries), nil
 }
 
+// fetchOptions are the per-call knobs of [logStreamNode.fetchBatches].
+type fetchOptions struct {
+	// projection limits the columns materialized for surviving rows (the bucketed sampling path
+	// needs only severity/body, not the attributes column whose decode dominates a full
+	// materialization); empty ⇒ the fetcher's default full set.
+	projection []string
+	// limit, when > 0, requests the ordered top-N pushdown: the fetch trims the survivors to the
+	// newest (reverse) or oldest limit records across every matched stream, keeping boundary ties so
+	// the result stays a correct superset. Taken only when the selector is fully pushed — otherwise
+	// the post-fetch matchSelector could drop rows and leave fewer than limit.
+	limit int
+	// reverse selects the limit direction: newest records when set, oldest otherwise.
+	reverse bool
+}
+
 // fetchBatches resolves the selector to storage fetch filters and returns the matching record
 // batches for [lo, hi]. Shared by the entry-materialization path (EvalPipeline) and the bucketed
-// sampling path (bucketSamplingNode.EvalBucketedSample). A non-empty projection limits the columns
-// materialized for surviving rows (the bucketed path needs only severity/body, not the attributes
-// column whose decode dominates a full materialization); empty ⇒ the fetcher's default full set.
-func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, projection ...string) (_ []*fetch.Batch, selectorPushed bool, _ error) {
+// sampling path (bucketSamplingNode.EvalBucketedSample).
+func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, opts fetchOptions) (_ []*fetch.Batch, selectorPushed bool, _ error) {
 	// Offload equality matchers: resource/scope labels prune streams via the postings index, clean
 	// record-attribute labels drop records via a per-record condition — both before materialization.
 	matchers, selConds, selectorPushed := n.streamFilters(ctx, lo, hi)
@@ -99,7 +130,14 @@ func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, projecti
 		Start:      lo,
 		End:        hi,
 		Matchers:   matchers,
-		Projection: projection,
+		Projection: opts.projection,
+	}
+	// The fetch applies Matchers and Conditions before selecting the top-N, so the limit is exact
+	// over the rows that survive filtering. It is sound only when nothing after the fetch can drop a
+	// row: matchSelector re-checks every record, so require the selector to be fully pushed.
+	if opts.limit > 0 && selectorPushed {
+		req.Limit = opts.limit
+		req.Reverse = opts.reverse
 	}
 	// Selector record-attribute conditions plus any offloaded line filters (set by LogQLOptimizer).
 	if len(selConds)+len(n.conditions) > 0 {
