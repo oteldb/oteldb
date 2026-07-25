@@ -322,9 +322,18 @@ func FuzzTokenize(f *testing.F) {
 		defer func() {
 			if r := recover(); r != nil || t.Failed() {
 				t.Logf("Input:\n%s", input)
+				panic(r)
 			}
-
-			_, _ = Tokenize(input, TokenizeOptions{})
 		}()
+
+		tokens, err := Tokenize(input, TokenizeOptions{})
+		if err != nil {
+			return
+		}
+		for _, tok := range tokens {
+			if tok.Type == Invalid {
+				t.Fatalf("invalid token %+v", tok)
+			}
+		}
 	})
 }

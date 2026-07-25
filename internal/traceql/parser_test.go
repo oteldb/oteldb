@@ -1203,31 +1203,32 @@ var errorTests = []string{
 	`{ .foo = "a" } | 3 > 2`,
 }
 
+var quotedAttributeTests = []struct {
+	input string
+	want  Attribute
+}{
+	{`."foo bar"`, Attribute{Name: "foo bar"}},
+	{`span."foo bar"`, Attribute{Name: "foo bar", Scope: ScopeSpan}},
+	{`resource."foo bar"`, Attribute{Name: "foo bar", Scope: ScopeResource}},
+	{`parent.span."foo bar"`, Attribute{Name: "foo bar", Scope: ScopeSpan, Parent: true}},
+	{`."foo\" = \"bar"`, Attribute{Name: `foo" = "bar`}},
+	{`."foo\\bar"`, Attribute{Name: `foo\bar`}},
+	{`." x"`, Attribute{Name: " x"}},
+	{".\"foo\tbar\"", Attribute{Name: "foo\tbar"}},
+	{".\"foo\nbar\"", Attribute{Name: "foo\nbar"}},
+	// Mixed quoted and bare parts.
+	{`.foo."bar baz".qux`, Attribute{Name: "foo.bar baz.qux"}},
+	{`span."foo".bar`, Attribute{Name: "foo.bar", Scope: ScopeSpan}},
+	// A quoted dot does not make a scope: this is an unscoped "span.foo".
+	{`."span.foo"`, Attribute{Name: "span.foo"}},
+	{`."resource.foo"`, Attribute{Name: "resource.foo"}},
+	// Neither does it split off a name.
+	{`span."foo.bar"`, Attribute{Name: "foo.bar", Scope: ScopeSpan}},
+	{`parent."foo.bar"`, Attribute{Name: "foo.bar", Parent: true}},
+}
+
 func TestParseQuotedAttributes(t *testing.T) {
-	tests := []struct {
-		input string
-		want  Attribute
-	}{
-		{`."foo bar"`, Attribute{Name: "foo bar"}},
-		{`span."foo bar"`, Attribute{Name: "foo bar", Scope: ScopeSpan}},
-		{`resource."foo bar"`, Attribute{Name: "foo bar", Scope: ScopeResource}},
-		{`parent.span."foo bar"`, Attribute{Name: "foo bar", Scope: ScopeSpan, Parent: true}},
-		{`."foo\" = \"bar"`, Attribute{Name: `foo" = "bar`}},
-		{`."foo\\bar"`, Attribute{Name: `foo\bar`}},
-		{`." x"`, Attribute{Name: " x"}},
-		{".\"foo\tbar\"", Attribute{Name: "foo\tbar"}},
-		{".\"foo\nbar\"", Attribute{Name: "foo\nbar"}},
-		// Mixed quoted and bare parts.
-		{`.foo."bar baz".qux`, Attribute{Name: "foo.bar baz.qux"}},
-		{`span."foo".bar`, Attribute{Name: "foo.bar", Scope: ScopeSpan}},
-		// A quoted dot does not make a scope: this is an unscoped "span.foo".
-		{`."span.foo"`, Attribute{Name: "span.foo"}},
-		{`."resource.foo"`, Attribute{Name: "resource.foo"}},
-		// Neither does it split off a name.
-		{`span."foo.bar"`, Attribute{Name: "foo.bar", Scope: ScopeSpan}},
-		{`parent."foo.bar"`, Attribute{Name: "foo.bar", Parent: true}},
-	}
-	for _, tt := range tests {
+	for _, tt := range quotedAttributeTests {
 		t.Run(tt.input, func(t *testing.T) {
 			got, err := Parse(fmt.Sprintf(`{ %s = 1 }`, tt.input))
 			require.NoError(t, err)
@@ -1241,30 +1242,31 @@ func TestParseQuotedAttributes(t *testing.T) {
 	}
 }
 
+var spansetOpTests = []struct {
+	input string
+	want  SpansetOp
+}{
+	{`&&`, SpansetOpAnd},
+	{`||`, SpansetOpUnion},
+	{`>`, SpansetOpChild},
+	{`<`, SpansetOpParent},
+	{`>>`, SpansetOpDescendant},
+	{`<<`, SpansetOpAncestor},
+	{`~`, SpansetOpSibling},
+	{`!>`, SpansetOpNotChild},
+	{`!<`, SpansetOpNotParent},
+	{`!>>`, SpansetOpNotDescendant},
+	{`!<<`, SpansetOpNotAncestor},
+	{`!~`, SpansetOpNotSibling},
+	{`&>`, SpansetOpUnionChild},
+	{`&<`, SpansetOpUnionParent},
+	{`&>>`, SpansetOpUnionDescendant},
+	{`&<<`, SpansetOpUnionAncestor},
+	{`&~`, SpansetOpUnionSibling},
+}
+
 func TestParseSpansetOps(t *testing.T) {
-	ops := []struct {
-		input string
-		want  SpansetOp
-	}{
-		{`&&`, SpansetOpAnd},
-		{`||`, SpansetOpUnion},
-		{`>`, SpansetOpChild},
-		{`<`, SpansetOpParent},
-		{`>>`, SpansetOpDescendant},
-		{`<<`, SpansetOpAncestor},
-		{`~`, SpansetOpSibling},
-		{`!>`, SpansetOpNotChild},
-		{`!<`, SpansetOpNotParent},
-		{`!>>`, SpansetOpNotDescendant},
-		{`!<<`, SpansetOpNotAncestor},
-		{`!~`, SpansetOpNotSibling},
-		{`&>`, SpansetOpUnionChild},
-		{`&<`, SpansetOpUnionParent},
-		{`&>>`, SpansetOpUnionDescendant},
-		{`&<<`, SpansetOpUnionAncestor},
-		{`&~`, SpansetOpUnionSibling},
-	}
-	for _, tt := range ops {
+	for _, tt := range spansetOpTests {
 		t.Run(tt.input, func(t *testing.T) {
 			require.Equal(t, tt.input, tt.want.String())
 
@@ -1326,13 +1328,28 @@ func FuzzParse(f *testing.F) {
 	for _, tt := range typeTests {
 		f.Add(tt.input)
 	}
+	for _, input := range errorTests {
+		f.Add(input)
+	}
+	for _, tt := range quotedAttributeTests {
+		f.Add(fmt.Sprintf(`{ %s = 1 }`, tt.input))
+	}
+	for _, tt := range spansetOpTests {
+		f.Add(fmt.Sprintf(`{ .a } %s { .b }`, tt.input))
+	}
 	f.Fuzz(func(t *testing.T, input string) {
 		defer func() {
 			if r := recover(); r != nil || t.Failed() {
 				t.Logf("Input:\n%s", input)
 			}
-
-			_, _ = Parse(input)
 		}()
+
+		expr, err := Parse(input)
+		if err != nil {
+			return
+		}
+		// A parsed expression must survive everything the query path does to it.
+		require.NotNil(t, expr)
+		_, _ = ExtractMatchers(expr)
 	})
 }
