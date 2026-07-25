@@ -4,8 +4,13 @@ import (
 	"context"
 	"encoding/hex"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/ptrace"
+
+	"github.com/oteldb/storage"
 
 	"github.com/oteldb/oteldb/internal/storagebackend"
 	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
@@ -50,7 +55,16 @@ var traceqlPushdownQueries = []string{
 	`{resource.host.name = "host-cart"}`,
 	`{instrumentation:name = "oteldb/goldenbench"}`,
 	`{rootName = "` + traceqlRootName + `"}`,
+	`{rootName = "nonexistent"}`,
+	`{rootName =~ "GET.*"}`,
 	`{rootServiceName = "` + traceqlRootService + `"}`,
+	`{rootServiceName = "payments"}`,
+	`{rootServiceName = ""}`,
+	// A root intrinsic and a span-level predicate constrain different spans, so their candidate sets
+	// intersect rather than sharing a fetch.
+	`{rootName = "` + traceqlRootName + `" && status = error}`,
+	`{rootServiceName = "` + traceqlRootService + `" && span.http.route = "` + traceqlSelectedRoute + `"}`,
+	`{rootName = "` + traceqlRootName + `"} || {status = error}`,
 	`{traceDuration > 1ms}`,
 	`{span.http.request.method = "GET" && span.http.route = "` + traceqlComboRoute + `"}`,
 	`{span.http.route = "` + traceqlSelectedRoute + `" || status = error}`,
@@ -105,4 +119,51 @@ func traceqlGoldenQueries() []string {
 		out = append(out, c.query)
 	}
 	return out
+}
+
+// TestTraceQLRootPushdownDropsRootlessTraces pins the one place the pushdown is not a pure superset.
+// The engine falls back to an arbitrary span as a trace's root when no span is parentless (the real
+// root was never ingested, or starts outside the window — the span fetch is windowed), while the
+// root pushdown selects parentless spans only. Such a trace is therefore dropped, i.e. rootName
+// means "the trace's actual root span" as it does in Tempo.
+func TestTraceQLRootPushdownDropsRootlessTraces(t *testing.T) {
+	ctx := context.Background()
+
+	store, err := storage.InMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close(ctx) })
+
+	b := storagebackend.New(store)
+	ts := time.Unix(1_600_000_000, 0).UTC()
+
+	td := ptrace.NewTraces()
+	rs := td.ResourceSpans().AppendEmpty()
+	rs.Resource().Attributes().PutStr("service.name", "api")
+	ss := rs.ScopeSpans().AppendEmpty()
+	for i := range 2 {
+		// Every span's parent is a span that was never ingested, so the trace has no root.
+		s := ss.Spans().AppendEmpty()
+		s.SetTraceID(pcommon.TraceID([16]byte{1, 2, 3, 4}))
+		s.SetSpanID(pcommon.SpanID([8]byte{byte(i) + 1}))
+		s.SetParentSpanID(pcommon.SpanID([8]byte{0xff}))
+		s.SetName("orphan")
+		s.SetStartTimestamp(pcommon.Timestamp(ts.UnixNano()))
+		s.SetEndTimestamp(pcommon.Timestamp(ts.Add(time.Second).UnixNano()))
+	}
+	require.NoError(t, b.ConsumeTraces(ctx, td))
+
+	params := traceqlengine.EvalParams{Start: ts.Add(-time.Hour), End: ts.Add(time.Hour), Limit: 10}
+	eval := func(t *testing.T, be *storagebackend.Backend) int {
+		t.Helper()
+
+		res, err := traceqlengine.NewEngine(be.Traces(), traceqlengine.Options{}).
+			Eval(ctx, `{rootName = "orphan"}`, params)
+		require.NoError(t, err)
+
+		return len(res.Traces)
+	}
+
+	require.Equal(t, 1, eval(t, storagebackend.New(store, storagebackend.WithTraceQLPushdown(false))),
+		"the engine matches its fallback root")
+	require.Equal(t, 0, eval(t, b), "the pushdown selects parentless spans only")
 }

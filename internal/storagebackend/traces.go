@@ -2,6 +2,7 @@ package storagebackend
 
 import (
 	"context"
+	"maps"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -30,8 +31,8 @@ var (
 // trace_id-only scan, so only the candidate traces are materialized with their attributes, events
 // and links. The candidate set is a superset of the result and whole traces are returned, so the
 // engine sees exactly what a full window scan would give it — structural operators and the
-// spanset-level intrinsics (rootName, traceDuration) still work. Nothing pushable (a bare `{}`, a
-// root-intrinsic query) falls back to the full window scan.
+// spanset-level intrinsics still work. Nothing pushable (a bare `{}`, a `traceDuration` bound)
+// falls back to the full window scan.
 //
 // Resolving the candidates is itself a scan (of the filter columns and trace_id, not of the
 // attribute/event/link blobs), so a predicate that matches nearly every trace pays for it without
@@ -162,7 +163,8 @@ func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, op
 // traces holding at least one span that can match. pushed reports whether any filter was pushed at
 // all; when it is false the ids are nil and the caller scans the whole window.
 //
-// A union of matchers needs one fetch per branch, since conditions AND within a request.
+// Each of the pushdown's terms is resolved to its own id set — one fetch per group, unioned, since
+// conditions AND within a request — and the terms then intersect.
 func (q *TraceQuerier) candidateTraces(
 	ctx context.Context, params traceqlengine.SelectSpansetsParams,
 ) (_ map[otelstorage.TraceID]struct{}, pushed bool, _ error) {
@@ -175,42 +177,69 @@ func (q *TraceQuerier) candidateTraces(
 	}
 
 	lo, hi := fetchWindow(params.Start, params.End)
-	ids := map[otelstorage.TraceID]struct{}{}
-	for _, group := range pd.groups {
-		req := fetch.Request{
-			Tenant:   q.b.tenant,
-			Signal:   signal.Trace,
-			Start:    lo,
-			End:      hi,
-			Matchers: group.matchers,
-			// Only the trace id of a surviving span is needed; the filter columns are decoded
-			// regardless, but the attrs/events/links blobs are not.
-			Projection: []string{sigtrace.ColTraceID},
-		}
-		if len(group.conditions) > 0 {
-			req.Conditions = group.conditions
-			req.AllConditions = true
+
+	var ids map[otelstorage.TraceID]struct{}
+	for _, term := range pd.terms {
+		got := map[otelstorage.TraceID]struct{}{}
+		for _, group := range term.groups {
+			if err := q.collectTraceIDs(ctx, lo, hi, group, got); err != nil {
+				return nil, false, err
+			}
 		}
 
-		it, err := q.b.store.TraceFetcher(q.b.tenant).Fetch(ctx, req)
-		if err != nil {
-			return nil, false, errors.Wrap(err, "fetch candidate traces")
+		if ids == nil {
+			ids = got
+		} else {
+			maps.DeleteFunc(ids, func(id otelstorage.TraceID, _ struct{}) bool {
+				_, ok := got[id]
+				return !ok
+			})
 		}
-		batches, err := fetch.Drain(ctx, it)
-		if err != nil {
-			return nil, false, errors.Wrap(err, "drain candidate traces")
-		}
-		for _, batch := range batches {
-			col, ok := batch.Column(sigtrace.ColTraceID)
-			if !ok {
-				continue
-			}
-			for _, raw := range col.Bytes {
-				ids[otelTraceID(raw)] = struct{}{}
-			}
+		if len(ids) == 0 {
+			break
 		}
 	}
 	return ids, true, nil
+}
+
+// collectTraceIDs runs one filter group over the window and adds the trace id of every surviving
+// span to ids.
+func (q *TraceQuerier) collectTraceIDs(
+	ctx context.Context, lo, hi int64, group traceFilter, ids map[otelstorage.TraceID]struct{},
+) error {
+	req := fetch.Request{
+		Tenant:   q.b.tenant,
+		Signal:   signal.Trace,
+		Start:    lo,
+		End:      hi,
+		Matchers: group.matchers,
+		// Only the trace id of a surviving span is needed; the filter columns are decoded
+		// regardless, but the attrs/events/links blobs are not.
+		Projection: []string{sigtrace.ColTraceID},
+	}
+	if len(group.conditions) > 0 {
+		req.Conditions = group.conditions
+		req.AllConditions = true
+	}
+
+	it, err := q.b.store.TraceFetcher(q.b.tenant).Fetch(ctx, req)
+	if err != nil {
+		return errors.Wrap(err, "fetch candidate traces")
+	}
+	batches, err := fetch.Drain(ctx, it)
+	if err != nil {
+		return errors.Wrap(err, "drain candidate traces")
+	}
+	for _, batch := range batches {
+		col, ok := batch.Column(sigtrace.ColTraceID)
+		if !ok {
+			continue
+		}
+		for _, raw := range col.Bytes {
+			ids[otelTraceID(raw)] = struct{}{}
+		}
+	}
+	return nil
 }
 
 // scanSpans fetches and materializes the spans in the window. A non-nil traceIDs restricts the scan

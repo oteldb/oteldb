@@ -3,6 +3,7 @@ package storagebackend
 import (
 	"encoding/hex"
 	"regexp"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -22,10 +23,23 @@ type traceFilter struct {
 	conditions []fetch.Condition
 }
 
-// tracePushdown selects the candidate traces of a TraceQL query: the union of its filter groups.
-// Every group is a superset of the spans the engine would keep, so the traces it selects are a
-// superset of the query's result — the engine still evaluates the full expression on them.
+// tracePushdown selects the candidate traces of a TraceQL query: the intersection of its terms,
+// each of which is the union of its filter groups. One group is one fetch.
+//
+// Two levels are needed because the predicates live at two levels. Span-level predicates of a
+// conjunction share a group, so they must hold of the *same* span, as TraceQL requires. A
+// spanset-level one (rootName, rootServiceName) constrains a different span than its neighbors do,
+// so it gets its own term and the trace id sets intersect instead.
+//
+// Every term is a superset of the traces the engine would keep, so their intersection is too — the
+// engine still evaluates the full expression on the result.
 type tracePushdown struct {
+	terms []traceTerm
+}
+
+// traceTerm is one candidate-trace constraint: a trace satisfies it when it matches any of the
+// groups (they union, since conditions over distinct columns AND within a single fetch).
+type traceTerm struct {
 	groups []traceFilter
 }
 
@@ -40,45 +54,72 @@ const maxTracePushdownGroups = 4
 // The op decides how a matcher that cannot be lowered is handled. For a conjunction it is simply
 // left to the engine: the remaining filters only widen the candidate set. For a union (`&&`/`||`
 // between spansets, a structural operator) every branch must lower, since dropping one would lose
-// the traces only it selects. A union also needs one group per matcher: fetch conditions over
+// the traces only it selects. A union also needs one group per branch: fetch conditions over
 // distinct columns AND within a request, so an OR cannot be expressed as a single fetch.
 //
-// One matcher may itself lower to several alternatives (an unscoped attribute is a span attribute
-// *or* a stream label). In a conjunction those distribute over the other filters, so the groups are
-// the cross product — bounded by [maxTracePushdownGroups].
+// A conjunction builds one term of span-level filters plus one term per spanset-level (root)
+// matcher, which the caller intersects. One matcher may itself lower to several alternatives (an
+// unscoped attribute is a span attribute *or* a stream label); within the span-level term those
+// distribute over the other filters, so its groups are the cross product. The total group count is
+// bounded by [maxTracePushdownGroups].
 func buildTracePushdown(op traceql.SpansetOp, matchers []traceql.SpanMatcher) (tracePushdown, bool) {
 	if len(matchers) == 0 {
 		return tracePushdown{}, false
 	}
 
 	if op != traceql.SpansetOpAnd {
+		// Every branch, span-level or root-level, is just another union member here.
 		var groups []traceFilter
 		for _, m := range matchers {
 			alts, ok := lowerSpanMatcher(m)
+			if !ok {
+				alts, ok = lowerRootMatcher(m)
+			}
 			if !ok || len(groups)+len(alts) > maxTracePushdownGroups {
 				return tracePushdown{}, false
 			}
 			groups = append(groups, alts...)
 		}
-		return tracePushdown{groups: groups}, true
+		return tracePushdown{terms: []traceTerm{{groups: groups}}}, true
 	}
 
 	var (
-		groups = []traceFilter{{}}
-		pushed bool
+		terms []traceTerm
+		// spanGroups stays nil until a span-level matcher lowers, so an all-root conjunction adds no
+		// span term at all. rootFetches counts the groups the root terms already claim.
+		spanGroups  []traceFilter
+		rootFetches int
 	)
 	for _, m := range matchers {
-		alts, ok := lowerSpanMatcher(m)
-		if !ok || len(groups)*len(alts) > maxTracePushdownGroups {
+		if alts, ok := lowerRootMatcher(m); ok {
+			if rootFetches+len(alts)+len(spanGroups) > maxTracePushdownGroups {
+				continue
+			}
+			rootFetches += len(alts)
+			terms = append(terms, traceTerm{groups: alts})
 			continue
 		}
-		groups = distribute(groups, alts)
-		pushed = true
+
+		alts, ok := lowerSpanMatcher(m)
+		if !ok {
+			continue
+		}
+		base := spanGroups
+		if base == nil {
+			base = []traceFilter{{}}
+		}
+		if rootFetches+len(base)*len(alts) > maxTracePushdownGroups {
+			continue
+		}
+		spanGroups = distribute(base, alts)
 	}
-	if !pushed {
+	if spanGroups != nil {
+		terms = append(terms, traceTerm{groups: spanGroups})
+	}
+	if len(terms) == 0 {
 		return tracePushdown{}, false
 	}
-	return tracePushdown{groups: groups}, true
+	return tracePushdown{terms: terms}, true
 }
 
 // distribute ANDs every group with every alternative, i.e. the cross product of a conjunction with a
@@ -88,25 +129,13 @@ func distribute(groups, alts []traceFilter) []traceFilter {
 	for _, g := range groups {
 		for _, alt := range alts {
 			combined := traceFilter{
-				matchers:   concat(g.matchers, alt.matchers),
-				conditions: concat(g.conditions, alt.conditions),
+				matchers:   slices.Concat(g.matchers, alt.matchers),
+				conditions: slices.Concat(g.conditions, alt.conditions),
 			}
 			out = append(out, combined)
 		}
 	}
 	return out
-}
-
-// concat returns a fresh slice of a followed by b, so distributing never aliases a group's backing
-// array into its siblings.
-func concat[T any](a, b []T) []T {
-	if len(a)+len(b) == 0 {
-		return nil
-	}
-	out := make([]T, 0, len(a)+len(b))
-	out = append(out, a...)
-
-	return append(out, b...)
 }
 
 // lowerSpanMatcher lowers one span matcher to the alternatives whose union covers it (usually one),
@@ -160,11 +189,79 @@ func lowerSpanMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 	case traceql.SpanAttribute:
 		return lowerAttributeMatcher(m, pred)
 	default:
-		// Spanset-level intrinsics (rootName, rootServiceName, traceDuration), the nested-set
-		// properties, childCount, parent, and the event/link properties have no per-span column form.
+		// traceDuration (an aggregate over the trace's spans), the nested-set properties, childCount,
+		// parent, and the event/link properties have no per-span column form. rootName and
+		// rootServiceName do, but not at this level — see [lowerRootMatcher].
 		return nil, false
 	}
 }
+
+// lowerRootMatcher lowers a spanset-level root intrinsic: `rootName` to a condition on the name of
+// a parentless span, `rootServiceName` to the same root condition plus a service.name stream
+// matcher (the engine reads the root's own resource attribute).
+//
+// It constrains a different span than its neighbors in a conjunction do, so the caller keeps it in
+// its own term and intersects trace ids rather than ANDing conditions within one fetch.
+//
+// # Rootless traces
+//
+// This is where the pushdown is not a pure superset. The engine picks the trace's *first* parentless
+// span as its root, and falls back to an arbitrary span (Spans[0]) when the trace has none — which
+// happens whenever the real root was not ingested or starts outside the query window, since the span
+// fetch is windowed. A trace with several parentless spans is still covered (the term matches on any
+// of them, and the engine re-checks its own pick), but a rootless trace whose arbitrary fallback
+// root satisfies the predicate is dropped instead of returned. `rootName`/`rootServiceName`
+// therefore mean "the trace's actual root span", as they do in Tempo, rather than "whatever the
+// engine picked".
+func lowerRootMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
+	if m.Op == 0 || m.Attribute.Parent {
+		return nil, false
+	}
+	pred, ok := staticPredicate(m.Op, m.Static)
+	if !ok {
+		return nil, false
+	}
+
+	// A root span is one with no parent span id.
+	isRoot := fetch.Condition{
+		Column: sigtrace.ColParentSpanID,
+		Match:  func(v signal.Value) bool { return len(v.Str()) == 0 },
+	}
+
+	switch m.Attribute.Prop {
+	case traceql.RootSpanName:
+		name := spanCondition(sigtrace.ColName, stringStatic, pred)
+		if m.Op == traceql.OpEq && m.Static.Type == traceql.TypeString {
+			name.conditions[0].Tokens = bloom.SafeTokens(nil, []byte(m.Static.AsString()), true, true)
+		}
+		return []traceFilter{{conditions: append([]fetch.Condition{isRoot}, name.conditions...)}}, true
+	case traceql.RootServiceName:
+		// The engine reports an empty root service name for a root without the attribute, which a
+		// stream matcher (it selects streams that *have* the label) cannot express.
+		if !falseOnMissing(pred) || (m.Static.Type == traceql.TypeString && m.Static.AsString() == "") {
+			return nil, false
+		}
+
+		var spec *fetch.EqualMatcher
+		if m.Op == traceql.OpEq && m.Static.Type == traceql.TypeString {
+			spec = &fetch.EqualMatcher{Name: serviceNameKey, Value: m.Static.AsString()}
+		}
+		return []traceFilter{{
+			conditions: []fetch.Condition{isRoot},
+			matchers: []fetch.Matcher{{
+				Name:  []byte(serviceNameKey),
+				Match: func(v signal.Value) bool { return pred(attrStatic(v)) },
+				Spec:  spec,
+			}},
+		}}, true
+	default:
+		return nil, false
+	}
+}
+
+// serviceNameKey is the resource attribute [tracestorage.Span.ServiceName] reads, i.e. the one
+// backing the engine's rootServiceName.
+const serviceNameKey = "service.name"
 
 // lowerAttributeMatcher lowers a scoped attribute matcher. A span attribute becomes a per-record
 // condition over the serialized attrs column; a resource or instrumentation attribute a postings

@@ -19,14 +19,14 @@ import (
 func TestBuildTracePushdown(t *testing.T) {
 	tests := []struct {
 		query string
+		// terms, when non-zero, is the expected number of intersected terms.
+		terms int
 		// groups is the expected lowering, one entry per candidate-trace fetch: the condition columns
 		// and the matcher label names it carries. Nil ⇒ nothing is pushed.
 		groups []pushdownGroup
 	}{
 		// Nothing to push: no matcher at all, or no per-span column form.
 		{query: `{}`},
-		{query: `{rootName = "GET /"}`},
-		{query: `{rootServiceName = "frontend"}`},
 		{query: `{traceDuration > 1s}`},
 		{query: `{nestedSetLeft > 3}`},
 		{query: `{childCount > 1}`},
@@ -135,7 +135,42 @@ func TestBuildTracePushdown(t *testing.T) {
 			},
 		},
 		{query: `{status = error || span.http.route != "/route/7"}`},
-		{query: `{rootName = "GET /"} || {status = error}`},
+
+		// The root intrinsics select a parentless span: rootName by its name column, rootServiceName
+		// by the stream its root lives in.
+		{
+			query:  `{rootName = "GET /"}`,
+			groups: []pushdownGroup{{conditions: []string{"parent_span_id", "name"}}},
+		},
+		{
+			query: `{rootServiceName = "frontend"}`,
+			groups: []pushdownGroup{{
+				conditions: []string{"parent_span_id"},
+				matchers:   []string{"service.name"},
+			}},
+		},
+		// An empty root service name is what the engine reports for a root *without* the attribute,
+		// which a stream matcher cannot select.
+		{query: `{rootServiceName = ""}`},
+		// A root intrinsic constrains a different span than a span-level matcher does, so it lands in
+		// its own term and the two candidate sets intersect.
+		{
+			query: `{rootName = "GET /" && status = error}`,
+			terms: 2,
+			groups: []pushdownGroup{
+				{conditions: []string{"parent_span_id", "name"}},
+				{conditions: []string{"status_code"}},
+			},
+		},
+		// In a union it is just another branch.
+		{
+			query: `{rootName = "GET /"} || {status = error}`,
+			terms: 1,
+			groups: []pushdownGroup{
+				{conditions: []string{"parent_span_id", "name"}},
+				{conditions: []string{"status_code"}},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
@@ -146,6 +181,9 @@ func TestBuildTracePushdown(t *testing.T) {
 			require.Equal(t, len(tt.groups) > 0, ok, "pushed")
 			if !ok {
 				return
+			}
+			if tt.terms > 0 {
+				require.Len(t, pd.terms, tt.terms)
 			}
 			require.Equal(t, tt.groups, describePushdown(pd))
 		})
@@ -159,9 +197,20 @@ type pushdownGroup struct {
 	matchers   []string
 }
 
+// pushdownGroups flattens the pushdown's terms into the groups they carry, in order: the tests
+// assert on the filters themselves, and pin the term split separately where it matters.
+func pushdownGroups(pd tracePushdown) []traceFilter {
+	var out []traceFilter
+	for _, term := range pd.terms {
+		out = append(out, term.groups...)
+	}
+	return out
+}
+
 func describePushdown(pd tracePushdown) []pushdownGroup {
-	out := make([]pushdownGroup, 0, len(pd.groups))
-	for _, g := range pd.groups {
+	groups := pushdownGroups(pd)
+	out := make([]pushdownGroup, 0, len(groups))
+	for _, g := range groups {
 		var d pushdownGroup
 		for _, c := range g.conditions {
 			d.conditions = append(d.conditions, c.Column)
@@ -185,10 +234,11 @@ func TestTracePushdownHints(t *testing.T) {
 		require.NoError(t, err)
 		pd, ok := buildTracePushdown(traceql.ExtractMatchers(expr))
 		require.True(t, ok)
-		require.Len(t, pd.groups, 1)
-		require.Len(t, pd.groups[0].conditions, 1)
+		groups := pushdownGroups(pd)
+		require.Len(t, groups, 1)
+		require.Len(t, groups[0].conditions, 1)
 
-		return pd.groups[0].conditions[0]
+		return groups[0].conditions[0]
 	}
 
 	t.Run("NameTokens", func(t *testing.T) {

@@ -326,9 +326,10 @@ func traceDiffPushdownKeeps(t *testing.T, pd tracePushdown, probe traceDiffProbe
 		return false
 	}
 
-	require.Len(t, pd.groups, 1, "a differential case must lower to exactly one filter")
+	groups := pushdownGroups(pd)
+	require.Len(t, groups, 1, "a differential case must lower to exactly one filter")
 
-	group := pd.groups[0]
+	group := groups[0]
 	if probe.label {
 		require.Len(t, group.matchers, 1)
 		return group.matchers[0].Match(probe.value)
