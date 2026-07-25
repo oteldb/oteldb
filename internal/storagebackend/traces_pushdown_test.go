@@ -36,7 +36,14 @@ var traceqlPushdownQueries = []string{
 	`{span.http.response.status_code >= 500}`,
 	`{span.http.response.status_code < 500}`,
 	`{span.http.route != nil}`,
+	`{span.http.route = nil}`,
 	`{.http.route = "` + traceqlSelectedRoute + `"}`,
+	`{.http.route != nil}`,
+	// An unscoped attribute that lives on the resource, not the span: the span-attribute alternative
+	// selects nothing and the stream-label one carries the query.
+	`{.service.name = "payments"}`,
+	`{.service.name = "nonexistent"}`,
+	`{.http.route = "` + traceqlComboRoute + `" && status = error}`,
 	`{span.nonexistent.attribute = "nope"}`,
 	`{resource.service.name = "payments"}`,
 	`{resource.service.name =~ "front.*"}`,

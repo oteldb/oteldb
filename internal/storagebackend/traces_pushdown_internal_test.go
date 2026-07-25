@@ -33,11 +33,13 @@ func TestBuildTracePushdown(t *testing.T) {
 		{query: `{event:name = "exception"}`},
 		{query: `{link:spanID = "0011223344556677"}`},
 		{query: `{instrumentation:name = "oteldb"}`},
-		// A bare attribute reference is an existence check the engine may not even require (it is
-		// extracted from by()/select() too), so it never becomes a filter.
-		{query: `{span.http.route != nil}`},
-		{query: `{.http.route = "/route/7"}`}, // unscoped: span, scope and resource at once
 		{query: `{parent.span.http.route = "/route/7"}`},
+		// A bare attribute reference is extracted from by()/select() and the aggregates too, where the
+		// attribute need not be present, so it never becomes a filter.
+		{query: `{} | count() > 1`},
+		// `= nil` matches a *missing* attribute (nil is equal to nil), the inverse of what a filter
+		// that drops the spans lacking the column does.
+		{query: `{span.http.route = nil}`},
 
 		// The intrinsics with a column.
 		{query: `{name = "checkout.process"}`, groups: []pushdownGroup{{conditions: []string{"name"}}}},
@@ -65,6 +67,38 @@ func TestBuildTracePushdown(t *testing.T) {
 		{query: `{span.http.route != "/route/7"}`},
 		{query: `{span.http.status < 500}`},
 		{query: `{span.http.status <= 500}`},
+		// `!= nil` is true only for a present attribute, i.e. exactly an existence filter.
+		{query: `{span.http.route != nil}`, groups: []pushdownGroup{{conditions: []string{"http.route"}}}},
+
+		// An unscoped attribute is the union of the span-attribute and the stream-label form, since
+		// the engine resolves it against span, scope and resource attributes at once.
+		{
+			query: `{.http.route = "/route/7"}`,
+			groups: []pushdownGroup{
+				{conditions: []string{"http.route"}},
+				{matchers: []string{"http.route"}},
+			},
+		},
+		{query: `{.http.route != "/route/7"}`},
+		// The alternatives distribute over the rest of the conjunction, one fetch per combination.
+		{
+			query: `{.http.route = "/route/7" && status = error}`,
+			groups: []pushdownGroup{
+				{conditions: []string{"http.route", "status_code"}},
+				{conditions: []string{"status_code"}, matchers: []string{"http.route"}},
+			},
+		},
+		// Beyond maxTracePushdownGroups combinations the extra matcher is left to the engine rather
+		// than fanning out into more fetches.
+		{
+			query: `{.a = "1" && .b = "2" && .c = "3"}`,
+			groups: []pushdownGroup{
+				{conditions: []string{"a", "b"}},
+				{conditions: []string{"a"}, matchers: []string{"b"}},
+				{conditions: []string{"b"}, matchers: []string{"a"}},
+				{matchers: []string{"a", "b"}},
+			},
+		},
 
 		// Resource and instrumentation attributes prune whole streams via the postings index.
 		{query: `{resource.service.name = "payments"}`, groups: []pushdownGroup{{matchers: []string{"service.name"}}}},

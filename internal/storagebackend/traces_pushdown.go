@@ -29,6 +29,11 @@ type tracePushdown struct {
 	groups []traceFilter
 }
 
+// maxTracePushdownGroups bounds the groups a lowering may produce, since each one is its own fetch.
+// A matcher whose alternatives would exceed it is left to the engine (in a conjunction) or gives up
+// the pushdown (in a union), rather than trading a scan for several.
+const maxTracePushdownGroups = 4
+
 // buildTracePushdown lowers the span matchers extracted from a TraceQL expression to storage
 // filters. It reports false when nothing can be pushed, in which case the caller scans the window.
 //
@@ -37,62 +42,96 @@ type tracePushdown struct {
 // between spansets, a structural operator) every branch must lower, since dropping one would lose
 // the traces only it selects. A union also needs one group per matcher: fetch conditions over
 // distinct columns AND within a request, so an OR cannot be expressed as a single fetch.
+//
+// One matcher may itself lower to several alternatives (an unscoped attribute is a span attribute
+// *or* a stream label). In a conjunction those distribute over the other filters, so the groups are
+// the cross product — bounded by [maxTracePushdownGroups].
 func buildTracePushdown(op traceql.SpansetOp, matchers []traceql.SpanMatcher) (tracePushdown, bool) {
 	if len(matchers) == 0 {
 		return tracePushdown{}, false
 	}
 
 	if op != traceql.SpansetOpAnd {
-		groups := make([]traceFilter, 0, len(matchers))
+		var groups []traceFilter
 		for _, m := range matchers {
-			f, ok := lowerSpanMatcher(m)
-			if !ok {
+			alts, ok := lowerSpanMatcher(m)
+			if !ok || len(groups)+len(alts) > maxTracePushdownGroups {
 				return tracePushdown{}, false
 			}
-			groups = append(groups, f)
+			groups = append(groups, alts...)
 		}
 		return tracePushdown{groups: groups}, true
 	}
 
-	var group traceFilter
+	var (
+		groups = []traceFilter{{}}
+		pushed bool
+	)
 	for _, m := range matchers {
-		f, ok := lowerSpanMatcher(m)
-		if !ok {
+		alts, ok := lowerSpanMatcher(m)
+		if !ok || len(groups)*len(alts) > maxTracePushdownGroups {
 			continue
 		}
-		group.matchers = append(group.matchers, f.matchers...)
-		group.conditions = append(group.conditions, f.conditions...)
+		groups = distribute(groups, alts)
+		pushed = true
 	}
-	if len(group.matchers)+len(group.conditions) == 0 {
+	if !pushed {
 		return tracePushdown{}, false
 	}
-	return tracePushdown{groups: []traceFilter{group}}, true
+	return tracePushdown{groups: groups}, true
 }
 
-// lowerSpanMatcher lowers one span matcher to a storage filter, reporting false when its property,
-// operator or value has no sound storage form.
-func lowerSpanMatcher(m traceql.SpanMatcher) (traceFilter, bool) {
+// distribute ANDs every group with every alternative, i.e. the cross product of a conjunction with a
+// matcher's disjunction.
+func distribute(groups, alts []traceFilter) []traceFilter {
+	out := make([]traceFilter, 0, len(groups)*len(alts))
+	for _, g := range groups {
+		for _, alt := range alts {
+			combined := traceFilter{
+				matchers:   concat(g.matchers, alt.matchers),
+				conditions: concat(g.conditions, alt.conditions),
+			}
+			out = append(out, combined)
+		}
+	}
+	return out
+}
+
+// concat returns a fresh slice of a followed by b, so distributing never aliases a group's backing
+// array into its siblings.
+func concat[T any](a, b []T) []T {
+	if len(a)+len(b) == 0 {
+		return nil
+	}
+	out := make([]T, 0, len(a)+len(b))
+	out = append(out, a...)
+
+	return append(out, b...)
+}
+
+// lowerSpanMatcher lowers one span matcher to the alternatives whose union covers it (usually one),
+// reporting false when its property, operator or value has no sound storage form.
+func lowerSpanMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 	switch {
 	case m.Op == 0:
 		// A bare attribute reference. It is extracted from `by(...)`/`select(...)` too, where the
 		// attribute need not be present at all, so it is not a filter.
-		return traceFilter{}, false
+		return nil, false
 	case m.Attribute.Parent:
 		// `parent.`-scoped attributes are not evaluated by the engine either.
-		return traceFilter{}, false
-	case m.Static.Type == traceql.TypeNil:
-		// nil equals nil, so a missing attribute *matches*: the inverse of what a condition does.
-		return traceFilter{}, false
+		return nil, false
 	}
 
 	pred, ok := staticPredicate(m.Op, m.Static)
 	if !ok {
-		return traceFilter{}, false
+		return nil, false
 	}
+
+	one := func(f traceFilter) ([]traceFilter, bool) { return []traceFilter{f}, true }
 
 	switch attr := m.Attribute; attr.Prop {
 	case traceql.SpanDuration:
-		return spanCondition(sigtrace.ColDuration, durationStatic, pred), true
+		return one(spanCondition(sigtrace.ColDuration, durationStatic, pred))
 	case traceql.SpanName:
 		f := spanCondition(sigtrace.ColName, stringStatic, pred)
 		// The name column carries a full-text bloom: an exact value's own tokens are present in
@@ -100,47 +139,47 @@ func lowerSpanMatcher(m traceql.SpanMatcher) (traceFilter, bool) {
 		if m.Op == traceql.OpEq && m.Static.Type == traceql.TypeString {
 			f.conditions[0].Tokens = bloom.SafeTokens(nil, []byte(m.Static.AsString()), true, true)
 		}
-		return f, true
+		return one(f)
 	case traceql.SpanStatus:
-		return spanCondition(sigtrace.ColStatusCode, statusStatic, pred), true
+		return one(spanCondition(sigtrace.ColStatusCode, statusStatic, pred))
 	case traceql.SpanKind:
-		return spanCondition(sigtrace.ColKind, kindStatic, pred), true
+		return one(spanCondition(sigtrace.ColKind, kindStatic, pred))
 	case traceql.SpanStatusMessage:
-		return spanCondition(sigtrace.ColStatusMsg, stringStatic, pred), true
+		return one(spanCondition(sigtrace.ColStatusMsg, stringStatic, pred))
 	case traceql.SpanID:
-		return spanCondition(sigtrace.ColSpanID, hexStatic, pred), true
+		return one(spanCondition(sigtrace.ColSpanID, hexStatic, pred))
 	case traceql.ParentID:
-		return spanCondition(sigtrace.ColParentSpanID, parentHexStatic, pred), true
+		return one(spanCondition(sigtrace.ColParentSpanID, parentHexStatic, pred))
 	case traceql.TraceID:
 		f := spanCondition(sigtrace.ColTraceID, hexStatic, pred)
 		// trace_id carries an equality bloom: the trace-by-id lookup prunes to the parts holding it.
 		if raw, ok := decodeTraceIDHex(m.Op, m.Static); ok {
 			f.conditions[0].Equal = &fetch.EqualMatcher{Name: sigtrace.ColTraceID, Value: string(raw)}
 		}
-		return f, true
+		return one(f)
 	case traceql.SpanAttribute:
 		return lowerAttributeMatcher(m, pred)
 	default:
 		// Spanset-level intrinsics (rootName, rootServiceName, traceDuration), the nested-set
 		// properties, childCount, parent, and the event/link properties have no per-span column form.
-		return traceFilter{}, false
+		return nil, false
 	}
 }
 
-// lowerAttributeMatcher lowers a scoped attribute matcher: a span attribute becomes a per-record
-// condition over the serialized attrs column, a resource or instrumentation attribute a postings
-// matcher that prunes whole streams.
+// lowerAttributeMatcher lowers a scoped attribute matcher. A span attribute becomes a per-record
+// condition over the serialized attrs column; a resource or instrumentation attribute a postings
+// matcher over stream labels; an unscoped attribute (`.name`) both, as alternatives, since the
+// engine resolves it against the span, scope and resource attributes at once.
 //
-// Only [absentSafeOp] operators are pushed. Both forms drop a span (or stream) that does not carry
-// the attribute at all, while the engine evaluates a missing attribute to nil — so an operator that
-// is true against nil would lose real matches.
-//
-// An unscoped attribute (`.name`) is not pushed: the engine resolves it against span, scope *and*
-// resource attributes, and neither form alone covers all three.
-func lowerAttributeMatcher(m traceql.SpanMatcher, pred func(traceql.Static) bool) (traceFilter, bool) {
+// Every form drops a span (or stream) that does not carry the attribute at all, while the engine
+// evaluates a missing attribute to nil. So a predicate is only pushed when it is false on nil —
+// which is asked of the predicate itself rather than derived from the operator, so `!= nil` (true
+// only for a present attribute, i.e. exactly an existence filter) is pushed, while `= nil`, `!=`,
+// `<` and `<=` (all true on a missing attribute) stay in the engine.
+func lowerAttributeMatcher(m traceql.SpanMatcher, pred func(traceql.Static) bool) ([]traceFilter, bool) {
 	attr := m.Attribute
-	if attr.Name == "" || !absentSafeOp(m.Op) {
-		return traceFilter{}, false
+	if attr.Name == "" || !falseOnMissing(pred) {
+		return nil, false
 	}
 
 	// Exact string equality is the one shape whose bloom token is exactly the stored value's own
@@ -151,23 +190,43 @@ func lowerAttributeMatcher(m traceql.SpanMatcher, pred func(traceql.Static) bool
 		equal = &fetch.EqualMatcher{Name: attr.Name, Value: m.Static.AsString()}
 	}
 
-	switch attr.Scope {
-	case traceql.ScopeSpan:
-		f := spanCondition(attr.Name, attrStatic, pred)
-		f.conditions[0].Equal = equal
-		return f, true
-	case traceql.ScopeResource, traceql.ScopeInstrumentation:
-		// Resource and scope attributes are both stream labels, so one matcher covers either scope.
-		// That is exactly what `resource.` means to the engine (it reads scope attributes too), and a
-		// superset for `instrumentation.` (which reads only scope attributes) — the engine re-checks.
+	// Resource and scope attributes are both stream labels, so one matcher covers either scope. That
+	// is exactly what `resource.` means to the engine (it reads scope attributes too), and a superset
+	// for `instrumentation.` (which reads only scope attributes) — the engine re-checks either way.
+	streamFilter := func() traceFilter {
 		return traceFilter{matchers: []fetch.Matcher{{
 			Name:  []byte(attr.Name),
 			Match: func(v signal.Value) bool { return pred(attrStatic(v)) },
 			Spec:  equal,
-		}}}, true
-	default:
-		return traceFilter{}, false
+		}}}
 	}
+	spanFilter := func() traceFilter {
+		f := spanCondition(attr.Name, attrStatic, pred)
+		f.conditions[0].Equal = equal
+		return f
+	}
+
+	switch attr.Scope {
+	case traceql.ScopeSpan:
+		return []traceFilter{spanFilter()}, true
+	case traceql.ScopeResource, traceql.ScopeInstrumentation:
+		return []traceFilter{streamFilter()}, true
+	case traceql.ScopeNone:
+		return []traceFilter{spanFilter(), streamFilter()}, true
+	default:
+		// Event and link attributes live inside the serialized events/links blobs.
+		return nil, false
+	}
+}
+
+// falseOnMissing reports whether the predicate rejects a missing attribute, which the engine
+// evaluates to nil. Only such a predicate may be pushed as a filter that drops the spans (or
+// streams) lacking the attribute outright.
+func falseOnMissing(pred func(traceql.Static) bool) bool {
+	var missing traceql.Static
+	missing.SetNil()
+
+	return !pred(missing)
 }
 
 // spanCondition builds a filter of one per-span condition over column, evaluating pred on the
@@ -215,21 +274,6 @@ func staticPredicate(op traceql.BinaryOp, want traceql.Static) (func(traceql.Sta
 		}, true
 	default:
 		return nil, false
-	}
-}
-
-// absentSafeOp reports whether op evaluates to false against a missing attribute, and is therefore
-// safe to push as a filter that drops the spans (or streams) lacking it.
-//
-// The engine evaluates a missing attribute to nil, and [traceql.Static.Compare] reports -1 for a nil
-// against a typed static (incomparable), so `!=`, `<` and `<=` are *true* on a missing attribute:
-// pushing them would drop spans the query matches. They stay in the engine.
-func absentSafeOp(op traceql.BinaryOp) bool {
-	switch op {
-	case traceql.OpEq, traceql.OpGt, traceql.OpGte, traceql.OpRe, traceql.OpNotRe:
-		return true
-	default:
-		return false
 	}
 }
 
