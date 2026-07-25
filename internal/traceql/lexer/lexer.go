@@ -60,7 +60,9 @@ func (l *lexer) setError(msg string, pos scanner.Position) {
 func (l *lexer) nextToken(r rune, text string) (tok Token, _ bool) {
 	tok.Pos = l.scanner.Position
 	if r == '-' {
-		if peekCh := l.scanner.Peek(); lexerql.IsDigit(peekCh) || peekCh == '.' {
+		// NOTE: do not peek '.' here: "-.a" is a negated attribute selector,
+		// not a number. Fractions like "-.5" are lexed as [Sub, Number].
+		if peekCh := l.scanner.Peek(); lexerql.IsDigit(peekCh) {
 			r = l.scanner.Scan()
 			text = "-" + l.scanner.TokenText()
 		}

@@ -14,7 +14,10 @@ func ParseAttribute(attr string) (a Attribute, _ error) {
 		return a, err
 	}
 
-	a, ok := p.tryAttribute()
+	a, ok, err := p.tryAttribute()
+	if err != nil {
+		return a, errors.Wrapf(err, "invalid attribute %q", attr)
+	}
 	if !ok {
 		return a, errors.Errorf("invalid attribute %q", attr)
 	}

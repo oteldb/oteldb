@@ -243,12 +243,35 @@ func (p *parser) parseScalarFilter() (*ScalarFilter, error) {
 		return nil, p.unexpectedToken(t)
 	}
 
+	rightPos := p.peek().Pos
 	right, err := p.parseScalarExpr()
 	if err != nil {
 		return nil, err
 	}
 
+	if !containsAggregate(left) && !containsAggregate(right) {
+		return nil, &SyntaxError{
+			Msg: "scalar filter must contain an aggregate",
+			Pos: rightPos,
+		}
+	}
+
 	return &ScalarFilter{Left: left, Op: op, Right: right}, nil
+}
+
+// containsAggregate whether expression contains at least one aggregate.
+//
+// A filter of only constants (like `3 > 2`) does not depend on the spanset
+// and is therefore rejected.
+func containsAggregate(e ScalarExpr) bool {
+	switch e := e.(type) {
+	case *AggregateScalarExpr:
+		return true
+	case *BinaryScalarExpr:
+		return containsAggregate(e.Left) || containsAggregate(e.Right)
+	default:
+		return false
+	}
 }
 
 func (p *parser) parseGroupOperation() (*GroupOperation, error) {

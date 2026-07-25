@@ -509,20 +509,20 @@ var tests = []TestCase{
 		false,
 	},
 	{
-		`-2 = -2`,
+		`-2 = count()`,
 		&SpansetPipeline{
 			Pipeline: []PipelineStage{
 				&ScalarFilter{
 					Left:  &Static{Type: TypeInt, Data: uint64(-2 + noConst)},
 					Op:    OpEq,
-					Right: &Static{Type: TypeInt, Data: uint64(-2 + noConst)},
+					Right: &AggregateScalarExpr{Op: AggregateOpCount},
 				},
 			},
 		},
 		false,
 	},
 	{
-		`(1+2)^3 = 27`,
+		`(1+2)^3 = count()`,
 		&SpansetPipeline{
 			Pipeline: []PipelineStage{
 				&ScalarFilter{
@@ -536,14 +536,14 @@ var tests = []TestCase{
 						Right: &Static{Type: TypeInt, Data: uint64(3)},
 					},
 					Op:    OpEq,
-					Right: &Static{Type: TypeInt, Data: uint64(27)},
+					Right: &AggregateScalarExpr{Op: AggregateOpCount},
 				},
 			},
 		},
 		false,
 	},
 	{
-		`1+2*3^4 = 163`,
+		`1+2*3^4 = count()`,
 		&SpansetPipeline{
 			Pipeline: []PipelineStage{
 				&ScalarFilter{
@@ -561,7 +561,7 @@ var tests = []TestCase{
 						},
 					},
 					Op:    OpEq,
-					Right: &Static{Type: TypeInt, Data: uint64(163)},
+					Right: &AggregateScalarExpr{Op: AggregateOpCount},
 				},
 			},
 		},
@@ -595,7 +595,7 @@ var tests = []TestCase{
 		false,
 	},
 	{
-		`2+3*4+5 = 19`,
+		`2+3*4+5 = count()`,
 		&SpansetPipeline{
 			Pipeline: []PipelineStage{
 				&ScalarFilter{
@@ -613,7 +613,7 @@ var tests = []TestCase{
 						},
 					},
 					Op:    OpEq,
-					Right: &Static{Type: TypeInt, Data: uint64(19)},
+					Right: &AggregateScalarExpr{Op: AggregateOpCount},
 				},
 			},
 		},
@@ -1119,6 +1119,77 @@ var tests = []TestCase{
 		),
 		false,
 	},
+	{
+		`{ -.a = 2 }`,
+		testBinFieldExpr(
+			&UnaryFieldExpr{Expr: &Attribute{Name: "a"}, Op: OpNeg},
+			OpEq,
+			&Static{Type: TypeInt, Data: 2},
+		),
+		false,
+	},
+	{
+		`{ .a = -.5 }`,
+		testBinFieldExpr(
+			&Attribute{Name: "a"},
+			OpEq,
+			&UnaryFieldExpr{Expr: &Static{Type: TypeNumber, Data: math.Float64bits(.5)}, Op: OpNeg},
+		),
+		false,
+	},
+	{
+		`{ .a = minInt }`,
+		testBinFieldExpr(
+			&Attribute{Name: "a"},
+			OpEq,
+			&Static{Type: TypeInt, Data: uint64(math.MinInt64 + noConst)},
+		),
+		false,
+	},
+	{
+		`{ .a = maxInt }`,
+		testBinFieldExpr(
+			&Attribute{Name: "a"},
+			OpEq,
+			&Static{Type: TypeInt, Data: uint64(math.MaxInt64 + noConst)},
+		),
+		false,
+	},
+}
+
+var errorTests = []string{
+	// Trailing tokens must not be silently ignored.
+	`{ true } garbage`,
+	`{ true } << { true }`,
+	`{ true } !> { true }`,
+	`{ true } &> { true }`,
+	`{ true } + { true }`,
+	`{ true } = { true }`,
+	`{} == 10`,
+	`({}) + ({})`,
+	// Attribute selector must have a name.
+	`{ . }`,
+	`{ span. }`,
+	`{ resource. }`,
+	`{ parent. }`,
+	// Bare identifiers are not attribute selectors.
+	`{ attribute = 4 }`,
+	`{ foo }`,
+	// rootServiceName is not a trace-scoped intrinsic, rootService is.
+	`{ trace:rootServiceName = "a" }`,
+	// Scalar filter requires an aggregate.
+	`3 = 2`,
+	`{ .foo = "a" } | 3 > 2`,
+}
+
+func TestParseErrors(t *testing.T) {
+	for i, input := range errorTests {
+		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+			got, err := Parse(input)
+			require.Errorf(t, err, "input: %s, got: %#v", input, got)
+			t.Logf("Input: %s\nError: %v", input, err)
+		})
+	}
 }
 
 func TestParse(t *testing.T) {
