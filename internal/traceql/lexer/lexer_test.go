@@ -272,6 +272,18 @@ func TestTokenizeErrors(t *testing.T) {
 			`0ee1`,
 			`at test.ql:1:1: exponent has no digits`,
 		},
+		{
+			`{ ."foo }`,
+			`at test.ql:1:10: unexpected EOF, expecting '"'`,
+		},
+		{
+			`{ span."foo }`,
+			`at test.ql:1:14: unexpected EOF, expecting '"'`,
+		},
+		{
+			`{ ."foo\qbar" }`,
+			`at test.ql:1:9: invalid escape sequence`,
+		},
 	}
 	for i, tt := range tests {
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
