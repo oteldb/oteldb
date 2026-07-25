@@ -48,10 +48,11 @@ func buildSpansetOp(op traceql.SpansetOp) (SpansetOp, error) {
 		}, nil
 	case traceql.SpansetOpChild:
 		return func(a, b []Spanset) (result []tracestorage.Span, _ error) {
-			if len(a) == 0 && len(b) == 0 {
+			// A structural join against an empty side yields nothing.
+			if len(a) == 0 || len(b) == 0 {
 				return nil, nil
 			}
-			if len(a) != 1 && len(b) != 1 {
+			if len(a) != 1 || len(b) != 1 {
 				return nil, errors.New("can't find children spans of multiple spansets at once, try to use colaesce()")
 			}
 			return childSpans(a[0], b[0]), nil
@@ -65,20 +66,22 @@ func buildSpansetOp(op traceql.SpansetOp) (SpansetOp, error) {
 		}, nil
 	case traceql.SpansetOpSibling:
 		return func(a, b []Spanset) (result []tracestorage.Span, _ error) {
-			if len(a) == 0 && len(b) == 0 {
+			// A structural join against an empty side yields nothing.
+			if len(a) == 0 || len(b) == 0 {
 				return nil, nil
 			}
-			if len(a) != 1 && len(b) != 1 {
+			if len(a) != 1 || len(b) != 1 {
 				return nil, errors.New("can't find siblings of multiple spansets at once, try to use colaesce()")
 			}
 			return siblingSpans(a[0], b[0]), nil
 		}, nil
 	case traceql.SpansetOpDescendant:
 		return func(a, b []Spanset) (result []tracestorage.Span, _ error) {
-			if len(a) == 0 && len(b) == 0 {
+			// A structural join against an empty side yields nothing.
+			if len(a) == 0 || len(b) == 0 {
 				return nil, nil
 			}
-			if len(a) != 1 && len(b) != 1 {
+			if len(a) != 1 || len(b) != 1 {
 				return nil, errors.New("can't find descendant spans of multiple spansets at once, try to use coalesce()")
 			}
 			return descendantSpans(a[0], b[0]), nil
