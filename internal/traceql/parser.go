@@ -17,7 +17,14 @@ func Parse(input string) (Expr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return p.parseExpr()
+	expr, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	if t := p.peek(); t.Type != lexer.EOF {
+		return nil, p.unexpectedToken(t)
+	}
+	return expr, nil
 }
 
 func newParser(input string) (parser, error) {

@@ -86,6 +86,20 @@ func buildSpansetOp(op traceql.SpansetOp) (SpansetOp, error) {
 			}
 			return descendantSpans(a[0], b[0]), nil
 		}, nil
+	case traceql.SpansetOpParent,
+		traceql.SpansetOpAncestor,
+		traceql.SpansetOpNotChild,
+		traceql.SpansetOpNotParent,
+		traceql.SpansetOpNotDescendant,
+		traceql.SpansetOpNotAncestor,
+		traceql.SpansetOpNotSibling,
+		traceql.SpansetOpUnionChild,
+		traceql.SpansetOpUnionParent,
+		traceql.SpansetOpUnionDescendant,
+		traceql.SpansetOpUnionAncestor,
+		traceql.SpansetOpUnionSibling:
+		// Parsed, but not evaluated yet.
+		return nil, errors.Errorf("spanset operator %q is not supported yet", op)
 	default:
 		return nil, errors.Errorf("unexpected spanset op %q", op)
 	}

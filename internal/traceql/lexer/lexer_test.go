@@ -210,6 +210,49 @@ var tests = []TestCase{
 		},
 		false,
 	},
+	// Structural operators. Longest match wins, so "!" must not eat ">>".
+	{
+		`>>><<<`,
+		[]Token{
+			{Type: Desc, Text: ">>"},
+			{Type: Gt, Text: ">"},
+			{Type: Ance, Text: "<<"},
+			{Type: Lt, Text: "<"},
+		},
+		false,
+	},
+	{
+		`!> !< !>> !<< !~ !=`,
+		[]Token{
+			{Type: NotChild, Text: "!>"},
+			{Type: NotParent, Text: "!<"},
+			{Type: NotDesc, Text: "!>>"},
+			{Type: NotAnce, Text: "!<<"},
+			{Type: NotRe, Text: "!~"},
+			{Type: NotEq, Text: "!="},
+		},
+		false,
+	},
+	{
+		`&> &< &>> &<< &~ &&`,
+		[]Token{
+			{Type: UnionChild, Text: "&>"},
+			{Type: UnionParent, Text: "&<"},
+			{Type: UnionDesc, Text: "&>>"},
+			{Type: UnionAnce, Text: "&<<"},
+			{Type: UnionSibling, Text: "&~"},
+			{Type: And, Text: "&&"},
+		},
+		false,
+	},
+	{
+		`-.a`,
+		[]Token{
+			{Type: Sub, Text: "-"},
+			{Type: Ident, Text: ".a"},
+		},
+		false,
+	},
 }
 
 func TestTokenizeErrors(t *testing.T) {
@@ -228,6 +271,18 @@ func TestTokenizeErrors(t *testing.T) {
 		{
 			`0ee1`,
 			`at test.ql:1:1: exponent has no digits`,
+		},
+		{
+			`{ ."foo }`,
+			`at test.ql:1:10: unexpected EOF, expecting '"'`,
+		},
+		{
+			`{ span."foo }`,
+			`at test.ql:1:14: unexpected EOF, expecting '"'`,
+		},
+		{
+			`{ ."foo\qbar" }`,
+			`at test.ql:1:9: invalid escape sequence`,
 		},
 	}
 	for i, tt := range tests {
@@ -267,9 +322,18 @@ func FuzzTokenize(f *testing.F) {
 		defer func() {
 			if r := recover(); r != nil || t.Failed() {
 				t.Logf("Input:\n%s", input)
+				panic(r)
 			}
-
-			_, _ = Tokenize(input, TokenizeOptions{})
 		}()
+
+		tokens, err := Tokenize(input, TokenizeOptions{})
+		if err != nil {
+			return
+		}
+		for _, tok := range tokens {
+			if tok.Type == Invalid {
+				t.Fatalf("invalid token %+v", tok)
+			}
+		}
 	})
 }

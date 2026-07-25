@@ -214,6 +214,30 @@ func (p *parser) peekSpansetOp() (op SpansetOp, _ bool) {
 		return SpansetOpUnion, true
 	case lexer.Tilde:
 		return SpansetOpSibling, true
+	case lexer.Lt:
+		return SpansetOpParent, true
+	case lexer.Ance:
+		return SpansetOpAncestor, true
+	case lexer.NotChild:
+		return SpansetOpNotChild, true
+	case lexer.NotParent:
+		return SpansetOpNotParent, true
+	case lexer.NotDesc:
+		return SpansetOpNotDescendant, true
+	case lexer.NotAnce:
+		return SpansetOpNotAncestor, true
+	case lexer.NotRe:
+		return SpansetOpNotSibling, true
+	case lexer.UnionChild:
+		return SpansetOpUnionChild, true
+	case lexer.UnionParent:
+		return SpansetOpUnionParent, true
+	case lexer.UnionDesc:
+		return SpansetOpUnionDescendant, true
+	case lexer.UnionAnce:
+		return SpansetOpUnionAncestor, true
+	case lexer.UnionSibling:
+		return SpansetOpUnionSibling, true
 	default:
 		return op, false
 	}
@@ -243,12 +267,35 @@ func (p *parser) parseScalarFilter() (*ScalarFilter, error) {
 		return nil, p.unexpectedToken(t)
 	}
 
+	rightPos := p.peek().Pos
 	right, err := p.parseScalarExpr()
 	if err != nil {
 		return nil, err
 	}
 
+	if !containsAggregate(left) && !containsAggregate(right) {
+		return nil, &SyntaxError{
+			Msg: "scalar filter must contain an aggregate",
+			Pos: rightPos,
+		}
+	}
+
 	return &ScalarFilter{Left: left, Op: op, Right: right}, nil
+}
+
+// containsAggregate whether expression contains at least one aggregate.
+//
+// A filter of only constants (like `3 > 2`) does not depend on the spanset
+// and is therefore rejected.
+func containsAggregate(e ScalarExpr) bool {
+	switch e := e.(type) {
+	case *AggregateScalarExpr:
+		return true
+	case *BinaryScalarExpr:
+		return containsAggregate(e.Left) || containsAggregate(e.Right)
+	default:
+		return false
+	}
 }
 
 func (p *parser) parseGroupOperation() (*GroupOperation, error) {

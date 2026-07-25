@@ -364,3 +364,28 @@ func TestSiblingSpans(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildSpansetOpUnsupported(t *testing.T) {
+	// Parsed by the frontend, but the engine has no implementation yet.
+	ops := []traceql.SpansetOp{
+		traceql.SpansetOpParent,
+		traceql.SpansetOpAncestor,
+		traceql.SpansetOpNotChild,
+		traceql.SpansetOpNotParent,
+		traceql.SpansetOpNotDescendant,
+		traceql.SpansetOpNotAncestor,
+		traceql.SpansetOpNotSibling,
+		traceql.SpansetOpUnionChild,
+		traceql.SpansetOpUnionParent,
+		traceql.SpansetOpUnionDescendant,
+		traceql.SpansetOpUnionAncestor,
+		traceql.SpansetOpUnionSibling,
+	}
+	for _, op := range ops {
+		t.Run(op.String(), func(t *testing.T) {
+			fn, err := buildSpansetOp(op)
+			require.ErrorContains(t, err, "not supported yet")
+			require.Nil(t, fn)
+		})
+	}
+}

@@ -3,6 +3,7 @@ package traceql
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/go-faster/errors"
 )
@@ -14,7 +15,10 @@ func ParseAttribute(attr string) (a Attribute, _ error) {
 		return a, err
 	}
 
-	a, ok := p.tryAttribute()
+	a, ok, err := p.tryAttribute()
+	if err != nil {
+		return a, errors.Wrapf(err, "invalid attribute %q", attr)
+	}
 	if !ok {
 		return a, errors.Errorf("invalid attribute %q", attr)
 	}
@@ -107,8 +111,49 @@ func (s Attribute) String() string {
 		if needDot {
 			sb.WriteByte('.')
 		}
-		sb.WriteString(s.Name)
+		sb.WriteString(quoteAttributeName(s.Name))
 		return sb.String()
+	}
+}
+
+// quoteAttributeName quotes a name that would not lex back as a selector.
+func quoteAttributeName(name string) string {
+	quote := name == ""
+	for _, r := range name {
+		if !isAttributeNameRune(r) {
+			quote = true
+			break
+		}
+	}
+	if !quote {
+		return name
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(name) + 2)
+	sb.WriteByte('"')
+	for _, r := range name {
+		if r == '"' || r == '\\' {
+			sb.WriteByte('\\')
+		}
+		sb.WriteRune(r)
+	}
+	sb.WriteByte('"')
+	return sb.String()
+}
+
+// isAttributeNameRune whether r may appear in an unquoted attribute name.
+//
+// Must match the lexer's notion of what ends a selector.
+func isAttributeNameRune(r rune) bool {
+	if unicode.IsSpace(r) {
+		return false
+	}
+	switch r {
+	case '{', '}', '(', ')', '=', '~', '!', '<', '>', '&', '|', '^', ',', '"', '\\':
+		return false
+	default:
+		return true
 	}
 }
 
