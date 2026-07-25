@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 
 	"github.com/oteldb/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/traceql"
 	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
@@ -42,6 +43,79 @@ func generateSpans(ids []spanIDs, group string) []tracestorage.Span {
 		})
 	}
 	return result
+}
+
+func TestBuildSpansetOpEmptySide(t *testing.T) {
+	// A structural operator must return an empty result, rather than panic or
+	// error, when either side matches nothing.
+	ops := []traceql.SpansetOp{
+		traceql.SpansetOpChild,
+		traceql.SpansetOpSibling,
+		traceql.SpansetOpDescendant,
+		traceql.SpansetOpAnd,
+		traceql.SpansetOpUnion,
+	}
+	nonEmpty := []Spanset{{Spans: generateSpans([]spanIDs{{id: 1}, {id: 2, parent: 1}}, "set")}}
+
+	tests := []struct {
+		name string
+		a, b []Spanset
+	}{
+		{"BothEmpty", nil, nil},
+		{"LeftEmpty", nil, nonEmpty},
+		{"RightEmpty", nonEmpty, nil},
+	}
+	for _, op := range ops {
+		t.Run(op.String(), func(t *testing.T) {
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					fn, err := buildSpansetOp(op)
+					require.NoError(t, err)
+
+					result, err := fn(tt.a, tt.b)
+					require.NoError(t, err)
+					if op == traceql.SpansetOpUnion && (len(tt.a) > 0 || len(tt.b) > 0) {
+						// Union keeps whatever the non-empty side has.
+						require.NotEmpty(t, result)
+						return
+					}
+					require.Empty(t, result)
+				})
+			}
+		})
+	}
+}
+
+func TestBuildSpansetOpMultipleSpansets(t *testing.T) {
+	// Structural operators can't join multiple spansets at once.
+	ops := []traceql.SpansetOp{
+		traceql.SpansetOpChild,
+		traceql.SpansetOpSibling,
+		traceql.SpansetOpDescendant,
+	}
+	one := []Spanset{{Spans: generateSpans([]spanIDs{{id: 1}}, "set")}}
+	two := append(slices.Clone(one), Spanset{Spans: generateSpans([]spanIDs{{id: 2}}, "set")})
+
+	for _, op := range ops {
+		t.Run(op.String(), func(t *testing.T) {
+			fn, err := buildSpansetOp(op)
+			require.NoError(t, err)
+
+			for _, tt := range []struct {
+				name string
+				a, b []Spanset
+			}{
+				{"Left", two, one},
+				{"Right", one, two},
+				{"Both", two, two},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					_, err := fn(tt.a, tt.b)
+					require.Error(t, err)
+				})
+			}
+		})
+	}
 }
 
 func TestChildSpans(t *testing.T) {
