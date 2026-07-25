@@ -86,11 +86,21 @@ func _() {
 	_ = x[ParentID-75]
 	_ = x[TimeSinceStart-76]
 	_ = x[Version-77]
+	_ = x[Ance-78]
+	_ = x[NotChild-79]
+	_ = x[NotParent-80]
+	_ = x[NotDesc-81]
+	_ = x[NotAnce-82]
+	_ = x[UnionChild-83]
+	_ = x[UnionParent-84]
+	_ = x[UnionDesc-85]
+	_ = x[UnionAnce-86]
+	_ = x[UnionSibling-87]
 }
 
-const _TokenType_name = "InvalidEOFIdentStringIntegerNumberDurationCommaDotOpenBraceCloseBraceOpenParenCloseParenEqNotEqReNotReGtGteLtLteAddSubDivModMulPowTrueFalseNilStatusOkStatusErrorStatusUnsetKindUnspecifiedKindInternalKindServerKindClientKindProducerKindConsumerAndOrNotPipeDescTildeSpanDurationChildCountNameStatusKindRootNameRootServiceNameTraceDurationParentCountAvgMaxMinSumByCoalesceSelectTraceColonSpanColonEventColonLinkColonInstrumentationColonStatusMessageRootServiceNestedSetLeftNestedSetRightNestedSetParentIDTraceIDSpanIDParentIDTimeSinceStartVersion"
+const _TokenType_name = "InvalidEOFIdentStringIntegerNumberDurationCommaDotOpenBraceCloseBraceOpenParenCloseParenEqNotEqReNotReGtGteLtLteAddSubDivModMulPowTrueFalseNilStatusOkStatusErrorStatusUnsetKindUnspecifiedKindInternalKindServerKindClientKindProducerKindConsumerAndOrNotPipeDescTildeSpanDurationChildCountNameStatusKindRootNameRootServiceNameTraceDurationParentCountAvgMaxMinSumByCoalesceSelectTraceColonSpanColonEventColonLinkColonInstrumentationColonStatusMessageRootServiceNestedSetLeftNestedSetRightNestedSetParentIDTraceIDSpanIDParentIDTimeSinceStartVersionAnceNotChildNotParentNotDescNotAnceUnionChildUnionParentUnionDescUnionAnceUnionSibling"
 
-var _TokenType_index = [...]uint16{0, 7, 10, 15, 21, 28, 34, 42, 47, 50, 59, 69, 78, 88, 90, 95, 97, 102, 104, 107, 109, 112, 115, 118, 121, 124, 127, 130, 134, 139, 142, 150, 161, 172, 187, 199, 209, 219, 231, 243, 246, 248, 251, 255, 259, 264, 276, 286, 290, 296, 300, 308, 323, 336, 342, 347, 350, 353, 356, 359, 361, 369, 375, 385, 394, 404, 413, 433, 446, 457, 470, 484, 499, 501, 508, 514, 522, 536, 543}
+var _TokenType_index = [...]uint16{0, 7, 10, 15, 21, 28, 34, 42, 47, 50, 59, 69, 78, 88, 90, 95, 97, 102, 104, 107, 109, 112, 115, 118, 121, 124, 127, 130, 134, 139, 142, 150, 161, 172, 187, 199, 209, 219, 231, 243, 246, 248, 251, 255, 259, 264, 276, 286, 290, 296, 300, 308, 323, 336, 342, 347, 350, 353, 356, 359, 361, 369, 375, 385, 394, 404, 413, 433, 446, 457, 470, 484, 499, 501, 508, 514, 522, 536, 543, 547, 555, 564, 571, 578, 588, 599, 608, 617, 629}
 
 func (i TokenType) String() string {
 	idx := int(i) - 0
