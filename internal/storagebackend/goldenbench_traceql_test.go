@@ -57,8 +57,8 @@ const (
 	traceqlRoutes = 64
 	// traceqlErrorEvery makes every Nth trace fail, so `status = error` selects 1/N of the corpus.
 	traceqlErrorEvery = 10
-	// traceqlLimit is deliberately >= traceqlTraces: SelectSpansets truncates to Limit *before* the
-	// engine filters, so a smaller limit would make the selective cases assert on an arbitrary prefix.
+	// traceqlLimit is deliberately >= traceqlTraces, so no case is ever cut short by the engine's
+	// post-filter limit and every want below is a true match count.
 	traceqlLimit = traceqlTraces
 	// traceqlSelectedRoute is the route the attribute-filter case selects.
 	traceqlSelectedRoute = "/route/7"
@@ -211,7 +211,7 @@ type traceqlFixture struct {
 
 // traceqlNewFixture ingests the canonical corpus into a memory-backed store and flushes + compacts
 // it, so every query below reads immutable parts rather than the head.
-func traceqlNewFixture(b *testing.B) *traceqlFixture {
+func traceqlNewFixture(b testing.TB) *traceqlFixture {
 	b.Helper()
 
 	ctx := context.Background()

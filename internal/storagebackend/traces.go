@@ -26,6 +26,11 @@ var (
 // SelectSpansets implements [traceqlengine.Querier]. It returns every trace whose spans fall in the
 // window, grouped by trace id; the TraceQL engine evaluates the spanset matchers on the result
 // (mirroring the in-memory reference querier).
+//
+// params.Limit is deliberately not applied here: it counts *matching* traces, and nothing has been
+// matched yet. Truncating the candidate set in scan order would cap the result at "however many of
+// the first N scanned traces happen to match", which for a selective query is usually fewer than N
+// and often zero. The engine applies the limit once the matchers have run.
 func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.SelectSpansetsParams) (iterators.Iterator[traceqlengine.Trace], error) {
 	spans, err := q.scanSpans(ctx, params.Start, params.End)
 	if err != nil {
@@ -43,9 +48,6 @@ func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.
 
 	traces := make([]traceqlengine.Trace, 0, len(order))
 	for _, id := range order {
-		if params.Limit > 0 && len(traces) >= params.Limit {
-			break
-		}
 		traces = append(traces, traceqlengine.Trace{TraceID: id, Spans: byTrace[id]})
 	}
 	return iterators.Slice(traces), nil
