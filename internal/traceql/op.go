@@ -393,3 +393,23 @@ func (op MetricsOp) TakesField() bool {
 		return true
 	}
 }
+
+// MetricsStageOp defines a metrics second stage operator.
+type MetricsStageOp int
+
+const (
+	MetricsStageOpTopK MetricsStageOp = iota + 1
+	MetricsStageOpBottomK
+)
+
+// String implements fmt.Stringer.
+func (op MetricsStageOp) String() string {
+	switch op {
+	case MetricsStageOpTopK:
+		return "topk"
+	case MetricsStageOpBottomK:
+		return "bottomk"
+	default:
+		return fmt.Sprintf("<unknown op %d>", op)
+	}
+}

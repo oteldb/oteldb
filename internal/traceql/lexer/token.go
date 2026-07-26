@@ -124,6 +124,10 @@ const (
 	AvgOverTime       // avg_over_time
 	QuantileOverTime  // quantile_over_time
 	HistogramOverTime // histogram_over_time
+
+	// Metrics second stage functions.
+	TopK    // topk
+	BottomK // bottomk
 )
 
 var tokens = map[string]TokenType{
@@ -212,4 +216,7 @@ var tokens = map[string]TokenType{
 	"avg_over_time":       AvgOverTime,
 	"quantile_over_time":  QuantileOverTime,
 	"histogram_over_time": HistogramOverTime,
+
+	"topk":    TopK,
+	"bottomk": BottomK,
 }

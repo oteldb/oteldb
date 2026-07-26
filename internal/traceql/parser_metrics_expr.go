@@ -1,6 +1,8 @@
 package traceql
 
 import (
+	"fmt"
+
 	"github.com/oteldb/oteldb/internal/traceql/lexer"
 )
 
@@ -21,6 +23,110 @@ func (p *parser) parseMetricsExpr(spanset Expr) (Expr, error) {
 		return nil, err
 	}
 	e.Spanset = spanset
+
+	e.Stages, err = p.parseMetricsStages()
+	if err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+// parseMetricsStages parses a chain of second stage operations.
+//
+// Unlike a filter, a `topk()`/`bottomk()` operation is preceded by a pipe.
+func (p *parser) parseMetricsStages() (stages []MetricsStage, _ error) {
+	for {
+		switch t := p.peek(); t.Type {
+		case lexer.Pipe:
+			// Consume "|".
+			p.next()
+
+			stage, err := p.parseTopKOperation()
+			if err != nil {
+				return nil, err
+			}
+			stages = append(stages, stage)
+		case lexer.Eq, lexer.NotEq, lexer.Gt, lexer.Gte, lexer.Lt, lexer.Lte:
+			stage, err := p.parseMetricsFilter()
+			if err != nil {
+				return nil, err
+			}
+			stages = append(stages, stage)
+		default:
+			return stages, nil
+		}
+	}
+}
+
+func (p *parser) parseTopKOperation() (e *TopKOperation, _ error) {
+	e = new(TopKOperation)
+
+	opTok := p.next()
+	switch opTok.Type {
+	case lexer.TopK:
+		e.Op = MetricsStageOpTopK
+	case lexer.BottomK:
+		e.Op = MetricsStageOpBottomK
+	default:
+		return nil, p.unexpectedToken(opTok)
+	}
+
+	if err := p.consume(lexer.OpenParen); err != nil {
+		return nil, err
+	}
+
+	limitPos := p.peek().Pos
+	limit, err := p.parseInteger()
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		return nil, &SyntaxError{
+			Msg: fmt.Sprintf("%s limit must be greater than 0, got %d", e.Op, limit),
+			Pos: limitPos,
+		}
+	}
+	e.Limit = int(limit)
+
+	if err := p.consume(lexer.CloseParen); err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+func (p *parser) parseMetricsFilter() (e *MetricsFilter, _ error) {
+	e = new(MetricsFilter)
+
+	switch t := p.next(); t.Type {
+	case lexer.Eq:
+		e.Op = OpEq
+	case lexer.NotEq:
+		e.Op = OpNotEq
+	case lexer.Gt:
+		e.Op = OpGt
+	case lexer.Gte:
+		e.Op = OpGte
+	case lexer.Lt:
+		e.Op = OpLt
+	case lexer.Lte:
+		e.Op = OpLte
+	default:
+		return nil, p.unexpectedToken(t)
+	}
+
+	valuePos := p.peek().Pos
+	value, err := p.parseStatic()
+	if err != nil {
+		return nil, err
+	}
+	if !value.Type.IsNumeric() {
+		return nil, &TypeError{
+			Msg: "metrics filter value must be numeric",
+			Pos: valuePos,
+		}
+	}
+	e.Value = value
+
 	return e, nil
 }
 

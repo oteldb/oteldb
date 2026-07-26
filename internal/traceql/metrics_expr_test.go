@@ -1,7 +1,9 @@
 package traceql
 
 import (
+	"math"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
@@ -156,6 +158,85 @@ var metricsTests = []TestCase{
 		false,
 	},
 
+	// Second stage operations.
+	{
+		`{} | rate() | topk(10)`,
+		&MetricsAggregation{
+			Op:      MetricsOpRate,
+			Spanset: allSpans(),
+			Stages: []MetricsStage{
+				&TopKOperation{Op: MetricsStageOpTopK, Limit: 10},
+			},
+		},
+		false,
+	},
+	{
+		`{} | rate() by (name) | bottomk(5)`,
+		&MetricsAggregation{
+			Op:      MetricsOpRate,
+			Spanset: allSpans(),
+			By:      []Attribute{{Prop: SpanName}},
+			Stages: []MetricsStage{
+				&TopKOperation{Op: MetricsStageOpBottomK, Limit: 5},
+			},
+		},
+		false,
+	},
+	{
+		// A filter is not preceded by a pipe.
+		`{} | count_over_time() > 100`,
+		&MetricsAggregation{
+			Op:      MetricsOpCountOverTime,
+			Spanset: allSpans(),
+			Stages: []MetricsStage{
+				&MetricsFilter{Op: OpGt, Value: &Static{Type: TypeInt, Data: 100}},
+			},
+		},
+		false,
+	},
+	{
+		`{} | quantile_over_time(duration, 0.9) >= 100ms`,
+		&MetricsAggregation{
+			Op:         MetricsOpQuantileOverTime,
+			Spanset:    allSpans(),
+			Field:      new(Attribute{Prop: SpanDuration}),
+			Parameters: []float64{0.9},
+			Stages: []MetricsStage{
+				&MetricsFilter{
+					Op:    OpGte,
+					Value: &Static{Type: TypeDuration, Data: uint64(100 * time.Millisecond)},
+				},
+			},
+		},
+		false,
+	},
+	{
+		`{} | rate() != 0.5`,
+		&MetricsAggregation{
+			Op:      MetricsOpRate,
+			Spanset: allSpans(),
+			Stages: []MetricsStage{
+				&MetricsFilter{Op: OpNotEq, Value: &Static{Type: TypeNumber, Data: math.Float64bits(0.5)}},
+			},
+		},
+		false,
+	},
+	{
+		// Stages chain in the order they are written.
+		`{} | rate() > 10 | topk(3) < 100 | bottomk(2)`,
+		&MetricsAggregation{
+			Op:      MetricsOpRate,
+			Spanset: allSpans(),
+			Stages: []MetricsStage{
+				&MetricsFilter{Op: OpGt, Value: &Static{Type: TypeInt, Data: 10}},
+				&TopKOperation{Op: MetricsStageOpTopK, Limit: 3},
+				&MetricsFilter{Op: OpLt, Value: &Static{Type: TypeInt, Data: 100}},
+				&TopKOperation{Op: MetricsStageOpBottomK, Limit: 2},
+			},
+		},
+		false,
+	},
+
 	// Operations taking no argument.
 	{`{} | rate(duration)`, nil, true},
 	{`{} | count_over_time(duration)`, nil, true},
@@ -179,6 +260,20 @@ var metricsTests = []TestCase{
 	{`{} | rate() by (name,)`, nil, true},
 	{`{} | rate() | rate()`, nil, true},
 	{`{} | rate() by (1)`, nil, true},
+	// Second stage without an aggregation.
+	{`{} | topk(5)`, nil, true},
+	{`topk(5)`, nil, true},
+	// Malformed second stage.
+	{`{} | rate() | topk()`, nil, true},
+	{`{} | rate() | topk(0)`, nil, true},
+	{`{} | rate() | topk(-1)`, nil, true},
+	{`{} | rate() | topk(1.5)`, nil, true},
+	{`{} | rate() | topk(10`, nil, true},
+	{`{} | rate() | topk(10) topk(5)`, nil, true},
+	{`{} | rate() | count_over_time()`, nil, true},
+	{`{} | rate() >`, nil, true},
+	{`{} | rate() =~ 10`, nil, true},
+	{`{} | rate() > 10 > `, nil, true},
 }
 
 func TestParseMetrics(t *testing.T) {
