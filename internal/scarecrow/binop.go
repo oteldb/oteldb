@@ -336,6 +336,10 @@ type vectorBinop struct {
 	pairOf []int
 	// oneOf maps a many-side ref to the one-side ref it matched.
 	oneOf []SeriesRef
+	// probed marks the one-side refs some many-side series actually matches. Since matching is
+	// resolved at plan time, a build-side series nothing will probe is known before any data
+	// moves and need never be retained.
+	probed []bool
 
 	built   bool
 	oneCols map[SeriesRef]*Column
@@ -397,6 +401,7 @@ func (o *vectorBinop) Schema(ctx context.Context) (*Schema, error) {
 
 	o.pairOf = make([]int, manySchema.Len())
 	o.oneOf = make([]SeriesRef, manySchema.Len())
+	o.probed = make([]bool, oneSchema.Len())
 
 	for i, ls := range manySchema.Series {
 		oneRef, ok := o.bySig[signature(ls, o.matching)]
@@ -407,6 +412,7 @@ func (o *vectorBinop) Schema(ctx context.Context) (*Schema, error) {
 
 		o.pairOf[i] = len(series)
 		o.oneOf[i] = oneRef
+		o.probed[oneRef] = true
 
 		series = append(series, resultLabels(ls, oneSchema.At(oneRef), o.op, o.matching, o.returnB))
 	}
@@ -429,6 +435,13 @@ func (o *vectorBinop) build(ctx context.Context) error {
 
 		if col == nil {
 			return nil
+		}
+
+		// Nothing on the many side matches this series, so retaining it would be pure waste.
+		// A metadata metric joined with `on(instance) group_left` typically covers far more
+		// series than the query touches.
+		if !o.probed[col.Ref] {
+			continue
 		}
 
 		// The producer owns its column and will overwrite it, so the build side keeps a copy.
@@ -586,72 +599,98 @@ func (o *setBinop) Schema(ctx context.Context) (*Schema, error) {
 	return o.schema, nil
 }
 
+// build drains both inputs straight into the output accumulators.
+//
+// No input column is retained. The evaluation order is what makes that possible, and it differs
+// per operator: `and`/`unless` take their values from the lhs only, so the rhs is drained first
+// for its step coverage alone and its columns are dropped; `or` emits every lhs sample
+// unconditionally, so the lhs goes first and the rhs is then filtered against the coverage it
+// recorded. Either way resident memory is the output, O(outputSeries × steps), rather than both
+// inputs.
 func (o *setBinop) build(ctx context.Context) error {
 	o.built = true
+	o.result = make([]*Column, o.schema.Len())
 
+	if o.op == parser.LOR {
+		lhsSteps, err := o.drainLHS(ctx, nil)
+		if err != nil {
+			return err
+		}
+
+		return o.drainRHS(ctx, lhsSteps)
+	}
+
+	// and/unless need the rhs's coverage before the lhs can be filtered, but never its values.
+	rhsSteps, err := o.coverage(ctx, o.rhs, o.rhsSig)
+	if err != nil {
+		return err
+	}
+
+	_, err = o.drainLHS(ctx, rhsSteps)
+
+	return err
+}
+
+// coverage drains an input recording only which steps each signature has a sample at, keeping
+// no values.
+func (o *setBinop) coverage(ctx context.Context, in Operator, sigOf []uint64) (map[uint64][]uint64, error) {
 	steps := o.ec.NumSteps()
-	rhsSteps := make(map[uint64][]uint64)
-	lhsSteps := make(map[uint64][]uint64)
+	out := make(map[uint64][]uint64)
 
-	markSteps := func(m map[uint64][]uint64, sig uint64, col *Column) {
-		w, ok := m[sig]
+	for {
+		col, err := in.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if col == nil {
+			return out, nil
+		}
+
+		sig := sigOf[col.Ref]
+
+		w, ok := out[sig]
 		if !ok {
 			w = make([]uint64, wordsFor(steps))
-			m[sig] = w
+			out[sig] = w
 		}
 
 		for i := range w {
 			w[i] |= col.Valid[i]
 		}
 	}
+}
 
-	// Both sides are buffered: `or` decides per step whether an rhs sample is suppressed, and
-	// that is only known once every lhs series has been seen.
-	var rhsBuf, lhsBuf []*Column
-
-	for {
-		col, err := o.rhs.Next(ctx)
-		if err != nil {
-			return err
-		}
-
-		if col == nil {
-			break
-		}
-
-		markSteps(rhsSteps, o.rhsSig[col.Ref], col)
-
-		if o.op == parser.LOR {
-			kept := NewColumn(col.Ref, col.Steps())
-			kept.CopyFrom(col)
-			rhsBuf = append(rhsBuf, kept)
-		}
-	}
+// drainLHS accumulates the lhs into the output, filtered by the rhs coverage when the operator
+// calls for it, and returns the lhs's own coverage for a later `or` pass.
+func (o *setBinop) drainLHS(ctx context.Context, rhsSteps map[uint64][]uint64) (map[uint64][]uint64, error) {
+	steps := o.ec.NumSteps()
+	lhsSteps := make(map[uint64][]uint64)
 
 	for {
 		col, err := o.lhs.Next(ctx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if col == nil {
-			break
+			return lhsSteps, nil
 		}
 
-		markSteps(lhsSteps, o.lhsSig[col.Ref], col)
+		sig := o.lhsSig[col.Ref]
 
-		kept := NewColumn(col.Ref, col.Steps())
-		kept.CopyFrom(col)
-		lhsBuf = append(lhsBuf, kept)
-	}
+		w, ok := lhsSteps[sig]
+		if !ok {
+			w = make([]uint64, wordsFor(steps))
+			lhsSteps[sig] = w
+		}
 
-	// Accumulate into one column per output series. Distinct inputs can collapse onto the same
-	// identity — `-a or -b` both reduce to {} — so `or` must merge them rather than emit twice.
-	o.result = make([]*Column, o.schema.Len())
+		for i := range w {
+			w[i] |= col.Valid[i]
+		}
 
-	for _, col := range lhsBuf {
 		out := o.outputFor(SeriesRef(o.lhsOut[col.Ref]), steps)
-		match := rhsSteps[o.lhsSig[col.Ref]]
+		match := rhsSteps[sig]
 
 		for i := range steps {
 			if !col.IsSet(i) {
@@ -676,14 +715,29 @@ func (o *setBinop) build(ctx context.Context) error {
 			out.Set(i, col.V[i])
 		}
 	}
+}
 
-	for _, col := range rhsBuf {
+// drainRHS accumulates the rhs samples `or` still needs: those at steps no lhs series of the
+// same signature covers.
+func (o *setBinop) drainRHS(ctx context.Context, lhsSteps map[uint64][]uint64) error {
+	steps := o.ec.NumSteps()
+
+	for {
+		col, err := o.rhs.Next(ctx)
+		if err != nil {
+			return err
+		}
+
+		if col == nil {
+			return nil
+		}
+
 		out := o.outputFor(SeriesRef(o.rhsOut[col.Ref]), steps)
 		lhsMatch := lhsSteps[o.rhsSig[col.Ref]]
 
 		for i := range steps {
-			// An rhs sample survives only where no lhs series shares its signature, and never
-			// overwrites a value already contributed by the lhs.
+			// Never overwrite a value the lhs already contributed: distinct inputs can collapse
+			// onto one output identity (`-a or -b` both reduce to {}).
 			if !col.IsSet(i) || out.IsSet(i) {
 				continue
 			}
@@ -695,8 +749,6 @@ func (o *setBinop) build(ctx context.Context) error {
 			out.Set(i, col.V[i])
 		}
 	}
-
-	return nil
 }
 
 // outputFor returns the accumulator column for an output ref, creating it on first use.

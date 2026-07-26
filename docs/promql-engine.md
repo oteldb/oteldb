@@ -376,11 +376,18 @@ column at a time, "what does this operator have to remember" is answerable per o
 | unary fn, scalar binop, label ops | none | `O(steps)` |
 | `sum`/`count`/`min`/`max`/`avg`/`group`/`stddev`/`stdvar` | one row per group | `O(groups × steps)` |
 | `topk`/`bottomk(k)` | per-step bounded heap | `O(k × steps)` |
-| vector-vector binop | hash table on the build side | `O(buildSeries × steps)` |
+| vector-vector binop | hash table on the build side | `O(probedBuildSeries × steps)` |
+| set operator (`and`/`or`/`unless`) | output rows plus one side's step coverage | `O(outputSeries × steps)` |
 | `quantile`, `count_values`, `sort` | every input value | `O(series × steps)` |
 | bare selector (no consumer above) | none — streams to the encoder | `O(steps)` |
 
-Two rows deserve comment. `quantile` is `O(series × steps)` because exact quantiles need the
+Three rows deserve comment. The vector binop buffers only its **build side** — the "one" side of
+a match — and only those of its series some many-side series actually pairs with, which is known
+at plan time because matching is resolved from label sets alone. `group_left`/`group_right`
+therefore buffer *less* than a plain one-to-one binop, where every series is its own match group.
+Set operators buffer no input at all: `and`/`unless` need the rhs's step coverage but never its
+values, and `or` emits the lhs unconditionally, so ordering the two drains per operator removes
+the buffer entirely. `quantile` is `O(series × steps)` because exact quantiles need the
 full per-step set; Prometheus and Thanos pay the same, and it is inherent, not a layout
 artifact. The **bare selector** row is the one the step-major draft got badly wrong: a query
 like `http_requests_total[1h:15s]` with no aggregation was `O(series × steps)` resident there,
