@@ -112,11 +112,12 @@ func TestEngineUnsupportedIsExplicit(t *testing.T) {
 	e := scarecrow.NewEngine(scarecrow.Opts{})
 
 	for _, qs := range []string{
-		`sum by (job) (up)`,        // M2: aggregations
-		`up + 1`,                   // M2: binary operators
-		`up and up`,                // M2: set operators
-		`abs(up)`,                  // M2: instant functions
-		`avg_over_time(up[5m:1m])`, // M3: subqueries
+		`topk(3, up)`,                 // needs the full per-step series set
+		`quantile(0.9, up)`,           // ditto
+		`count_values("v", up)`,       // output schema is data-dependent
+		`avg_over_time(up[5m:1m])`,    // M3: subqueries
+		`histogram_quantile(0.9, up)`, // M6: histograms
+		`sort(up)`,                    // needs the full result to order it
 	} {
 		t.Run(qs, func(t *testing.T) {
 			t.Parallel()

@@ -218,6 +218,11 @@ func (q *query) exec(ctx context.Context) (parser.Value, error) {
 	scanner := q.engine.opts.NewScanner(q.queryable)
 	defer func() { _ = scanner.Close() }()
 
+	// A string literal is not a series at all, so it bypasses the operator tree entirely.
+	if lit, ok := unwrapStringLiteral(expr); ok {
+		return promql.String{T: ec.Steps[0], V: lit.Val}, nil
+	}
+
 	// A bare range selector as an instant query returns the raw samples as a matrix. It is the
 	// one result shape no operator produces (nothing in this engine emits a range vector), so
 	// it is materialized directly from the scanner rather than planned.

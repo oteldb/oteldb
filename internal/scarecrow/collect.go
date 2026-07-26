@@ -4,6 +4,8 @@ import (
 	"context"
 	"sort"
 
+	"github.com/go-faster/errors"
+
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 )
@@ -28,7 +30,10 @@ func collectInstant(
 		return promql.Scalar{T: ts, V: col.V[0]}, nil
 	}
 
-	var out promql.Vector
+	var (
+		out  promql.Vector
+		seen = make(map[uint64]struct{})
+	)
 
 	for {
 		col, err := root.Next(ctx)
@@ -44,6 +49,13 @@ func collectInstant(
 			continue
 		}
 
+		// Operators that drop __name__ can collapse distinct inputs onto one identity. PromQL
+		// rejects that rather than silently returning two samples for the same series.
+		if _, dup := seen[schema.Hashes[col.Ref]]; dup {
+			return nil, errDuplicateLabelSet
+		}
+		seen[schema.Hashes[col.Ref]] = struct{}{}
+
 		out = append(out, promql.Sample{
 			Metric: schema.At(col.Ref),
 			T:      ts,
@@ -52,6 +64,25 @@ func collectInstant(
 	}
 
 	return out, nil
+}
+
+// errDuplicateLabelSet reports two result series sharing one identity, which PromQL forbids.
+var errDuplicateLabelSet = errors.New("vector cannot contain metrics with the same labelset")
+
+// unwrapStringLiteral reports whether expr is a string literal, possibly parenthesised.
+func unwrapStringLiteral(expr parser.Expr) (*parser.StringLiteral, bool) {
+	for {
+		switch e := expr.(type) {
+		case *parser.ParenExpr:
+			expr = e.Expr
+		case *parser.StepInvariantExpr:
+			expr = e.Expr
+		case *parser.StringLiteral:
+			return e, true
+		default:
+			return nil, false
+		}
+	}
 }
 
 // unwrapMatrixSelector reports whether expr is a bare range selector, possibly wrapped by
@@ -139,7 +170,12 @@ func collectRawMatrix(
 // collectRange drains the root into a range-query result. Each column becomes one series, with
 // absent steps omitted rather than emitted as NaN.
 func collectRange(ctx context.Context, root Operator, schema *Schema, ec *EvalContext) (parser.Value, error) {
-	var out promql.Matrix
+	var (
+		out promql.Matrix
+		// seenAt tracks, per output identity, which steps already carry a sample, so a
+		// collision is reported at the step where it actually happens.
+		seenAt = make(map[uint64][]uint64)
+	)
 
 	for {
 		col, err := root.Next(ctx)
@@ -156,11 +192,27 @@ func collectRange(ctx context.Context, root Operator, schema *Schema, ec *EvalCo
 			continue
 		}
 
+		h := schema.Hashes[col.Ref]
+
+		w, ok := seenAt[h]
+		if !ok {
+			w = make([]uint64, wordsFor(len(ec.Steps)))
+			seenAt[h] = w
+		}
+
 		pts := make([]promql.FPoint, 0, col.Count())
+
 		for i, t := range ec.Steps {
-			if col.IsSet(i) {
-				pts = append(pts, promql.FPoint{T: t, F: col.V[i]})
+			if !col.IsSet(i) {
+				continue
 			}
+
+			if bitSet(w, i) {
+				return nil, errDuplicateLabelSet
+			}
+			setBit(w, i)
+
+			pts = append(pts, promql.FPoint{T: t, F: col.V[i]})
 		}
 
 		out = append(out, promql.Series{

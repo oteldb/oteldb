@@ -67,6 +67,7 @@ var rangeFuncs = map[string]rangeFunc{
 	"min_over_time":     minOverTime,
 	"max_over_time":     maxOverTime,
 	"last_over_time":    lastOverTime,
+	"first_over_time":   firstOverTime,
 	"present_over_time": presentOverTime,
 	"stddev_over_time":  stddevOverTime,
 	"stdvar_over_time":  stdvarOverTime,
@@ -83,7 +84,8 @@ var rangeFuncs = map[string]rangeFunc{
 // function drops it, as PromQL specifies for functions whose output is no longer the input
 // metric.
 var keepsMetricName = map[string]bool{
-	"last_over_time": true,
+	"last_over_time":  true,
+	"first_over_time": true,
 }
 
 func countOverTime(w *window) (float64, bool) {
@@ -154,6 +156,14 @@ func lastOverTime(w *window) (float64, bool) {
 	}
 
 	return w.V[w.Len()-1], true
+}
+
+func firstOverTime(w *window) (float64, bool) {
+	if w.Len() == 0 {
+		return 0, false
+	}
+
+	return w.V[0], true
 }
 
 func presentOverTime(w *window) (float64, bool) {

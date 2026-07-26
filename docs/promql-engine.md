@@ -699,7 +699,34 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   extrapolation and the left-open window boundaries. `ScaleFactors` cannot be reached that way
   (the Prometheus storage interface has no weight channel), so the §3.5 matrix is asserted
   row-by-row against a fake weighted scanner instead.
-- **M2 — expressions.** Aggregations, binops with full vector matching, instant functions.
+- **M2 — expressions.** *Mostly done.* Aggregations (`sum`/`min`/`max`/`avg`/`count`/`group`/
+  `stddev`/`stdvar`), all binary operators including vector matching and set operators, and the
+  instant functions (unary math, `clamp*`, `round`, `timestamp`, `scalar`, `vector`,
+  `label_replace`, `label_join`, `pi`). Corpus: 5/21 files, ~370 cases.
+
+  **Deferred within M2**, because each needs the full per-step series set, which the accumulator
+  shape does not give: `topk`/`bottomk` (a per-step bounded heap, §4.4), `quantile`
+  (`O(series × steps)`, inherent), `sort`/`sort_by_label`, and the `limitk` family.
+  **`count_values` is worse than deferred** — its output series are labelled by the observed
+  *values*, so its schema is data-dependent and cannot be resolved at plan time. That conflicts
+  with §3.3's invariant. The invariant could be weakened from "resolved at plan time" to
+  "resolved before this operator emits its first column", which preserves ref stability; that is
+  a design decision, not an implementation detail, so it is deliberately not made here.
+
+  Three upstream behaviours worth recording, each found by the corpus rather than by reading:
+  a comparison keeps the **vector's** value even when the scalar is the left operand; `sum` and
+  `avg` need **Kahan compensated summation**, with `avg` switching from a direct mean to an
+  incremental one only once the running sum would overflow; and `or` can map two inputs onto one
+  output identity (`-a or -b` both reduce to `{}`), so it must merge them into one column rather
+  than emit two.
+
+  Also added: PromQL's **duplicate-labelset error**. Operators that drop `__name__` can collapse
+  distinct inputs onto one identity, and returning both silently is wrong.
+
+- **Not scoped by any milestone**, discovered during M2 and M1: **delayed `__name__` removal**
+  (Prometheus 3's `DropName`, where `rate()` keeps `__name__` internally so a later
+  `label_replace` can still read it), **annotations/warnings** (`Result.Warnings` is always
+  empty), and **created/start timestamps** (`iterator.AtST`). Each is a feature in its own right.
 - **M3 — modifiers.** Subqueries, `@`, `offset`.
 - **M4 — parallelism.** Series sharding as map-reduce over accumulators, `Concurrent`,
   CSE + bounded `Tee`, planner-level time-chunking.
