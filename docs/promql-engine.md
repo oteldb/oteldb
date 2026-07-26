@@ -506,7 +506,7 @@ own preconditions:
 | `{sum,count,min,max,avg,present}_over_time` → `AggregateMetricsNamed` | matrix selector + fold | no projection, no per-series filter, no `@` |
 | matcher pushdown | selector | index-safe matchers only (see `query/promql` doc comment) |
 | `Need` narrowing | selector | derived per §3.4; effective only once storage exposes column need |
-| join narrowing | both selectors under a vector binop | `on(...)` matching (see below) |
+| join narrowing ([#1191](https://github.com/oteldb/oteldb/issues/1191)) | both selectors under a vector binop | `on(...)` matching (see below) |
 
 The count, grouped-count and over-time rules exist today in `internal/storagebackend` (`overtime.go`, `overtime_range.go`,
 `storagebackend.go`) and **must be ported before the engine can replace the fork**, or those
@@ -526,7 +526,8 @@ timestamps or values. What is resident is only the build side's **values**.
 
 Three ways to shrink or remove that, in descending value-per-effort.
 
-**1. Join narrowing — implementable today, and symmetric.** Both sides' series are enumerated
+**1. Join narrowing ([#1191](https://github.com/oteldb/oteldb/issues/1191)) — implementable
+today, and symmetric.** Both sides' series are enumerated
 at plan time, so the exact intersection of matching signatures is known before a single value is
 fetched. Both scans can then be restricted to it: an unmatched build-side series is never
 probed, and an unmatched probe-side series is dropped by `pairOf == -1` anyway. For
@@ -563,12 +564,18 @@ on **signature**, a label subset; two series that must join carry different labe
 differs at minimum) and therefore different content-addressed ids, so id order and signature
 order are unrelated.
 
-**A finding worth separating from this rule:** because `Merge` drains and materializes, the
-engine's `O(1)`-in-series raw level (§4.3) holds for a single-node fetcher but **not behind a
-fan-out** — cluster and multi-tenant reads buffer every matched series' samples, then copy them.
-Making `Merge` a streaming k-way merge ordered by id would fix that on its own merits, and it
-would leave exactly the ordered-merge machinery a caller-specified key needs. That ordering
-makes this rule cheap; it is the prerequisite, not the rule itself.
+**A finding worth separating from this rule**, filed as
+[oteldb/storage#208](https://github.com/oteldb/storage/issues/208): because `Merge` drains and
+materializes, the engine's `O(1)`-in-series raw level (§4.3) holds for a single-node fetcher but
+**not behind a fan-out** — cluster and multi-tenant reads buffer every matched series' samples,
+then copy them. The engine cannot recover the property from above, since the materialization has
+already happened by the time it sees the iterator.
+
+Making `Merge` a streaming k-way merge ordered by id fixes that on its own merits, and it is
+cheaper than it sounds: `head.resolve` returns an intersection of the postings index's sorted
+series lists, so every child already emits in ascending `signal.SeriesID` order and needs no
+change. It would also leave exactly the ordered-merge machinery a caller-specified key needs —
+which is why that ordering is this rule's prerequisite rather than the rule itself.
 
 **3. Point lookup by series — a memory tool, not a pipelining one.** Fetching the one-side
 series on demand sounds like it removes the build table, but `group_left` sends many probes at
