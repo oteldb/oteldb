@@ -2,6 +2,7 @@ package traceql
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -107,6 +108,21 @@ func (p *parser) parseInteger() (int64, error) {
 		return 0, err
 	}
 	return strconv.ParseInt(text, 0, 64)
+}
+
+// clampInt narrows v to int, saturating rather than truncating.
+//
+// On a 32-bit platform a plain conversion would wrap an out-of-range literal
+// into a valid-looking value, slipping past the range checks done afterwards.
+func clampInt(v int64) int {
+	switch {
+	case v > math.MaxInt:
+		return math.MaxInt
+	case v < math.MinInt:
+		return math.MinInt
+	default:
+		return int(v)
+	}
 }
 
 func (p *parser) parseNumber() (float64, error) {

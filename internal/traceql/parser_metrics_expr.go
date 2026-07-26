@@ -101,9 +101,9 @@ func (p *parser) parseCompareOperation(spanset Expr) (e *CompareOperation, _ err
 	switch len(args) {
 	case 0:
 	case 1:
-		e.TopN = int(args[0])
+		e.TopN = clampInt(args[0])
 	case 3:
-		e.TopN = int(args[0])
+		e.TopN = clampInt(args[0])
 		e.Start, e.End = args[1], args[2]
 	default:
 		return nil, &SyntaxError{
@@ -173,7 +173,7 @@ func (p *parser) parseTopKOperation() (e *TopKOperation, _ error) {
 			Pos: limitPos,
 		}
 	}
-	e.Limit = int(limit)
+	e.Limit = clampInt(limit)
 
 	if err := p.consume(lexer.CloseParen); err != nil {
 		return nil, err

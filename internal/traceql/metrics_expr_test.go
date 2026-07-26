@@ -297,6 +297,9 @@ var metricsTests = []TestCase{
 	{`{} | compare({}, 0)`, nil, true},
 	{`{} | compare({}, -1)`, nil, true},
 	{`{} | compare({}, 1001)`, nil, true},
+	// A value out of int range must not wrap into a valid one.
+	{`{} | compare({}, 2147483648)`, nil, true},
+	{`{} | compare({}, 4294967297)`, nil, true},
 	// Selection window must be a valid range.
 	{`{} | compare({}, 10, 2000, 1000)`, nil, true},
 	{`{} | compare({}, 10, 0, 2000)`, nil, true},
