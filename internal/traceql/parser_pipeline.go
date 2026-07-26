@@ -79,6 +79,12 @@ func (p *parser) parsePipeline() (stages []PipelineStage, rerr error) {
 		}
 		// Consume "|".
 		p.next()
+		// A metrics aggregation terminates the pipeline instead of being a stage
+		// of it, so leave the pipe to [parser.parseMetricsExpr].
+		if isMetricsFirstStage(p.peek().Type) {
+			p.unread()
+			return stages, nil
+		}
 		p.first = false
 	}
 }
@@ -136,35 +142,44 @@ func (p *parser) parseSpansetExpr1() (SpansetExpr, error) {
 		}
 		return expr, nil
 	case lexer.OpenBrace:
-		var filter SpansetFilter
-		if t2 := p.peek(); t2.Type != lexer.CloseBrace {
-			fieldExpr, err := p.parseFieldExpr()
-			if err != nil {
-				return nil, err
-			}
-			switch fieldExpr.ValueType() {
-			case TypeBool, TypeAttribute:
-			default:
-				return nil, &TypeError{
-					Msg: "filter expression must evaluate to boolean",
-					Pos: t2.Pos,
-				}
-			}
-			filter.Expr = fieldExpr
-		} else {
-			s := &Static{}
-			s.SetBool(true)
-			filter.Expr = s
-		}
-
-		if err := p.consume(lexer.CloseBrace); err != nil {
-			return nil, err
-		}
-
-		return &filter, nil
+		p.unread()
+		return p.parseSpansetFilter()
 	default:
 		return nil, p.unexpectedToken(t)
 	}
+}
+
+// parseSpansetFilter parses a `{ ... }` spanset filter.
+func (p *parser) parseSpansetFilter() (*SpansetFilter, error) {
+	if err := p.consume(lexer.OpenBrace); err != nil {
+		return nil, err
+	}
+
+	var filter SpansetFilter
+	if t := p.peek(); t.Type != lexer.CloseBrace {
+		fieldExpr, err := p.parseFieldExpr()
+		if err != nil {
+			return nil, err
+		}
+		switch fieldExpr.ValueType() {
+		case TypeBool, TypeAttribute:
+		default:
+			return nil, &TypeError{
+				Msg: "filter expression must evaluate to boolean",
+				Pos: t.Pos,
+			}
+		}
+		filter.Expr = fieldExpr
+	} else {
+		s := &Static{}
+		s.SetBool(true)
+		filter.Expr = s
+	}
+
+	if err := p.consume(lexer.CloseBrace); err != nil {
+		return nil, err
+	}
+	return &filter, nil
 }
 
 func (p *parser) parseBinarySpansetExpr(left SpansetExpr, minPrecedence int) (SpansetExpr, error) {

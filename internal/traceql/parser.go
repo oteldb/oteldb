@@ -2,6 +2,7 @@ package traceql
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -43,6 +44,10 @@ type parser struct {
 
 	first  bool
 	parens int
+
+	// metricsSubQuery whether a metrics sub-query has been parsed, see
+	// [parser.tryMetricsMath].
+	metricsSubQuery bool
 }
 
 func (p *parser) consume(tt lexer.TokenType) error {
@@ -105,12 +110,40 @@ func (p *parser) parseInteger() (int64, error) {
 	return strconv.ParseInt(text, 0, 64)
 }
 
+// clampInt narrows v to int, saturating rather than truncating.
+//
+// On a 32-bit platform a plain conversion would wrap an out-of-range literal
+// into a valid-looking value, slipping past the range checks done afterwards.
+func clampInt(v int64) int {
+	switch {
+	case v > math.MaxInt:
+		return math.MaxInt
+	case v < math.MinInt:
+		return math.MinInt
+	default:
+		return int(v)
+	}
+}
+
 func (p *parser) parseNumber() (float64, error) {
 	text, err := p.consumeText(lexer.Number)
 	if err != nil {
 		return 0, err
 	}
 	return strconv.ParseFloat(text, 64)
+}
+
+// parseFloat parses a numeric literal, casting integers to float.
+func (p *parser) parseFloat() (float64, error) {
+	switch t := p.peek(); t.Type {
+	case lexer.Integer:
+		v, err := p.parseInteger()
+		return float64(v), err
+	case lexer.Number:
+		return p.parseNumber()
+	default:
+		return 0, p.unexpectedToken(t)
+	}
 }
 
 func (p *parser) parseDuration() (time.Duration, error) {
