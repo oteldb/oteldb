@@ -1,6 +1,20 @@
 package traceql
 
+import (
+	"github.com/oteldb/oteldb/internal/traceql/lexer"
+)
+
 func (p *parser) parseExpr() (Expr, error) {
+	switch p.peek().Type {
+	case lexer.OpenParen, lexer.Integer, lexer.Number:
+		switch expr, ok, err := p.tryMetricsMath(); {
+		case err != nil:
+			return nil, err
+		case ok:
+			return expr, nil
+		}
+	}
+
 	expr, err := p.parseExpr1()
 	if err != nil {
 		return nil, err

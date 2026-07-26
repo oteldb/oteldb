@@ -36,6 +36,14 @@ func (p *predExtractor) walk(expr Expr) {
 		p.walk(expr.Right)
 	case *MetricsAggregation:
 		p.walk(expr.Spanset)
+	case *CompareOperation:
+		p.walk(expr.Spanset)
+	case *MetricsPipeline:
+		p.walk(expr.Expr)
+	case *MetricsBinaryExpr:
+		p.Op = SpansetOpUnion
+		p.walk(expr.Left)
+		p.walk(expr.Right)
 	}
 }
 

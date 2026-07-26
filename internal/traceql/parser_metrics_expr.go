@@ -2,6 +2,7 @@ package traceql
 
 import (
 	"fmt"
+	"text/scanner"
 
 	"github.com/oteldb/oteldb/internal/traceql/lexer"
 )
@@ -18,15 +19,101 @@ func (p *parser) parseMetricsExpr(spanset Expr) (Expr, error) {
 	// Consume "|".
 	p.next()
 
-	e, err := p.parseMetricsAggregation()
+	return p.parseMetricsFirstStage(spanset)
+}
+
+// parseMetricsFirstStage parses a metrics aggregation applied to the given
+// spanset pipeline, along with its second stage operations.
+func (p *parser) parseMetricsFirstStage(spanset Expr) (MetricsExpr, error) {
+	var (
+		e   MetricsExpr
+		err error
+	)
+	if p.peek().Type == lexer.Compare {
+		e, err = p.parseCompareOperation(spanset)
+	} else {
+		e, err = p.parseMetricsAggregation(spanset)
+	}
 	if err != nil {
 		return nil, err
 	}
-	e.Spanset = spanset
 
-	e.Stages, err = p.parseMetricsStages()
+	stagesPos := p.peek().Pos
+	stages, err := p.parseMetricsStages()
 	if err != nil {
 		return nil, err
+	}
+	if len(stages) == 0 {
+		return e, nil
+	}
+	if err := checkNotCompare(e, stagesPos); err != nil {
+		return nil, err
+	}
+	return &MetricsPipeline{Expr: e, Stages: stages}, nil
+}
+
+// checkNotCompare reports an error if e is a `compare()` operation, which
+// supports neither second stage operations nor arithmetic.
+func checkNotCompare(e MetricsExpr, pos scanner.Position) error {
+	if _, ok := e.(*CompareOperation); ok {
+		return &SyntaxError{
+			Msg: "compare() does not support second stage operations and arithmetic",
+			Pos: pos,
+		}
+	}
+	return nil
+}
+
+func (p *parser) parseCompareOperation(spanset Expr) (e *CompareOperation, _ error) {
+	e = &CompareOperation{Spanset: spanset, TopN: DefaultCompareTopN}
+
+	opTok := p.next()
+	if opTok.Type != lexer.Compare {
+		return nil, p.unexpectedToken(opTok)
+	}
+
+	if err := p.consume(lexer.OpenParen); err != nil {
+		return nil, err
+	}
+
+	filter, err := p.parseSpansetFilter()
+	if err != nil {
+		return nil, err
+	}
+	e.Filter = filter
+
+	var args []int64
+	for p.peek().Type == lexer.Comma {
+		// Consume comma.
+		p.next()
+
+		arg, err := p.parseInteger()
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, arg)
+	}
+
+	if err := p.consume(lexer.CloseParen); err != nil {
+		return nil, err
+	}
+
+	switch len(args) {
+	case 0:
+	case 1:
+		e.TopN = int(args[0])
+	case 3:
+		e.TopN = int(args[0])
+		e.Start, e.End = args[1], args[2]
+	default:
+		return nil, &SyntaxError{
+			Msg: fmt.Sprintf("compare() takes a top N and a start and end timestamp, got %d arguments", len(args)),
+			Pos: opTok.Pos,
+		}
+	}
+
+	if err := e.validate(); err != nil {
+		return nil, &SyntaxError{Msg: err.Error(), Pos: opTok.Pos}
 	}
 	return e, nil
 }
@@ -130,8 +217,8 @@ func (p *parser) parseMetricsFilter() (e *MetricsFilter, _ error) {
 	return e, nil
 }
 
-func (p *parser) parseMetricsAggregation() (e *MetricsAggregation, _ error) {
-	e = new(MetricsAggregation)
+func (p *parser) parseMetricsAggregation(spanset Expr) (e *MetricsAggregation, _ error) {
+	e = &MetricsAggregation{Spanset: spanset}
 
 	opTok := p.next()
 	op, ok := metricsOp(opTok.Type)
@@ -213,6 +300,15 @@ func (p *parser) parseAttributeList() (attrs []Attribute, _ error) {
 		return nil, err
 	}
 	return attrs, nil
+}
+
+// isMetricsFirstStage whether tt starts a metrics aggregation.
+func isMetricsFirstStage(tt lexer.TokenType) bool {
+	if tt == lexer.Compare {
+		return true
+	}
+	_, ok := metricsOp(tt)
+	return ok
 }
 
 func metricsOp(tt lexer.TokenType) (op MetricsOp, _ bool) {

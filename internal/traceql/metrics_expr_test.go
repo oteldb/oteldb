@@ -161,9 +161,11 @@ var metricsTests = []TestCase{
 	// Second stage operations.
 	{
 		`{} | rate() | topk(10)`,
-		&MetricsAggregation{
-			Op:      MetricsOpRate,
-			Spanset: allSpans(),
+		&MetricsPipeline{
+			Expr: &MetricsAggregation{
+				Op:      MetricsOpRate,
+				Spanset: allSpans(),
+			},
 			Stages: []MetricsStage{
 				&TopKOperation{Op: MetricsStageOpTopK, Limit: 10},
 			},
@@ -172,10 +174,12 @@ var metricsTests = []TestCase{
 	},
 	{
 		`{} | rate() by (name) | bottomk(5)`,
-		&MetricsAggregation{
-			Op:      MetricsOpRate,
-			Spanset: allSpans(),
-			By:      []Attribute{{Prop: SpanName}},
+		&MetricsPipeline{
+			Expr: &MetricsAggregation{
+				Op:      MetricsOpRate,
+				Spanset: allSpans(),
+				By:      []Attribute{{Prop: SpanName}},
+			},
 			Stages: []MetricsStage{
 				&TopKOperation{Op: MetricsStageOpBottomK, Limit: 5},
 			},
@@ -185,9 +189,11 @@ var metricsTests = []TestCase{
 	{
 		// A filter is not preceded by a pipe.
 		`{} | count_over_time() > 100`,
-		&MetricsAggregation{
-			Op:      MetricsOpCountOverTime,
-			Spanset: allSpans(),
+		&MetricsPipeline{
+			Expr: &MetricsAggregation{
+				Op:      MetricsOpCountOverTime,
+				Spanset: allSpans(),
+			},
 			Stages: []MetricsStage{
 				&MetricsFilter{Op: OpGt, Value: &Static{Type: TypeInt, Data: 100}},
 			},
@@ -196,11 +202,13 @@ var metricsTests = []TestCase{
 	},
 	{
 		`{} | quantile_over_time(duration, 0.9) >= 100ms`,
-		&MetricsAggregation{
-			Op:         MetricsOpQuantileOverTime,
-			Spanset:    allSpans(),
-			Field:      new(Attribute{Prop: SpanDuration}),
-			Parameters: []float64{0.9},
+		&MetricsPipeline{
+			Expr: &MetricsAggregation{
+				Op:         MetricsOpQuantileOverTime,
+				Spanset:    allSpans(),
+				Field:      new(Attribute{Prop: SpanDuration}),
+				Parameters: []float64{0.9},
+			},
 			Stages: []MetricsStage{
 				&MetricsFilter{
 					Op:    OpGte,
@@ -212,9 +220,11 @@ var metricsTests = []TestCase{
 	},
 	{
 		`{} | rate() != 0.5`,
-		&MetricsAggregation{
-			Op:      MetricsOpRate,
-			Spanset: allSpans(),
+		&MetricsPipeline{
+			Expr: &MetricsAggregation{
+				Op:      MetricsOpRate,
+				Spanset: allSpans(),
+			},
 			Stages: []MetricsStage{
 				&MetricsFilter{Op: OpNotEq, Value: &Static{Type: TypeNumber, Data: math.Float64bits(0.5)}},
 			},
@@ -224,9 +234,11 @@ var metricsTests = []TestCase{
 	{
 		// Stages chain in the order they are written.
 		`{} | rate() > 10 | topk(3) < 100 | bottomk(2)`,
-		&MetricsAggregation{
-			Op:      MetricsOpRate,
-			Spanset: allSpans(),
+		&MetricsPipeline{
+			Expr: &MetricsAggregation{
+				Op:      MetricsOpRate,
+				Spanset: allSpans(),
+			},
 			Stages: []MetricsStage{
 				&MetricsFilter{Op: OpGt, Value: &Static{Type: TypeInt, Data: 10}},
 				&TopKOperation{Op: MetricsStageOpTopK, Limit: 3},
@@ -236,6 +248,277 @@ var metricsTests = []TestCase{
 		},
 		false,
 	},
+
+	// compare().
+	{
+		`{ .a } | compare({ status = error })`,
+		&CompareOperation{
+			Spanset: &SpansetPipeline{
+				Pipeline: []PipelineStage{
+					&SpansetFilter{Expr: &Attribute{Name: "a"}},
+				},
+			},
+			Filter: &SpansetFilter{
+				Expr: &BinaryFieldExpr{
+					Left:  &Attribute{Prop: SpanStatus},
+					Op:    OpEq,
+					Right: &Static{Type: TypeSpanStatus, Data: uint64(ptrace.StatusCodeError)},
+				},
+			},
+			TopN: DefaultCompareTopN,
+		},
+		false,
+	},
+	{
+		`{} | compare({}, 25)`,
+		&CompareOperation{
+			Spanset: allSpans(),
+			Filter:  &SpansetFilter{Expr: &Static{Type: TypeBool, Data: 1}},
+			TopN:    25,
+		},
+		false,
+	},
+	{
+		`{} | compare({}, 25, 1000, 2000)`,
+		&CompareOperation{
+			Spanset: allSpans(),
+			Filter:  &SpansetFilter{Expr: &Static{Type: TypeBool, Data: 1}},
+			TopN:    25,
+			Start:   1000,
+			End:     2000,
+		},
+		false,
+	},
+	// compare() takes 0, 1 or 3 arguments.
+	{`{} | compare()`, nil, true},
+	{`{} | compare({}, 10, 1000)`, nil, true},
+	{`{} | compare({}, 10, 1000, 2000, 3000)`, nil, true},
+	// TopN must be within [1, MaxCompareTopN].
+	{`{} | compare({}, 0)`, nil, true},
+	{`{} | compare({}, -1)`, nil, true},
+	{`{} | compare({}, 1001)`, nil, true},
+	// Selection window must be a valid range.
+	{`{} | compare({}, 10, 2000, 1000)`, nil, true},
+	{`{} | compare({}, 10, 0, 2000)`, nil, true},
+	{`{} | compare({}, 10, 1000, 0)`, nil, true},
+	{`{} | compare({}, 10, -1000, 2000)`, nil, true},
+	// compare() supports neither second stage operations nor arithmetic.
+	{`{} | compare({}) | topk(10)`, nil, true},
+	{`{} | compare({}) > 10`, nil, true},
+	{`({} | compare({})) / ({} | rate())`, nil, true},
+	{`({} | compare({})) * 2`, nil, true},
+	// compare() takes a spanset filter.
+	{`{} | compare(.a)`, nil, true},
+	{`{} | compare({} | rate())`, nil, true},
+
+	// Metrics arithmetic.
+	{
+		`({ status = error } | rate()) / ({} | rate())`,
+		&MetricsBinaryExpr{
+			Left: &MetricsAggregation{
+				Op: MetricsOpRate,
+				Spanset: &SpansetPipeline{
+					Pipeline: []PipelineStage{
+						&SpansetFilter{
+							Expr: &BinaryFieldExpr{
+								Left:  &Attribute{Prop: SpanStatus},
+								Op:    OpEq,
+								Right: &Static{Type: TypeSpanStatus, Data: uint64(ptrace.StatusCodeError)},
+							},
+						},
+					},
+				},
+			},
+			Op: OpDiv,
+			Right: &MetricsAggregation{
+				Op:      MetricsOpRate,
+				Spanset: allSpans(),
+			},
+		},
+		false,
+	},
+	{
+		// A single sub-query is a valid arithmetic expression.
+		`({} | rate())`,
+		&MetricsAggregation{
+			Op:      MetricsOpRate,
+			Spanset: allSpans(),
+		},
+		false,
+	},
+	{
+		// A constant operand becomes a stage, since it applies to every point.
+		`({} | rate()) * 100`,
+		&MetricsPipeline{
+			Expr: &MetricsAggregation{
+				Op:      MetricsOpRate,
+				Spanset: allSpans(),
+			},
+			Stages: []MetricsStage{
+				&MetricsScalarOp{Op: OpMul, Value: 100},
+			},
+		},
+		false,
+	},
+	{
+		`2 - ({} | rate())`,
+		&MetricsPipeline{
+			Expr: &MetricsAggregation{
+				Op:      MetricsOpRate,
+				Spanset: allSpans(),
+			},
+			Stages: []MetricsStage{
+				&MetricsScalarOp{Op: OpSub, Value: 2, ScalarLeft: true},
+			},
+		},
+		false,
+	},
+	{
+		// Multiplication binds tighter than addition.
+		`({} | rate()) + ({} | rate()) * 2`,
+		&MetricsBinaryExpr{
+			Left: &MetricsAggregation{
+				Op:      MetricsOpRate,
+				Spanset: allSpans(),
+			},
+			Op: OpAdd,
+			Right: &MetricsPipeline{
+				Expr: &MetricsAggregation{
+					Op:      MetricsOpRate,
+					Spanset: allSpans(),
+				},
+				Stages: []MetricsStage{
+					&MetricsScalarOp{Op: OpMul, Value: 2},
+				},
+			},
+		},
+		false,
+	},
+	{
+		// Parentheses override precedence.
+		`(({} | rate()) + ({} | rate())) / ({} | rate())`,
+		&MetricsBinaryExpr{
+			Left: &MetricsBinaryExpr{
+				Left: &MetricsAggregation{
+					Op:      MetricsOpRate,
+					Spanset: allSpans(),
+				},
+				Op: OpAdd,
+				Right: &MetricsAggregation{
+					Op:      MetricsOpRate,
+					Spanset: allSpans(),
+				},
+			},
+			Op: OpDiv,
+			Right: &MetricsAggregation{
+				Op:      MetricsOpRate,
+				Spanset: allSpans(),
+			},
+		},
+		false,
+	},
+	{
+		// Second stage operations apply to the arithmetic result.
+		`({} | rate()) / ({} | rate()) | topk(10)`,
+		&MetricsPipeline{
+			Expr: &MetricsBinaryExpr{
+				Left: &MetricsAggregation{
+					Op:      MetricsOpRate,
+					Spanset: allSpans(),
+				},
+				Op: OpDiv,
+				Right: &MetricsAggregation{
+					Op:      MetricsOpRate,
+					Spanset: allSpans(),
+				},
+			},
+			Stages: []MetricsStage{
+				&TopKOperation{Op: MetricsStageOpTopK, Limit: 10},
+			},
+		},
+		false,
+	},
+	{
+		// Second stage operations may also be inside a sub-query.
+		`({} | rate() | topk(10)) - ({} | rate())`,
+		&MetricsBinaryExpr{
+			Left: &MetricsPipeline{
+				Expr: &MetricsAggregation{
+					Op:      MetricsOpRate,
+					Spanset: allSpans(),
+				},
+				Stages: []MetricsStage{
+					&TopKOperation{Op: MetricsStageOpTopK, Limit: 10},
+				},
+			},
+			Op: OpSub,
+			Right: &MetricsAggregation{
+				Op:      MetricsOpRate,
+				Spanset: allSpans(),
+			},
+		},
+		false,
+	},
+	{
+		// A parenthesized spanset expression is not a sub-query.
+		`({ .a } && { .b }) | rate()`,
+		&MetricsAggregation{
+			Op: MetricsOpRate,
+			Spanset: &SpansetPipeline{
+				Pipeline: []PipelineStage{
+					&BinarySpansetExpr{
+						Left:  &SpansetFilter{Expr: &Attribute{Name: "a"}},
+						Op:    SpansetOpAnd,
+						Right: &SpansetFilter{Expr: &Attribute{Name: "b"}},
+					},
+				},
+			},
+		},
+		false,
+	},
+	{
+		`({ .a }) | rate()`,
+		&MetricsAggregation{
+			Op: MetricsOpRate,
+			Spanset: &SpansetPipeline{
+				Pipeline: []PipelineStage{
+					&SpansetFilter{Expr: &Attribute{Name: "a"}},
+				},
+			},
+		},
+		false,
+	},
+	{
+		// A parenthesized query without a metrics function stays a spanset query.
+		`({ .a }) && { .b }`,
+		&SpansetPipeline{
+			Pipeline: []PipelineStage{
+				&BinarySpansetExpr{
+					Left:  &SpansetFilter{Expr: &Attribute{Name: "a"}},
+					Op:    SpansetOpAnd,
+					Right: &SpansetFilter{Expr: &Attribute{Name: "b"}},
+				},
+			},
+		},
+		false,
+	},
+
+	// Each sub-query must be parenthesized.
+	{`{} | rate() + {} | rate()`, nil, true},
+	{`({} | rate()) + {} | rate()`, nil, true},
+	// A duration cannot be used as a scalar operand.
+	{`({} | rate()) * 10s`, nil, true},
+	// Constant arithmetic is not folded.
+	{`({} | rate()) * (2 * 3)`, nil, true},
+	// Only +, -, * and / are supported.
+	{`({} | rate()) % ({} | rate())`, nil, true},
+	{`({} | rate()) ^ 2`, nil, true},
+	// Malformed arithmetic.
+	{`({} | rate()) /`, nil, true},
+	{`({} | rate()) / ()`, nil, true},
+	{`({} | rate()`, nil, true},
+	{`({} | rate()) / ({} | rate()`, nil, true},
+	{`2 * 2`, nil, true},
 
 	// Operations taking no argument.
 	{`{} | rate(duration)`, nil, true},

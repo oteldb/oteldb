@@ -43,6 +43,10 @@ type parser struct {
 
 	first  bool
 	parens int
+
+	// metricsSubQuery whether a metrics sub-query has been parsed, see
+	// [parser.tryMetricsMath].
+	metricsSubQuery bool
 }
 
 func (p *parser) consume(tt lexer.TokenType) error {

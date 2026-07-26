@@ -128,6 +128,10 @@ const (
 	// Metrics second stage functions.
 	TopK    // topk
 	BottomK // bottomk
+
+	// NOTE: keep this block append-only, the generated stringer indexes
+	// constants by position.
+	Compare // compare
 )
 
 var tokens = map[string]TokenType{
@@ -216,6 +220,8 @@ var tokens = map[string]TokenType{
 	"avg_over_time":       AvgOverTime,
 	"quantile_over_time":  QuantileOverTime,
 	"histogram_over_time": HistogramOverTime,
+
+	"compare": Compare,
 
 	"topk":    TopK,
 	"bottomk": BottomK,
