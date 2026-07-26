@@ -748,8 +748,24 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   The refactor introduced a `foldSource` seam so a selector and a subquery feed the *same* fold
   machinery — the only difference is where the samples come from. Every subquery case in
   `subquery.test` passes; the three that do not are `topk` (M2b) and native histograms (M7).
-- **M4 — parallelism.** Series sharding as map-reduce over accumulators, `Concurrent`,
-  CSE + bounded `Tee`, planner-level time-chunking.
+- **M4 — parallelism.** *Partly done.* `Concurrent` is implemented and wired into both sides of
+  every vector binary operator, which is where two independent subtrees each reach storage.
+
+  **The producer starts during schema resolution, not on first `Next`.** That detail is the
+  whole mechanism: a vector binop drains its build side to completion before it ever calls
+  `Next` on the streaming side, so a producer started lazily would not begin until the other had
+  finished — exactly the serialization the operator exists to remove. Schemas resolve bottom-up
+  for the whole tree before execution (§3.3), so starting there makes every producer run ahead
+  concurrently. A failed plan closes the tree so nothing started is leaked.
+
+  The semaphore is **try-only**: an operator that cannot get a slot runs its child inline rather
+  than waiting, so contention costs parallelism and never liveness. That is what keeps the
+  deadlock-freedom claim true under a bounded limiter.
+
+  **Still to do in M4:** series sharding as map-reduce over accumulators, and CSE with a bounded
+  `Tee`. Sharding is deliberately deferred until M5 wires the columnar seam — over a
+  `storage.Queryable` each shard would re-scan every series and filter, parallelizing CPU while
+  multiplying I/O, which is the wrong trade to bake in.
 - **M5 — pushdowns.** Port the three existing `storagebackend` pushdowns as planner rules.
   *Gate for replacing the fork on that path.*
 - **M6 — kernels.** Assembly paths + golden benchmarks vs the fork.
