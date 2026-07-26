@@ -1298,6 +1298,11 @@ func TestParseErrors(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
+	runParseTests(t, tests)
+}
+
+func runParseTests(t *testing.T, tests []TestCase) {
+	t.Helper()
 	for i, tt := range tests {
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
 			defer func() {
@@ -1336,6 +1341,9 @@ func FuzzParse(f *testing.F) {
 	}
 	for _, tt := range spansetOpTests {
 		f.Add(fmt.Sprintf(`{ .a } %s { .b }`, tt.input))
+	}
+	for _, tt := range metricsTests {
+		f.Add(tt.input)
 	}
 	f.Fuzz(func(t *testing.T, input string) {
 		defer func() {

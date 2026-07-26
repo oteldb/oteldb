@@ -34,6 +34,8 @@ func (p *predExtractor) walk(expr Expr) {
 		p.Op = SpansetOpUnion
 		p.walk(expr.Left)
 		p.walk(expr.Right)
+	case *MetricsAggregation:
+		p.walk(expr.Spanset)
 	}
 }
 

@@ -114,6 +114,16 @@ const (
 	UnionDesc    // &>>
 	UnionAnce    // &<<
 	UnionSibling // &~
+
+	// Metrics aggregations.
+	Rate              // rate
+	CountOverTime     // count_over_time
+	MinOverTime       // min_over_time
+	MaxOverTime       // max_over_time
+	SumOverTime       // sum_over_time
+	AvgOverTime       // avg_over_time
+	QuantileOverTime  // quantile_over_time
+	HistogramOverTime // histogram_over_time
 )
 
 var tokens = map[string]TokenType{
@@ -193,4 +203,13 @@ var tokens = map[string]TokenType{
 	"parentID":        ParentID,
 	"timeSinceStart":  TimeSinceStart,
 	"version":         Version,
+
+	"rate":                Rate,
+	"count_over_time":     CountOverTime,
+	"min_over_time":       MinOverTime,
+	"max_over_time":       MaxOverTime,
+	"sum_over_time":       SumOverTime,
+	"avg_over_time":       AvgOverTime,
+	"quantile_over_time":  QuantileOverTime,
+	"histogram_over_time": HistogramOverTime,
 }

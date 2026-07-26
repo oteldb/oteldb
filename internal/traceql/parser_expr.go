@@ -5,7 +5,11 @@ func (p *parser) parseExpr() (Expr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return p.parseBinaryExpr(expr, 0)
+	expr, err = p.parseBinaryExpr(expr, 0)
+	if err != nil {
+		return nil, err
+	}
+	return p.parseMetricsExpr(expr)
 }
 
 func (p *parser) parseExpr1() (Expr, error) {

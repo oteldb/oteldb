@@ -113,6 +113,19 @@ func (p *parser) parseNumber() (float64, error) {
 	return strconv.ParseFloat(text, 64)
 }
 
+// parseFloat parses a numeric literal, casting integers to float.
+func (p *parser) parseFloat() (float64, error) {
+	switch t := p.peek(); t.Type {
+	case lexer.Integer:
+		v, err := p.parseInteger()
+		return float64(v), err
+	case lexer.Number:
+		return p.parseNumber()
+	default:
+		return 0, p.unexpectedToken(t)
+	}
+}
+
 func (p *parser) parseDuration() (time.Duration, error) {
 	text, err := p.consumeText(lexer.Duration)
 	if err != nil {

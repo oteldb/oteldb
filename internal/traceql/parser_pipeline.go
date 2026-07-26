@@ -79,6 +79,12 @@ func (p *parser) parsePipeline() (stages []PipelineStage, rerr error) {
 		}
 		// Consume "|".
 		p.next()
+		// A metrics aggregation terminates the pipeline instead of being a stage
+		// of it, so leave the pipe to [parser.parseMetricsExpr].
+		if _, ok := metricsOp(p.peek().Type); ok {
+			p.unread()
+			return stages, nil
+		}
 		p.first = false
 	}
 }
