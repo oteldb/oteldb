@@ -35,8 +35,12 @@ func (p *planner) plan(ctx context.Context, expr parser.Expr) (Operator, error) 
 	}
 
 	// Resolve schemas eagerly, depth-first. Doing it here rather than lazily during execution
-	// is what makes series refs stable and order-independent (see [Schema]).
+	// is what makes series refs stable and order-independent (see [Schema]), and it is also
+	// where prefetching starts (see [concurrent.Schema]).
 	if err := resolveSchemas(ctx, op); err != nil {
+		// Some operators may already have started producing, so unwind rather than leak them.
+		_ = op.Close()
+
 		return nil, err
 	}
 
@@ -147,6 +151,11 @@ func (p *planner) buildBinary(e *parser.BinaryExpr) (Operator, error) {
 	if e.VectorMatching == nil {
 		return nil, unsupportedf("vector-to-vector %s without matching", e.Op)
 	}
+
+	// Both sides are independent subtrees that each reach storage, and a vector binop drains one
+	// of them before streaming the other. Running them concurrently overlaps that latency, which
+	// is the dominant cost of the operation.
+	lhs, rhs = newConcurrent(lhs), newConcurrent(rhs)
 
 	switch e.Op {
 	case parser.LAND, parser.LOR, parser.LUNLESS:
