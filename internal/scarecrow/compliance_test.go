@@ -19,12 +19,12 @@ import (
 // an entry appearing here means a capability regressed, which is exactly what the corresponding
 // milestone is supposed to prevent.
 var unsupportedFiles = map[string]string{
-	"testdata/aggregators.test":         "M2: aggregations",
-	"testdata/collision.test":           "M2: vector matching",
 	"testdata/range_queries.test":       "M2/M6: binops, sort(), native histogram series",
-	"testdata/selectors.test":           "M2: remaining cases are all binary operators",
 	"testdata/start_timestamps.test":    "created timestamps (iterator AtST) — not scoped by any milestone yet",
+	"testdata/aggregators.test":         "topk/bottomk/quantile/count_values, plus native histograms",
 	"testdata/at_modifier.test":         "M3: @ modifier",
+	"testdata/name_label_dropping.test": "delayed __name__ removal (Prometheus 3 DropName) — not scoped by any milestone",
+	"testdata/operators.test":           "M6: native histogram operands; plus group_x with comparison operators",
 	"testdata/duration_expression.test": "M3: duration expressions",
 	"testdata/extended_vectors.test":    "M1: selectors",
 	"testdata/fill-modifier.test":       "M3: fill modifier",
@@ -32,12 +32,8 @@ var unsupportedFiles = map[string]string{
 	"testdata/histograms.test":          "M6: native histograms",
 	"testdata/info.test":                "M2: info()",
 	"testdata/limit.test":               "M2: limitk/limit_ratio",
-	"testdata/literals.test":            "M2: string literals and scalar binops",
-	"testdata/name_label_dropping.test": "M2: metric name dropping",
 	"testdata/native_histograms.test":   "M6: native histograms",
-	"testdata/operators.test":           "M2: binary operators",
 	"testdata/subquery.test":            "M3: subqueries",
-	"testdata/trig_functions.test":      "M2: instant functions",
 	"testdata/type_and_unit.test":       "M2: type and unit metadata",
 }
 

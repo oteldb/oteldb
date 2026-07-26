@@ -24,7 +24,11 @@ type vectorSelect struct {
 	// at pins the evaluation timestamp (the @ modifier) in unix milliseconds. When set, every
 	// step resolves against it, which is what makes such a selector step-invariant.
 	at *int64
-	ec *EvalContext
+	// emitTimestamp makes the selector report each chosen sample's own timestamp in seconds
+	// instead of its value. It backs timestamp(<selector>), whose result is a property of the
+	// sample rather than of the step — the same device upstream calls SelectTimestamp.
+	emitTimestamp bool
+	ec            *EvalContext
 
 	schema *Schema
 	byHash map[uint64][]SeriesRef
@@ -37,6 +41,16 @@ func newVectorSelect(
 	sc Scanner, matchers []*labels.Matcher, offset time.Duration, at *int64, ec *EvalContext,
 ) *vectorSelect {
 	return &vectorSelect{scanner: sc, matchers: matchers, offset: offset, at: at, ec: ec}
+}
+
+// newTimestampSelect returns a selector reporting sample timestamps, for timestamp(<selector>).
+func newTimestampSelect(
+	sc Scanner, matchers []*labels.Matcher, offset time.Duration, at *int64, ec *EvalContext,
+) *vectorSelect {
+	o := newVectorSelect(sc, matchers, offset, at, ec)
+	o.emitTimestamp = true
+
+	return o
 }
 
 // refTimes returns each step's evaluation timestamp: the step itself shifted by the offset, or
@@ -93,6 +107,13 @@ func (o *vectorSelect) Schema(ctx context.Context) (*Schema, error) {
 		return nil, errors.Wrap(err, "enumerate series")
 	}
 
+	// timestamp() yields a property of the sample, not the metric, so __name__ is dropped.
+	if o.emitTimestamp {
+		for i, ls := range series {
+			series[i] = dropMetricName(ls)
+		}
+	}
+
 	o.schema = NewSchema(series)
 	o.byHash = indexByHash(o.schema)
 
@@ -128,11 +149,16 @@ func (o *vectorSelect) Next(ctx context.Context) (*Column, error) {
 			return nil, nil
 		}
 
-		ref, ok := lookupRef(o.schema, o.byHash, s.Labels)
+		ls := s.Labels
+		if o.emitTimestamp {
+			ls = dropMetricName(ls)
+		}
+
+		ref, ok := lookupRef(o.schema, o.byHash, ls)
 		if !ok {
 			// The scan returned a series the plan-time enumeration did not. Skipping would
 			// silently drop data, so surface it: the two calls must see the same window.
-			return nil, errors.Errorf("series %s absent from resolved schema", s.Labels)
+			return nil, errors.Errorf("series %s absent from resolved schema", ls)
 		}
 
 		o.out.Resize(ref, o.ec.NumSteps())
@@ -174,6 +200,11 @@ func (o *vectorSelect) foldLookback(s *Samples) {
 
 		// A staleness marker makes the series absent from here until the next real sample.
 		if value.IsStaleNaN(s.V[i]) {
+			continue
+		}
+
+		if o.emitTimestamp {
+			o.out.Set(k, float64(s.T[i])/1000)
 			continue
 		}
 
