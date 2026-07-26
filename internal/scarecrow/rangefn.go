@@ -57,9 +57,11 @@ type rangeFunc func(w *window) (v float64, ok bool)
 //
 // Sampling weights are applied per docs/promql-engine.md §3.5: counting and summing folds scale
 // by weight, extremes and last-value folds ignore it, and rate/increase/delta ignore it because
-// a cumulative counter's surviving samples still carry correct cumulative values. The
-// delta-temporality branch of that matrix is not implemented — the Scanner seam carries no
-// temporality yet, so there is nothing to switch on. See §11.
+// a cumulative counter's surviving samples still carry correct cumulative values.
+//
+// Only the cumulative rule is specified. oteldb does no delta→cumulative conversion, so rate()
+// over a delta-temporality series is undefined before sampling is even considered; see
+// https://github.com/oteldb/oteldb/issues/1190.
 var rangeFuncs = map[string]rangeFunc{
 	"count_over_time":   countOverTime,
 	"sum_over_time":     sumOverTime,

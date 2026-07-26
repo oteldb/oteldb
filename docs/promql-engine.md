@@ -4,8 +4,9 @@ Design for a native, columnar, batched PromQL execution engine over the `oteldb/
 fetch seam, replacing the `github.com/oteldb/promql-engine` (Thanos) fork on the
 `internal/storagebackend` path.
 
-Status: design. Codename *scarecrow* (from the `gemini/scarecrow-engine-initial` prototype);
-proposed package `internal/promqlengine`.
+Status: implemented through M3 (selectors, range functions, aggregations, binary operators,
+instant functions, subqueries) in `internal/scarecrow`. Codename from the
+`gemini/scarecrow-engine-initial` prototype. Milestones and their gates are in §10.
 
 ## 1. Scope
 
@@ -262,7 +263,7 @@ which `signal/metric` carries per series as `LabelTemporality`:
 | `avg_over_time` | `Σ(v·sf) / Σsf` | frequency-weighted mean |
 | `stddev`/`stdvar_over_time` | frequency weights | `Σ(v²·sf)/Σsf − mean²` |
 | `rate`/`increase`/`delta`, **cumulative** | **no** | cumulative values survive subsampling intact; `(last−first)/dt` is already unbiased, weighting inflates by `N` |
-| `rate`/`increase`, **delta temporality** | `Σ(v·sf)` | each sample *is* an increment; dropped increments must be recovered |
+| `rate`/`increase`, **delta temporality** | — | undefined; see [#1190](https://github.com/oteldb/oteldb/issues/1190) |
 | `irate`/`idelta` | no | defined on the last two samples; weight is meaningless |
 | `min`/`max_over_time` | no | extremes of the kept subset — biased inward, not fixable by weighting |
 | `quantile_over_time` | no | weighted exact quantiles are ill-defined in PromQL semantics |
@@ -270,10 +271,13 @@ which `signal/metric` carries per series as `LabelTemporality`:
 | `present`/`absent_over_time` | no | existence |
 | `changes`, `resets` | no | undercount, not fixable by weighting |
 
-The cumulative/delta split is the trap: getting it backwards silently inflates or deflates the
-single most-used function in PromQL, in exactly the overload conditions where the data matters
-most. Aggregations across series (`sum by`, …) need no policy — they consume step values whose
-weights were already folded in.
+Only the cumulative rule is specified, and it is the one implemented. The delta row is blank on
+purpose: oteldb does no delta→cumulative conversion, so `rate()` over a delta-temporality series
+is already meaningless before sampling enters the picture ([#1190](https://github.com/oteldb/oteldb/issues/1190)).
+Writing a weighting rule for it would imply a semantics that does not exist.
+
+Aggregations across series (`sum by`, …) need no policy — they consume step values whose weights
+were already folded in.
 
 **Two residual biases, documented and not fixed.** On a subsampled *cumulative* counter, a
 reset occurring between two dropped samples is invisible, so `resets` undercounts and `rate`'s
@@ -679,7 +683,7 @@ place.
 
 Each milestone ends with a number: upstream `promqltest` files passing.
 
-- **M0 — skeleton.** `Column`, `Schema`, `Operator`, `kernel` package, `queryableScanner`,
+- **M0 — skeleton.** *Done.* `Column`, `Schema`, `Operator`, `kernel` package, `queryableScanner`,
   engine implementing `promql.QueryEngine`, `promqltest` harness wired and failing loudly with
   a tracked pass count.
 - **M1 — read path.** *Done.* Vector selector, fused matrix selector + fold, lookback and
@@ -699,7 +703,7 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   extrapolation and the left-open window boundaries. `ScaleFactors` cannot be reached that way
   (the Prometheus storage interface has no weight channel), so the §3.5 matrix is asserted
   row-by-row against a fake weighted scanner instead.
-- **M2 — expressions.** *Mostly done.* Aggregations (`sum`/`min`/`max`/`avg`/`count`/`group`/
+- **M2 — expressions.** *Done, except what M2b covers.* Aggregations (`sum`/`min`/`max`/`avg`/`count`/`group`/
   `stddev`/`stdvar`), all binary operators including vector matching and set operators, and the
   instant functions (unary math, `clamp*`, `round`, `timestamp`, `scalar`, `vector`,
   `label_replace`, `label_join`, `pi`). Corpus: 5/21 files, ~370 cases.
@@ -727,8 +731,8 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   a step rather than an incremental fold: `topk`/`bottomk` (per-step bounded heap,
   `O(k × steps)`), `quantile` (`O(series × steps)`, inherent — upstream pays it too),
   `sort`/`sort_desc`/`sort_by_label` (instant-only, so the grid is one step), and the `limitk`
-  family. `count_values` belongs here too but is gated on open question 4 below, since its
-  schema is data-dependent.
+  family. `count_values` is **not** in scope: its schema is data-dependent, and per open
+  question 4 it stays unsupported rather than weakening §3.3's invariant.
 
   Gate: `aggregators.test`, and the `sort` cases in `range_queries.test`.
 - **M3 — subqueries.** *Done.* (`@` and `offset` landed in M1, forced by the corpus.) A subquery
@@ -787,19 +791,36 @@ a feature in its own right, not a gap in a milestone above, so each gets its own
 
   Gate: `start_timestamps.test`.
 
+- **M11 — resource limits.** A `MaxSamples`-style budget (open question 2), counted as the
+  engine materializes values and checked as accumulators grow, so a query that would exhaust
+  memory fails with a clear error instead of the process dying. Pairs with planner-level
+  time-chunking, which bounds the accumulator but cannot bound a genuinely large result.
+
+  No corpus gate — this is about what happens past the corpus' scale.
+
 ## 11. Open questions
 
 1. *(resolved)* **Package name** — `internal/scarecrow`, keeping the prototype's codename and
    staying unambiguous against `internal/promql` while the Thanos wrapper still exists.
-2. **Accumulator cost under high group cardinality.** `by (instance)` makes groups ≈ series,
-   so the accumulator is `O(series × steps)` and chunking is the only lever (§4.8). Is a
-   spill-to-disk or approximate path ever warranted, or is chunking sufficient?
-3. **Delta-temporality `rate` under sampling (§3.5).** The weighted form is unbiased in
-   expectation, but its interaction with Prometheus' boundary extrapolation is unverified. Needs
-   a decision once the golden test exists.
-4. **`count_values` and the plan-time schema invariant (§3.3).** Its output series are labelled
-   by the observed *values*, so its schema cannot be resolved before execution. The invariant
-   could be weakened from "resolved at plan time" to "resolved before this operator emits its
-   first column", which still freezes refs before any column carries one and so keeps the
-   property the invariant exists for. Weakening it is a design decision, not an implementation
-   detail, so M2b leaves `count_values` unplanned until it is made.
+2. *(resolved)* **Accumulator cost under high group cardinality** — **chunking plus a hard
+   limit.** Time-chunking bounds the accumulator (§4.4); past a configured budget the query
+   fails with a clear error rather than consuming the process. This is the same posture as
+   Prometheus' `MaxSamples`, and it is the right one because a query whose accumulator is
+   `O(series × steps)` has a result that large *anyway* — spilling to disk would buy a
+   completed query whose response body is the real problem, at the cost of real machinery
+   (encoding, temp-file lifecycle, cleanup) for what is usually a mistaken `by (instance)`.
+   Failing fast and legibly beats succeeding slowly. **Not yet implemented**; see M11.
+3. *(tracked elsewhere)* **Delta-temporality `rate`** — [#1190](https://github.com/oteldb/oteldb/issues/1190).
+   Investigating this turned up something larger than the sampling question: oteldb performs no
+   delta→cumulative conversion anywhere, so delta-temporality sums reach PromQL as-is, and
+   `rate()` over them is already meaningless independent of sampling. The §3.5 matrix therefore
+   specifies only the cumulative rule, which is well-defined; the delta branch cannot be written
+   until that issue is answered, because it presupposes a semantics that does not exist. This is
+   an ingest-and-storage question, not an engine one.
+4. *(resolved)* **`count_values`** — **stays unsupported.** It is the only construct whose output
+   labels come from observed *values*, so supporting it means either weakening §3.3's invariant
+   globally (making `Schema()` able to drain a child, so planning can execute — losing the
+   "planning is cheap" property that makes eager resolution safe) or carving out a root-only
+   exception. Neither is worth it for one rarely used diagnostic aggregation. It returns
+   [ErrUnsupported], which is a visible, honest gap rather than a silent wrong answer, and the
+   invariant stays a real invariant.
