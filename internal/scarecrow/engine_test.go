@@ -115,7 +115,6 @@ func TestEngineUnsupportedIsExplicit(t *testing.T) {
 		`topk(3, up)`,                 // needs the full per-step series set
 		`quantile(0.9, up)`,           // ditto
 		`count_values("v", up)`,       // output schema is data-dependent
-		`avg_over_time(up[5m:1m])`,    // M3: subqueries
 		`histogram_quantile(0.9, up)`, // M6: histograms
 		`sort(up)`,                    // needs the full result to order it
 	} {

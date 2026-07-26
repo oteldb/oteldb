@@ -2,6 +2,7 @@ package scarecrow
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -21,6 +22,8 @@ func unsupportedf(format string, args ...any) error {
 type planner struct {
 	scanner Scanner
 	ec      *EvalContext
+	// noStepSubqueryInterval is the inner step a subquery written without one (`[5m:]`) uses.
+	noStepSubqueryInterval time.Duration
 }
 
 // plan builds the physical operator tree for expr and resolves every schema bottom-up, so all
@@ -174,11 +177,19 @@ func (p *planner) buildCall(e *parser.Call) (Operator, error) {
 		return nil, unsupportedf("function %s with %d arguments", e.Func.Name, len(e.Args))
 	}
 
-	ms, ok := e.Args[0].(*parser.MatrixSelector)
-	if !ok {
+	switch arg := e.Args[0].(type) {
+	case *parser.MatrixSelector:
+		return p.buildSelectorFold(e.Func.Name, fn, arg)
+
+	case *parser.SubqueryExpr:
+		return p.buildSubqueryFold(e.Func.Name, fn, arg)
+
+	default:
 		return nil, unsupportedf("function %s over %T", e.Func.Name, e.Args[0])
 	}
+}
 
+func (p *planner) buildSelectorFold(fnName string, fn rangeFunc, ms *parser.MatrixSelector) (Operator, error) {
 	vs, ok := ms.VectorSelector.(*parser.VectorSelector)
 	if !ok {
 		return nil, unsupportedf("matrix selector over %T", ms.VectorSelector)
@@ -188,9 +199,64 @@ func (p *planner) buildCall(e *parser.Call) (Operator, error) {
 		return nil, unsupportedf("extended range selector")
 	}
 
+	refs := refTimes(p.ec.Steps, vs.OriginalOffset, vs.Timestamp)
+	src := &scannerSource{
+		scanner:  p.scanner,
+		matchers: vs.LabelMatchers,
+		mint:     refs[0] - ms.Range.Milliseconds(),
+		maxt:     refs[len(refs)-1],
+	}
+
 	return newMatrixFold(
-		p.scanner, vs.LabelMatchers, e.Func.Name, fn, ms.Range, vs.OriginalOffset, vs.Timestamp, p.ec,
+		src, matchersString(vs.LabelMatchers), fnName, fn,
+		ms.Range, vs.OriginalOffset, vs.Timestamp, p.ec,
 	), nil
+}
+
+// buildSubqueryFold plans a range function over a subquery. The inner expression is planned
+// against its own step grid and its results become the fold's samples.
+func (p *planner) buildSubqueryFold(fnName string, fn rangeFunc, sq *parser.SubqueryExpr) (Operator, error) {
+	inner, innerEC, err := p.buildSubquery(sq)
+	if err != nil {
+		return nil, err
+	}
+
+	src := &subquerySource{inner: inner, ec: innerEC}
+
+	return newMatrixFold(
+		src, sq.Expr.String(), fnName, fn, sq.Range, sq.OriginalOffset, sq.Timestamp, p.ec,
+	), nil
+}
+
+// buildSubquery plans a subquery's inner expression on its own grid, returning the operator and
+// the grid it was planned against.
+func (p *planner) buildSubquery(sq *parser.SubqueryExpr) (Operator, *EvalContext, error) {
+	var (
+		refs   = refTimes(p.ec.Steps, sq.OriginalOffset, sq.Timestamp)
+		stepMs = subqueryStep(sq, p.noStepSubqueryInterval)
+		grid   = subqueryGrid(refs, sq.Range.Milliseconds(), stepMs)
+	)
+
+	if len(grid) == 0 {
+		return nil, nil, errors.Errorf("subquery %s resolves to an empty evaluation grid", sq)
+	}
+
+	innerEC := &EvalContext{
+		Steps:         grid,
+		Interval:      time.Duration(stepMs) * time.Millisecond,
+		LookbackDelta: p.ec.LookbackDelta,
+	}
+
+	inner, err := (&planner{
+		scanner:                p.scanner,
+		ec:                     innerEC,
+		noStepSubqueryInterval: p.noStepSubqueryInterval,
+	}).build(sq.Expr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return inner, innerEC, nil
 }
 
 // resolveSchemas walks the tree depth-first, forcing each operator to resolve its schema before

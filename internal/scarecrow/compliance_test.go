@@ -19,22 +19,22 @@ import (
 // an entry appearing here means a capability regressed, which is exactly what the corresponding
 // milestone is supposed to prevent.
 var unsupportedFiles = map[string]string{
-	"testdata/range_queries.test":       "M2/M6: binops, sort(), native histogram series",
-	"testdata/start_timestamps.test":    "created timestamps (iterator AtST) — not scoped by any milestone yet",
-	"testdata/aggregators.test":         "topk/bottomk/quantile/count_values, plus native histograms",
-	"testdata/at_modifier.test":         "M3: @ modifier",
-	"testdata/name_label_dropping.test": "delayed __name__ removal (Prometheus 3 DropName) — not scoped by any milestone",
-	"testdata/operators.test":           "M6: native histogram operands; plus group_x with comparison operators",
-	"testdata/duration_expression.test": "M3: duration expressions",
-	"testdata/extended_vectors.test":    "M1: selectors",
-	"testdata/fill-modifier.test":       "M3: fill modifier",
-	"testdata/functions.test":           "M2: instant functions",
-	"testdata/histograms.test":          "M6: native histograms",
-	"testdata/info.test":                "M2: info()",
-	"testdata/limit.test":               "M2: limitk/limit_ratio",
-	"testdata/native_histograms.test":   "M6: native histograms",
-	"testdata/subquery.test":            "M3: subqueries",
-	"testdata/type_and_unit.test":       "M2: type and unit metadata",
+	"testdata/aggregators.test":         "M2b: topk/bottomk/quantile/count_values; M7: native histograms",
+	"testdata/at_modifier.test":         "M9: annotations on @-modified queries",
+	"testdata/duration_expression.test": "duration expressions",
+	"testdata/extended_vectors.test":    "anchored/smoothed range selectors",
+	"testdata/fill-modifier.test":       "binop fill modifiers",
+	"testdata/functions.test":           "M2b: sort family; M7: native histograms",
+	"testdata/histograms.test":          "M7: native histograms",
+	"testdata/info.test":                "info()",
+	"testdata/limit.test":               "M2b: limitk/limit_ratio",
+	"testdata/name_label_dropping.test": "M8: delayed __name__ removal",
+	"testdata/native_histograms.test":   "M7: native histograms",
+	"testdata/operators.test":           "M7: native histogram operands; group_x with comparison operators",
+	"testdata/range_queries.test":       "M2b: sort(); M7: native histogram series",
+	"testdata/start_timestamps.test":    "M10: created timestamps",
+	"testdata/subquery.test":            "M2b: topk; M7: native histograms — subqueries themselves pass",
+	"testdata/type_and_unit.test":       "type and unit metadata",
 }
 
 // scoreboard adapts *testing.T to promqltest.TBRun so the corpus can be run file by file with

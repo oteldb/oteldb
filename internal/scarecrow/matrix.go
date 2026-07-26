@@ -16,12 +16,12 @@ import (
 // matrix-shaped value in this engine and no operator emits a range vector: raw samples go in,
 // one [Column] comes out. That is what keeps [Samples] from ever crossing an operator boundary.
 type matrixFold struct {
-	scanner  Scanner
-	matchers []*labels.Matcher
-	fnName   string
-	fn       rangeFunc
-	rng      time.Duration
-	offset   time.Duration
+	src    foldSource
+	label  string
+	fnName string
+	fn     rangeFunc
+	rng    time.Duration
+	offset time.Duration
 	// at pins the evaluation timestamp (the @ modifier); see [vectorSelect].
 	at *int64
 	ec *EvalContext
@@ -39,43 +39,35 @@ type matrixFold struct {
 }
 
 func newMatrixFold(
-	sc Scanner, matchers []*labels.Matcher, fnName string, fn rangeFunc,
+	src foldSource, label, fnName string, fn rangeFunc,
 	rng, offset time.Duration, at *int64, ec *EvalContext,
 ) *matrixFold {
 	return &matrixFold{
-		scanner:  sc,
-		matchers: matchers,
-		fnName:   fnName,
-		fn:       fn,
-		rng:      rng,
-		offset:   offset,
-		at:       at,
-		ec:       ec,
+		src:    src,
+		label:  label,
+		fnName: fnName,
+		fn:     fn,
+		rng:    rng,
+		offset: offset,
+		at:     at,
+		ec:     ec,
 	}
 }
 
 func (o *matrixFold) String() string {
-	return fmt.Sprintf("MatrixFold(%s, %s[%s])", o.fnName, matchersString(o.matchers), o.rng)
+	return fmt.Sprintf("MatrixFold(%s, %s[%s])", o.fnName, o.label, o.rng)
 }
 
 func (o *matrixFold) Children() []Operator { return nil }
 
 func (o *matrixFold) Close() error {
-	if o.iter == nil {
-		return nil
+	var err error
+	if o.iter != nil {
+		err = o.iter.Close()
+		o.iter = nil
 	}
 
-	err := o.iter.Close()
-	o.iter = nil
-
-	return err
-}
-
-// window returns the fetch bounds covering every step's range window, shifted by the offset.
-func (o *matrixFold) window() (mint, maxt int64) {
-	refs := refTimes(o.ec.Steps, o.offset, o.at)
-
-	return refs[0] - o.rng.Milliseconds(), refs[len(refs)-1]
+	return errors.Join(err, o.src.Close())
 }
 
 func (o *matrixFold) Schema(ctx context.Context) (*Schema, error) {
@@ -83,19 +75,24 @@ func (o *matrixFold) Schema(ctx context.Context) (*Schema, error) {
 		return o.schema, nil
 	}
 
-	mint, maxt := o.window()
-
-	series, err := o.scanner.Series(ctx, mint, maxt, o.matchers)
+	series, err := o.src.Series(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "enumerate series")
+		return nil, err
 	}
 
 	// A range-vector function's output is no longer the input metric, so __name__ is dropped
 	// unless the function is one that retains it.
+	//
+	// This builds a new slice rather than rewriting in place: a [subquerySource] hands back the
+	// inner operator's own schema slice, and mutating it would rewrite the inner series' identity
+	// out from under the operator that owns it.
 	if !keepsMetricName[o.fnName] {
+		renamed := make([]labels.Labels, len(series))
 		for i, ls := range series {
-			series[i] = dropMetricName(ls)
+			renamed[i] = dropMetricName(ls)
 		}
+
+		series = renamed
 	}
 
 	o.schema = NewSchema(series)
@@ -114,11 +111,9 @@ func (o *matrixFold) Next(ctx context.Context) (*Column, error) {
 	}
 
 	if o.iter == nil {
-		mint, maxt := o.window()
-
-		it, err := o.scanner.Scan(ctx, mint, maxt, o.matchers)
+		it, err := o.src.Open(ctx)
 		if err != nil {
-			return nil, errors.Wrap(err, "scan series")
+			return nil, err
 		}
 		o.iter = it
 	}

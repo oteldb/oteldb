@@ -723,11 +723,27 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   Also added: PromQL's **duplicate-labelset error**. Operators that drop `__name__` can collapse
   distinct inputs onto one identity, and returning both silently is wrong.
 
-- **Not scoped by any milestone**, discovered during M2 and M1: **delayed `__name__` removal**
-  (Prometheus 3's `DropName`, where `rate()` keeps `__name__` internally so a later
-  `label_replace` can still read it), **annotations/warnings** (`Result.Warnings` is always
-  empty), and **created/start timestamps** (`iterator.AtST`). Each is a feature in its own right.
-- **M3 — modifiers.** Subqueries, `@`, `offset`.
+- **M2b — full-set aggregations.** The operators M2 deferred, all of which need every series at
+  a step rather than an incremental fold: `topk`/`bottomk` (per-step bounded heap,
+  `O(k × steps)`), `quantile` (`O(series × steps)`, inherent — upstream pays it too),
+  `sort`/`sort_desc`/`sort_by_label` (instant-only, so the grid is one step), and the `limitk`
+  family. `count_values` belongs here too but is gated on open question 4 below, since its
+  schema is data-dependent.
+
+  Gate: `aggregators.test`, and the `sort` cases in `range_queries.test`.
+- **M3 — subqueries.** *Done.* (`@` and `offset` landed in M1, forced by the corpus.) A subquery
+  plans its inner expression against its own step grid — aligned to the subquery step rather than
+  to the outer query's start, as upstream does — and the results become a fold's samples.
+
+  This is where series-major pays off a second time: the inner operator already emits one column
+  per series, and a column *is* that series' samples along the step axis, so the conversion is a
+  direct read, one series at a time, with no transpose and no materialization of the inner result
+  set. The step-major draft needed a dedicated `Transpose` operator here (§3.2); it was never
+  written because it is not needed.
+
+  The refactor introduced a `foldSource` seam so a selector and a subquery feed the *same* fold
+  machinery — the only difference is where the samples come from. Every subquery case in
+  `subquery.test` passes; the three that do not are `topk` (M2b) and native histograms (M7).
 - **M4 — parallelism.** Series sharding as map-reduce over accumulators, `Concurrent`,
   CSE + bounded `Tee`, planner-level time-chunking.
 - **M5 — pushdowns.** Port the three existing `storagebackend` pushdowns as planner rules.
@@ -737,6 +753,39 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   (`Timestamps []int64` + `Values []float64` only) and `signal/metric` has no histogram kind.
   Native histograms are not representable at the seam at all today, so this needs an
   `oteldb/storage` change first, not an engine change.
+
+  Gate: `histograms.test`, `native_histograms.test`, and the histogram cases in
+  `operators.test` and `aggregators.test`.
+
+The following three were discovered by the corpus during M1 and M2 rather than planned. Each is
+a feature in its own right, not a gap in a milestone above, so each gets its own.
+
+- **M8 — delayed `__name__` removal.** Prometheus 3 does not drop `__name__` at the operator
+  that logically removes it; it flags the series (`DropName`) and removes the label only when
+  building the result. That is observable: `label_replace(rate(x[5m]), "n", "$1", "__name__",
+  "(.+)")` can still read `__name__` even though `rate` "dropped" it. This engine drops eagerly,
+  which is simpler and right for every case *except* a later reader of `__name__`.
+
+  Implementing it means a per-series drop flag travelling with the column and applied in
+  `collect`, plus every `dropMetricName` call site becoming a flag set. Touches selectors,
+  `matrixFold`, aggregations, binops and the instant functions — wide but shallow.
+
+  Gate: `name_label_dropping.test`.
+
+- **M9 — annotations.** `promql.Result.Warnings` is always empty today. PromQL emits info- and
+  warn-level annotations (a histogram ignored in a `stdvar`, a mixed float/histogram `rate`, a
+  range too short) and the corpus asserts them with `expect info` / `expect warn`. Needs an
+  annotation sink threaded through evaluation and returned from `Exec`.
+
+  Gate: the `expect info` cases in `aggregators.test`; a prerequisite for closing out M7.
+
+- **M10 — created timestamps.** Prometheus 3 carries a per-sample start timestamp
+  (`chunkenc.Iterator.AtST`) and uses it to detect a counter reset that a value comparison alone
+  would miss. `Samples` has no field for it and `queryableScanner` does not read it. Whether
+  `oteldb/storage` can supply one is an open question — like native histograms, this may be a
+  storage change before it is an engine change.
+
+  Gate: `start_timestamps.test`.
 
 ## 11. Open questions
 
@@ -748,3 +797,9 @@ Each milestone ends with a number: upstream `promqltest` files passing.
 3. **Delta-temporality `rate` under sampling (§3.5).** The weighted form is unbiased in
    expectation, but its interaction with Prometheus' boundary extrapolation is unverified. Needs
    a decision once the golden test exists.
+4. **`count_values` and the plan-time schema invariant (§3.3).** Its output series are labelled
+   by the observed *values*, so its schema cannot be resolved before execution. The invariant
+   could be weakened from "resolved at plan time" to "resolved before this operator emits its
+   first column", which still freezes refs before any column carries one and so keeps the
+   property the invariant exists for. Weakening it is a design decision, not an implementation
+   detail, so M2b leaves `count_values` unplanned until it is made.
