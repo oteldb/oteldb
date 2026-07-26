@@ -31,7 +31,7 @@ possible.
 
 ## 2. Why not the Thanos fork
 
-Not correctness — the fork is correct and battle-tested. Three structural reasons:
+Not correctness — the fork is correct and battle-tested. Four structural reasons:
 
 1. **Row-shaped seam.** The fork is reached through `storage.Queryable`/`SeriesSet`/
    `chunkenc.Iterator`. `oteldb/storage` produces `fetch.Batch{Timestamps []int64, Values
@@ -43,7 +43,16 @@ Not correctness — the fork is correct and battle-tested. Three structural reas
    construction* (`scanners.NewMatrixSelector`) and pattern-matching the logical node. That is
    the wrong seam: there is no plan to rewrite, so each new pushdown is another special case
    in an adapter. A native planner makes pushdown a rewrite rule.
-3. **`fetch.Batch` fields we cannot express.** `ScaleFactors` (lossy-sampling weights) is
+3. **Two tracked memory problems are structural to the fork's shape.**
+   [oteldb#1116](https://github.com/oteldb/oteldb/issues/1116) — `coalesce.loadSeries` buffers
+   the entire matched series set (~317 MB live, 37% of heap) — and
+   [oteldb#1117](https://github.com/oteldb/oteldb/issues/1117) — `matrixSelector.loadSeries`
+   materializes every raw sample in the window (~213 MB live) — are both consequences of
+   step-major evaluation over a row-shaped seam. Series-major removes the class rather than
+   tuning it: nothing is proportional to the matched series set (§4.6), and exactly one series'
+   raw samples are live at a time (§4.3). They close when the engine replaces the fork on this
+   path, which is M5's gate.
+4. **`fetch.Batch` fields we cannot express.** `ScaleFactors` (lossy-sampling weights) is
    produced by the storage engine and consumed by nobody on the read path — see
    `docs/storage-integration.md:97`. Sampled metrics currently yield biased `sum`/`rate`/
    `count`. The fold from raw samples to the step grid is the correct place to apply the
@@ -230,7 +239,9 @@ work, and the engine is useful without them:
    than one, bounding the raw level.
 3. A step-aligned bucket aggregate covering `rate`/`increase` (the sidecar today answers only
    `sum`/`count`/`min`/`max`), which would push the single most common PromQL shape down
-   entirely.
+   entirely. Already tracked as [oteldb#1121](https://github.com/oteldb/oteldb/issues/1121):
+   `engine.SeriesAgg` would need per-window first/last value+timestamp and counter-reset
+   accounting, which is a migration-shaped storage change.
 
 ### 3.5 Sampling weights
 
@@ -497,7 +508,7 @@ own preconditions:
 | `Need` narrowing | selector | derived per §3.4; effective only once storage exposes column need |
 | join narrowing | both selectors under a vector binop | `on(...)` matching (see below) |
 
-The first three exist today in `internal/storagebackend` (`overtime.go`, `overtime_range.go`,
+The count, grouped-count and over-time rules exist today in `internal/storagebackend` (`overtime.go`, `overtime_range.go`,
 `storagebackend.go`) and **must be ported before the engine can replace the fork**, or those
 queries regress hard. Porting them into rules is a large simplification: `scanners.
 NewMatrixSelector` currently reimplements the precondition check inline.
