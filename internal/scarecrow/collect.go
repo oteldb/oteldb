@@ -167,6 +167,71 @@ func collectRawMatrix(
 	return out, nil
 }
 
+// unwrapSubquery reports whether expr is a bare subquery, possibly wrapped.
+func unwrapSubquery(expr parser.Expr) (*parser.SubqueryExpr, bool) {
+	for {
+		switch e := expr.(type) {
+		case *parser.ParenExpr:
+			expr = e.Expr
+		case *parser.StepInvariantExpr:
+			expr = e.Expr
+		case *parser.SubqueryExpr:
+			return e, true
+		default:
+			return nil, false
+		}
+	}
+}
+
+// collectSubqueryMatrix materializes a bare subquery's inner results for an instant query,
+// which returns them as a range vector.
+func collectSubqueryMatrix(ctx context.Context, p *planner, sq *parser.SubqueryExpr) (parser.Value, error) {
+	inner, innerEC, err := p.buildSubquery(sq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = inner.Close() }()
+
+	if err := resolveSchemas(ctx, inner); err != nil {
+		return nil, err
+	}
+
+	schema, err := inner.Schema(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var out promql.Matrix
+
+	for {
+		col, err := inner.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if col == nil {
+			break
+		}
+
+		if col.Empty() {
+			continue
+		}
+
+		pts := make([]promql.FPoint, 0, col.Count())
+		for i, t := range innerEC.Steps {
+			if col.IsSet(i) {
+				pts = append(pts, promql.FPoint{T: t, F: col.V[i]})
+			}
+		}
+
+		out = append(out, promql.Series{Metric: schema.At(col.Ref), Floats: pts})
+	}
+
+	sort.Sort(out)
+
+	return out, nil
+}
+
 // collectRange drains the root into a range-query result. Each column becomes one series, with
 // absent steps omitted rather than emitted as NaN.
 func collectRange(ctx context.Context, root Operator, schema *Schema, ec *EvalContext) (parser.Value, error) {

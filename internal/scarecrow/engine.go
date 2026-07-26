@@ -20,6 +20,9 @@ type Opts struct {
 	EnableNegativeOffset bool
 	// EnableAtModifier allows the @ modifier.
 	EnableAtModifier bool
+	// NoStepSubqueryInterval is the inner step used by a subquery written without one
+	// (`foo[5m:]`). Zero selects the Prometheus default of 1m.
+	NoStepSubqueryInterval time.Duration
 	// Parser configures the upstream parser, notably the experimental-feature gates the
 	// compliance corpus needs.
 	Parser parser.Options
@@ -29,11 +32,18 @@ type Opts struct {
 	NewScanner func(storage.Queryable) Scanner
 }
 
-const defaultLookbackDelta = 5 * time.Minute
+const (
+	defaultLookbackDelta          = 5 * time.Minute
+	defaultNoStepSubqueryInterval = time.Minute
+)
 
 func (o *Opts) setDefaults() {
 	if o.LookbackDelta == 0 {
 		o.LookbackDelta = defaultLookbackDelta
+	}
+
+	if o.NoStepSubqueryInterval == 0 {
+		o.NoStepSubqueryInterval = defaultNoStepSubqueryInterval
 	}
 
 	if o.NewScanner == nil {
@@ -223,16 +233,24 @@ func (q *query) exec(ctx context.Context) (parser.Value, error) {
 		return promql.String{T: ec.Steps[0], V: lit.Val}, nil
 	}
 
-	// A bare range selector as an instant query returns the raw samples as a matrix. It is the
-	// one result shape no operator produces (nothing in this engine emits a range vector), so
-	// it is materialized directly from the scanner rather than planned.
+	p := &planner{
+		scanner:                scanner,
+		ec:                     ec,
+		noStepSubqueryInterval: q.engine.opts.NoStepSubqueryInterval,
+	}
+
+	// A bare range selector or subquery as an instant query returns the raw samples as a matrix.
+	// It is the one result shape no operator produces (nothing in this engine emits a range
+	// vector), so it is materialized at the result boundary rather than planned.
 	if q.instant() {
 		if ms, ok := unwrapMatrixSelector(expr); ok {
 			return collectRawMatrix(ctx, scanner, ms, ec)
 		}
-	}
 
-	p := &planner{scanner: scanner, ec: ec}
+		if sq, ok := unwrapSubquery(expr); ok {
+			return collectSubqueryMatrix(ctx, p, sq)
+		}
+	}
 
 	root, err := p.plan(ctx, expr)
 	if err != nil {

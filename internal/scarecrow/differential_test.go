@@ -100,6 +100,19 @@ var diffQueries = []string{
 	`1 + 2 * 3`,
 	`2 > bool 1`,
 
+	// Subqueries.
+	`sum_over_time(counter[1m:10s])`,
+	`avg_over_time(gauge[2m:30s])`,
+	`rate(counter[1m:10s])`,
+	`max_over_time(rate(counter[30s])[1m:10s])`,
+	`sum_over_time(sum(counter)[1m:10s])`,
+	`count_over_time(sparse[2m:20s])`,
+	`last_over_time(gauge[1m:15s])`,
+	`sum_over_time(counter[1m:10s] offset 30s)`,
+	`avg_over_time((counter * 2)[1m:20s])`,
+	`sum_over_time(counter[90s:])`,
+	`rate(sum_over_time(counter[30s:10s])[1m:10s])`,
+
 	// Instant functions.
 	`abs(-counter)`,
 	`ceil(gauge / 3)`,
@@ -137,6 +150,8 @@ func upstreamEngine() *promql.Engine {
 		LookbackDelta:        5 * time.Minute,
 		EnableAtModifier:     true,
 		EnableNegativeOffset: true,
+		// Required for `foo[5m:]`; the upstream engine nil-derefs without it.
+		NoStepSubqueryIntervalFn: func(int64) int64 { return time.Minute.Milliseconds() },
 	})
 }
 
