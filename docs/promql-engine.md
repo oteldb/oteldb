@@ -495,6 +495,7 @@ own preconditions:
 | `{sum,count,min,max,avg,present}_over_time` → `AggregateMetricsNamed` | matrix selector + fold | no projection, no per-series filter, no `@` |
 | matcher pushdown | selector | index-safe matchers only (see `query/promql` doc comment) |
 | `Need` narrowing | selector | derived per §3.4; effective only once storage exposes column need |
+| join narrowing | both selectors under a vector binop | `on(...)` matching (see below) |
 
 The first three exist today in `internal/storagebackend` (`overtime.go`, `overtime_range.go`,
 `storagebackend.go`) and **must be ported before the engine can replace the fork**, or those
@@ -504,6 +505,66 @@ NewMatrixSelector` currently reimplements the precondition check inline.
 Room this opens up that the adapter seam could not: pushing `topk`/`bottomk` limits,
 `__name__` regex narrowing, and — once the storage side grows it — a step-aligned bucket
 aggregate covering `rate` directly.
+
+#### Vector-binop joins
+
+A vector binop is a hash join whose build side must be resident before the probe side can be
+combined (§4.4). The join *itself* costs nothing to plan: matching is resolved entirely from
+label sets at plan time, because `Scanner.Series` is an index-only call that materializes no
+timestamps or values. What is resident is only the build side's **values**.
+
+Three ways to shrink or remove that, in descending value-per-effort.
+
+**1. Join narrowing — implementable today, and symmetric.** Both sides' series are enumerated
+at plan time, so the exact intersection of matching signatures is known before a single value is
+fetched. Both scans can then be restricted to it: an unmatched build-side series is never
+probed, and an unmatched probe-side series is dropped by `pairOf == -1` anyway. For
+`a * on(job) b` where `a` spans 10k jobs and `b` covers 50, both sides fetch 50.
+
+The engine currently does the weaker half of this — it declines to *retain* an unprobed
+build-side series (`vectorBinop.probed`), but storage has already fetched it. Narrowing turns
+"fetch and discard" into "never fetch".
+
+Precondition: **`on(...)` matching only.** The signature is then a fixed label set, so
+"signature ∈ set" becomes an index-safe matcher (`job=~"a|b|c"`). Under `ignoring(...)` the
+signature is "every label except these", which no single matcher expresses — that case needs a
+series-ID set on `fetch.Request`, which is the one real argument for adding one.
+
+**2. Caller-specified scan order — removes the build table entirely.** If both sides were
+delivered sorted by matching signature, the join becomes a sort-merge: co-iterate, nothing
+buffered, `O(1)` series resident per side. Note this is *not* what sorted delivery gives today —
+`queryableScanner` asks for label-sorted output, but a signature is a label *subset*, so
+full-label order is not signature order.
+
+On a single node the storage change is small: `Engine.Fetch` resolves ids from the index and
+`planFetch` fills each series' identity *before* any decode, and emission order is just that id
+slice — so a caller key means sorting `(ids, series)` after planning, `O(n log n)` on series
+count with no extra I/O, plus a field on `fetch.Request`.
+
+The fan-out is the obstacle, and not for the reason the phrase "merges by `signal.SeriesID`"
+suggests. `query/fetch.Merge` is **not** an ordered merge: `mergeFetcher.Fetch` `Drain`s every
+child completely, hash-groups the batches into a `map[signal.SeriesID]*mergeAcc` ordered by
+*first appearance*, deep-copies, and returns a slice iterator. So there is no k-way merge to
+parameterize with a comparator — it would have to be built.
+
+Sorting by `signal.SeriesID` also would not serve the join even if it existed. The join matches
+on **signature**, a label subset; two series that must join carry different labels (`__name__`
+differs at minimum) and therefore different content-addressed ids, so id order and signature
+order are unrelated.
+
+**A finding worth separating from this rule:** because `Merge` drains and materializes, the
+engine's `O(1)`-in-series raw level (§4.3) holds for a single-node fetcher but **not behind a
+fan-out** — cluster and multi-tenant reads buffer every matched series' samples, then copy them.
+Making `Merge` a streaming k-way merge ordered by id would fix that on its own merits, and it
+would leave exactly the ordered-merge machinery a caller-specified key needs. That ordering
+makes this rule cheap; it is the prerequisite, not the rule itself.
+
+**3. Point lookup by series — a memory tool, not a pipelining one.** Fetching the one-side
+series on demand sounds like it removes the build table, but `group_left` sends many probes at
+the same build series, so it needs a cache — and a cache of fetched series *is* a build table,
+populated lazily. It also trades one sequential scan for N random lookups. Its real value is
+therefore a bounded, LRU-backed build table that caps memory rather than holding every
+build-side series, which belongs with M11's resource limits.
 
 ### 5.3 Common subexpression elimination
 
