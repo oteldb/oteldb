@@ -50,6 +50,11 @@ type SeriesIterator interface {
 // columnar delivery, which is the shape oteldb/storage's fetch seam already produces; adapting
 // a row-oriented Queryable to it (see [NewQueryableScanner]) costs one copy and is used for the
 // upstream test corpus and as a fallback.
+//
+// **A Scanner must be safe for concurrent use.** One scanner serves a whole query, and a binary
+// operator evaluates both of its subtrees at once ([concurrent]), so two selectors can be calling
+// Series or Scan on it simultaneously. Each returned [SeriesIterator], by contrast, is owned by a
+// single operator and is never shared.
 type Scanner interface {
 	// Series enumerates the matching series' label sets without materializing samples. The
 	// engine calls this at plan time to freeze schemas before execution.

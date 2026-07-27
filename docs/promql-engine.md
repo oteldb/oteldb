@@ -885,8 +885,36 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   `Tee`. Sharding is deliberately deferred until M5 wires the columnar seam — over a
   `storage.Queryable` each shard would re-scan every series and filter, parallelizing CPU while
   multiplying I/O, which is the wrong trade to bake in.
-- **M5 — pushdowns.** Port the three existing `storagebackend` pushdowns as planner rules.
-  *Gate for replacing the fork on that path.*
+- **M5 — pushdowns.** *Planner side done; storage side outstanding.* The three `storagebackend`
+  pushdowns are now planner rules over optional `Scanner` capabilities — `AggregateScanner`
+  (reducer `*_over_time`), `SeriesCounter` (`count`), `GroupedSeriesCounter` (`count by (l)`).
+  A scanner that implements none of them answers every query identically, only slower, which is
+  the property the tests assert rather than assume.
+
+  Two obligations bind an implementer, and they are why the capabilities are opt-in rather than
+  assumed. Windows are PromQL's half-open `(mint, maxt]`, not storage's inclusive range — widening
+  produces wrong answers at window edges that the corpus will not reliably catch. And staleness
+  markers must not exist in the data: the engine drops them during the fold, and a storage-side
+  aggregate cannot, so it would report a stale series as present.
+
+  **The over-time pushdown is the one place result memory scales with the matched series set.**
+  Storage answers a window at a time, all series at once; this engine emits a series at a time,
+  all steps at once. So every window's result is held until the last lands — `O(series × steps)`,
+  against the `O(1)` in series a streaming selector achieves (§4.6). It is still far less than the
+  raw samples it replaces (a 5m window at 15s holds 20 samples per series per step against one
+  aggregate), but a series-major aggregate API on the storage side would remove it entirely, and
+  that is worth asking for.
+
+  Building this also surfaced an undocumented contract: **a `Scanner` must be safe for concurrent
+  use.** One scanner serves a whole query and `Concurrent` evaluates both binop subtrees at once,
+  so two selectors can call it simultaneously. It was found by `-race` on a test double, which is
+  precisely the sort of thing that would otherwise be found in production.
+
+  **Still outstanding, and it is the larger half:** nothing implements these capabilities yet
+  outside the tests. `internal/storagebackend` must grow a columnar `Scanner` over the `fetch`
+  seam that answers them from the stats sidecar and index, and the engine must be wired into that
+  path. Until then the pushdowns are dormant and the fork is not replaced, so #1116/#1117 stay
+  open. *Gate for replacing the fork on that path.*
 - **M6 — kernels.** Assembly paths + golden benchmarks vs the fork.
 - **M7 — native histograms.** **Blocked on storage:** `fetch.Batch` has no histogram column
   (`Timestamps []int64` + `Values []float64` only) and `signal/metric` has no histogram kind.

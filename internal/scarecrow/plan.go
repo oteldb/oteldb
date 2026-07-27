@@ -97,6 +97,10 @@ func (p *planner) buildAggregate(e *parser.AggregateExpr) (Operator, error) {
 		return nil, unsupportedf("aggregation %s", e.Op)
 	}
 
+	if op, ok := p.pushDownCount(e); ok {
+		return op, nil
+	}
+
 	input, err := p.build(e.Expr)
 	if err != nil {
 		return nil, err
@@ -206,6 +210,10 @@ func (p *planner) buildSelectorFold(fnName string, fn rangeFunc, ms *parser.Matr
 
 	if vs.Anchored || vs.Smoothed {
 		return nil, unsupportedf("extended range selector")
+	}
+
+	if op, ok := p.pushDownOverTime(fnName, vs, ms); ok {
+		return op, nil
 	}
 
 	refs := refTimes(p.ec.Steps, vs.OriginalOffset, vs.Timestamp)
