@@ -406,13 +406,19 @@ like `http_requests_total[1h:15s]` with no aggregation was `O(series × steps)` 
 but here each series' column streams straight to the response encoder and is released. The
 response body is large; the engine's footprint is not.
 
-**Chunking.** Long ranges are still split into sequential chunks so that the largest
-accumulator stays under budget — `sum by (instance)` where groups ≈ series is genuinely
-`O(series × steps)`, and 30 days at 15s is 172k steps. The planner sizes `stepsInChunk` from
-the widest accumulator in the tree and re-runs the pipeline per chunk, concatenating results.
-Parts are time-partitioned, so a chunk's fetch touches only its own parts and decodes nothing
-extra. This is now a policy knob for a minority of queries rather than the load-bearing
-mechanism it was under step-major.
+**Chunking.** Long ranges are split into sequential chunks so that the largest accumulator stays
+under budget — `sum by (instance)` where groups ≈ series is genuinely `O(series × steps)`, and 30
+days at 15s is 172k steps. The planner sizes `stepsInChunk` from the widest accumulator in the
+tree and re-runs the pipeline per chunk, concatenating results. Parts are time-partitioned, so a
+chunk's fetch touches only its own parts and decodes nothing extra.
+
+**Not implemented.** `stepGrid` builds the whole query's grid into one `EvalContext`, so every
+figure in the `steps` column above is currently the *entire range*, not a chunk. An earlier draft
+of this section called chunking "a policy knob for a minority of queries"; that was written when
+the only `O(series × steps)` operator was `quantile`. It is no longer true — the one-to-one
+vector binop (§4.6), the `aggregateOverTime` pushdown (M5) and every group-heavy accumulator all
+depend on the step axis being bounded, so chunking is the single mitigation covering all three.
+See M16.
 
 **Storage ask, unchanged in value but not in urgency.** Time-chunk-major `Fetch` iteration
 (§3.4, ask #2) would let chunking collapse into the iterator and drop the repeated postings
@@ -453,9 +459,22 @@ input series.
 | 30d @ 15s (172k steps) | ~2–4 MB | 1.4 GB (needs chunking) | **14 MB** |
 | scaling | `O(series)` | `O(series × steps)` | `O(groups × steps)` |
 
-The `O(series)` term is gone entirely: nothing in the engine is proportional to input series
-cardinality, because input series are consumed one at a time and released. That is a better
-asymptotic than the cursor model, not merely a recovery from the step-major regression.
+The `O(series)` term is gone from the read path: a selector's input series are consumed one at a
+time and released, so nothing between storage and the first accumulator scales with matched
+cardinality. That is a better asymptotic than the cursor model, not merely a recovery from the
+step-major regression.
+
+**One exception, and it should not be buried.** A *one-to-one* vector binop has no small side —
+in `a / on(instance) b` every series is its own match group — so its build side is a full matched
+series set, `O(series × steps)` (§4.4). `group_left`/`group_right` do not have this problem: the
+"one" side is a metadata metric with at most one series per key, so the buffer is proportional to
+output groups.
+
+So the accurate claim is narrower than "nothing is proportional to input cardinality": the engine
+removes that buffering from the *selector*, which is where #1116 lives, and a one-to-one join
+reintroduces it at a much smaller constant — one folded value per step rather than every raw
+sample in every window, roughly 20× less at a 5m window and 15s step, and on one side rather than
+both. Bounding it is what makes M16's chunking load-bearing rather than a knob.
 
 ### 4.7 Concurrency and the borrow rule
 
@@ -991,8 +1010,9 @@ a feature in its own right, not a gap in a milestone above, so each gets its own
 
 - **M11 — resource limits.** A `MaxSamples`-style budget (open question 2), counted as the
   engine materializes values and checked as accumulators grow, so a query that would exhaust
-  memory fails with a clear error instead of the process dying. Pairs with planner-level
-  time-chunking, which bounds the accumulator but cannot bound a genuinely large result.
+  memory fails with a clear error instead of the process dying. Pairs with M16's time-chunking,
+  which bounds the accumulator but cannot bound a genuinely large result; a limit refuses the
+  query that chunking cannot rescue.
 
   No corpus gate — this is about what happens past the corpus' scale.
 
@@ -1040,6 +1060,32 @@ failures**. Cheap and unowned is how work stays undone indefinitely, so it gets 
   skip an unmatched row, and the build side must emit its unprobed rows at the end — which is
   what `vectorBinop`'s existing `probed []bool` already tracks. Gate: `fill-modifier.test`
   (39 cases).
+
+The last one is numbered last and should be built early. It is the only milestone here that
+closes a memory problem rather than adding a capability, and three separate operators are waiting
+on it.
+
+- **M16 — time-chunking.** Split a long range into sequential chunks of `stepsInChunk` steps,
+  sized by the planner from the widest accumulator in the tree, and re-run the pipeline per chunk
+  with the results concatenated (§4.4). Parts are time-partitioned, so a chunk's fetch touches
+  only its own parts.
+
+  `stepGrid` currently builds the entire query grid into one `EvalContext`, so **every operator
+  whose cost carries a `steps` factor is today multiplied by the whole range** — 172,801 steps for
+  30 days at 15s, or 1.4 MB per buffered series. Three of them depend on this being bounded: the
+  one-to-one vector binop's build side (§4.6), the `aggregateOverTime` pushdown's per-window
+  results (M5), and any group-heavy accumulator where groups approach series. Each is individually
+  defensible; together they are the same `O(series × steps)` shape the design rejects in the fork,
+  and chunking is the one fix that covers all three at once.
+
+  Doing this earlier than its number suggests is the point. It was originally folded into M11 as
+  a companion to resource limits, which understated it: a limit *refuses* a query that would use
+  too much memory, while chunking lets the same query *succeed*. They pair well but they are not
+  the same work, and only one of them makes long-range queries usable.
+
+  No corpus gate — the corpus is entirely short-range, so nothing in §8 exercises this. That is
+  precisely why it needs a benchmark instead: peak resident for a 30d/15s one-to-one join should
+  be flat in the range length.
 
 ## 11. Open questions
 
