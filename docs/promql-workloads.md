@@ -123,10 +123,13 @@ not stream today.** Filed as storage#211, alongside the existing storage#208.
 sized to the matched series count (`engine.go:1367-1388`), ~200–400 B/series — 200–400 MB at
 archetype A's cardinality, before any samples.
 
-**3. The decode budget is charged by part, not by selector.** `decodeEstimate`
-(`engine.go:600-624`) reserves `part.rows() × 8 × cols` for every touched part, so archetype B —
-10 series over 30 days — can reserve gigabytes for 27.6 MB of answer, throttling concurrent
-queries that need it. Selective long-range queries are exactly oteldb's common case.
+**3. The decode budget is charged by part, not by selector — deliberately.** `decodeEstimate`
+(`engine.go:600-624`) reserves `part.rows() × 8 × cols` for every touched part, so archetype B
+(10 series over 30 days) reserves for whole parts to produce 27.6 MB of answer. This looked like a
+cost-model blind spot until the comment was read: `decodedPart` really is sized to the part's full
+row count even for a sparse selector, so **the reservation matches the footprint it caps**. The
+inefficiency worth chasing, if any, is the whole-part decode itself — not the estimate. No issue
+filed.
 
 **4. The series-major aggregate primitive already exists but is not exposed.**
 `engine.AggregateStep`/`AggregateStepNamed` (`aggregate.go:83-163`) already returns, per series,
