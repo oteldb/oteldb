@@ -110,18 +110,26 @@ remaining memory work.
 ## What `oteldb/storage` is missing
 
 Findings from reading `github.com/oteldb/storage` at `v0.33.0-4-gf13d61f`. These matter because
-M5's pushdowns are dormant until a columnar `Scanner` exists over this seam.
+M5's pushdowns are dormant until a columnar `Scanner` exists over this seam. **Items 1 and 7 were
+fixed in storage v0.34.0**; they are kept here because they document why the seam needed changing.
 
-**1. `engine.Fetch` is eager, and this is bigger than storage#208.** `engine.Fetch`
+**1. `engine.Fetch` was eager, and this was bigger than storage#208.** ~~`engine.Fetch`
 (`engine/engine.go:401-468`) builds a `[]*fetch.Batch` for *every matched series* before returning
-an iterator. storage#208 correctly reports that `fetch.Merge` drains and deep-copies its children,
-but the base producer is already fully materializing — so fixing `Merge` alone would not make a
-single-child fetch stream. **The engine's whole `O(1)`-in-series claim rests on a seam that does
-not stream today.** Filed as storage#211, alongside the existing storage#208.
+an iterator.~~ storage#208 correctly reported that `fetch.Merge` drains and deep-copies its
+children, but the base producer was already fully materializing — so fixing `Merge` alone would not
+have made a single-child fetch stream. **The engine's whole `O(1)`-in-series claim rested on a seam
+that did not stream.** Filed as storage#211; **fixed in v0.34.0** together with #208, which now
+k-way merges the fan-out by `SeriesID` with one pending batch per child. `Fetch` gathers one
+series per `Next`, so peak live heap for a fold-and-release consumer drops ~4.5× (12.5 MB vs
+57.2 MB at 100k×8). Callers now owe `Close`; every oteldb call site goes through `fetch.Drain`,
+which closes what it drains.
 
 **2. `planFetch` presizes to the matched set.** It allocates a `[]signal.Series` plus two maps
 sized to the matched series count (`engine.go:1367-1388`), ~200–400 B/series — 200–400 MB at
-archetype A's cardinality, before any samples.
+archetype A's cardinality, before any samples. The v0.34.0 streaming change explicitly leaves this
+in place: the plan holds one identity and one head snapshot per series, copied under the engine
+lock because a concurrent flush can move a head buffer into a part the plan never acquired. So the
+residual after streaming is the plan, not the batches.
 
 **3. The decode budget is charged by part, not by selector — deliberately.** `decodeEstimate`
 (`engine.go:600-624`) reserves `part.rows() × 8 × cols` for every touched part, so archetype B
@@ -151,7 +159,7 @@ batch loop looks straightforward since identities are already snapshotted — bu
 
 **7. `SplitFetcher` spawns one unbounded goroutine per sub-window** (`query/scale/scale.go:50-78`,
 a bare `go func` in a loop). A 30-day query split hourly launches ~720. Unrelated to PromQL, but
-found while reading; filed as storage#214.
+found while reading; filed as storage#214 and **fixed in v0.34.0**.
 
 ## What the other engines do that we should consider
 
