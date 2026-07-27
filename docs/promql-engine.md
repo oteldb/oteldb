@@ -584,29 +584,25 @@ On a single node the storage change is small: `Engine.Fetch` resolves ids from t
 slice — so a caller key means sorting `(ids, series)` after planning, `O(n log n)` on series
 count with no extra I/O, plus a field on `fetch.Request`.
 
-The fan-out is the obstacle, and not for the reason the phrase "merges by `signal.SeriesID`"
-suggests. `query/fetch.Merge` is **not** an ordered merge: `mergeFetcher.Fetch` `Drain`s every
-child completely, hash-groups the batches into a `map[signal.SeriesID]*mergeAcc` ordered by
-*first appearance*, deep-copies, and returns a slice iterator. So there is no k-way merge to
-parameterize with a comparator — it would have to be built.
+The fan-out used to be the obstacle, and not for the reason the phrase "merges by
+`signal.SeriesID`" suggests: `query/fetch.Merge` was **not** an ordered merge. It `Drain`ed every
+child, hash-grouped into a `map[signal.SeriesID]*mergeAcc` ordered by *first appearance*, and
+deep-copied — so the engine's `O(1)`-in-series raw level (§4.3) held for a single-node fetcher but
+**not behind a fan-out**, and there was no k-way merge to parameterize with a comparator. Filed as
+[oteldb/storage#208](https://github.com/oteldb/storage/issues/208) and
+[#211](https://github.com/oteldb/storage/issues/211) (the base producer was materializing too, so
+fixing `Merge` alone would not have made a single-child fetch stream).
 
-Sorting by `signal.SeriesID` also would not serve the join even if it existed. The join matches
-on **signature**, a label subset; two series that must join carry different labels (`__name__`
-differs at minimum) and therefore different content-addressed ids, so id order and signature
-order are unrelated.
+**Both are fixed in storage v0.34.0.** `Fetch` gathers one series per `Next`, and `Merge` is now a
+heap-ordered k-way merge holding one pending batch per child, so peak is `O(children)`. That
+restores §4.3's property behind a fan-out, and it leaves exactly the ordered-merge machinery a
+caller-specified key would need.
 
-**A finding worth separating from this rule**, filed as
-[oteldb/storage#208](https://github.com/oteldb/storage/issues/208): because `Merge` drains and
-materializes, the engine's `O(1)`-in-series raw level (§4.3) holds for a single-node fetcher but
-**not behind a fan-out** — cluster and multi-tenant reads buffer every matched series' samples,
-then copy them. The engine cannot recover the property from above, since the materialization has
-already happened by the time it sees the iterator.
-
-Making `Merge` a streaming k-way merge ordered by id fixes that on its own merits, and it is
-cheaper than it sounds: `head.resolve` returns an intersection of the postings index's sorted
-series lists, so every child already emits in ascending `signal.SeriesID` order and needs no
-change. It would also leave exactly the ordered-merge machinery a caller-specified key needs —
-which is why that ordering is this rule's prerequisite rather than the rule itself.
+What it does **not** give is join order. The join matches on **signature**, a label subset; two
+series that must join carry different labels (`__name__` differs at minimum) and therefore
+different content-addressed ids, so id order and signature order are unrelated. A caller key is
+still a `fetch.Request` field plus a sort of `(ids, series)` after planning — now cheaper to add
+than to design, but still unbuilt.
 
 **3. Point lookup by series — a memory tool, not a pipelining one.** Fetching the one-side
 series on demand sounds like it removes the build table, but `group_left` sends many probes at
