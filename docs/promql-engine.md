@@ -885,6 +885,35 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   `Tee`. Sharding is deliberately deferred until M5 wires the columnar seam — over a
   `storage.Queryable` each shard would re-scan every series and filter, parallelizing CPU while
   multiplying I/O, which is the wrong trade to bake in.
+
+  **CSE, and why the `Tee` must be allowed to give up.** `a / sum(a)`, `rate(x[5m]) /
+  sum(rate(x[5m]))` and every ratio-of-itself scrape a subexpression twice. The fix is to plan it
+  once and fan its columns out to both consumers through a `Tee`.
+
+  Key on the *scan request* — matchers, window, and for a fold its range/offset/`@` — not on the
+  expression string, so two spellings of the same read share and two reads that merely look alike
+  do not. This is what the Thanos fork's `SelectorPool` does, keying `hash(matchers, mint, maxt,
+  hints)`; note it dedups *identical* selectors only, and never merges different ones into a union
+  query.
+
+  The hard part is not the sharing, it is the buffering, and it collides with the fact recorded
+  above: **a vector binop drains its build side completely before calling `Next` on the streaming
+  side.** So if both sides read one `Tee`, one consumer runs to the end while the other has not
+  started. A `Tee` bounded at *k* columns must then either block the fast consumer — deadlock,
+  since the slow one cannot start until the fast one finishes — or buffer without limit, which
+  reproduces exactly the `coalesce.loadSeries` behaviour of #1116 that this engine exists to
+  remove.
+
+  The resolution follows the rule the `Concurrent` semaphore already established: *degrade, never
+  block.* A `Tee` buffers up to its bound; if a consumer would exceed it, that consumer falls back
+  to re-executing the subexpression against storage instead of waiting. CSE then becomes a
+  best-effort optimization that is free when the consumers travel together and costs a second scan
+  when they do not — and it can never deadlock, which is the property worth more than the sharing.
+
+  This also sets the honest expectation: CSE will *not* help the common `a / sum(a)` shape, because
+  a binop is precisely the operator that separates its consumers in time. It pays where consumers
+  advance in lockstep — several aggregations over one selector, the many-side of a join feeding two
+  operators — and the bound is what keeps the other case from silently becoming a memory problem.
 - **M5 — pushdowns.** *Planner side done; storage side outstanding.* The three `storagebackend`
   pushdowns are now planner rules over optional `Scanner` capabilities — `AggregateScanner`
   (reducer `*_over_time`), `SeriesCounter` (`count`), `GroupedSeriesCounter` (`count by (l)`).
