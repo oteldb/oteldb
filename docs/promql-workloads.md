@@ -117,7 +117,7 @@ M5's pushdowns are dormant until a columnar `Scanner` exists over this seam.
 an iterator. storage#208 correctly reports that `fetch.Merge` drains and deep-copies its children,
 but the base producer is already fully materializing — so fixing `Merge` alone would not make a
 single-child fetch stream. **The engine's whole `O(1)`-in-series claim rests on a seam that does
-not stream today.** Worth widening #208 or filing a companion.
+not stream today.** Filed as storage#211, alongside the existing storage#208.
 
 **2. `planFetch` presizes to the matched set.** It allocates a `[]signal.Series` plus two maps
 sized to the matched series count (`engine.go:1367-1388`), ~200–400 B/series — 200–400 MB at
@@ -134,12 +134,12 @@ every step-aligned bucket in one call — folding from the per-part stats sideca
 decode when the parts are contained. `Storage.AggregateMetricsNamed` only ever calls it with
 `step=0`. Exposing the stepped form is a thin wrapper, and it would let M5's `AggregateScanner`
 answer a whole range query per series in one call instead of one call per step — removing the
-`O(series × steps)` pivot that pushdown currently pays.
+`O(series × steps)` pivot that pushdown currently pays. Filed as storage#212.
 
 **5. But it cannot do sliding windows**, which is what archetype D needs (`[1h]` every 5m is a 12×
 overlap). `bucketSeries` assumes each sample lands in exactly one bucket. Supporting overlap is
 new logic in the sidecar fold, not a parameter — medium difficulty, and it is the single highest-
-value storage change for D-shaped queries.
+value storage change for D-shaped queries. Filed as storage#213.
 
 **6. No label-ordered delivery.** Order is `signal.SeriesID` (a content hash) throughout. A merge
 join needs order by a caller-chosen label subset. Inserting a sort between `head.resolve` and the
@@ -148,7 +148,7 @@ batch loop looks straightforward since identities are already snapshotted — bu
 
 **7. `SplitFetcher` spawns one unbounded goroutine per sub-window** (`query/scale/scale.go:50-78`,
 a bare `go func` in a loop). A 30-day query split hourly launches ~720. Unrelated to PromQL, but
-found while reading and worth a ticket.
+found while reading; filed as storage#214.
 
 ## What the other engines do that we should consider
 
@@ -192,11 +192,11 @@ needs.
 
 Ranked by what the measurements support.
 
-1. **Series-axis parallelism (M4 sharding) is the highest-value work left.** A and D are
+1. **Series-axis parallelism (M4 sharding) is the highest-value work left** (oteldb#1193). A and D are
    single-threaded and allocation-bound; every comparable engine fans out over series at
    `GOMAXPROCS`-ish degree, and the aggregation fold is commutative so the map-reduce is
    straightforward. It does not reduce memory — it converts a 4-second query into a sub-second one.
-2. **Time-chunking (M16) bounds the step axis**, which is what E and D2 need. E's 1.2 GB is
+2. **Time-chunking (M16) bounds the step axis** (oteldb#1194), which is what E and D2 need. E's 1.2 GB is
    `series × steps`, and chunking is the only mitigation that covers the join build side, the
    pushdown pivot and group-heavy accumulators together.
 3. **The schema's `O(matched series)` cost should be documented, then measured against
