@@ -21,7 +21,6 @@ import (
 var unsupportedFiles = map[string]string{
 	"testdata/aggregators.test":         "M2b: topk/bottomk/quantile/count_values; M7: native histograms",
 	"testdata/at_modifier.test":         "M9: annotations on @-modified queries",
-	"testdata/duration_expression.test": "duration expressions",
 	"testdata/extended_vectors.test":    "anchored/smoothed range selectors",
 	"testdata/fill-modifier.test":       "binop fill modifiers",
 	"testdata/functions.test":           "M2b: sort family; M7: native histograms",
@@ -46,13 +45,16 @@ var unsupportedFiles = map[string]string{
 type scoreboard struct {
 	*testing.T
 
+	// noSkip runs even the files listed in unsupportedFiles, for the gap report.
+	noSkip bool
+
 	passed  []string
 	failed  []string
 	skipped []string
 }
 
 func (s *scoreboard) Run(name string, f func(*testing.T)) bool {
-	if reason, ok := unsupportedFiles[name]; ok {
+	if reason, ok := unsupportedFiles[name]; ok && !s.noSkip {
 		s.skipped = append(s.skipped, fmt.Sprintf("%s (%s)", name, reason))
 		return true
 	}
@@ -70,8 +72,9 @@ func (s *scoreboard) Run(name string, f func(*testing.T)) bool {
 // TestPromQLCompliance runs Prometheus' own PromQL corpus against the engine. It is the
 // project's headline correctness metric: the pass count it reports is what each milestone is
 // judged by.
-func TestPromQLCompliance(t *testing.T) {
-	engine := scarecrow.NewEngine(scarecrow.Opts{
+// complianceOpts enables every experimental gate the corpus exercises.
+func complianceOpts() scarecrow.Opts {
+	return scarecrow.Opts{
 		EnableAtModifier:     true,
 		EnableNegativeOffset: true,
 		Parser: parser.Options{
@@ -80,7 +83,11 @@ func TestPromQLCompliance(t *testing.T) {
 			EnableExtendedRangeSelectors: true,
 			EnableBinopFillModifiers:     true,
 		},
-	})
+	}
+}
+
+func TestPromQLCompliance(t *testing.T) {
+	engine := scarecrow.NewEngine(complianceOpts())
 
 	sb := &scoreboard{T: t}
 	promqltest.RunBuiltinTests(sb, engine)

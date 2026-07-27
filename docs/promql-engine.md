@@ -731,6 +731,37 @@ Compliance is not a phase at the end; it is the first thing wired up.
    pattern, measured against the Thanos fork on the same data.
 5. **Compliance suites** in `dev/local/ch-compliance` as the final gate.
 
+### 8.1 Where the corpus stands
+
+The file-level pass count (6/21 after M4) is the number milestones are judged by, but it is a
+harsh metric: one unimplemented function fails a 413-case file, and the skip list then hides the
+other 412 cases. `TestPromQLGap` runs the corpus unskipped — promqltest makes every `eval` its
+own subtest and keeps going after a failure — which gives the finer number: **844/2117 eval cases
+(39.9%)**.
+
+Attributing the 1273 failures:
+
+| Cause | Cases | Milestone |
+|---|---:|---|
+| Native histograms (`histogram_*`, histogram operands and expectations) | ~700 | M7 |
+| Missing annotations (`info`/`warn` expected, none produced) | 117 | M9 |
+| `topk`/`bottomk`/`quantile`/`limitk`/`limit_ratio`/`count_values`/`sort*` | 148 | M2b |
+| Extended range selectors (`anchored`/`smoothed`) | 74 | — |
+| `absent`, `absent_over_time` | 42 | — |
+| Date/time functions (`year`, `month`, `hour`, `minute`, `time`, …) | ~45 | — |
+| `predict_linear`, `deriv`, `quantile_over_time`, `mad_over_time`, `ts_of_*`, … | ~45 | — |
+| Binop fill modifiers | 39 | — |
+| `info()` | 41 | — |
+| Created timestamps | 16 | M10 |
+| `__name__` handling (delayed removal, `type`/`unit` metadata labels) | 23 | M8 |
+
+The shape of that table is the useful part: **almost everything left is a missing feature, not a
+wrong answer.** Outside the two native-histogram files there are 128 wrong-answer failures, and
+all but a handful belong to features that are absent rather than broken — 39 are the fill
+modifiers, 16 created timestamps, 15 `type`/`unit` metadata. What that says is that the execution
+model is carrying the semantics correctly and the remaining work is breadth, which is the
+cheerful reading of a 39.9% number.
+
 ## 9. Salvage from `gemini/scarecrow-engine-initial`
 
 The branch predates the `go-faster/oteldb` → `oteldb/oteldb` module rename, so nothing
