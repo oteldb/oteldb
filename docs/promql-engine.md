@@ -4,9 +4,10 @@ Design for a native, columnar, batched PromQL execution engine over the `oteldb/
 fetch seam, replacing the `github.com/oteldb/promql-engine` (Thanos) fork on the
 `internal/storagebackend` path.
 
-Status: implemented through M3 (selectors, range functions, aggregations, binary operators,
-instant functions, subqueries) in `internal/scarecrow`. Codename from the
-`gemini/scarecrow-engine-initial` prototype. Milestones and their gates are in §10.
+Status: implemented through M4 (selectors, range functions, aggregations, binary operators,
+instant functions, subqueries, concurrent binop sides) in `internal/scarecrow` — 6/21 upstream
+corpus files, 844/2117 eval cases (§8.1). Codename from the `gemini/scarecrow-engine-initial`
+prototype. Milestones and their gates are in §10.
 
 ## 1. Scope
 
@@ -847,9 +848,10 @@ Each milestone ends with a number: upstream `promqltest` files passing.
 - **M2b — full-set aggregations.** The operators M2 deferred, all of which need every series at
   a step rather than an incremental fold: `topk`/`bottomk` (per-step bounded heap,
   `O(k × steps)`), `quantile` (`O(series × steps)`, inherent — upstream pays it too),
-  `sort`/`sort_desc`/`sort_by_label` (instant-only, so the grid is one step), and the `limitk`
-  family. `count_values` is **not** in scope: its schema is data-dependent, and per open
-  question 4 it stays unsupported rather than weakening §3.3's invariant.
+  `sort`/`sort_desc`/`sort_by_label`/`sort_by_label_desc` (instant-only, so the grid is one
+  step), and the `limitk` family. `count_values` is **not** in scope: its schema is
+  data-dependent, and per open question 4 it stays unsupported rather than weakening §3.3's
+  invariant.
 
   Gate: `aggregators.test`, and the `sort` cases in `range_queries.test`.
 - **M3 — subqueries.** *Done.* (`@` and `offset` landed in M1, forced by the corpus.) A subquery
@@ -909,6 +911,12 @@ a feature in its own right, not a gap in a milestone above, so each gets its own
 
   Gate: `name_label_dropping.test`.
 
+  **`info()` belongs here.** It joins a series against the `target_info` metric and merges the
+  matched labels in, which is the same identity-rewriting machinery from the other end: M8 defers
+  a label's removal, `info` adds labels a series never carried. Both need identity to be
+  something a column can carry rather than something frozen at plan time, so doing them together
+  costs less than doing either alone. Gate: `info.test` (41 cases).
+
 - **M9 — annotations.** `promql.Result.Warnings` is always empty today. PromQL emits info- and
   warn-level annotations (a histogram ignored in a `stdvar`, a mixed float/histogram `rate`, a
   range too short) and the corpus asserts them with `expect info` / `expect warn`. Needs an
@@ -930,6 +938,51 @@ a feature in its own right, not a gap in a milestone above, so each gets its own
   time-chunking, which bounds the accumulator but cannot bound a genuinely large result.
 
   No corpus gate — this is about what happens past the corpus' scale.
+
+The next four come from §8.1, and from a check the plan had never run: enumerating the function
+surface and asking what has no owner. M0–M7 were designed from the architecture and M8–M10 from
+what the corpus surfaced while building M1 and M2, so between them they cover everything hard.
+What they missed is a long tail of features that are mostly easy — 25 of the 37 unimplemented
+functions, plus two pieces of syntax, worth ~286 corpus cases or **22% of all remaining
+failures**. Cheap and unowned is how work stays undone indefinitely, so it gets milestones.
+
+- **M12 — the function tail.** Three groups, all of which drop into tables that already exist:
+
+  - **Date/time** — `time`, `year`, `month`, `hour`, `minute`, `day_of_month`, `day_of_week`,
+    `day_of_year`, `days_in_month`. Pure functions of the step timestamp with no data access, so
+    the columnar model makes each a few lines. 41 cases.
+  - **Range functions** — `deriv`, `predict_linear`, `quantile_over_time`, `mad_over_time`.
+    New entries in `rangeFuncs` against the existing `window` type, nothing structural.
+    `predict_linear` and `deriv` matter beyond the corpus: alerting rules lean on them. 34 cases.
+  - **Timestamp-of** — `ts_of_first_over_time`, `ts_of_last_over_time`, `ts_of_max_over_time`,
+    `ts_of_min_over_time`, and the query-context accessors `start`/`end`/`step`/`range`. 11 cases;
+    the accessors have none at all, which is the only reason they are still missing.
+
+  This is the best ratio of corpus cases to effort left anywhere in the plan — roughly 90 cases
+  for work that is almost entirely table entries. Gate: the corresponding cases in
+  `functions.test`.
+
+- **M13 — `absent` / `absent_over_time`.** Small in surface, awkward in shape: both must emit a
+  series precisely when the input produced none, and "no columns" is exactly how a streaming
+  operator signals it is finished. So this is not a fold — it is an operator that must distinguish
+  "my child is done" from "my child had nothing", and synthesize an identity from the selector's
+  *matchers* rather than from any observed series. Worth its own milestone for that reason alone,
+  despite being two functions. 42 cases.
+
+- **M14 — extended range selectors.** The `anchored` and `smoothed` modifiers on a range
+  selector, which change how the window's endpoints are chosen — `smoothed` interpolates at the
+  boundary rather than taking the samples as they fall. They apply only to a fixed set of
+  functions (`rate`, `increase`, `delta`, and for `anchored` also `changes`/`resets`), and
+  upstream errors on any other pairing, so the planner must reject those combinations by name.
+  Lands in `matrixFold`, where the window is already built. Gate: `extended_vectors.test`
+  (74 cases).
+
+- **M15 — binop fill modifiers.** `fill(x)`, `fill_left(x)`, `fill_right(x)` on a vector binop
+  supply a default for series present on one side only, which turns the join from an inner join
+  into an outer one. That is a real change to `vectorBinop`: the streaming side can no longer just
+  skip an unmatched row, and the build side must emit its unprobed rows at the end — which is
+  what `vectorBinop`'s existing `probed []bool` already tracks. Gate: `fill-modifier.test`
+  (39 cases).
 
 ## 11. Open questions
 
