@@ -464,17 +464,28 @@ time and released, so nothing between storage and the first accumulator scales w
 cardinality. That is a better asymptotic than the cursor model, not merely a recovery from the
 step-major regression.
 
-**One exception, and it should not be buried.** A *one-to-one* vector binop has no small side —
+**Two exceptions, and neither should be buried.**
+
+The first is the **schema**. Plan-time resolution (§3.3) holds every matched series' label set for
+the query's lifetime — measured at **69 MB per 1,000,000 series** (~72 B/series including the
+memoized hashes). That is `O(matched series)`, the same class as the fork's `coalesce.loadSeries`
+(#1116), at roughly a third of its constant because less per-series state is retained. So the
+engine eliminates #1117's raw-sample buffering outright and *reduces* #1116 rather than removing
+it. Freezing identity before execution is what makes ref drift unrepresentable, so this is a
+deliberate trade, not an oversight — but it must be stated as one.
+
+The second is that a *one-to-one* vector binop has no small side —
 in `a / on(instance) b` every series is its own match group — so its build side is a full matched
 series set, `O(series × steps)` (§4.4). `group_left`/`group_right` do not have this problem: the
 "one" side is a metadata metric with at most one series per key, so the buffer is proportional to
 output groups.
 
 So the accurate claim is narrower than "nothing is proportional to input cardinality": the engine
-removes that buffering from the *selector*, which is where #1116 lives, and a one-to-one join
-reintroduces it at a much smaller constant — one folded value per step rather than every raw
+removes that buffering from the *sample* path, and the schema and a one-to-one join each keep a
+version of it at a much smaller constant — one folded value per step rather than every raw
 sample in every window, roughly 20× less at a 5m window and 15s step, and on one side rather than
-both. Bounding it is what makes M16's chunking load-bearing rather than a knob.
+both. Bounding it is what makes M16's chunking load-bearing rather than a knob. Both exceptions, and
+the four workload archetypes they were measured against, are in `docs/promql-workloads.md`.
 
 ### 4.7 Concurrency and the borrow rule
 
