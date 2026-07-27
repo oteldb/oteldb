@@ -7,6 +7,7 @@ import (
 
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/promql/promqltest"
+	"github.com/stretchr/testify/require"
 
 	"github.com/oteldb/oteldb/internal/scarecrow"
 )
@@ -69,9 +70,11 @@ func (s *scoreboard) Run(name string, f func(*testing.T)) bool {
 	return ok
 }
 
-// TestPromQLCompliance runs Prometheus' own PromQL corpus against the engine. It is the
-// project's headline correctness metric: the pass count it reports is what each milestone is
-// judged by.
+// compliancePassing is the number of corpus files that pass today. It is asserted rather than
+// merely logged so a regression fails the build, and it is shared with the pushdown suite, which
+// requires the same number with every capability enabled.
+const compliancePassing = 6
+
 // complianceOpts enables every experimental gate the corpus exercises.
 func complianceOpts() scarecrow.Opts {
 	return scarecrow.Opts{
@@ -86,11 +89,16 @@ func complianceOpts() scarecrow.Opts {
 	}
 }
 
+// TestPromQLCompliance runs Prometheus' own PromQL corpus against the engine. It is the
+// project's headline correctness metric: the pass count it reports is what each milestone is
+// judged by.
 func TestPromQLCompliance(t *testing.T) {
 	engine := scarecrow.NewEngine(complianceOpts())
 
 	sb := &scoreboard{T: t}
 	promqltest.RunBuiltinTests(sb, engine)
+
+	require.Equal(t, compliancePassing, len(sb.passed), "corpus pass count changed: %v", sb.failed)
 
 	total := len(sb.passed) + len(sb.failed) + len(sb.skipped)
 	t.Logf("promqltest corpus: %d/%d files passing (%d skipped as unsupported)",
