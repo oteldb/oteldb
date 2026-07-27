@@ -86,7 +86,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.157.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/webhookeventreceiver v0.157.0
 	github.com/oteldb/promql-engine v0.10.0
-	github.com/oteldb/storage v0.33.0
+	github.com/oteldb/storage v0.34.0
 	github.com/pierrec/lz4/v4 v4.1.27
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.70.1
@@ -164,6 +164,7 @@ require (
 require (
 	github.com/cenkalti/backoff/v7 v7.0.0 // indirect
 	github.com/klauspost/reedsolomon v1.14.1 // indirect
+	github.com/maypok86/otter/v2 v2.3.0 // indirect
 )
 
 require (
