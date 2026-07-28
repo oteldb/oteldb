@@ -19,6 +19,19 @@ Do not load generated files in directories:
  - `internal/sentryapi`
  - `internal/tempoapi`
 
+## Frontend
+
+Frontend is under `internal/adminhandler/frontend/` path.
+
+<!-- BEGIN:gravity-ui-agent-rules -->
+# Gravity UI
+
+This project uses the Gravity UI design system (`@gravity-ui/*`). Before writing
+or modifying Gravity UI component code, you **MUST invoke the `gravity-ui`
+skill** — it routes you to the correct package and prevents invented APIs. Run
+it on any UI task here.
+<!-- END:gravity-ui-agent-rules -->
+
 ## Commands
 
 ### MCP
