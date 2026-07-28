@@ -16,10 +16,37 @@ default), same-origin with the `/api/v1/*` endpoints.
   into `src/api/` (regenerated on every build; do not edit by hand).
 - **TanStack Query** — data fetching, caching, live polling.
 - **React Router** (hash mode) — client-side routing without server rewrites.
-- **Recharts** — the live heap chart on the Runtime page.
+- **Gravity UI** — the design system the whole UI is built on:
+  [`@gravity-ui/uikit`](https://gravity-ui.com/components/uikit) for components
+  and design tokens, [`@gravity-ui/navigation`](https://gravity-ui.com/components/navigation)
+  for the `AsideHeader` shell, `@gravity-ui/charts` for the live heap chart, and
+  `@gravity-ui/icons` for iconography.
 
-The theme is a single dark palette (`src/theme.css`); there is intentionally no
-light variant.
+Routes are lazily imported, so the chart library is only fetched when the
+Runtime page is opened.
+
+## Design
+
+**Vitals tape.** The band under the header (`src/components/Vitals.tsx`) is the
+one non-Gravity surface: flush, square-cornered and rule-bound, so it reads as
+instrumentation against the cards below it. It shows uptime, ingest rate, heap,
+goroutines and live series with a sparkline each, drawn from the polls the pages
+already make — `src/lib/vitals.ts` keeps the rolling history outside React so it
+survives navigation. Ingest is a per-second rate derived from the admission
+counter; a counter that moves backwards (a restart) resets the history.
+
+**Two voices.** Prose and titles use the platform sans; captions, identifiers
+and every number use monospace with tabular figures, so live values don't jitter
+as digits change width. There is no webfont: uikit's `fonts.css` pulls Inter
+from Google Fonts, which a console embedded in the binary — and often opened on
+a host with no route out — must not depend on. `src/app.css` sets the stacks via
+`--g-font-family-*`.
+
+**Theming.** Colors and spacing come from Gravity's `--g-*` tokens; the app
+defines no palette of its own. `src/brand.css` overrides the accent group with
+the [go-faster](https://github.com/go-faster) teal → cyan ramp taken from the
+logo gradient, once per theme; `src/lib/theme.tsx` wires the `ThemeProvider` and
+persists the light/dark/system choice picked in the header.
 
 ## Develop
 

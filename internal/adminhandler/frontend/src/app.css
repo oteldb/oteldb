@@ -1,0 +1,208 @@
+/*
+ * Layout glue and the one non-Gravity surface (the vitals tape). Every color,
+ * space and type metric is a --g-* token; nothing here defines a palette.
+ */
+
+/*
+ * Type: two voices.
+ *
+ * Human voice (prose, titles) is the platform sans. Machine voice — captions,
+ * labels, identifiers, every number — is monospace, which is what an operator
+ * is actually reading here.
+ *
+ * No webfont on purpose. This console ships inside the oteldb binary and is
+ * often opened on a host with no route to the internet, so it must not depend
+ * on (or leak a request to) a font CDN the way uikit's own fonts.css does.
+ */
+.g-root {
+  --g-font-family-sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --g-font-family-monospace:
+    ui-monospace, "JetBrains Mono", "SF Mono", "SFMono-Regular", Menlo, Consolas,
+    "Liberation Mono", monospace;
+  --g-text-caption-font-family: var(--g-font-family-monospace);
+
+  /* Live values must not jitter as digits change width. */
+  font-variant-numeric: tabular-nums;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--g-color-base-background);
+}
+
+/*
+ * AsideHeader's content pane sizes itself to its children, so an element that
+ * measures its parent (the chart) would grow the pane and then re-measure,
+ * widening the page on every frame. Pin the content to the viewport minus the
+ * aside; --gn-aside-header-size is the navigation's published width variable.
+ */
+.content {
+  width: calc(100vw - var(--gn-aside-header-size, 0px));
+  height: 100vh;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.topbar {
+  flex: 0 0 auto;
+  padding: var(--g-spacing-3) var(--g-spacing-5);
+}
+
+.page {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: var(--g-spacing-5);
+}
+
+/* Machine label: section breaks, table heads, tape captions. */
+.label-micro {
+  font-family: var(--g-font-family-monospace);
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--g-color-text-hint);
+}
+
+/*
+ * The vitals tape. Deliberately un-carded: flush to the frame, hairline rules,
+ * square corners. It reads as instrumentation against the rounded cards below,
+ * which are documents.
+ */
+.vitals {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border-block: 1px solid var(--g-color-line-generic);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.vitals__cell {
+  flex: 1 1 0;
+  min-width: 148px;
+  padding: var(--g-spacing-3) var(--g-spacing-5);
+  border-inline-start: 1px solid var(--g-color-line-generic);
+}
+
+.vitals__cell:first-child {
+  border-inline-start: none;
+}
+
+.vitals__label {
+  display: block;
+  font-family: var(--g-font-family-monospace);
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--g-color-text-hint);
+}
+
+.vitals__reading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--g-spacing-3);
+  margin-block-start: var(--g-spacing-1);
+}
+
+.vitals__value {
+  font-family: var(--g-font-family-monospace);
+  font-size: 19px;
+  line-height: 24px;
+  white-space: nowrap;
+  color: var(--g-color-text-primary);
+}
+
+.vitals__unit {
+  margin-inline-start: 0.25em;
+  font-size: 12px;
+  color: var(--g-color-text-secondary);
+}
+
+/*
+ * Narrow viewports: the trend lines go first — the reading is what an operator
+ * needs on a phone. Cells stay their width and the tape scrolls, so the last
+ * one peeks past the edge and shows there is more.
+ */
+@media (max-width: 900px) {
+  .vitals__cell {
+    min-width: 124px;
+    padding-inline: var(--g-spacing-4);
+  }
+
+  .vitals__value {
+    font-size: 17px;
+  }
+
+  .spark {
+    display: none;
+  }
+}
+
+.spark {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.spark__line {
+  fill: none;
+  stroke: var(--g-color-line-brand);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.spark__area {
+  fill: var(--g-color-base-brand);
+  opacity: 0.12;
+  stroke: none;
+}
+
+.panel {
+  padding: var(--g-spacing-4) var(--g-spacing-5);
+}
+
+/* Cards sharing a grid row line up at equal height. */
+.g-col > .panel {
+  height: 100%;
+}
+
+/* Wide tables inside a panel scroll on their own instead of the page. */
+.panel__scroll {
+  overflow-x: auto;
+  margin: 0 calc(-1 * var(--g-spacing-5));
+  padding: 0 var(--g-spacing-5);
+}
+
+/* Subsystem boundary: a labelled hairline, not a heading. */
+.rule {
+  display: flex;
+  align-items: center;
+  gap: var(--g-spacing-3);
+}
+
+.rule::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--g-color-line-generic);
+}
+
+.aside-footer {
+  min-width: 0;
+}
+
+/* Charts fill their parent, so the container carries the height. */
+.chart {
+  height: 260px;
+}

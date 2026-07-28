@@ -13,11 +13,14 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@gravity-ui/charts": "^1.57.1",
+    "@gravity-ui/icons": "^2.21.0",
+    "@gravity-ui/navigation": "^6.3.1",
+    "@gravity-ui/uikit": "^7.47.1",
     "@tanstack/react-query": "^5.62.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.1.1",
-    "recharts": "^2.15.0"
+    "react-router-dom": "^7.1.1"
   },
   "devDependencies": {
     "@types/react": "^19.0.2",

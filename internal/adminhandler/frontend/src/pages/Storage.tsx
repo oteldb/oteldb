@@ -1,91 +1,104 @@
-import { Fragment } from "react";
-import { useGetStorage, useGetEfficiency } from "../api/admin";
-import { Card, Bar, Chip, KV, Mono, Spinner, ErrorBox } from "../components/ui";
+import { Alert, Col, Flex, Row, Table, Text } from "@gravity-ui/uikit";
+import type { ColProps, TableColumnConfig } from "@gravity-ui/uikit";
+import { useGetEfficiency, useGetStorage } from "../api/admin";
+import {
+  Chip,
+  ErrCount,
+  ErrorAlert,
+  head,
+  KV,
+  Loading,
+  Mono,
+  Panel,
+  Rule,
+  UsageBar,
+} from "../components/ui";
 import { fmtBytes, fmtNum, fmtTime } from "../lib/format";
 import type {
   CacheStats,
+  ClusterMember,
   ClusterStats,
   ECStats,
+  EngineSignalStats,
   MaintenanceStats,
   PartSyncStats,
+  SignalEfficiency,
+  TableStats,
+  TenantEfficiency,
   TenantStats,
 } from "../api/model";
+
+const COL: ColProps["size"] = [12, { m: 6, xl: 4 }];
 
 function Caches({ caches }: { caches: CacheStats }) {
   const dc = caches.decode_cache;
   const total = dc.hits + dc.misses;
   const rate = total ? dc.hits / total : 0;
   return (
-    <Card title="Caches" sub="decode">
-      <Bar label="decode hit rate" value={(rate * 100).toFixed(1) + "%"} ratio={rate} />
-      <KV
-        rows={[
-          ["cached bytes", <Mono>{fmtBytes(dc.bytes)}</Mono>],
-          ["cached blocks", <Mono>{fmtNum(dc.items)}</Mono>],
-          ["hits / misses", <Mono>{fmtNum(dc.hits) + " / " + fmtNum(dc.misses)}</Mono>],
-        ]}
-      />
-    </Card>
+    <Panel title="Caches" sub="decode">
+      <Flex direction="column" gap={4}>
+        <UsageBar
+          label="decode hit rate"
+          value={`${(rate * 100).toFixed(1)}%`}
+          ratio={rate}
+        />
+        <KV
+          rows={[
+            ["cached bytes", <Mono>{fmtBytes(dc.bytes)}</Mono>],
+            ["cached blocks", <Mono>{fmtNum(dc.items)}</Mono>],
+            ["hits / misses", <Mono>{`${fmtNum(dc.hits)} / ${fmtNum(dc.misses)}`}</Mono>],
+          ]}
+        />
+      </Flex>
+    </Panel>
   );
 }
 
 function MaintenanceLoop({ m }: { m: MaintenanceStats }) {
   return (
-    <Card title="Maintenance loop" sub="flush · merge · retention">
+    <Panel title="Maintenance loop" sub="flush · merge · retention">
       <KV
         rows={[
           ["cycles", <Mono>{fmtNum(m.cycles)}</Mono>],
           ["last cycle start", <Mono>{fmtTime(m.last_cycle_start)}</Mono>],
           [
             "last cycle duration",
-            <Mono>{m.cycles ? m.last_cycle_duration_seconds.toFixed(2) + " s" : "—"}</Mono>,
+            <Mono>{m.cycles ? `${m.last_cycle_duration_seconds.toFixed(2)} s` : "—"}</Mono>,
           ],
           ["last cycle tasks", <Mono>{fmtNum(m.last_cycle_tasks)}</Mono>],
         ]}
       />
-    </Card>
+    </Panel>
   );
 }
 
 function PartSync({ ps }: { ps: PartSyncStats }) {
   return (
-    <Card title="Part mirroring" sub="shared-nothing replication">
+    <Panel title="Part mirroring" sub="shared-nothing replication">
       <KV
         rows={[
           ["passes", <Mono>{fmtNum(ps.passes)}</Mono>],
           ["mirrored", <Mono>{fmtNum(ps.mirrored)}</Mono>],
-          [
-            "copied",
-            <Mono>{fmtNum(ps.copied) + " obj · " + fmtBytes(ps.copied_bytes)}</Mono>,
-          ],
+          ["copied", <Mono>{`${fmtNum(ps.copied)} obj · ${fmtBytes(ps.copied_bytes)}`}</Mono>],
           ["pruned", <Mono>{fmtNum(ps.pruned)}</Mono>],
-          [
-            "errors",
-            <Mono>
-              {ps.errors ? (
-                <span style={{ color: "var(--red)" }}>{fmtNum(ps.errors)}</span>
-              ) : (
-                "0"
-              )}
-            </Mono>,
-          ],
+          ["errors", <ErrCount bad={ps.errors > 0}>{fmtNum(ps.errors)}</ErrCount>],
           ["last sync", <Mono>{fmtTime(ps.last_sync)}</Mono>],
         ]}
       />
-    </Card>
+    </Panel>
   );
 }
 
 function ErasureCoding({ ec }: { ec: ECStats }) {
   const errs = ec.convert_errors + ec.repair_errors + ec.reconstruct_errors;
   const count = (ok: number, bad: number) => (
-    <Mono>
-      {fmtNum(ok)}
-      {bad ? <span style={{ color: "var(--red)" }}>{" · " + fmtNum(bad) + " err"}</span> : null}
-    </Mono>
+    <Flex alignItems="baseline" gap={1}>
+      <Mono>{fmtNum(ok)}</Mono>
+      {bad ? <ErrCount bad>{`· ${fmtNum(bad)} err`}</ErrCount> : null}
+    </Flex>
   );
   return (
-    <Card title="Erasure coding" sub={errs ? "errors present" : "healthy"}>
+    <Panel title="Erasure coding" sub={errs ? "errors present" : "healthy"}>
       <KV
         rows={[
           ["converted parts", count(ec.converted, ec.convert_errors)],
@@ -94,237 +107,230 @@ function ErasureCoding({ ec }: { ec: ECStats }) {
           ["read reconstructs", count(ec.reconstructs, ec.reconstruct_errors)],
         ]}
       />
-    </Card>
+    </Panel>
   );
 }
 
 function Cluster({ cluster }: { cluster: ClusterStats }) {
+  const columns: TableColumnConfig<ClusterMember>[] = [
+    {
+      id: "id",
+      name: head("member"),
+      template: (m) => (
+        <Flex alignItems="center" gap={2}>
+          <Mono>{m.id}</Mono>
+          {m.id === cluster.self ? <Chip on>self</Chip> : null}
+        </Flex>
+      ),
+    },
+    { id: "zone", name: head("zone"), template: (m) => m.zone || "—" },
+    { id: "addr", name: head("addr"), template: (m) => <Mono>{m.addr || "—"}</Mono> },
+  ];
   return (
-    <Card title="Cluster">
-      <KV rows={[["owned shards", <Mono>{cluster.owned.length}</Mono>]]} />
-      <div className="scroll" style={{ marginTop: 10 }}>
-        <table>
-          <thead>
-            <tr>
-              <th>member</th>
-              <th>zone</th>
-              <th>addr</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cluster.members.map((m) => (
-              <tr key={m.id}>
-                <td>
-                  {m.id}
-                  {m.id === cluster.self ? (
-                    <>
-                      {" "}
-                      <Chip on>self</Chip>
-                    </>
-                  ) : null}
-                </td>
-                <td>{m.zone || "—"}</td>
-                <td>{m.addr || "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+    <Panel title="Cluster" sub={`${cluster.owned.length} owned shards`} scroll>
+      <Table data={cluster.members} columns={columns} getRowId="id" />
+    </Panel>
   );
 }
 
-function Tenants({ tenants }: { tenants: TenantStats[] }) {
+const SIGNAL_COLUMNS: TableColumnConfig<EngineSignalStats>[] = [
+  { id: "signal", name: head("signal"), primary: true },
+  { id: "head_items", name: head("head items"), align: "end", template: (s) => fmtNum(s.head_items) },
+  { id: "head_bytes", name: head("head bytes"), align: "end", template: (s) => fmtBytes(s.head_bytes) },
+  { id: "series", name: head("series"), align: "end", template: (s) => fmtNum(s.series) },
+  {
+    id: "parts",
+    name: head("parts"),
+    align: "end",
+    template: (s) => (
+      <Flex alignItems="center" gap={2} justifyContent="flex-end">
+        {fmtNum(s.parts)}
+        {s.merge_running ? <Chip on>merging</Chip> : null}
+      </Flex>
+    ),
+  },
+  {
+    id: "wal",
+    name: head("WAL"),
+    align: "end",
+    template: (s) => (s.wal ? `${fmtNum(s.wal_segments)} seg` : "—"),
+  },
+  {
+    id: "wal_bytes",
+    name: head("WAL bytes"),
+    align: "end",
+    template: (s) => (s.wal ? fmtBytes(s.wal_bytes) : "—"),
+  },
+  { id: "min_time", name: head("min time"), template: (s) => fmtTime(s.min_time) },
+  { id: "max_time", name: head("max time"), template: (s) => fmtTime(s.max_time) },
+];
+
+function Tenant({ t }: { t: TenantStats }) {
+  const a = t.admission;
+  const rejected =
+    a.rejected_ooo + a.rejected_rate + a.rejected_cardinality + a.rejected_in_flight;
   return (
-    <Card title="Tenants & signals" wide scroll style={{ marginTop: 14 }}>
-      <table>
-        <thead>
-          <tr>
-            <th>tenant / signal</th>
-            <th>head items</th>
-            <th>head bytes</th>
-            <th>series</th>
-            <th>parts</th>
-            <th>WAL</th>
-            <th>WAL bytes</th>
-            <th>min time</th>
-            <th>max time</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tenants.map((t) => {
-            const a = t.admission;
-            const rejected =
-              a.rejected_ooo + a.rejected_rate + a.rejected_cardinality + a.rejected_in_flight;
-            return (
-              <Fragment key={t.tenant}>
-                <tr style={{ background: "var(--surface-2)" }}>
-                  <td>{t.tenant}</td>
-                  <td colSpan={2}>
-                    accepted {fmtNum(a.accepted)}
-                    {rejected ? (
-                      <span style={{ color: "var(--red)" }}> · rejected {fmtNum(rejected)}</span>
-                    ) : null}
-                  </td>
-                  <td>{fmtNum(t.total_series)}</td>
-                  <td>{fmtNum(t.total_parts)}</td>
-                  <td colSpan={4} />
-                </tr>
-                {t.signals.map((s) => (
-                  <tr key={t.tenant + "/" + s.signal}>
-                    <td style={{ paddingLeft: 22, color: "var(--muted)" }}>{s.signal}</td>
-                    <td>{fmtNum(s.head_items)}</td>
-                    <td>{fmtBytes(s.head_bytes)}</td>
-                    <td>{fmtNum(s.series)}</td>
-                    <td>
-                      {fmtNum(s.parts)}
-                      {s.merge_running ? (
-                        <>
-                          {" "}
-                          <Chip on>merging</Chip>
-                        </>
-                      ) : null}
-                    </td>
-                    <td>{s.wal ? fmtNum(s.wal_segments) + " seg" : "—"}</td>
-                    <td>{s.wal ? fmtBytes(s.wal_bytes) : "—"}</td>
-                    <td>{fmtTime(s.min_time)}</td>
-                    <td>{fmtTime(s.max_time)}</td>
-                  </tr>
-                ))}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-    </Card>
+    <Panel
+      title={t.tenant}
+      sub={`${fmtNum(t.total_series)} series · ${fmtNum(t.total_parts)} parts`}
+      actions={
+        <Flex alignItems="center" gap={2}>
+          <Text variant="body-1" color="secondary">
+            accepted <Mono>{fmtNum(a.accepted)}</Mono>
+          </Text>
+          {rejected ? (
+            <ErrCount bad>{`rejected ${fmtNum(rejected)}`}</ErrCount>
+          ) : null}
+        </Flex>
+      }
+      scroll
+    >
+      <Table data={t.signals} columns={SIGNAL_COLUMNS} getRowId="signal" />
+    </Panel>
   );
 }
 
-function Efficiency({ enabled }: { enabled: boolean }) {
+type EfficiencyRow = SignalEfficiency & { tenant: string };
+
+const EFFICIENCY_COLUMNS: TableColumnConfig<EfficiencyRow>[] = [
+  { id: "tenant", name: head("tenant"), primary: true },
+  { id: "signal", name: head("signal") },
+  { id: "series", name: head("series"), align: "end", template: (s) => fmtNum(s.series) },
+  { id: "parts", name: head("parts"), align: "end", template: (s) => fmtNum(s.parts) },
+  { id: "points", name: head("points"), align: "end", template: (s) => fmtNum(s.points) },
+  { id: "stored_bytes", name: head("stored"), align: "end", template: (s) => fmtBytes(s.stored_bytes) },
+  {
+    id: "bytes_per_point",
+    name: head("bytes / point"),
+    align: "end",
+    template: (s) => (s.points ? s.bytes_per_point.toFixed(1) : "—"),
+  },
+  {
+    id: "logical_bytes",
+    name: head("logical"),
+    align: "end",
+    template: (s) => (s.logical_bytes != null ? fmtBytes(s.logical_bytes) : "—"),
+  },
+  {
+    id: "compression_ratio",
+    name: head("compression"),
+    align: "end",
+    template: (s) => (s.compression_ratio != null ? `${s.compression_ratio.toFixed(1)}×` : "—"),
+  },
+];
+
+function flattenEfficiency(tenants: TenantEfficiency[]): EfficiencyRow[] {
+  return tenants.flatMap((t) => t.signals.map((s) => ({ ...s, tenant: t.tenant })));
+}
+
+function Efficiency() {
   // Efficiency stats do backend I/O on the server — poll at a slower cadence.
-  const { data, isLoading, error } = useGetEfficiency({
-    query: { refetchInterval: 30_000, enabled },
-  });
+  const { data, isLoading, error } = useGetEfficiency({ query: { refetchInterval: 30_000 } });
 
-  if (!enabled) return null;
-  if (isLoading) return <Spinner />;
-  if (error) return <ErrorBox error={error} />;
+  if (isLoading) return <Loading />;
+  if (error) return <ErrorAlert error={error} what="efficiency stats" />;
   if (!data || !data.tenants.length) return null;
 
+  const rows = flattenEfficiency(data.tenants);
+
   return (
-    <Card title="Capacity & efficiency" sub="stored bytes · compression" wide scroll style={{ marginTop: 14 }}>
-      <table>
-        <thead>
-          <tr>
-            <th>tenant / signal</th>
-            <th>series</th>
-            <th>parts</th>
-            <th>points</th>
-            <th>stored</th>
-            <th>bytes / point</th>
-            <th>logical</th>
-            <th>compression</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.tenants.map((t) => (
-            <Fragment key={t.tenant}>
-              {t.signals.length > 1 ? (
-                <tr style={{ background: "var(--surface-2)" }}>
-                  <td colSpan={8}>{t.tenant}</td>
-                </tr>
-              ) : null}
-              {t.signals.map((s) => (
-                <tr key={t.tenant + "/" + s.signal}>
-                  <td style={{ paddingLeft: t.signals.length > 1 ? 22 : undefined, color: "var(--muted)" }}>
-                    {t.signals.length > 1 ? s.signal : t.tenant + " / " + s.signal}
-                  </td>
-                  <td>{fmtNum(s.series)}</td>
-                  <td>{fmtNum(s.parts)}</td>
-                  <td>{fmtNum(s.points)}</td>
-                  <td>{fmtBytes(s.stored_bytes)}</td>
-                  <td>{s.points ? s.bytes_per_point.toFixed(1) : "—"}</td>
-                  <td>{s.logical_bytes != null ? fmtBytes(s.logical_bytes) : "—"}</td>
-                  <td>{s.compression_ratio != null ? s.compression_ratio.toFixed(1) + "×" : "—"}</td>
-                </tr>
-              ))}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
-    </Card>
+    <Panel title="Capacity & efficiency" sub="stored bytes · compression" scroll>
+      <Table
+        data={rows}
+        columns={EFFICIENCY_COLUMNS}
+        getRowId={(row) => `${row.tenant}/${row.signal}`}
+      />
+    </Panel>
   );
 }
+
+const CH_COLUMNS: TableColumnConfig<TableStats>[] = [
+  { id: "table", name: head("table"), primary: true },
+  { id: "rows", name: head("rows"), align: "end", template: (t) => fmtNum(t.rows) },
+  { id: "bytes_on_disk", name: head("on disk"), align: "end", template: (t) => fmtBytes(t.bytes_on_disk) },
+  {
+    id: "data_uncompressed_bytes",
+    name: head("uncompressed"),
+    align: "end",
+    template: (t) => fmtBytes(t.data_uncompressed_bytes),
+  },
+  { id: "parts", name: head("parts"), align: "end", template: (t) => fmtNum(t.parts) },
+  { id: "min_time", name: head("min time"), template: (t) => fmtTime(t.min_time) },
+  { id: "max_time", name: head("max time"), template: (t) => fmtTime(t.max_time) },
+];
 
 export function Storage() {
   const { data, isLoading, error } = useGetStorage({ query: { refetchInterval: 8_000 } });
 
-  if (isLoading) return <Spinner />;
-  if (error) return <ErrorBox error={error} />;
+  if (isLoading) return <Loading />;
+  if (error) return <ErrorAlert error={error} what="storage stats" />;
   if (!data) return null;
 
   const eng = data.engine;
   const ch = data.clickhouse;
 
   return (
-    <>
-      <div className="section-title">Embedded storage engine</div>
-      {!eng ? (
-        <div className="banner">
-          <span className="i">i</span>
-          <div>The embedded oteldb/storage engine is not active on this instance.</div>
-        </div>
-      ) : (
-        <>
-          <div className="grid">
-            <Caches caches={eng.caches} />
-            <MaintenanceLoop m={eng.maintenance} />
-            {eng.cluster ? <Cluster cluster={eng.cluster} /> : null}
-            {eng.cluster?.part_sync ? <PartSync ps={eng.cluster.part_sync} /> : null}
-            {eng.cluster?.ec ? <ErasureCoding ec={eng.cluster.ec} /> : null}
-          </div>
-          {eng.tenants.length ? <Tenants tenants={eng.tenants} /> : null}
-          <Efficiency enabled />
-        </>
-      )}
+    <Flex direction="column" gap={5}>
+      <Flex direction="column" gap={3}>
+        <Rule>Embedded storage engine</Rule>
+        {!eng ? (
+          <Alert
+            theme="info"
+            view="outlined"
+            title="The embedded engine is not active"
+            message="Start oteldb with --embedded to serve signals from it."
+          />
+        ) : (
+          <Row space="4" spaceRow="4">
+            <Col size={COL}>
+              <Caches caches={eng.caches} />
+            </Col>
+            <Col size={COL}>
+              <MaintenanceLoop m={eng.maintenance} />
+            </Col>
+            {eng.cluster ? (
+              <Col size={COL}>
+                <Cluster cluster={eng.cluster} />
+              </Col>
+            ) : null}
+            {eng.cluster?.part_sync ? (
+              <Col size={COL}>
+                <PartSync ps={eng.cluster.part_sync} />
+              </Col>
+            ) : null}
+            {eng.cluster?.ec ? (
+              <Col size={COL}>
+                <ErasureCoding ec={eng.cluster.ec} />
+              </Col>
+            ) : null}
+          </Row>
+        )}
+      </Flex>
+
+      {eng?.tenants.length ? (
+        <Flex direction="column" gap={3}>
+          <Rule>Tenants &amp; signals</Rule>
+          {eng.tenants.map((t) => (
+            <Tenant key={t.tenant} t={t} />
+          ))}
+        </Flex>
+      ) : null}
+
+      {eng ? <Efficiency /> : null}
 
       {ch ? (
-        <>
-          <div className="section-title">ClickHouse (deprecated)</div>
-          <Card title="Tables" wide scroll>
-            {!ch.tables.length ? (
-              <p className="empty">No tables.</p>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>table</th>
-                    <th>rows</th>
-                    <th>on disk</th>
-                    <th>uncompressed</th>
-                    <th>parts</th>
-                    <th>min time</th>
-                    <th>max time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ch.tables.map((t) => (
-                    <tr key={t.database + "." + t.table}>
-                      <td>{t.table}</td>
-                      <td>{fmtNum(t.rows)}</td>
-                      <td>{fmtBytes(t.bytes_on_disk)}</td>
-                      <td>{fmtBytes(t.data_uncompressed_bytes)}</td>
-                      <td>{fmtNum(t.parts)}</td>
-                      <td>{fmtTime(t.min_time)}</td>
-                      <td>{fmtTime(t.max_time)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Card>
-        </>
+        <Flex direction="column" gap={3}>
+          <Rule>ClickHouse (deprecated)</Rule>
+          <Panel title="Tables" scroll>
+            <Table
+              data={ch.tables}
+              columns={CH_COLUMNS}
+              emptyMessage="No tables."
+              getRowId={(row) => `${row.database}.${row.table}`}
+            />
+          </Panel>
+        </Flex>
       ) : null}
-    </>
+    </Flex>
   );
 }

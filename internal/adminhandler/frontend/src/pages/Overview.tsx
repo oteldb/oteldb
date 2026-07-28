@@ -1,111 +1,128 @@
-import { useGetInfo, useGetRuntime, useGetHealth } from "../api/admin";
-import { Card, Bar, Pill, Chip, KV, Mono, Spinner, ErrorBox } from "../components/ui";
-import { fmtBytes, fmtNum, fmtTime } from "../lib/format";
+import { Alert, Col, Flex, Icon, Row, Table, Text } from "@gravity-ui/uikit";
+import type { ColProps, TableColumnConfig } from "@gravity-ui/uikit";
+import { CircleCheck } from "@gravity-ui/icons";
+import { useGetHealth, useGetInfo } from "../api/admin";
+import { head, KV, Mono, Panel, QueryState, Rule } from "../components/ui";
+import { fmtTime } from "../lib/format";
+import type { HealthReport, SignalInfo } from "../api/model";
+
+// What the instance serves gets the width; what it was built from gets the rest.
+const SIGNALS_COL: ColProps["size"] = [12, { l: 8 }];
+const BUILD_COL: ColProps["size"] = [12, { l: 4 }];
+
+/**
+ * Components that need attention. Nothing renders when everything is healthy
+ * beyond a single line — the presence of this block is the signal.
+ */
+function Exceptions({ health }: { health: HealthReport }) {
+  const failing = health.components.filter((c) => c.status !== "healthy");
+
+  if (!failing.length) {
+    return (
+      <Flex alignItems="center" gap={2}>
+        <Icon data={CircleCheck} size={14} color="positive" />
+        <Text variant="body-1" color="secondary">
+          All {health.components.length} components healthy
+        </Text>
+      </Flex>
+    );
+  }
+
+  return (
+    <Flex direction="column" gap={2}>
+      {failing.map((c) => (
+        <Alert
+          key={c.name}
+          theme={c.status === "unhealthy" ? "danger" : "warning"}
+          view="outlined"
+          title={`${c.name}${c.addr ? ` (${c.addr})` : ""} is ${c.status}`}
+          message={c.error || "The component reported no detail."}
+        />
+      ))}
+    </Flex>
+  );
+}
+
+const SIGNAL_COLUMNS: TableColumnConfig<SignalInfo>[] = [
+  { id: "signal", name: head("signal"), primary: true },
+  { id: "backend", name: head("served by") },
+  {
+    id: "bind",
+    name: head("query api"),
+    template: (s) => (s.queryable && s.bind ? <Mono>{s.bind}</Mono> : "—"),
+  },
+  {
+    id: "queryable",
+    name: head("state"),
+    align: "end",
+    template: (s) => (
+      <Text variant="caption-2" color={s.queryable ? "positive" : "hint"}>
+        {s.queryable ? "queryable" : "ingest only"}
+      </Text>
+    ),
+  },
+];
 
 export function Overview() {
   const info = useGetInfo({ query: { refetchInterval: 10_000 } });
-  const runtime = useGetRuntime({ query: { refetchInterval: 5_000 } });
   const health = useGetHealth({ query: { refetchInterval: 10_000 } });
 
   return (
-    <>
-      <div className="section-title">Overview</div>
-      <div className="grid">
-        <Card title="Instance">
-          {info.isLoading ? (
-            <Spinner />
-          ) : info.error ? (
-            <ErrorBox error={info.error} />
-          ) : info.data ? (
-            <KV
-              rows={[
-                [
-                  "storage",
-                  <Chip on>
-                    {info.data.storage_enabled
-                      ? "storage:" + (info.data.storage_backend || "?")
-                      : info.data.clickhouse_enabled
-                        ? "clickhouse"
-                        : "—"}
-                  </Chip>,
-                ],
-                ["platform", info.data.os + "/" + info.data.arch],
-                ["commit", <Mono>{(info.data.commit || "—").slice(0, 12)}</Mono>],
-                ["started", fmtTime(info.data.start_time)],
-                [
-                  "signals",
-                  <div>
-                    {info.data.signals.map((s) => (
-                      <div key={s.signal} style={{ margin: "2px 0" }}>
-                        <Chip on={s.queryable}>{s.signal}</Chip> {s.backend}
-                        {s.queryable && s.bind ? (
-                          <span style={{ color: "var(--muted-2)" }}> {s.bind}</span>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>,
-                ],
-              ]}
-            />
-          ) : null}
-        </Card>
+    <Flex direction="column" gap={5}>
+      <QueryState query={health} what="component health">
+        {(data) => <Exceptions health={data} />}
+      </QueryState>
 
-        <Card
-          title="Runtime"
-          sub={runtime.data ? fmtNum(runtime.data.goroutines) + " goroutines" : undefined}
-        >
-          {runtime.isLoading ? (
-            <Spinner />
-          ) : runtime.error ? (
-            <ErrorBox error={runtime.error} />
-          ) : runtime.data ? (
-            <>
-              {runtime.data.mem_limit_bytes ? (
-                <Bar
-                  label="heap vs GOMEMLIMIT"
-                  value={`${fmtBytes(runtime.data.heap_alloc_bytes)} / ${fmtBytes(runtime.data.mem_limit_bytes)}`}
-                  ratio={runtime.data.heap_alloc_bytes / runtime.data.mem_limit_bytes}
-                />
-              ) : null}
-              <Bar
-                label="heap vs next GC"
-                value={`${fmtBytes(runtime.data.heap_alloc_bytes)} / ${fmtBytes(runtime.data.next_gc_bytes)}`}
-                ratio={runtime.data.next_gc_bytes ? runtime.data.heap_alloc_bytes / runtime.data.next_gc_bytes : 0}
-              />
-              <KV
-                rows={[
-                  ["heap in-use", <Mono>{fmtBytes(runtime.data.heap_inuse_bytes)}</Mono>],
-                  ["GC cycles", <Mono>{fmtNum(runtime.data.gc_count)}</Mono>],
-                  ["GOMAXPROCS", <Mono>{runtime.data.gomaxprocs + " / " + runtime.data.num_cpu}</Mono>],
-                ]}
-              />
-            </>
-          ) : null}
-        </Card>
+      <Row space="4" spaceRow="5">
+        <Col size={SIGNALS_COL}>
+          <Flex direction="column" gap={3} height="100%">
+            <Rule>Signals</Rule>
+            <Panel scroll>
+              <QueryState query={info} what="instance info">
+                {(data) => (
+                  <Table
+                    data={data.signals}
+                    columns={SIGNAL_COLUMNS}
+                    getRowId="signal"
+                    width="max"
+                  />
+                )}
+              </QueryState>
+            </Panel>
+          </Flex>
+        </Col>
 
-        <Card title="Health" sub={health.data ? <Pill status={health.data.status} /> : undefined}>
-          {health.isLoading ? (
-            <Spinner />
-          ) : health.error ? (
-            <ErrorBox error={health.error} />
-          ) : health.data ? (
-            <div>
-              {health.data.components.map((c) => (
-                <div key={c.name}>
-                  <div className="health-row">
-                    <span>
-                      <span className="name">{c.name}</span>
-                      {c.addr ? <span className="addr">{c.addr}</span> : null}
-                    </span>
-                    <Pill status={c.status} />
-                  </div>
-                  {c.error ? <div className="health-err">{c.error}</div> : null}
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </Card>
-      </div>
-    </>
+        <Col size={BUILD_COL}>
+          <Flex direction="column" gap={3} height="100%">
+            <Rule>Build</Rule>
+            <Panel>
+              <QueryState query={info} what="instance info">
+                {(data) => (
+                  <KV
+                    rows={[
+                      [
+                        "storage",
+                        <Mono>
+                          {data.storage_enabled
+                            ? `storage:${data.storage_backend || "?"}`
+                            : data.clickhouse_enabled
+                              ? "clickhouse"
+                              : "none"}
+                        </Mono>,
+                      ],
+                      ["version", <Mono>{data.version || "dev"}</Mono>],
+                      ["commit", <Mono>{(data.commit || "—").slice(0, 12)}</Mono>],
+                      ["go", <Mono>{data.go_version}</Mono>],
+                      ["platform", <Mono>{`${data.os}/${data.arch}`}</Mono>],
+                      ["started", <Mono>{fmtTime(data.start_time)}</Mono>],
+                    ]}
+                  />
+                )}
+              </QueryState>
+            </Panel>
+          </Flex>
+        </Col>
+      </Row>
+    </Flex>
   );
 }
