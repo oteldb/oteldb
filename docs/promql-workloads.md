@@ -139,18 +139,28 @@ row count even for a sparse selector, so **the reservation matches the footprint
 inefficiency worth chasing, if any, is the whole-part decode itself — not the estimate. No issue
 filed.
 
-**4. The series-major aggregate primitive already exists but is not exposed.**
-`engine.AggregateStep`/`AggregateStepNamed` (`aggregate.go:83-163`) already returns, per series,
-every step-aligned bucket in one call — folding from the per-part stats sidecar with no value
-decode when the parts are contained. `Storage.AggregateMetricsNamed` only ever calls it with
-`step=0`. Exposing the stepped form is a thin wrapper, and it would let M5's `AggregateScanner`
-answer a whole range query per series in one call instead of one call per step — removing the
-`O(series × steps)` pivot that pushdown currently pays. Filed as storage#212.
+**4. The series-major aggregate primitive already existed but was not exposed.**
+`engine.AggregateStep`/`AggregateStepNamed` (`aggregate.go:83-163`) returns, per series, every
+step-aligned bucket in one call — folding from the per-part stats sidecar with no value decode
+when the parts are contained. `Storage.AggregateMetricsNamed` only ever called it with `step=0`.
+Filed as storage#212, **fixed in v0.34.0/v0.35.0**: `AggregateMetricsStepNamed` now forwards the
+caller's step. oteldb doesn't call it yet (`overtime_range.go` still loops once per step) — that
+wiring is the remaining work, tracked separately from the storage-side fix.
 
-**5. But it cannot do sliding windows**, which is what archetype D needs (`[1h]` every 5m is a 12×
-overlap). `bucketSeries` assumes each sample lands in exactly one bucket. Supporting overlap is
-new logic in the sidecar fold, not a parameter — medium difficulty, and it is the single highest-
-value storage change for D-shaped queries. Filed as storage#213.
+**5. But its bucketing is a disjoint partition, not a sliding window** — each sample lands in
+exactly one `step`-wide bucket (`bucketStart`), which is the right model for a tumbling downsample
+but not for `<fn>_over_time(m[W])`, where `W > step` means consecutive windows overlap and each
+sample belongs to `W/step` of them (a `[1h]` window at a 5m step, archetype D's shape, is 12×).
+**This does not require redoing the work `W/step` times.** `count`/`sum` are decomposable: bucket
+once at `step` width (already what #212 exposes) and each output window is the running sum of the
+`W/step` fine buckets sliding in and out — add the newest, subtract the one that fell out of
+range, `O(1)` amortized per step regardless of overlap. `avg` falls out of `sum`/`count`. `min`/
+`max` aren't subtractable that way, but a monotonic deque over the fine-bucket extrema (the
+sliding-window-maximum trick) gets the same amortized `O(1)`. The one precondition is alignment —
+this only decomposes cleanly when `W` is an integer multiple of `step`, the overwhelmingly common
+case; unaligned edges fall back to decode, same as a bucket-straddling part does today. That's
+the real content of storage#213, and it's the single highest-value storage change for D-shaped
+queries — plan posted on the issue.
 
 **6. No label-ordered delivery.** Order is `signal.SeriesID` (a content hash) throughout. A merge
 join needs order by a caller-chosen label subset. Inserting a sort between `head.resolve` and the
@@ -215,9 +225,11 @@ Ranked by what the measurements support.
    (interned symbols, ID-only refs with late label materialization) trades away the plan-time
    identity freezing that makes the engine's defect story good. Document first, optimize only if a
    profile demands it.
-4. **Storage's eager `Fetch` undermines the engine's central claim** and should be treated as a
-   prerequisite for M5's storage half, not a follow-up.
-5. **Exposing stepped aggregates, then sliding-window aggregates, is the highest-value storage
-   change** — it is what makes D-shaped queries cheap rather than merely bounded.
+4. **Storage's eager `Fetch` undermined the engine's central claim** and was treated as a
+   prerequisite for M5's storage half, not a follow-up. Fixed in v0.34.0 (#211, #208).
+5. **Sliding-window aggregates (#213) are the highest-value storage change left** — stepped
+   aggregates (#212) shipped in v0.35.0, but they only cover the aligned, non-overlapping case;
+   #213's sum/count sliding-window merge (and a min/max monotonic deque) is what makes D-shaped
+   queries — the common overlapping-window case — cheap rather than merely bounded.
 6. **Adopt VictoriaMetrics' pre-execution estimate and ClickHouse's tracker hierarchy for M11**,
    and skip `MaxSamples`; Mimir already abandoned it.
