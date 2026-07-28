@@ -136,6 +136,7 @@ func (s *Server) decodePostLabelsRequest(r *http.Request) (
 			}
 			if err := q.HasParam(cfg); err == nil {
 				if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+					request.Match = nil
 					return d.DecodeArray(func(d uri.Decoder) error {
 						var requestDotMatchVal string
 						if err := func() error {
@@ -836,6 +837,7 @@ func (s *Server) decodePostSeriesRequest(r *http.Request) (
 			}
 			if err := q.HasParam(cfg); err == nil {
 				if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+					request.Match = nil
 					return d.DecodeArray(func(d uri.Decoder) error {
 						var requestDotMatchVal string
 						if err := func() error {

@@ -228,6 +228,7 @@ func decodeGetLabelValuesParams(args [1]string, argsEscaped bool, r *http.Reques
 
 		if err := q.HasParam(cfg); err == nil {
 			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				params.Match = nil
 				return d.DecodeArray(func(d uri.Decoder) error {
 					var paramsDotMatchVal string
 					if err := func() error {
@@ -465,6 +466,7 @@ func decodeGetLabelsParams(args [0]string, argsEscaped bool, r *http.Request) (p
 
 		if err := q.HasParam(cfg); err == nil {
 			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				params.Match = nil
 				return d.DecodeArray(func(d uri.Decoder) error {
 					var paramsDotMatchVal string
 					if err := func() error {
@@ -1539,6 +1541,7 @@ func decodeGetRulesParams(args [0]string, argsEscaped bool, r *http.Request) (pa
 
 		if err := q.HasParam(cfg); err == nil {
 			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				params.RuleName = nil
 				return d.DecodeArray(func(d uri.Decoder) error {
 					var paramsDotRuleNameVal string
 					if err := func() error {
@@ -1582,6 +1585,7 @@ func decodeGetRulesParams(args [0]string, argsEscaped bool, r *http.Request) (pa
 
 		if err := q.HasParam(cfg); err == nil {
 			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				params.RuleGroup = nil
 				return d.DecodeArray(func(d uri.Decoder) error {
 					var paramsDotRuleGroupVal string
 					if err := func() error {
@@ -1625,6 +1629,7 @@ func decodeGetRulesParams(args [0]string, argsEscaped bool, r *http.Request) (pa
 
 		if err := q.HasParam(cfg); err == nil {
 			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				params.File = nil
 				return d.DecodeArray(func(d uri.Decoder) error {
 					var paramsDotFileVal string
 					if err := func() error {
@@ -1819,6 +1824,7 @@ func decodeGetSeriesParams(args [0]string, argsEscaped bool, r *http.Request) (p
 
 		if err := q.HasParam(cfg); err == nil {
 			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				params.Match = nil
 				return d.DecodeArray(func(d uri.Decoder) error {
 					var paramsDotMatchVal string
 					if err := func() error {

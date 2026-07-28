@@ -3728,6 +3728,7 @@ func decodeSeriesParams(args [0]string, argsEscaped bool, r *http.Request) (para
 
 		if err := q.HasParam(cfg); err == nil {
 			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				params.Match = nil
 				return d.DecodeArray(func(d uri.Decoder) error {
 					var paramsDotMatchVal string
 					if err := func() error {
