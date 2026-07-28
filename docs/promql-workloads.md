@@ -144,23 +144,23 @@ filed.
 step-aligned bucket in one call — folding from the per-part stats sidecar with no value decode
 when the parts are contained. `Storage.AggregateMetricsNamed` only ever called it with `step=0`.
 Filed as storage#212, **fixed in v0.34.0/v0.35.0**: `AggregateMetricsStepNamed` now forwards the
-caller's step. oteldb doesn't call it yet (`overtime_range.go` still loops once per step) — that
-wiring is the remaining work, tracked separately from the storage-side fix.
+caller's step.
 
-**5. But its bucketing is a disjoint partition, not a sliding window** — each sample lands in
+**5. Its bucketing was a disjoint partition, not a sliding window** — each sample landed in
 exactly one `step`-wide bucket (`bucketStart`), which is the right model for a tumbling downsample
 but not for `<fn>_over_time(m[W])`, where `W > step` means consecutive windows overlap and each
 sample belongs to `W/step` of them (a `[1h]` window at a 5m step, archetype D's shape, is 12×).
-**This does not require redoing the work `W/step` times.** `count`/`sum` are decomposable: bucket
-once at `step` width (already what #212 exposes) and each output window is the running sum of the
-`W/step` fine buckets sliding in and out — add the newest, subtract the one that fell out of
-range, `O(1)` amortized per step regardless of overlap. `avg` falls out of `sum`/`count`. `min`/
-`max` aren't subtractable that way, but a monotonic deque over the fine-bucket extrema (the
-sliding-window-maximum trick) gets the same amortized `O(1)`. The one precondition is alignment —
-this only decomposes cleanly when `W` is an integer multiple of `step`, the overwhelmingly common
-case; unaligned edges fall back to decode, same as a bucket-straddling part does today. That's
-the real content of storage#213, and it's the single highest-value storage change for D-shaped
-queries — plan posted on the issue.
+**Fixed in v0.36.0 (storage#213/#228) without redoing the work `W/step` times:** `count`/`sum`
+bucket once at `step` width and slide a running sum across the fine buckets — add the newest,
+subtract the one that fell out of range, `O(1)` amortized per step regardless of overlap; `avg`
+falls out of `sum`/`count`; `min`/`max` use a monotonic deque over the fine-bucket extrema (the
+sliding-window-maximum trick) for the same amortized `O(1)`. `AggregateMetricsWindowNamed` also
+needed a second fix past the first cut posted on the issue: its evaluation grid was anchored to
+absolute time zero, but a PromQL range query's grid is anchored at its own `start`, which is
+essentially never a multiple of `step` — so the unanchored version answered timestamps nobody
+asked for. `engine.WindowSpec.Anchor` fixes that; `overtime_range.go` now makes one
+`AggregateMetricsWindowNamed` call for the whole grid instead of one `AggregateMetricsNamed` call
+per step, verified against 45 differential subtests comparing it to the raw matrix selector.
 
 **6. No label-ordered delivery.** Order is `signal.SeriesID` (a content hash) throughout. A merge
 join needs order by a caller-chosen label subset. Inserting a sort between `head.resolve` and the
@@ -227,9 +227,9 @@ Ranked by what the measurements support.
    profile demands it.
 4. **Storage's eager `Fetch` undermined the engine's central claim** and was treated as a
    prerequisite for M5's storage half, not a follow-up. Fixed in v0.34.0 (#211, #208).
-5. **Sliding-window aggregates (#213) are the highest-value storage change left** — stepped
-   aggregates (#212) shipped in v0.35.0, but they only cover the aligned, non-overlapping case;
-   #213's sum/count sliding-window merge (and a min/max monotonic deque) is what makes D-shaped
-   queries — the common overlapping-window case — cheap rather than merely bounded.
+5. **Sliding-window aggregates (#213) shipped in v0.36.0 and are wired in** — `overtime_range.go`
+   makes one `AggregateMetricsWindowNamed` call per range query instead of one call per step,
+   verified against the raw matrix selector. This was the highest-value storage change identified
+   here; M5's remaining storage-side work is the columnar `Scanner` (§ below), not this aggregate.
 6. **Adopt VictoriaMetrics' pre-execution estimate and ClickHouse's tracker hierarchy for M11**,
    and skip `MaxSamples`; Mimir already abandoned it.
