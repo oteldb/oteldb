@@ -1,15 +1,16 @@
-import { Alert, Col, Flex, Row, sp, Table, Text } from "@gravity-ui/uikit";
+import { Alert, Col, Flex, Row, Table, Text } from "@gravity-ui/uikit";
 import type { ColProps, TableColumnConfig } from "@gravity-ui/uikit";
 import { useGetEfficiency, useGetStorage } from "../api/admin";
 import {
   Chip,
   ErrCount,
   ErrorAlert,
+  head,
   KV,
   Loading,
   Mono,
   Panel,
-  SectionTitle,
+  Rule,
   UsageBar,
 } from "../components/ui";
 import { fmtBytes, fmtNum, fmtTime } from "../lib/format";
@@ -114,7 +115,7 @@ function Cluster({ cluster }: { cluster: ClusterStats }) {
   const columns: TableColumnConfig<ClusterMember>[] = [
     {
       id: "id",
-      name: "member",
+      name: head("member"),
       template: (m) => (
         <Flex alignItems="center" gap={2}>
           <Mono>{m.id}</Mono>
@@ -122,8 +123,8 @@ function Cluster({ cluster }: { cluster: ClusterStats }) {
         </Flex>
       ),
     },
-    { id: "zone", name: "zone", template: (m) => m.zone || "—" },
-    { id: "addr", name: "addr", template: (m) => <Mono>{m.addr || "—"}</Mono> },
+    { id: "zone", name: head("zone"), template: (m) => m.zone || "—" },
+    { id: "addr", name: head("addr"), template: (m) => <Mono>{m.addr || "—"}</Mono> },
   ];
   return (
     <Panel title="Cluster" sub={`${cluster.owned.length} owned shards`} scroll>
@@ -133,13 +134,13 @@ function Cluster({ cluster }: { cluster: ClusterStats }) {
 }
 
 const SIGNAL_COLUMNS: TableColumnConfig<EngineSignalStats>[] = [
-  { id: "signal", name: "signal", primary: true },
-  { id: "head_items", name: "head items", align: "end", template: (s) => fmtNum(s.head_items) },
-  { id: "head_bytes", name: "head bytes", align: "end", template: (s) => fmtBytes(s.head_bytes) },
-  { id: "series", name: "series", align: "end", template: (s) => fmtNum(s.series) },
+  { id: "signal", name: head("signal"), primary: true },
+  { id: "head_items", name: head("head items"), align: "end", template: (s) => fmtNum(s.head_items) },
+  { id: "head_bytes", name: head("head bytes"), align: "end", template: (s) => fmtBytes(s.head_bytes) },
+  { id: "series", name: head("series"), align: "end", template: (s) => fmtNum(s.series) },
   {
     id: "parts",
-    name: "parts",
+    name: head("parts"),
     align: "end",
     template: (s) => (
       <Flex alignItems="center" gap={2} justifyContent="flex-end">
@@ -150,18 +151,18 @@ const SIGNAL_COLUMNS: TableColumnConfig<EngineSignalStats>[] = [
   },
   {
     id: "wal",
-    name: "WAL",
+    name: head("WAL"),
     align: "end",
     template: (s) => (s.wal ? `${fmtNum(s.wal_segments)} seg` : "—"),
   },
   {
     id: "wal_bytes",
-    name: "WAL bytes",
+    name: head("WAL bytes"),
     align: "end",
     template: (s) => (s.wal ? fmtBytes(s.wal_bytes) : "—"),
   },
-  { id: "min_time", name: "min time", template: (s) => fmtTime(s.min_time) },
-  { id: "max_time", name: "max time", template: (s) => fmtTime(s.max_time) },
+  { id: "min_time", name: head("min time"), template: (s) => fmtTime(s.min_time) },
+  { id: "max_time", name: head("max time"), template: (s) => fmtTime(s.max_time) },
 ];
 
 function Tenant({ t }: { t: TenantStats }) {
@@ -192,27 +193,27 @@ function Tenant({ t }: { t: TenantStats }) {
 type EfficiencyRow = SignalEfficiency & { tenant: string };
 
 const EFFICIENCY_COLUMNS: TableColumnConfig<EfficiencyRow>[] = [
-  { id: "tenant", name: "tenant", primary: true },
-  { id: "signal", name: "signal" },
-  { id: "series", name: "series", align: "end", template: (s) => fmtNum(s.series) },
-  { id: "parts", name: "parts", align: "end", template: (s) => fmtNum(s.parts) },
-  { id: "points", name: "points", align: "end", template: (s) => fmtNum(s.points) },
-  { id: "stored_bytes", name: "stored", align: "end", template: (s) => fmtBytes(s.stored_bytes) },
+  { id: "tenant", name: head("tenant"), primary: true },
+  { id: "signal", name: head("signal") },
+  { id: "series", name: head("series"), align: "end", template: (s) => fmtNum(s.series) },
+  { id: "parts", name: head("parts"), align: "end", template: (s) => fmtNum(s.parts) },
+  { id: "points", name: head("points"), align: "end", template: (s) => fmtNum(s.points) },
+  { id: "stored_bytes", name: head("stored"), align: "end", template: (s) => fmtBytes(s.stored_bytes) },
   {
     id: "bytes_per_point",
-    name: "bytes / point",
+    name: head("bytes / point"),
     align: "end",
     template: (s) => (s.points ? s.bytes_per_point.toFixed(1) : "—"),
   },
   {
     id: "logical_bytes",
-    name: "logical",
+    name: head("logical"),
     align: "end",
     template: (s) => (s.logical_bytes != null ? fmtBytes(s.logical_bytes) : "—"),
   },
   {
     id: "compression_ratio",
-    name: "compression",
+    name: head("compression"),
     align: "end",
     template: (s) => (s.compression_ratio != null ? `${s.compression_ratio.toFixed(1)}×` : "—"),
   },
@@ -227,7 +228,7 @@ function Efficiency() {
   const { data, isLoading, error } = useGetEfficiency({ query: { refetchInterval: 30_000 } });
 
   if (isLoading) return <Loading />;
-  if (error) return <ErrorAlert error={error} />;
+  if (error) return <ErrorAlert error={error} what="efficiency stats" />;
   if (!data || !data.tenants.length) return null;
 
   const rows = flattenEfficiency(data.tenants);
@@ -244,41 +245,42 @@ function Efficiency() {
 }
 
 const CH_COLUMNS: TableColumnConfig<TableStats>[] = [
-  { id: "table", name: "table", primary: true },
-  { id: "rows", name: "rows", align: "end", template: (t) => fmtNum(t.rows) },
-  { id: "bytes_on_disk", name: "on disk", align: "end", template: (t) => fmtBytes(t.bytes_on_disk) },
+  { id: "table", name: head("table"), primary: true },
+  { id: "rows", name: head("rows"), align: "end", template: (t) => fmtNum(t.rows) },
+  { id: "bytes_on_disk", name: head("on disk"), align: "end", template: (t) => fmtBytes(t.bytes_on_disk) },
   {
     id: "data_uncompressed_bytes",
-    name: "uncompressed",
+    name: head("uncompressed"),
     align: "end",
     template: (t) => fmtBytes(t.data_uncompressed_bytes),
   },
-  { id: "parts", name: "parts", align: "end", template: (t) => fmtNum(t.parts) },
-  { id: "min_time", name: "min time", template: (t) => fmtTime(t.min_time) },
-  { id: "max_time", name: "max time", template: (t) => fmtTime(t.max_time) },
+  { id: "parts", name: head("parts"), align: "end", template: (t) => fmtNum(t.parts) },
+  { id: "min_time", name: head("min time"), template: (t) => fmtTime(t.min_time) },
+  { id: "max_time", name: head("max time"), template: (t) => fmtTime(t.max_time) },
 ];
 
 export function Storage() {
   const { data, isLoading, error } = useGetStorage({ query: { refetchInterval: 8_000 } });
 
   if (isLoading) return <Loading />;
-  if (error) return <ErrorAlert error={error} />;
+  if (error) return <ErrorAlert error={error} what="storage stats" />;
   if (!data) return null;
 
   const eng = data.engine;
   const ch = data.clickhouse;
 
   return (
-    <>
-      <SectionTitle>Embedded storage engine</SectionTitle>
-      {!eng ? (
-        <Alert
-          theme="info"
-          view="outlined"
-          message="The embedded oteldb/storage engine is not active on this instance."
-        />
-      ) : (
-        <>
+    <Flex direction="column" gap={5}>
+      <Flex direction="column" gap={3}>
+        <Rule>Embedded storage engine</Rule>
+        {!eng ? (
+          <Alert
+            theme="info"
+            view="outlined"
+            title="The embedded engine is not active"
+            message="Start oteldb with --embedded to serve signals from it."
+          />
+        ) : (
           <Row space="4" spaceRow="4">
             <Col size={COL}>
               <Caches caches={eng.caches} />
@@ -302,25 +304,23 @@ export function Storage() {
               </Col>
             ) : null}
           </Row>
+        )}
+      </Flex>
 
-          {eng.tenants.length ? (
-            <Flex direction="column" gap={4} className={sp({ mt: 4 })}>
-              <Text variant="subheader-2">Tenants & signals</Text>
-              {eng.tenants.map((t) => (
-                <Tenant key={t.tenant} t={t} />
-              ))}
-            </Flex>
-          ) : null}
+      {eng?.tenants.length ? (
+        <Flex direction="column" gap={3}>
+          <Rule>Tenants &amp; signals</Rule>
+          {eng.tenants.map((t) => (
+            <Tenant key={t.tenant} t={t} />
+          ))}
+        </Flex>
+      ) : null}
 
-          <div className={sp({ mt: 4 })}>
-            <Efficiency />
-          </div>
-        </>
-      )}
+      {eng ? <Efficiency /> : null}
 
       {ch ? (
-        <div className={sp({ mt: 6 })}>
-          <SectionTitle>ClickHouse (deprecated)</SectionTitle>
+        <Flex direction="column" gap={3}>
+          <Rule>ClickHouse (deprecated)</Rule>
           <Panel title="Tables" scroll>
             <Table
               data={ch.tables}
@@ -329,8 +329,8 @@ export function Storage() {
               getRowId={(row) => `${row.database}.${row.table}`}
             />
           </Panel>
-        </div>
+        </Flex>
       ) : null}
-    </>
+    </Flex>
   );
 }

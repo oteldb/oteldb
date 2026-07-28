@@ -4,7 +4,7 @@ import type { ColProps } from "@gravity-ui/uikit";
 import { Chart, FORMAT_UNITS_BYTES } from "@gravity-ui/charts";
 import type { ChartData } from "@gravity-ui/charts";
 import { useGetRuntime } from "../api/admin";
-import { ErrorAlert, KV, Loading, Mono, Panel, SectionTitle, UsageBar } from "../components/ui";
+import { ErrorAlert, KV, Loading, Mono, Panel, UsageBar } from "../components/ui";
 import { fmtBytes, fmtNum } from "../lib/format";
 
 interface Point {
@@ -80,12 +80,11 @@ export function Runtime() {
   }, [series, colors]);
 
   if (isLoading) return <Loading />;
-  if (error) return <ErrorAlert error={error} />;
+  if (error) return <ErrorAlert error={error} what="runtime stats" />;
   if (!data) return null;
 
   return (
     <>
-      <SectionTitle>Go runtime</SectionTitle>
       <Panel title="Live heap" sub={`${fmtNum(data.goroutines)} goroutines`}>
         <div className="chart">
           {/* Chart rejects an empty dataset, so wait for the first sample. */}

@@ -6,7 +6,9 @@ import { Toaster, ToasterComponent, ToasterProvider } from "@gravity-ui/uikit";
 import App from "./App";
 import { AppThemeProvider } from "./lib/theme";
 
-import "@gravity-ui/uikit/styles/fonts.css";
+// uikit's fonts.css @imports Inter from Google Fonts. This console ships inside
+// the oteldb binary and must render the same on a host with no internet, so the
+// type stack is set from system faces in app.css instead.
 import "@gravity-ui/uikit/styles/styles.css";
 import "./brand.css";
 import "./app.css";

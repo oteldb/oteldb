@@ -14,15 +14,23 @@ import type { LabelProps, ProgressColorStops } from "@gravity-ui/uikit";
 import { pct } from "../lib/format";
 import type { HealthStatus } from "../api/model";
 
-/** Page-level heading, one per logical block of a route. */
-export function SectionTitle({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
+/**
+ * Column header in the same machine voice as the vitals tape. Table takes a
+ * render function for `name`, so this needs no reach into the table's markup.
+ */
+export function head(text: string) {
+  return () => <span className="label-micro">{text}</span>;
+}
+
+/**
+ * Boundary between two subsystems on one page — a labelled hairline rather than
+ * a heading, because it marks where one thing ends, not what ranks above what.
+ */
+export function Rule({ children }: { children: ReactNode }) {
   return (
-    <Flex alignItems="center" justifyContent="space-between" gap={3} spacing={{ mb: 4 }}>
-      <Text variant="subheader-3" color="secondary">
-        {children}
-      </Text>
-      {actions}
-    </Flex>
+    <div className="rule label-micro">
+      <span>{children}</span>
+    </div>
   );
 }
 
@@ -147,9 +155,17 @@ export function Loading() {
   );
 }
 
-export function ErrorAlert({ error }: { error: unknown }) {
+/** Names what didn't load, then quotes the API verbatim. */
+export function ErrorAlert({ error, what }: { error: unknown; what?: string }) {
   const message = error instanceof Error ? error.message : String(error);
-  return <Alert theme="danger" view="outlined" title="Failed to load" message={message} />;
+  return (
+    <Alert
+      theme="danger"
+      view="outlined"
+      title={what ? `Couldn't load ${what}` : "Request failed"}
+      message={message}
+    />
+  );
 }
 
 /**
@@ -158,13 +174,15 @@ export function ErrorAlert({ error }: { error: unknown }) {
  */
 export function QueryState<T>({
   query,
+  what,
   children,
 }: {
   query: { data?: T; isLoading: boolean; error: unknown };
+  what?: string;
   children: (data: T) => ReactNode;
 }) {
   if (query.isLoading) return <Loading />;
-  if (query.error) return <ErrorAlert error={query.error} />;
+  if (query.error) return <ErrorAlert error={query.error} what={what} />;
   if (!query.data) return null;
   return <>{children(query.data)}</>;
 }

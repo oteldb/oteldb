@@ -17,9 +17,9 @@ import {
 import { GoFasterMark } from "./components/GoFasterMark";
 import type { Theme } from "@gravity-ui/uikit";
 import { useGetInfo } from "./api/admin";
-import { fmtDur } from "./lib/format";
 import { useAppTheme } from "./lib/theme";
 import { Loading } from "./components/ui";
+import { Vitals } from "./components/Vitals";
 
 // Pages are split out of the initial bundle; the chart library on Runtime is
 // the bulk of the app's JavaScript and is only fetched when that page opens.
@@ -57,28 +57,14 @@ function ThemeButton() {
   );
 }
 
-function TopBar() {
-  const info = useGetInfo({ query: { refetchInterval: 10_000 } });
+function TopBar({ section }: { section: string }) {
   const qc = useQueryClient();
   const fetching = useIsFetching();
 
-  const version = info.data ? `${info.data.version || "dev"} · ${info.data.go_version}` : "";
-  const uptime = info.data ? `up ${fmtDur(info.data.uptime_seconds)}` : "";
-
   return (
     <Flex className="topbar" alignItems="center" gap={3}>
-      <Text variant="subheader-2">admin panel</Text>
-      {uptime && (
-        <Text variant="body-1" color="secondary">
-          {uptime}
-        </Text>
-      )}
+      <span className="label-micro">{section}</span>
       <Flex grow />
-      {version && (
-        <Text variant="code-inline-1" color="secondary" ellipsis>
-          {version}
-        </Text>
-      )}
       <ThemeButton />
       <Button
         view="outlined"
@@ -111,10 +97,13 @@ export default function App() {
     [pathname, navigate],
   );
 
+  const section = NAV.find((item) => item.id === pathname)?.title ?? "Overview";
+
   const renderContent = useCallback(
     () => (
       <Flex direction="column" className="content">
-        <TopBar />
+        <TopBar section={section} />
+        <Vitals />
         <div className="page">
           <Suspense fallback={<Loading />}>
             <Routes>
@@ -129,7 +118,7 @@ export default function App() {
         </div>
       </Flex>
     ),
-    [],
+    [section],
   );
 
   const renderFooter = useCallback(() => {

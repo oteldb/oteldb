@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button, Flex, Icon, sp, Text, useToaster } from "@gravity-ui/uikit";
+import { Button, Flex, Icon, Text, useToaster } from "@gravity-ui/uikit";
 import { BroomMotion, TrashBin, Wrench } from "@gravity-ui/icons";
 import type { IconData } from "@gravity-ui/uikit";
 import { useGetInfo, useRunAction } from "../api/admin";
-import { KV, Mono, Panel, SectionTitle } from "../components/ui";
+import { Panel } from "../components/ui";
 import { fmtBytes } from "../lib/format";
 import type { ActionName } from "../api/model";
 
@@ -19,15 +19,20 @@ const ACTIONS: {
     action: "storage-maintain",
     label: "Run storage maintenance",
     icon: Wrench,
-    hint: "Force a merge/flush pass on the embedded engine.",
+    hint: "Forces a merge and flush pass on the embedded engine.",
     needsStorage: true,
   },
-  { action: "gc", label: "Run GC", icon: BroomMotion, hint: "Trigger a Go garbage collection cycle." },
+  {
+    action: "gc",
+    label: "Run GC",
+    icon: BroomMotion,
+    hint: "Triggers one Go garbage collection cycle.",
+  },
   {
     action: "free-os-memory",
     label: "Free OS memory",
     icon: TrashBin,
-    hint: "Return freed heap to the operating system.",
+    hint: "Returns freed heap to the operating system.",
   },
 ];
 
@@ -68,37 +73,30 @@ export function Maintenance() {
   }
 
   return (
-    <>
-      <SectionTitle>Maintenance</SectionTitle>
-      <Panel title="Runtime controls">
-        <Flex gap={3} wrap>
-          {ACTIONS.map((a) => (
-            <Button
-              key={a.action}
-              view="outlined"
-              size="l"
-              title={a.hint}
-              loading={pending === a.action}
-              disabled={pending != null || (a.needsStorage && !storageEnabled)}
-              onClick={() => onRun(a.action)}
-            >
-              <Icon data={a.icon} />
-              {a.label}
-            </Button>
-          ))}
-        </Flex>
-        {!storageEnabled && (
-          <Text variant="body-1" color="secondary">
-            Storage maintenance is unavailable: the embedded engine is not active.
-          </Text>
-        )}
-      </Panel>
-
-      <div className={sp({ mt: 4 })}>
-        <Panel title="What these do">
-          <KV rows={ACTIONS.map((a) => [<Mono>{a.action}</Mono>, a.hint])} />
-        </Panel>
-      </div>
-    </>
+    <Panel title="Actions" sub="Each runs immediately on this instance">
+      <Flex gap={6} wrap>
+        {ACTIONS.map((a) => {
+          const unavailable = a.needsStorage && !storageEnabled;
+          return (
+            <Flex key={a.action} direction="column" gap={2} maxWidth={280}>
+              <Button
+                view="outlined"
+                size="l"
+                width="max"
+                loading={pending === a.action}
+                disabled={pending != null || unavailable}
+                onClick={() => onRun(a.action)}
+              >
+                <Icon data={a.icon} />
+                {a.label}
+              </Button>
+              <Text variant="caption-2" color={unavailable ? "hint" : "secondary"}>
+                {unavailable ? "Needs the embedded engine, which is not active." : a.hint}
+              </Text>
+            </Flex>
+          );
+        })}
+      </Flex>
+    </Panel>
   );
 }

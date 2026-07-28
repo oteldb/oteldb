@@ -1,6 +1,6 @@
 import { Flex, Text } from "@gravity-ui/uikit";
 import { useGetHealth } from "../api/admin";
-import { Panel, QueryState, SectionTitle, StatusLabel } from "../components/ui";
+import { Panel, QueryState, StatusLabel } from "../components/ui";
 import type { ComponentHealth } from "../api/model";
 
 /** Component rows with their status; shared with the Overview page. */
@@ -35,14 +35,13 @@ export function Health() {
   const health = useGetHealth({ query: { refetchInterval: 5_000 } });
 
   return (
-    <>
-      <SectionTitle>Component health</SectionTitle>
-      <Panel
-        title="Services"
-        actions={health.data ? <StatusLabel status={health.data.status} /> : undefined}
-      >
-        <QueryState query={health}>{(data) => <ComponentList components={data.components} />}</QueryState>
-      </Panel>
-    </>
+    <Panel
+      title="Services"
+      actions={health.data ? <StatusLabel status={health.data.status} /> : undefined}
+    >
+      <QueryState query={health} what="component health">
+        {(data) => <ComponentList components={data.components} />}
+      </QueryState>
+    </Panel>
   );
 }
