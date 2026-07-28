@@ -1,0 +1,50 @@
+/*
+ * go-faster brand palette.
+ *
+ * The stops come from the go-faster logo gradient (docs/logo/generate.py in
+ * go-faster/fs): a teal → cyan ramp, with a darker set for light surfaces.
+ *
+ *   dark:  #00808f  #00a29c  #01add8  #33c4e6  #74d9f2   (glint #a8e8ff)
+ *   light: #04697a  #00868c  #0090bd  #00a8d2  #2ec2e0
+ *
+ * The whole accent group is overridden per theme — a partial override would
+ * leave selection, focus and links on Gravity's default blue.
+ */
+
+.g-root_theme_dark,
+.g-root_theme_dark-hc {
+  --g-color-base-brand: #01add8;
+  --g-color-base-brand-hover: #33c4e6;
+  --g-color-base-selection: rgba(1, 173, 216, 0.14);
+  --g-color-base-selection-hover: rgba(1, 173, 216, 0.22);
+  --g-color-line-brand: #01add8;
+  --g-color-text-brand: #33c4e6;
+  --g-color-text-brand-heavy: #74d9f2;
+  --g-color-text-brand-contrast: #04222a;
+  --g-color-text-link: #33c4e6;
+  --g-color-text-link-hover: #74d9f2;
+  --g-color-text-link-visited: #74d9f2;
+  --g-color-text-link-visited-hover: #a8e8ff;
+
+  --gn-aside-header-decoration-expanded-background-color: rgba(1, 173, 216, 0.24);
+  --gn-aside-header-decoration-collapsed-background-color: rgba(1, 173, 216, 0.24);
+}
+
+.g-root_theme_light,
+.g-root_theme_light-hc {
+  --g-color-base-brand: #0090bd;
+  --g-color-base-brand-hover: #00808f;
+  --g-color-base-selection: rgba(0, 144, 189, 0.1);
+  --g-color-base-selection-hover: rgba(0, 144, 189, 0.18);
+  --g-color-line-brand: #0090bd;
+  --g-color-text-brand: #04697a;
+  --g-color-text-brand-heavy: #00808f;
+  --g-color-text-brand-contrast: #ffffff;
+  --g-color-text-link: #0090bd;
+  --g-color-text-link-hover: #04697a;
+  --g-color-text-link-visited: #00868c;
+  --g-color-text-link-visited-hover: #04697a;
+
+  --gn-aside-header-decoration-expanded-background-color: rgba(0, 144, 189, 0.14);
+  --gn-aside-header-decoration-collapsed-background-color: rgba(0, 144, 189, 0.14);
+}

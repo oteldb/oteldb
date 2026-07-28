@@ -16,10 +16,24 @@ default), same-origin with the `/api/v1/*` endpoints.
   into `src/api/` (regenerated on every build; do not edit by hand).
 - **TanStack Query** — data fetching, caching, live polling.
 - **React Router** (hash mode) — client-side routing without server rewrites.
-- **Recharts** — the live heap chart on the Runtime page.
+- **Gravity UI** — the design system the whole UI is built on:
+  [`@gravity-ui/uikit`](https://gravity-ui.com/components/uikit) for components
+  and design tokens, [`@gravity-ui/navigation`](https://gravity-ui.com/components/navigation)
+  for the `AsideHeader` shell, `@gravity-ui/charts` for the live heap chart, and
+  `@gravity-ui/icons` for iconography.
 
-The theme is a single dark palette (`src/theme.css`); there is intentionally no
-light variant.
+Routes are lazily imported, so the chart library is only fetched when the
+Runtime page is opened.
+
+## Theming
+
+Colors, spacing and typography come from Gravity UI's `--g-*` tokens — the app
+defines no palette of its own. `src/brand.css` overrides the accent group with
+the [go-faster](https://github.com/go-faster) teal → cyan ramp taken from the
+go-faster logo gradient, once per theme; `src/lib/theme.tsx` wires the
+`ThemeProvider` and persists the light/dark/system choice picked in the header.
+`src/app.css` holds layout glue only (page frame, panel padding), always
+expressed with tokens.
 
 ## Develop
 

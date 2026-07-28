@@ -1,0 +1,66 @@
+/*
+ * Layout glue only. Every color, radius and spacing value comes from the
+ * Gravity UI design tokens (--g-*), so both themes are handled by uikit.
+ */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--g-color-base-background);
+}
+
+/*
+ * AsideHeader's content pane sizes itself to its children, so an element that
+ * measures its parent (the chart) would grow the pane and then re-measure,
+ * widening the page on every frame. Pin the content to the viewport minus the
+ * aside; --gn-aside-header-size is the navigation's published width variable.
+ */
+.content {
+  width: calc(100vw - var(--gn-aside-header-size, 0px));
+  height: 100vh;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.topbar {
+  flex: 0 0 auto;
+  padding: var(--g-spacing-3) var(--g-spacing-5);
+  border-bottom: 1px solid var(--g-color-line-generic);
+  background: var(--g-color-base-background);
+}
+
+.page {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: var(--g-spacing-5);
+}
+
+.panel {
+  padding: var(--g-spacing-4) var(--g-spacing-5);
+}
+
+/* Cards sharing a grid row line up at equal height. */
+.g-col > .panel {
+  height: 100%;
+}
+
+/* Wide tables inside a panel scroll on their own instead of the page. */
+.panel__scroll {
+  overflow-x: auto;
+  margin: 0 calc(-1 * var(--g-spacing-5));
+  padding: 0 var(--g-spacing-5);
+}
+
+.aside-footer {
+  min-width: 0;
+}
+
+/* Charts fill their parent, so the container carries the height. */
+.chart {
+  height: 260px;
+}

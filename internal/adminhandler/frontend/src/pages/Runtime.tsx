@@ -1,15 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { useEffect, useMemo, useState } from "react";
+import { Col, Flex, Row, sp, useThemeType } from "@gravity-ui/uikit";
+import type { ColProps } from "@gravity-ui/uikit";
+import { Chart, FORMAT_UNITS_BYTES } from "@gravity-ui/charts";
+import type { ChartData } from "@gravity-ui/charts";
 import { useGetRuntime } from "../api/admin";
-import { Card, Bar, KV, Mono, Spinner, ErrorBox } from "../components/ui";
+import { ErrorAlert, KV, Loading, Mono, Panel, SectionTitle, UsageBar } from "../components/ui";
 import { fmtBytes, fmtNum } from "../lib/format";
 
 interface Point {
@@ -18,112 +13,130 @@ interface Point {
   next: number;
 }
 
+// Poll cadence of the runtime endpoint and the retained window of the chart.
+const POLL_MS = 3_000;
+const KEEP_POINTS = 60;
+
+const COL: ColProps["size"] = [12, { l: 6 }];
+
+// go-faster stops (see brand.css); the chart paints SVG, so it needs literal
+// colors rather than the --g-* tokens the rest of the UI reads.
+const SERIES_COLORS = {
+  dark: { heap: "#01add8", next: "#74d9f2" },
+  light: { heap: "#0090bd", next: "#00a29c" },
+};
+
 export function Runtime() {
-  const { data, isLoading, error } = useGetRuntime({ query: { refetchInterval: 3_000 } });
+  const { data, isLoading, error } = useGetRuntime({ query: { refetchInterval: POLL_MS } });
   const [series, setSeries] = useState<Point[]>([]);
-  const seq = useRef(0);
+  const colors = SERIES_COLORS[useThemeType()];
 
   useEffect(() => {
     if (!data) return;
-    setSeries((prev) => {
-      const next = [...prev, { t: seq.current++, heap: data.heap_alloc_bytes, next: data.next_gc_bytes }];
-      return next.slice(-60); // keep last ~3 minutes at 3s cadence.
-    });
+    setSeries((prev) =>
+      [
+        ...prev,
+        { t: Date.now(), heap: data.heap_alloc_bytes, next: data.next_gc_bytes },
+      ].slice(-KEEP_POINTS),
+    );
   }, [data]);
 
-  if (isLoading) return <Spinner />;
-  if (error) return <ErrorBox error={error} />;
+  const chartData = useMemo<ChartData>(() => {
+    // The chart formats datetime axes in UTC, which reads wrong for a live
+    // window — plot age in seconds instead, ending at "now".
+    const last = series.length ? series[series.length - 1].t : 0;
+    const age = (p: Point) => Math.round((p.t - last) / 1000);
+    return {
+      series: {
+        data: [
+          {
+            type: "area",
+            name: "heap alloc",
+            color: colors.heap,
+            data: series.map((p) => ({ x: age(p), y: p.heap })),
+          },
+          {
+            type: "line",
+            name: "next GC",
+            color: colors.next,
+            dashStyle: "Dash",
+            data: series.map((p) => ({ x: age(p), y: p.next })),
+          },
+        ],
+      },
+      xAxis: { type: "linear", labels: { numberFormat: { postfix: " s" } } },
+      yAxis: [
+        {
+          min: 0,
+          labels: { numberFormat: { units: FORMAT_UNITS_BYTES, precision: 1 } },
+        },
+      ],
+      tooltip: {
+        valueFormat: { type: "number", units: FORMAT_UNITS_BYTES, precision: 1 },
+        headerFormat: { type: "number", postfix: " s" },
+      },
+      legend: { enabled: true },
+    };
+  }, [series, colors]);
+
+  if (isLoading) return <Loading />;
+  if (error) return <ErrorAlert error={error} />;
   if (!data) return null;
 
   return (
     <>
-      <div className="section-title">Go runtime</div>
-      <Card title="Live heap" sub={fmtNum(data.goroutines) + " goroutines"} wide>
-        <div style={{ height: 240, marginTop: 4 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={series} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
-              <defs>
-                <linearGradient id="heapFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#c8a35c" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#c8a35c" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="#3a3a37" vertical={false} />
-              <XAxis dataKey="t" hide />
-              <YAxis
-                tickFormatter={(v) => fmtBytes(v)}
-                width={64}
-                tick={{ fill: "#a5a299", fontSize: 11 }}
-                stroke="#50504f"
-              />
-              <Tooltip
-                contentStyle={{
-                  background: "#2c2c2a",
-                  border: "1px solid #50504f",
-                  borderRadius: 8,
-                  color: "#ece8dd",
-                  fontSize: 12,
-                }}
-                labelFormatter={() => ""}
-                formatter={(v: number, name) => [fmtBytes(v), name === "heap" ? "heap alloc" : "next GC"]}
-              />
-              <Area
-                type="monotone"
-                dataKey="next"
-                stroke="#77756c"
-                strokeDasharray="3 3"
-                fill="none"
-                strokeWidth={1.2}
-                isAnimationActive={false}
-              />
-              <Area
-                type="monotone"
-                dataKey="heap"
-                stroke="#c8a35c"
-                fill="url(#heapFill)"
-                strokeWidth={1.8}
-                isAnimationActive={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+      <SectionTitle>Go runtime</SectionTitle>
+      <Panel title="Live heap" sub={`${fmtNum(data.goroutines)} goroutines`}>
+        <div className="chart">
+          {/* Chart rejects an empty dataset, so wait for the first sample. */}
+          {series.length ? <Chart data={chartData} /> : <Loading />}
         </div>
-      </Card>
+      </Panel>
 
-      <div className="grid" style={{ marginTop: 14 }}>
-        <Card title="Memory">
-          {data.mem_limit_bytes ? (
-            <Bar
-              label="heap vs GOMEMLIMIT"
-              value={`${fmtBytes(data.heap_alloc_bytes)} / ${fmtBytes(data.mem_limit_bytes)}`}
-              ratio={data.heap_alloc_bytes / data.mem_limit_bytes}
+      <Row space="4" spaceRow="4" className={sp({ mt: 4 })}>
+        <Col size={COL}>
+          <Panel title="Memory">
+            <Flex direction="column" gap={4}>
+              {data.mem_limit_bytes ? (
+                <UsageBar
+                  label="heap vs GOMEMLIMIT"
+                  value={`${fmtBytes(data.heap_alloc_bytes)} / ${fmtBytes(data.mem_limit_bytes)}`}
+                  ratio={data.heap_alloc_bytes / data.mem_limit_bytes}
+                />
+              ) : null}
+              <UsageBar
+                label="heap vs next GC"
+                value={`${fmtBytes(data.heap_alloc_bytes)} / ${fmtBytes(data.next_gc_bytes)}`}
+                ratio={data.next_gc_bytes ? data.heap_alloc_bytes / data.next_gc_bytes : 0}
+              />
+              <KV
+                rows={[
+                  ["heap alloc", <Mono>{fmtBytes(data.heap_alloc_bytes)}</Mono>],
+                  ["heap in-use", <Mono>{fmtBytes(data.heap_inuse_bytes)}</Mono>],
+                  ["heap sys", <Mono>{fmtBytes(data.heap_sys_bytes)}</Mono>],
+                  ["stack in-use", <Mono>{fmtBytes(data.stack_inuse_bytes)}</Mono>],
+                ]}
+              />
+            </Flex>
+          </Panel>
+        </Col>
+        <Col size={COL}>
+          <Panel title="Scheduler & GC">
+            <KV
+              rows={[
+                ["goroutines", <Mono>{fmtNum(data.goroutines)}</Mono>],
+                ["GC cycles", <Mono>{fmtNum(data.gc_count)}</Mono>],
+                ["GOMAXPROCS", <Mono>{data.gomaxprocs}</Mono>],
+                ["num CPU", <Mono>{data.num_cpu}</Mono>],
+                [
+                  "GOMEMLIMIT",
+                  <Mono>{data.mem_limit_bytes ? fmtBytes(data.mem_limit_bytes) : "unset"}</Mono>,
+                ],
+              ]}
             />
-          ) : null}
-          <Bar
-            label="heap vs next GC"
-            value={`${fmtBytes(data.heap_alloc_bytes)} / ${fmtBytes(data.next_gc_bytes)}`}
-            ratio={data.next_gc_bytes ? data.heap_alloc_bytes / data.next_gc_bytes : 0}
-          />
-          <KV
-            rows={[
-              ["heap alloc", <Mono>{fmtBytes(data.heap_alloc_bytes)}</Mono>],
-              ["heap in-use", <Mono>{fmtBytes(data.heap_inuse_bytes)}</Mono>],
-              ["heap sys", <Mono>{fmtBytes(data.heap_sys_bytes)}</Mono>],
-              ["stack in-use", <Mono>{fmtBytes(data.stack_inuse_bytes)}</Mono>],
-            ]}
-          />
-        </Card>
-        <Card title="Scheduler & GC">
-          <KV
-            rows={[
-              ["goroutines", <Mono>{fmtNum(data.goroutines)}</Mono>],
-              ["GC cycles", <Mono>{fmtNum(data.gc_count)}</Mono>],
-              ["GOMAXPROCS", <Mono>{data.gomaxprocs}</Mono>],
-              ["num CPU", <Mono>{data.num_cpu}</Mono>],
-              ["GOMEMLIMIT", <Mono>{data.mem_limit_bytes ? fmtBytes(data.mem_limit_bytes) : "unset"}</Mono>],
-            ]}
-          />
-        </Card>
-      </div>
+          </Panel>
+        </Col>
+      </Row>
     </>
   );
 }

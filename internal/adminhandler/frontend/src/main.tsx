@@ -2,9 +2,14 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter } from "react-router-dom";
+import { Toaster, ToasterComponent, ToasterProvider } from "@gravity-ui/uikit";
 import App from "./App";
-import { ToastProvider } from "./components/toast";
-import "./theme.css";
+import { AppThemeProvider } from "./lib/theme";
+
+import "@gravity-ui/uikit/styles/fonts.css";
+import "@gravity-ui/uikit/styles/styles.css";
+import "./brand.css";
+import "./app.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,14 +21,19 @@ const queryClient = new QueryClient({
   },
 });
 
+const toaster = new Toaster();
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <HashRouter>
-          <App />
-        </HashRouter>
-      </ToastProvider>
-    </QueryClientProvider>
+    <AppThemeProvider>
+      <ToasterProvider toaster={toaster}>
+        <QueryClientProvider client={queryClient}>
+          <HashRouter>
+            <App />
+          </HashRouter>
+        </QueryClientProvider>
+        <ToasterComponent />
+      </ToasterProvider>
+    </AppThemeProvider>
   </StrictMode>,
 );

@@ -1,23 +1,41 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRunAction, useGetInfo } from "../api/admin";
-import { Card, Spinner } from "../components/ui";
-import { useToast } from "../components/toast";
+import { Button, Flex, Icon, sp, Text, useToaster } from "@gravity-ui/uikit";
+import { BroomMotion, TrashBin, Wrench } from "@gravity-ui/icons";
+import type { IconData } from "@gravity-ui/uikit";
+import { useGetInfo, useRunAction } from "../api/admin";
+import { KV, Mono, Panel, SectionTitle } from "../components/ui";
 import { fmtBytes } from "../lib/format";
 import type { ActionName } from "../api/model";
 
-const ACTIONS: { action: ActionName; label: string; hint: string; needsStorage?: boolean }[] = [
-  { action: "storage-maintain", label: "Run storage maintenance", hint: "Force a merge/flush pass on the embedded engine.", needsStorage: true },
-  { action: "gc", label: "Run GC", hint: "Trigger a Go garbage collection cycle." },
-  { action: "free-os-memory", label: "Free OS memory", hint: "Return freed heap to the operating system." },
+const ACTIONS: {
+  action: ActionName;
+  label: string;
+  icon: IconData;
+  hint: string;
+  needsStorage?: boolean;
+}[] = [
+  {
+    action: "storage-maintain",
+    label: "Run storage maintenance",
+    icon: Wrench,
+    hint: "Force a merge/flush pass on the embedded engine.",
+    needsStorage: true,
+  },
+  { action: "gc", label: "Run GC", icon: BroomMotion, hint: "Trigger a Go garbage collection cycle." },
+  {
+    action: "free-os-memory",
+    label: "Free OS memory",
+    icon: TrashBin,
+    hint: "Return freed heap to the operating system.",
+  },
 ];
 
 export function Maintenance() {
   const info = useGetInfo();
   const qc = useQueryClient();
-  const toast = useToast();
+  const toaster = useToaster();
   const run = useRunAction();
-  const [note, setNote] = useState<{ text: string; err: boolean }>({ text: "", err: false });
   const [pending, setPending] = useState<ActionName | null>(null);
 
   const storageEnabled = info.data?.storage_enabled ?? false;
@@ -27,15 +45,23 @@ export function Maintenance() {
     try {
       const r = await run.mutateAsync({ action });
       const freed = r.freed_bytes != null ? ` (freed ${fmtBytes(r.freed_bytes)})` : "";
-      setNote({ text: r.message + freed, err: false });
-      toast(r.message + freed);
+      toaster.add({
+        name: `action-${action}`,
+        theme: "success",
+        title: action,
+        content: r.message + freed,
+      });
       // Refresh runtime/storage views affected by the action.
       qc.invalidateQueries({ queryKey: ["/api/v1/runtime"] });
       qc.invalidateQueries({ queryKey: ["/api/v1/storage"] });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setNote({ text: msg, err: true });
-      toast(msg, true);
+      toaster.add({
+        name: `action-${action}`,
+        theme: "danger",
+        title: action,
+        content: e instanceof Error ? e.message : String(e),
+        autoHiding: false,
+      });
     } finally {
       setPending(null);
     }
@@ -43,33 +69,36 @@ export function Maintenance() {
 
   return (
     <>
-      <div className="section-title">Maintenance</div>
-      <Card title="Runtime controls">
-        <div className="actions">
-          {ACTIONS.map((a) => {
-            const disabled = pending != null || (a.needsStorage && !storageEnabled);
-            return (
-              <button key={a.action} disabled={disabled} title={a.hint} onClick={() => onRun(a.action)}>
-                {pending === a.action ? <Spinner /> : null} {a.label}
-              </button>
-            );
-          })}
-        </div>
-        <p className={"action-note" + (note.err ? " err" : "")}>{note.text}</p>
-      </Card>
-
-      <Card title="What these do" style={{ marginTop: 14 }}>
-        <dl className="kv">
+      <SectionTitle>Maintenance</SectionTitle>
+      <Panel title="Runtime controls">
+        <Flex gap={3} wrap>
           {ACTIONS.map((a) => (
-            <div key={a.action} style={{ display: "contents" }}>
-              <dt>
-                <span className="mono">{a.action}</span>
-              </dt>
-              <dd style={{ textAlign: "left", color: "var(--muted)" }}>{a.hint}</dd>
-            </div>
+            <Button
+              key={a.action}
+              view="outlined"
+              size="l"
+              title={a.hint}
+              loading={pending === a.action}
+              disabled={pending != null || (a.needsStorage && !storageEnabled)}
+              onClick={() => onRun(a.action)}
+            >
+              <Icon data={a.icon} />
+              {a.label}
+            </Button>
           ))}
-        </dl>
-      </Card>
+        </Flex>
+        {!storageEnabled && (
+          <Text variant="body-1" color="secondary">
+            Storage maintenance is unavailable: the embedded engine is not active.
+          </Text>
+        )}
+      </Panel>
+
+      <div className={sp({ mt: 4 })}>
+        <Panel title="What these do">
+          <KV rows={ACTIONS.map((a) => [<Mono>{a.action}</Mono>, a.hint])} />
+        </Panel>
+      </div>
     </>
   );
 }
