@@ -21,13 +21,18 @@ import (
 // aggregateOverTimeRangeOp answers a range-vector *_over_time query (the reducer family: count/sum/
 // min/max/avg/present) from the aggregate-sidecar pushdown instead of the raw matrix selector. It is
 // the range analog of [aggregateOverTimeOp]: where the matrix selector materializes every raw
-// sample in every step's sliding window (buffering the whole window set live), this folds one
-// [engine.SeriesAgg] per (series, step) via [storage.Storage.AggregateMetricsNamed] and streams the
-// per-step result vectors — holding only O(result) rather than O(all raw samples in range).
+// sample in every step's sliding window (buffering the whole window set live), this makes one
+// [storage.Storage.AggregateMetricsWindowNamed] call for the whole grid — storage folds each
+// series' samples once into step-wide buckets and slides them into every overlapping (maxt-range,
+// maxt] window, so the cost is proportional to the data in range rather than to range/step times
+// it — and streams the per-step result vectors, holding only O(result) rather than O(all raw
+// samples in range).
 //
 // Each PromQL step t_i is evaluated over its exact sliding window (t_i - offset - range, t_i -
-// offset], the same window the matrix selector uses, so the result is identical; the storage engine
-// applies its own sidecar/decode fast paths (and decode cache) per window.
+// offset], the same window the matrix selector uses, so the result is identical; the storage
+// engine's evaluation grid is anchored at the query's own first step (not at a multiple of the
+// step from the Unix epoch), which is what makes the returned windows land on the timestamps this
+// operator actually asked for.
 //
 // Only pushed down for the sidecar-answerable folds and a plain selector (no projection, per-series
 // filter, or @ modifier); rate/increase/quantile/… and anything else fall back to the matrix
@@ -160,64 +165,77 @@ func (o *aggregateOverTimeRangeOp) doLoad(ctx context.Context) error {
 	index := make(map[signal.SeriesID]uint64)
 	var b labels.ScratchBuilder
 
-	// Pre-size the step slices; the number of eval steps is fixed by the query grid.
-	if o.step > 0 && o.end >= o.start {
-		steps := int((o.end-o.start)/o.step) + 1
-		o.stepTimes = make([]int64, 0, steps)
-		o.stepVals = make([][]sampleVal, 0, steps)
+	// One call for the whole grid: storage folds each series' samples once into step-wide buckets and
+	// slides them into every (maxt-range, maxt] window, so the cost is proportional to the data in the
+	// range rather than to the W/step overlap a per-step loop would pay. The evaluation grid is
+	// anchored at the query's first step — PromQL's grid is not a multiple of the step.
+	firstEval := o.start - o.offset
+
+	aggs, err := o.store.AggregateMetricsWindowNamed(ctx, o.tenant, fetch.Request{
+		Tenant:   o.tenant,
+		Start:    (firstEval - o.rangeMs + 1) * nsPerMs, // lead-in: the first window opens a range early
+		End:      (o.end - o.offset) * nsPerMs,
+		Matchers: storagepromql.PushableMatchers(o.matchers),
+	}, engine.WindowSpec{
+		Step:   o.step * nsPerMs,
+		Window: o.rangeMs * nsPerMs,
+		Anchor: firstEval * nsPerMs,
+	})
+	if err != nil {
+		return errors.Wrap(err, "aggregate metrics windows")
 	}
 
-	for evalT := o.start; evalT <= o.end; evalT += o.step {
-		// PromQL evaluates the range vector over (maxt-range, maxt], the same window the matrix
-		// selector uses; storage's fetch window is the inclusive [start, end] ns range, so the
-		// exclusive lower bound is mint+1 ms.
-		maxt := evalT - o.offset
-		mint := maxt - o.rangeMs
+	// Storage answers series-major (every window of a series together); the operator emits
+	// step-major. Pivot through a per-eval-timestamp slot, so the walk is O(result), not O(steps ×
+	// series).
+	steps := 0
+	if o.step > 0 && o.end >= o.start {
+		steps = int((o.end-o.start)/o.step) + 1
+	}
 
-		aggs, err := o.store.AggregateMetricsNamed(ctx, o.tenant, fetch.Request{
-			Tenant:   o.tenant,
-			Start:    (mint + 1) * nsPerMs,
-			End:      maxt * nsPerMs,
-			Matchers: storagepromql.PushableMatchers(o.matchers),
-		})
-		if err != nil {
-			return errors.Wrap(err, "aggregate metrics")
+	o.stepTimes = make([]int64, 0, steps)
+	o.stepVals = make([][]sampleVal, steps)
+
+	for i := range steps {
+		o.stepTimes = append(o.stepTimes, o.start+int64(i)*o.step)
+	}
+
+	for i := range aggs {
+		na := &aggs[i]
+
+		lset := storagepromql.PromLabels(na.Series)
+		if !storagepromql.MatchesAll(lset, o.matchers) {
+			continue
 		}
 
-		var vals []sampleVal
-		for i := range aggs {
-			la := &aggs[i]
+		key := na.Series.Hash()
 
-			lset := storagepromql.PromLabels(la.Series)
-			if !storagepromql.MatchesAll(lset, o.matchers) {
-				continue
-			}
+		id, ok := index[key]
+		if !ok {
+			id = uint64(len(o.series))
+			index[key] = id
 
-			v := o.fold(la.SeriesAgg)
+			// Range-vector functions drop the metric name (and the other schema metadata labels).
+			dropped := extlabels.DropReserved(lset, b)
+			b.Reset()
+			o.series = append(o.series, dropped)
+		}
+
+		for _, w := range na.Windows {
+			v := o.fold(w.SeriesAgg)
 			if math.IsNaN(v) {
 				continue
 			}
 
-			key := la.Series.Hash()
-			id, ok := index[key]
-			if !ok {
-				id = uint64(len(o.series))
-				index[key] = id
+			// The window's End is its evaluation timestamp, offset back into query time.
+			evalT := w.End/nsPerMs + o.offset
 
-				// Range-vector functions drop the metric name (and the other schema metadata labels).
-				dropped := extlabels.DropReserved(lset, b)
-				b.Reset()
-				o.series = append(o.series, dropped)
+			idx := int((evalT - o.start) / o.step)
+			if o.step <= 0 || idx < 0 || idx >= steps {
+				continue
 			}
 
-			vals = append(vals, sampleVal{id: id, val: v})
-		}
-
-		o.stepTimes = append(o.stepTimes, evalT)
-		o.stepVals = append(o.stepVals, vals)
-
-		if o.step <= 0 { // instant guard: avoid an infinite loop if misconstructed.
-			break
+			o.stepVals[idx] = append(o.stepVals[idx], sampleVal{id: id, val: v})
 		}
 	}
 
