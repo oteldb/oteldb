@@ -96,6 +96,8 @@ func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger,
 			zap.Int("precision_tiers", len(cfg.Policy.Precision)),
 			zap.Int("downsample_tiers", len(cfg.Policy.Downsample)),
 			zap.Bool("recompress", cfg.Policy.Recompress != nil),
+			zap.Duration("retention_max_age", retentionMaxAge(cfg.Policy.Retention)),
+			zap.Bool("limits", cfg.Policy.Limits != nil),
 		)
 	}
 
