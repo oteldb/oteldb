@@ -139,6 +139,14 @@ func TestTenancyOption(t *testing.T) {
 				{After: 7 * 24 * time.Hour, Interval: time.Hour}, // Agg defaults to last.
 			},
 			Recompress: &RecompressConfig{After: 14 * 24 * time.Hour, Level: 9},
+			Retention:  &RetentionConfig{MaxAge: 90 * 24 * time.Hour, MaxBytes: 1 << 30},
+			Limits: &LimitsConfig{
+				IngestBytesPerSecond: 10 << 20,
+				MaxInFlightBytes:     64 << 20,
+				MaxSeries:            1_000_000,
+				MaxSeriesSoft:        800_000,
+				MaxPartSize:          32 << 20,
+			},
 		})
 		require.NoError(t, err)
 		o := applyOption(t, opt)
@@ -159,11 +167,54 @@ func TestTenancyOption(t *testing.T) {
 
 		require.Equal(t, 14*24*time.Hour, p.Recompress.After)
 		require.Equal(t, 9, p.Recompress.Level)
+
+		require.Equal(t, 90*24*time.Hour, p.Retention.MaxAge)
+		require.Equal(t, int64(1<<30), p.Retention.MaxBytes)
+
+		require.Equal(t, int64(10<<20), p.Limits.IngestBytesPerSecond)
+		require.Equal(t, int64(64<<20), p.Limits.MaxInFlightBytes)
+		require.Equal(t, int64(1_000_000), p.Limits.MaxSeries)
+		require.Equal(t, int64(800_000), p.Limits.MaxSeriesSoft)
+		require.Equal(t, int64(32<<20), p.Limits.MaxPartSize)
+	})
+
+	t.Run("RetentionOnlyInstallsResolver", func(t *testing.T) {
+		opt, err := tenancyOption(&StoragePolicyConfig{
+			Retention: &RetentionConfig{MaxAge: 14 * 24 * time.Hour},
+		})
+		require.NoError(t, err)
+		o := applyOption(t, opt)
+		require.NotNil(t, o.Tenancy, "a retention-only policy must still install a resolver")
+		require.Equal(t, 14*24*time.Hour, o.Tenancy.Resolve("default").Retention.MaxAge)
+	})
+
+	t.Run("LimitsOnlyInstallsResolver", func(t *testing.T) {
+		opt, err := tenancyOption(&StoragePolicyConfig{
+			Limits: &LimitsConfig{MaxSeries: 1000},
+		})
+		require.NoError(t, err)
+		o := applyOption(t, opt)
+		require.NotNil(t, o.Tenancy)
+		require.Equal(t, int64(1000), o.Tenancy.Resolve("default").Limits.MaxSeries)
 	})
 
 	t.Run("UnknownAggIsAnError", func(t *testing.T) {
 		_, err := tenancyOption(&StoragePolicyConfig{
 			Downsample: []DownsampleTierConfig{{Interval: time.Minute, Agg: "median"}},
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("NegativeRetentionIsAnError", func(t *testing.T) {
+		_, err := tenancyOption(&StoragePolicyConfig{
+			Retention: &RetentionConfig{MaxAge: -time.Hour},
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("SoftSeriesAboveHardIsAnError", func(t *testing.T) {
+		_, err := tenancyOption(&StoragePolicyConfig{
+			Limits: &LimitsConfig{MaxSeries: 100, MaxSeriesSoft: 200},
 		})
 		require.Error(t, err)
 	})
@@ -187,6 +238,13 @@ storage:
     recompress:
       after: 336h
       level: 9
+    retention:
+      max_age: 720h
+      max_bytes: 100GB
+    limits:
+      ingest_bytes_per_second: 10MB
+      max_series: 1000000
+      max_series_soft: 800000
 `
 	f, err := os.CreateTemp("", "oteldb.yml")
 	require.NoError(t, err)
@@ -211,6 +269,11 @@ storage:
 	require.Equal(t, signal.AggAvg, p.Downsample.Tiers[0].Agg)
 	require.Equal(t, 336*time.Hour, p.Recompress.After)
 	require.Equal(t, 9, p.Recompress.Level)
+	require.Equal(t, 720*time.Hour, p.Retention.MaxAge)
+	require.Equal(t, int64(100_000_000_000), p.Retention.MaxBytes)
+	require.Equal(t, int64(10_000_000), p.Limits.IngestBytesPerSecond)
+	require.Equal(t, int64(1_000_000), p.Limits.MaxSeries)
+	require.Equal(t, int64(800_000), p.Limits.MaxSeriesSoft)
 }
 
 func TestS3Backend(t *testing.T) {

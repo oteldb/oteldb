@@ -8,6 +8,8 @@ import (
 	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/signal"
 	"github.com/oteldb/storage/tenant"
+
+	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
 // StoragePolicyConfig configures the per-tenant storage policy applied to the embedded engine's
@@ -27,6 +29,12 @@ type StoragePolicyConfig struct {
 	// Recompress rewrites fully-cold parts (older than After) with a higher-ratio Zstandard profile
 	// at merge, trading merge CPU for storage. It is decode-transparent. Nil ⇒ disabled.
 	Recompress *RecompressConfig `json:"recompress" yaml:"recompress"`
+	// Retention bounds how long data is kept: parts older than MaxAge are dropped whole at merge.
+	// Nil ⇒ retain forever.
+	Retention *RetentionConfig `json:"retention" yaml:"retention"`
+	// Limits are the operational admission-control limits: over-budget writes are shed and reported
+	// as OTLP partial success rather than buffered. Nil ⇒ unlimited.
+	Limits *LimitsConfig `json:"limits" yaml:"limits"`
 }
 
 // PrecisionTierConfig is one age band of the lossy float-precision policy.
@@ -57,9 +65,53 @@ type RecompressConfig struct {
 	Level int `json:"level" yaml:"level"`
 }
 
+// RetentionConfig configures age-based retention. Enforcement drops whole partitions at merge, so
+// data may outlive MaxAge until the partition containing it is fully expired.
+type RetentionConfig struct {
+	// MaxAge is the maximum age of retained data. Zero ⇒ retain forever.
+	MaxAge time.Duration `json:"max_age" yaml:"max_age"`
+	// MaxBytes is the maximum total retained bytes. Zero ⇒ unlimited.
+	//
+	// Accepted and passed through, but the storage library does not enforce it yet
+	// (oteldb/storage#224): setting it alone bounds nothing. Use MaxAge to bound disk growth.
+	MaxBytes xbytes.Bytes `json:"max_bytes" yaml:"max_bytes"`
+}
+
+// LimitsConfig configures the per-tenant operational limits. They are lossless admission control:
+// over-budget samples are shed and reported via OTLP partial success (RESOURCE_EXHAUSTED), so an
+// overload degrades rather than OOMs. Zero values mean "no limit".
+type LimitsConfig struct {
+	// IngestBytesPerSecond caps the ingest rate (a token bucket bursting to one second of budget).
+	IngestBytesPerSecond xbytes.Bytes `json:"ingest_bytes_per_second" yaml:"ingest_bytes_per_second"`
+	// MaxInFlightBytes caps the unflushed in-flight bytes buffered before backpressure sheds.
+	MaxInFlightBytes xbytes.Bytes `json:"max_in_flight_bytes" yaml:"max_in_flight_bytes"`
+	// MaxSeries is the hard active-series cardinality ceiling: a sample minting a new series past
+	// it is shed (or routed to overflow, see MaxSeriesSoft). Existing series are unaffected.
+	MaxSeries int64 `json:"max_series" yaml:"max_series"`
+	// MaxSeriesSoft, when 0 < MaxSeriesSoft <= MaxSeries, is a soft cardinality budget: past it a
+	// new series' samples go to a synthetic per-metric overflow series instead of being shed, until
+	// MaxSeries is reached. Metrics only.
+	MaxSeriesSoft int64 `json:"max_series_soft" yaml:"max_series_soft"`
+	// MaxPartSize caps an immutable part's approximate uncompressed size; flush and merge split
+	// their output to respect it. It is structural: fixed when the tenant's engine is created.
+	MaxPartSize xbytes.Bytes `json:"max_part_size" yaml:"max_part_size"`
+}
+
+// retentionMaxAge reports the configured retention window, or zero when retention is disabled.
+func retentionMaxAge(cfg *RetentionConfig) time.Duration {
+	if cfg == nil {
+		return 0
+	}
+	return cfg.MaxAge
+}
+
 // empty reports whether the policy configures nothing, in which case no resolver is installed.
 func (cfg *StoragePolicyConfig) empty() bool {
-	return cfg == nil || (len(cfg.Precision) == 0 && len(cfg.Downsample) == 0 && cfg.Recompress == nil)
+	return cfg == nil || (len(cfg.Precision) == 0 &&
+		len(cfg.Downsample) == 0 &&
+		cfg.Recompress == nil &&
+		cfg.Retention == nil &&
+		cfg.Limits == nil)
 }
 
 // tenancyOption builds the storage tenancy option from the policy config, or returns (nil, nil)
@@ -110,6 +162,30 @@ func (cfg *StoragePolicyConfig) policy() (tenant.Policy, error) {
 
 	if r := cfg.Recompress; r != nil {
 		p.Recompress = tenant.Recompress{After: r.After, Level: r.Level}
+	}
+
+	if r := cfg.Retention; r != nil {
+		if r.MaxAge < 0 {
+			return tenant.Policy{}, errors.New("retention: max_age must not be negative")
+		}
+		p.Retention = tenant.Retention{
+			MaxAge:   r.MaxAge,
+			MaxBytes: int64(r.MaxBytes),
+		}
+	}
+
+	if l := cfg.Limits; l != nil {
+		if l.MaxSeriesSoft > 0 && l.MaxSeries > 0 && l.MaxSeriesSoft > l.MaxSeries {
+			return tenant.Policy{}, errors.Errorf("limits: max_series_soft (%d) must not exceed max_series (%d)",
+				l.MaxSeriesSoft, l.MaxSeries)
+		}
+		p.Limits = tenant.Limits{
+			IngestBytesPerSecond: int64(l.IngestBytesPerSecond),
+			MaxInFlightBytes:     int64(l.MaxInFlightBytes),
+			MaxSeries:            l.MaxSeries,
+			MaxSeriesSoft:        l.MaxSeriesSoft,
+			MaxPartSize:          int64(l.MaxPartSize),
+		}
 	}
 
 	return p, nil

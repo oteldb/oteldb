@@ -92,8 +92,12 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
   compression) through oteldb's per-tenant resolver, alongside Downsample/Recompress.
   **Implemented** in `cmd/oteldb/storage_policy.go` (`tenancyOption` → `storage.WithTenancy`):
   the `storage.policy` config block exposes `precision[]{after,bits}`,
-  `downsample[]{after,interval,agg}`, and `recompress{after,level}`. oteldb runs the embedded
-  engine single-tenant, so a static `tenant.ResolverFunc` returns one policy for every tenant.
+  `downsample[]{after,interval,agg}`, `recompress{after,level}`, `retention{max_age,max_bytes}`
+  and `limits{ingest_bytes_per_second,max_in_flight_bytes,max_series,max_series_soft,max_part_size}`.
+  oteldb runs the embedded engine single-tenant, so a static `tenant.ResolverFunc` returns one
+  policy for every tenant — retention is therefore one global window, not per-tenant.
+  `retention.max_bytes` parses and passes through but the library does not enforce it yet
+  (oteldb/storage#224); `max_age` is the knob that actually bounds disk growth.
 - **Sampling weights:** honour `fetch.Batch.ScaleFactors` in PromQL `sum`/`rate`/`count` for
   sampled tenants. The aggregate sidecar is skipped for sampled parts, so those fall back to a
   weighted raw fold. **Not implemented.** oteldb does not yet expose a `tenant.Sampling` policy,
