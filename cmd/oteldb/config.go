@@ -371,6 +371,17 @@ type PrometheusConfig struct {
 	EnableNegativeOffset *bool         `json:"enable_negative_offset" yaml:"enable_negative_offset"`
 	EnablePerStepStats   bool          `json:"enable_per_step_stats" yaml:"enable_per_step_stats"`
 
+	// EnableScarecrowEngine routes PromQL queries through internal/scarecrow (the native
+	// series-major engine, docs/promql-engine.md) instead of the Thanos-fork engine
+	// (internal/promql). It gets a native columnar Scanner (no per-sample copy/iterator boxing)
+	// only when metrics are served from the embedded storage engine (metrics.backend: storage);
+	// otherwise it falls back to scarecrow's generic storage.Queryable adapter, which is correct
+	// but pays the same conversion cost the fork already does. Neither MaxSamples, Timeout, nor
+	// EnablePerStepStats is enforced by scarecrow yet. Experimental: corpus coverage is partial
+	// (see internal/scarecrow's unsupportedFiles), so unsupported query shapes error instead of
+	// falling back to the fork.
+	EnableScarecrowEngine bool `json:"enable_scarecrow_engine" yaml:"enable_scarecrow_engine"`
+
 	// DisableRateOffloading disables PromQL rate offloading.
 	DisableRateOffloading bool `json:"disable_rate_offloading" yaml:"disable_rate_offloading"`
 	// DisableMetricOffloading disables all PromQL offloading.
