@@ -25,7 +25,7 @@ require (
 	github.com/docker/cli v29.6.1+incompatible
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.19.0
-	github.com/go-faster/errors v0.7.1
+	github.com/go-faster/errors v0.8.0
 	github.com/go-faster/jx v1.2.0
 	github.com/go-faster/sdk v0.37.0
 	github.com/go-faster/tetragon v1.3.2
