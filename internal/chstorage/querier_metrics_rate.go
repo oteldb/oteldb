@@ -276,8 +276,10 @@ func (o *rateSelector) loadSeries(ctx context.Context) error {
 			if !o.filter.Matches(s) {
 				continue
 			}
-			s.labels = extlabels.DropReserved(s.labels, b)
-			o.series = append(o.series, s.labels)
+			// s is a pointer into querySeriesSingleflight's shared, cached result, so it
+			// must not be mutated here: concurrent identical queries hold the same
+			// *series[pointData] and would race on a s.labels write.
+			o.series = append(o.series, extlabels.DropReserved(s.labels, b))
 			o.pointSeries = append(o.pointSeries, s)
 		}
 		numSeries := int64(len(o.series))
