@@ -26,6 +26,11 @@ type matrixFold struct {
 	at *int64
 	ec *EvalContext
 
+	// param is the function's second scalar argument (quantile_over_time's q, predict_linear's
+	// duration), nil for every other range function.
+	param     Operator
+	paramVals []float64
+
 	schema *Schema
 	byHash map[uint64][]SeriesRef
 
@@ -40,7 +45,7 @@ type matrixFold struct {
 
 func newMatrixFold(
 	src foldSource, label, fnName string, fn rangeFunc,
-	rng, offset time.Duration, at *int64, ec *EvalContext,
+	rng, offset time.Duration, at *int64, param Operator, ec *EvalContext,
 ) *matrixFold {
 	return &matrixFold{
 		src:    src,
@@ -50,6 +55,7 @@ func newMatrixFold(
 		rng:    rng,
 		offset: offset,
 		at:     at,
+		param:  param,
 		ec:     ec,
 	}
 }
@@ -58,13 +64,23 @@ func (o *matrixFold) String() string {
 	return fmt.Sprintf("MatrixFold(%s, %s[%s])", o.fnName, o.label, o.rng)
 }
 
-func (o *matrixFold) Children() []Operator { return nil }
+func (o *matrixFold) Children() []Operator {
+	if o.param == nil {
+		return nil
+	}
+
+	return []Operator{o.param}
+}
 
 func (o *matrixFold) Close() error {
 	var err error
 	if o.iter != nil {
 		err = o.iter.Close()
 		o.iter = nil
+	}
+
+	if o.param != nil {
+		err = errors.Join(err, o.param.Close())
 	}
 
 	return errors.Join(err, o.src.Close())
@@ -108,6 +124,15 @@ func (o *matrixFold) Next(ctx context.Context) (*Column, error) {
 
 	if _, err := o.Schema(ctx); err != nil {
 		return nil, err
+	}
+
+	if o.param != nil && o.paramVals == nil {
+		vals, err := scalarValues(ctx, o.param, 0, o.ec.NumSteps())
+		if err != nil {
+			return nil, err
+		}
+
+		o.paramVals = vals
 	}
 
 	if o.iter == nil {
@@ -188,12 +213,17 @@ func (o *matrixFold) fold(s *Samples) {
 			continue
 		}
 
-		w := o.buildWindow(s, lo, hi, rangeStart, rangeEnd, rngMs)
+		w := o.buildWindow(s, lo, hi, rangeStart, rangeEnd, rngMs, o.ec.Steps[k])
 		if w.Len() == 0 {
 			continue
 		}
 
-		if v, ok := o.fn(w); ok {
+		var param float64
+		if o.paramVals != nil {
+			param = o.paramVals[k]
+		}
+
+		if v, ok := o.fn(w, param); ok {
 			o.out.Set(k, v)
 		}
 	}
@@ -201,7 +231,7 @@ func (o *matrixFold) fold(s *Samples) {
 
 // buildWindow copies samples [lo,hi) into the reusable scratch window, dropping staleness
 // markers, which range functions never fold.
-func (o *matrixFold) buildWindow(s *Samples, lo, hi int, rangeStart, rangeEnd, rngMs int64) *window {
+func (o *matrixFold) buildWindow(s *Samples, lo, hi int, rangeStart, rangeEnd, rngMs, evalMs int64) *window {
 	o.wt = o.wt[:0]
 	o.wv = o.wv[:0]
 	o.ww = o.ww[:0]
@@ -225,6 +255,7 @@ func (o *matrixFold) buildWindow(s *Samples, lo, hi int, rangeStart, rangeEnd, r
 		RangeStart: rangeStart,
 		RangeEnd:   rangeEnd,
 		RangeMs:    rngMs,
+		EvalMs:     evalMs,
 	}
 	if s.Weights != nil {
 		w.W = o.ww

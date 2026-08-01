@@ -4,6 +4,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/prometheus/common/model"
@@ -25,9 +26,20 @@ func (p *planner) buildInstantCall(e *parser.Call) (Operator, bool, error) {
 		return newUnaryFn(input, name, fn), true, nil
 	}
 
+	if dateFn, isDateFn := dateFuncs[name]; isDateFn {
+		return p.buildDateFn(e, name, dateFn)
+	}
+
 	switch name {
 	case "pi":
 		return newNumberLiteral(math.Pi, p.ec), true, nil
+
+	case "time":
+		if len(e.Args) != 0 {
+			return nil, true, unsupportedf("time() with arguments")
+		}
+
+		return newStepTimeFn(p.ec), true, nil
 
 	case "clamp", "clamp_min", "clamp_max":
 		return p.buildClamp(e)
@@ -99,6 +111,22 @@ func (p *planner) buildInstantCall(e *parser.Call) (Operator, bool, error) {
 	}
 
 	return nil, false, nil
+}
+
+// buildDateFn plans a date/time function: with no argument it reads the query's own step
+// timestamp ([stepDateFn]); with one, it maps each of the argument's values, treated as a unix
+// timestamp in seconds ([unaryFn]).
+func (p *planner) buildDateFn(e *parser.Call, name string, dateFn func(time.Time) float64) (Operator, bool, error) {
+	if len(e.Args) == 0 {
+		return newStepDateFn(name, dateFn, p.ec), true, nil
+	}
+
+	input, err := p.buildArg(e, 0)
+	if err != nil {
+		return nil, true, err
+	}
+
+	return newUnaryFn(input, name, unixSecondsToDateFn(dateFn)), true, nil
 }
 
 // buildArg plans argument i of a call.
