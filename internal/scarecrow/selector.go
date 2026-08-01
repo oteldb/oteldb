@@ -100,6 +100,14 @@ func (o *vectorSelect) Schema(ctx context.Context) (*Schema, error) {
 		return o.schema, nil
 	}
 
+	// An empty step grid (a degenerate subquery, e.g. step > range missing every aligned tick
+	// in the window) trivially selects nothing; window() assumes at least one step.
+	if len(o.ec.Steps) == 0 {
+		o.schema = NewSchema(nil)
+
+		return o.schema, nil
+	}
+
 	mint, maxt := o.window()
 
 	series, err := o.scanner.Series(ctx, mint, maxt, o.matchers)
@@ -125,8 +133,13 @@ func (o *vectorSelect) Next(ctx context.Context) (*Column, error) {
 		return nil, err
 	}
 
-	if _, err := o.Schema(ctx); err != nil {
+	schema, err := o.Schema(ctx)
+	if err != nil {
 		return nil, err
+	}
+
+	if len(o.ec.Steps) == 0 || schema.Len() == 0 {
+		return nil, nil
 	}
 
 	if o.iter == nil {

@@ -73,6 +73,29 @@ func (p *planner) buildInstantCall(e *parser.Call) (Operator, bool, error) {
 
 	case "label_join":
 		return p.buildLabelJoin(e)
+
+	case "sort", "sort_desc":
+		input, err := p.buildArg(e, 0)
+		if err != nil {
+			return nil, true, err
+		}
+
+		return newSortByValue(input, name == "sort_desc", p.ec), true, nil
+
+	case "sort_by_label", "sort_by_label_desc":
+		input, err := p.buildArg(e, 0)
+		if err != nil {
+			return nil, true, err
+		}
+
+		names := make([]string, len(e.Args)-1)
+		for i := range names {
+			if names[i], err = stringArg(e, i+1); err != nil {
+				return nil, true, err
+			}
+		}
+
+		return newSortByLabel(input, names, name == "sort_by_label_desc", p.ec), true, nil
 	}
 
 	return nil, false, nil

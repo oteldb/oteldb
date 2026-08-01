@@ -20,20 +20,20 @@ import (
 // an entry appearing here means a capability regressed, which is exactly what the corresponding
 // milestone is supposed to prevent.
 var unsupportedFiles = map[string]string{
-	"testdata/aggregators.test":         "M2b: topk/bottomk/quantile/count_values; M7: native histograms",
+	"testdata/aggregators.test":         "count_values (permanently unsupported); M7: native histograms; M12: date/time and range functions; M13: absent/absent_over_time",
 	"testdata/at_modifier.test":         "M9: annotations on @-modified queries",
 	"testdata/extended_vectors.test":    "anchored/smoothed range selectors",
 	"testdata/fill-modifier.test":       "binop fill modifiers",
-	"testdata/functions.test":           "M2b: sort family; M7: native histograms",
+	"testdata/functions.test":           "M12: date/time, range and query-context functions; M13: absent/absent_over_time",
 	"testdata/histograms.test":          "M7: native histograms",
 	"testdata/info.test":                "info()",
-	"testdata/limit.test":               "M2b: limitk/limit_ratio",
+	"testdata/limit.test":               "M7: native histograms; M9: invalid-ratio warnings; M12: time()",
 	"testdata/name_label_dropping.test": "M8: delayed __name__ removal",
 	"testdata/native_histograms.test":   "M7: native histograms",
 	"testdata/operators.test":           "M7: native histogram operands; group_x with comparison operators",
-	"testdata/range_queries.test":       "M2b: sort(); M7: native histogram series",
+	"testdata/range_queries.test":       "M9: annotations on sort(); M7: native histogram series",
 	"testdata/start_timestamps.test":    "M10: created timestamps",
-	"testdata/subquery.test":            "M2b: topk; M7: native histograms — subqueries themselves pass",
+	"testdata/subquery.test":            "M7: native histograms — topk and the rest of subqueries now pass",
 	"testdata/type_and_unit.test":       "type and unit metadata",
 }
 

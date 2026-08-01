@@ -78,9 +78,7 @@ func (p *planner) build(expr parser.Expr) (Operator, error) {
 	}
 }
 
-// aggregateOps are the aggregations that fold incrementally into a per-group row. topk, bottomk,
-// quantile, count_values and the limit family need the full per-step series set and are not yet
-// planned.
+// aggregateOps are the aggregations that fold incrementally into a per-group row.
 var aggregateOps = map[parser.ItemType]bool{
 	parser.SUM:    true,
 	parser.MIN:    true,
@@ -92,8 +90,21 @@ var aggregateOps = map[parser.ItemType]bool{
 	parser.STDVAR: true,
 }
 
+// fullSetOps need the full per-step series set rather than an incremental fold — an exact
+// quantile, or a selection that only value comparison across the whole set can answer (§4.4).
+// count_values is deliberately absent: its output labels are the observed *values*, which makes
+// its schema data-dependent in a way §3.3's plan-time resolution cannot accommodate (see
+// docs/promql-engine.md, open question 4); it stays an [ErrUnsupported] rather than a silent gap.
+var fullSetOps = map[parser.ItemType]bool{
+	parser.QUANTILE:    true,
+	parser.TOPK:        true,
+	parser.BOTTOMK:     true,
+	parser.LIMITK:      true,
+	parser.LIMIT_RATIO: true,
+}
+
 func (p *planner) buildAggregate(e *parser.AggregateExpr) (Operator, error) {
-	if !aggregateOps[e.Op] {
+	if !aggregateOps[e.Op] && !fullSetOps[e.Op] {
 		return nil, unsupportedf("aggregation %s", e.Op)
 	}
 
@@ -106,7 +117,24 @@ func (p *planner) buildAggregate(e *parser.AggregateExpr) (Operator, error) {
 		return nil, err
 	}
 
-	return newAggregate(input, e, p.ec), nil
+	if aggregateOps[e.Op] {
+		return newAggregate(input, e, p.ec), nil
+	}
+
+	if e.Param == nil {
+		return nil, unsupportedf("aggregation %s without a parameter", e.Op)
+	}
+
+	param, err := p.build(e.Param)
+	if err != nil {
+		return nil, err
+	}
+
+	if e.Op == parser.QUANTILE {
+		return newQuantileAgg(input, param, e, p.ec), nil
+	}
+
+	return newLimitAgg(input, param, e, p.ec), nil
 }
 
 func (p *planner) buildUnary(e *parser.UnaryExpr) (Operator, error) {
@@ -251,12 +279,11 @@ func (p *planner) buildSubquery(sq *parser.SubqueryExpr) (Operator, *EvalContext
 	var (
 		refs   = refTimes(p.ec.Steps, sq.OriginalOffset, sq.Timestamp)
 		stepMs = subqueryStep(sq, p.noStepSubqueryInterval)
-		grid   = subqueryGrid(refs, sq.Range.Milliseconds(), stepMs)
+		// grid may be empty — e.g. a subquery whose step exceeds its range can miss every
+		// aligned tick inside the window at some outer steps. That is a legitimate "no sample"
+		// result, not an error: the fold below runs over zero inner steps and emits nothing.
+		grid = subqueryGrid(refs, sq.Range.Milliseconds(), stepMs)
 	)
-
-	if len(grid) == 0 {
-		return nil, nil, errors.Errorf("subquery %s resolves to an empty evaluation grid", sq)
-	}
 
 	innerEC := &EvalContext{
 		Steps:         grid,
