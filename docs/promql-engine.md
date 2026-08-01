@@ -940,11 +940,14 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   a binop is precisely the operator that separates its consumers in time. It pays where consumers
   advance in lockstep — several aggregations over one selector, the many-side of a join feeding two
   operators — and the bound is what keeps the other case from silently becoming a memory problem.
-- **M5 — pushdowns.** *Planner side done; storage side outstanding.* The three `storagebackend`
-  pushdowns are now planner rules over optional `Scanner` capabilities — `AggregateScanner`
-  (reducer `*_over_time`), `SeriesCounter` (`count`), `GroupedSeriesCounter` (`count by (l)`).
-  A scanner that implements none of them answers every query identically, only slower, which is
-  the property the tests assert rather than assume.
+- **M5 — pushdowns.** *Done.* The three pushdowns are planner rules over optional `Scanner`
+  capabilities — `AggregateScanner` (reducer `*_over_time`), `SeriesCounter` (`count`),
+  `GroupedSeriesCounter` (`count by (l)`) — and `internal/storagebackend`'s `ScarecrowScanner`
+  now implements all three, reusing the same `AggregateMetricsNamed` and
+  `storagepromql.Queryable`-backed `CountSeries`/`CountSeriesBy` calls the fork engine's own
+  pushdowns use. A scanner that implements none of them answers every query identically, only
+  slower, which is the property the tests assert rather than assume — verified here with a
+  differential oracle against the fork engine over `sum_over_time`, `count`, and `count by`.
 
   Two obligations bind an implementer, and they are why the capabilities are opt-in rather than
   assumed. Windows are PromQL's half-open `(mint, maxt]`, not storage's inclusive range — widening
@@ -965,11 +968,10 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   so two selectors can call it simultaneously. It was found by `-race` on a test double, which is
   precisely the sort of thing that would otherwise be found in production.
 
-  **Still outstanding, and it is the larger half:** nothing implements these capabilities yet
-  outside the tests. `internal/storagebackend` must grow a columnar `Scanner` over the `fetch`
-  seam that answers them from the stats sidecar and index, and the engine must be wired into that
-  path. Until then the pushdowns are dormant and the fork is not replaced, so #1116/#1117 stay
-  open. *Gate for replacing the fork on that path.*
+  `internal/storagebackend` now wires `scarecrow.NewEngine` to `Backend.ScarecrowScanner()`
+  (opt-in behind `prometheus.enable_scarecrow_engine`, since the engine's own resource limits and
+  corpus coverage are still partial — see M11 and §8.1), which is what closes #1116/#1117 on this
+  path once the flag is on by default.
 - **M6 — kernels.** Assembly paths + golden benchmarks vs the fork.
 - **M7 — native histograms.** **Blocked on storage:** `fetch.Batch` has no histogram column
   (`Timestamps []int64` + `Values []float64` only) and `signal/metric` has no histogram kind.

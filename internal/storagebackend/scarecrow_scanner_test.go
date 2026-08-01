@@ -127,6 +127,7 @@ func TestScarecrowScannerPushdowns(t *testing.T) {
 	s := b.ScarecrowScanner().(interface {
 		scarecrow.AggregateScanner
 		scarecrow.SeriesCounter
+		scarecrow.GroupedSeriesCounter
 	})
 	t.Cleanup(func() { _ = s.Close() })
 
@@ -178,6 +179,21 @@ func TestScarecrowScannerPushdowns(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), n)
 	})
+
+	t.Run("count series by label", func(t *testing.T) {
+		counts, err := s.CountSeriesBy(ctx, mint, maxt, "foo", []*labels.Matcher{nameMatcher})
+		require.NoError(t, err)
+		require.Equal(t, map[string]uint64{"a": 1, "b": 1}, counts)
+	})
+
+	t.Run("count series by label applies negated-matcher recheck", func(t *testing.T) {
+		counts, err := s.CountSeriesBy(ctx, mint, maxt, "foo", []*labels.Matcher{
+			nameMatcher,
+			labels.MustNewMatcher(labels.MatchNotEqual, "foo", "a"),
+		})
+		require.NoError(t, err)
+		require.Equal(t, map[string]uint64{"b": 1}, counts)
+	})
 }
 
 // TestScarecrowScannerEngineMatchesFork runs a real query through internal/scarecrow wired to
@@ -205,6 +221,7 @@ func TestScarecrowScannerEngineMatchesFork(t *testing.T) {
 		`sum by (foo) (scan_metric)`,
 		`sum_over_time(scan_metric[1m])`,
 		`count(scan_metric)`,
+		`count by (foo) (scan_metric)`,
 	}
 
 	for _, query := range queries {
