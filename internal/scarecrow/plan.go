@@ -220,6 +220,13 @@ func (p *planner) buildCall(e *parser.Call) (Operator, error) {
 		return op, err
 	}
 
+	// absent_over_time does not fit the rangeFunc/matrixFold contract below: matrixFold never
+	// calls a range function over an empty window, but that is exactly what this needs to
+	// observe (see [buildAbsentOverTime]).
+	if e.Func.Name == "absent_over_time" {
+		return p.buildAbsentOverTime(e)
+	}
+
 	fn, ok := rangeFuncs[e.Func.Name]
 	if !ok {
 		return nil, unsupportedf("function %s", e.Func.Name)
