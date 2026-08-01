@@ -20,7 +20,7 @@ import (
 // an entry appearing here means a capability regressed, which is exactly what the corresponding
 // milestone is supposed to prevent.
 var unsupportedFiles = map[string]string{
-	"testdata/aggregators.test":         "count_values (permanently unsupported); M7: native histograms; a Schema()-time error gets an extra \"resolve schema of ...\" wrapper that breaks the corpus' exact-message match on NaN parameters; M13: absent/absent_over_time",
+	"testdata/aggregators.test":         "M7: native histograms (including count_values over a mixed float/histogram series); a Schema()-time error gets an extra \"resolve schema of ...\" wrapper that breaks the corpus' exact-message match on NaN parameters; M13: absent/absent_over_time",
 	"testdata/at_modifier.test":         "M9: annotations on @-modified queries",
 	"testdata/extended_vectors.test":    "anchored/smoothed range selectors",
 	"testdata/fill-modifier.test":       "binop fill modifiers",

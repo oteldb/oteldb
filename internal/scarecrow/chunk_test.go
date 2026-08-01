@@ -20,6 +20,11 @@ var experimentalParserOpts = parser.Options{EnableExperimentalFunctions: true}
 // binops, subqueries) plus the full-set aggregations (§ M2b) whose per-step selection is, by
 // construction, independent of where a chunk boundary falls — this is what proves chunking must
 // not change their result, not just that it happens not to in this corpus.
+//
+// `limitk` is deliberately included here (self-consistency only, see [chunkQueriesVsUpstream])
+// even though its pick is unspecified by PromQL and cannot be compared against another
+// independent implementation: this list still has to prove that scarecrow's *own* unspecified-
+// but-deterministic choice doesn't change just because chunking split the query differently.
 var chunkQueries = []string{
 	`counter`,
 	`rate(counter[30s])`,
@@ -32,6 +37,27 @@ var chunkQueries = []string{
 	`bottomk(1, counter)`,
 	`quantile(0.5, counter)`,
 	`limitk(1, counter)`,
+}
+
+// chunkQueriesVsUpstream is [chunkQueries] minus `limitk`, for comparison against the real
+// Prometheus engine. `limitk` picks an unspecified series when more input series exist than the
+// limit — PromQL makes no ordering promise — and upstream's own "first encountered" answer for
+// it isn't stable across separate process runs (confirmed empirically: 100 isolated,
+// non-concurrent runs of scarecrow's own chunked-vs-unchunked comparison never disagreed, while
+// the same isolated repetition against upstream flaked on this one query). Comparing two
+// independently arbitrary choices for byte-exact agreement isn't a meaningful test; the
+// self-consistency check above is what actually matters for `limitk`.
+var chunkQueriesVsUpstream = []string{
+	`counter`,
+	`rate(counter[30s])`,
+	`sum(counter)`,
+	`sum by (job) (counter)`,
+	`counter + counter`,
+	`counter * on(job) counter`,
+	`sum_over_time(counter[1m:10s])`,
+	`topk(1, counter)`,
+	`bottomk(1, counter)`,
+	`quantile(0.5, counter)`,
 }
 
 // TestChunkingMatchesUnchunked asserts that splitting a range query into several small chunks
@@ -91,7 +117,7 @@ func TestChunkingMatchesUpstream(t *testing.T) {
 	start, end := time.Unix(0, 0), time.Unix(90, 0)
 	step := 10 * time.Second
 
-	for _, qs := range chunkQueries {
+	for _, qs := range chunkQueriesVsUpstream {
 		t.Run(qs, func(t *testing.T) {
 			t.Parallel()
 
