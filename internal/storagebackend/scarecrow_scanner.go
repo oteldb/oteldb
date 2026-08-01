@@ -29,7 +29,77 @@ type scarecrowScanner struct {
 
 var _ scarecrow.Scanner = (*scarecrowScanner)(nil)
 
+var (
+	_ scarecrow.AggregateScanner = (*scarecrowScanner)(nil)
+	_ scarecrow.SeriesCounter    = (*scarecrowScanner)(nil)
+)
+
 func (s *scarecrowScanner) Close() error { return nil }
+
+// AggregateOverTime implements [scarecrow.AggregateScanner], answering a reducer `*_over_time`
+// from the stats sidecar ([storage.Storage.AggregateMetricsNamed]) instead of a raw fetch-and-fold
+// — the same pushdown [aggregateOverTimeOp] performs for the fork engine, reused here because both
+// read the same window-aggregate API. The caller ([scarecrow]'s aggregateOverTime operator) drops
+// the metric name itself, so the labels returned here are unfiltered.
+func (s *scarecrowScanner) AggregateOverTime(
+	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
+) ([]scarecrow.WindowAggregate, error) {
+	const nsPerMs = int64(time.Millisecond)
+
+	// scarecrow's window is PromQL's half-open (mint, maxt]; storage's fetch range is inclusive,
+	// so mint is exclusive (start = mint+1 ms) and maxt inclusive.
+	aggs, err := s.b.store.AggregateMetricsNamed(ctx, s.b.tenant, fetch.Request{
+		Tenant:   s.b.tenant,
+		Start:    (mint + 1) * nsPerMs,
+		End:      maxt * nsPerMs,
+		Matchers: storagepromql.PushableMatchers(matchers),
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "aggregate metrics")
+	}
+
+	out := make([]scarecrow.WindowAggregate, 0, len(aggs))
+	for i := range aggs {
+		la := &aggs[i]
+
+		lset := storagepromql.PromLabels(la.Series)
+		if !storagepromql.MatchesAll(lset, matchers) {
+			continue
+		}
+
+		out = append(out, scarecrow.WindowAggregate{
+			Labels: lset,
+			Count:  la.Count,
+			Sum:    la.Sum,
+			Min:    la.Min,
+			Max:    la.Max,
+		})
+	}
+
+	return out, nil
+}
+
+// CountSeries implements [scarecrow.SeriesCounter], delegating to the same
+// [storagepromql.Queryable]-backed CountSeries the fork engine's count() pushdown uses
+// ([backendCounter]).
+func (s *scarecrowScanner) CountSeries(
+	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
+) (uint64, error) {
+	q, err := s.b.queryable().Querier(mint, maxt)
+	if err != nil {
+		return 0, errors.Wrap(err, "count pushdown: create querier")
+	}
+	defer func() { _ = q.Close() }()
+
+	sc, ok := q.(interface {
+		CountSeries(ctx context.Context, startMs, endMs int64, matchers ...*labels.Matcher) (uint64, error)
+	})
+	if !ok {
+		return 0, nil
+	}
+
+	return sc.CountSeries(ctx, mint, maxt, matchers...)
+}
 
 // Series implements [scarecrow.Scanner].
 func (s *scarecrowScanner) Series(

@@ -117,6 +117,69 @@ func TestScarecrowScannerSeriesAndScan(t *testing.T) {
 	})
 }
 
+// TestScarecrowScannerPushdowns exercises AggregateOverTime and CountSeries directly: matcher
+// pushdown/recheck symmetry with Series/Scan, and the aggregate values themselves.
+func TestScarecrowScannerPushdowns(t *testing.T) {
+	ctx := context.Background()
+	base := time.Unix(2_000_000, 0).UTC()
+
+	b := ingestScannerFixture(ctx, t, base)
+	s := b.ScarecrowScanner().(interface {
+		scarecrow.AggregateScanner
+		scarecrow.SeriesCounter
+	})
+	t.Cleanup(func() { _ = s.Close() })
+
+	mint := base.Add(-time.Minute).UnixMilli()
+	maxt := base.UnixMilli()
+
+	nameMatcher := labels.MustNewMatcher(labels.MatchEqual, "__name__", "scan_metric")
+
+	t.Run("aggregate over time sums per series", func(t *testing.T) {
+		aggs, err := s.AggregateOverTime(ctx, mint, maxt, []*labels.Matcher{nameMatcher})
+		require.NoError(t, err)
+		require.Len(t, aggs, 2)
+
+		byFoo := map[string]scarecrow.WindowAggregate{}
+		for _, a := range aggs {
+			byFoo[a.Labels.Get("foo")] = a
+		}
+
+		require.Equal(t, int64(3), byFoo["a"].Count)
+		require.Equal(t, 6.0, byFoo["a"].Sum)
+		require.Equal(t, 1.0, byFoo["a"].Min)
+		require.Equal(t, 3.0, byFoo["a"].Max)
+
+		require.Equal(t, int64(2), byFoo["b"].Count)
+		require.Equal(t, 30.0, byFoo["b"].Sum)
+	})
+
+	t.Run("aggregate over time applies negated-matcher recheck", func(t *testing.T) {
+		aggs, err := s.AggregateOverTime(ctx, mint, maxt, []*labels.Matcher{
+			nameMatcher,
+			labels.MustNewMatcher(labels.MatchNotEqual, "foo", "a"),
+		})
+		require.NoError(t, err)
+		require.Len(t, aggs, 1)
+		require.Equal(t, "b", aggs[0].Labels.Get("foo"))
+	})
+
+	t.Run("count series", func(t *testing.T) {
+		n, err := s.CountSeries(ctx, mint, maxt, []*labels.Matcher{nameMatcher})
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), n)
+	})
+
+	t.Run("count series applies negated-matcher recheck", func(t *testing.T) {
+		n, err := s.CountSeries(ctx, mint, maxt, []*labels.Matcher{
+			nameMatcher,
+			labels.MustNewMatcher(labels.MatchNotEqual, "foo", "a"),
+		})
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), n)
+	})
+}
+
 // TestScarecrowScannerEngineMatchesFork runs a real query through internal/scarecrow wired to
 // [storagebackend.Backend.ScarecrowScanner] and compares it against the same query answered by
 // the production fork engine (internal/promql) over the same store — the differential oracle for
@@ -138,25 +201,33 @@ func TestScarecrowScannerEngineMatchesFork(t *testing.T) {
 		Parser:     promqlparser.Options{},
 	})
 
-	const query = `sum by (foo) (scan_metric)`
+	queries := []string{
+		`sum by (foo) (scan_metric)`,
+		`sum_over_time(scan_metric[1m])`,
+		`count(scan_metric)`,
+	}
 
-	forkQ, err := forkEng.NewInstantQuery(ctx, b, nil, query, base)
-	require.NoError(t, err)
-	t.Cleanup(forkQ.Close)
-	forkRes := forkQ.Exec(ctx)
-	require.NoError(t, forkRes.Err)
-	forkVec, err := forkRes.Vector()
-	require.NoError(t, err)
+	for _, query := range queries {
+		t.Run(query, func(t *testing.T) {
+			forkQ, err := forkEng.NewInstantQuery(ctx, b, nil, query, base)
+			require.NoError(t, err)
+			t.Cleanup(forkQ.Close)
+			forkRes := forkQ.Exec(ctx)
+			require.NoError(t, forkRes.Err)
+			forkVec, err := forkRes.Vector()
+			require.NoError(t, err)
 
-	scarecrowQ, err := scarecrowEng.NewInstantQuery(ctx, b, nil, query, base)
-	require.NoError(t, err)
-	t.Cleanup(scarecrowQ.Close)
-	scarecrowRes := scarecrowQ.Exec(ctx)
-	require.NoError(t, scarecrowRes.Err)
-	scarecrowVec, err := scarecrowRes.Vector()
-	require.NoError(t, err)
+			scarecrowQ, err := scarecrowEng.NewInstantQuery(ctx, b, nil, query, base)
+			require.NoError(t, err)
+			t.Cleanup(scarecrowQ.Close)
+			scarecrowRes := scarecrowQ.Exec(ctx)
+			require.NoError(t, scarecrowRes.Err)
+			scarecrowVec, err := scarecrowRes.Vector()
+			require.NoError(t, err)
 
-	sortVector(forkVec)
-	sortVector(scarecrowVec)
-	require.Equal(t, forkVec, scarecrowVec)
+			sortVector(forkVec)
+			sortVector(scarecrowVec)
+			require.Equal(t, forkVec, scarecrowVec)
+		})
+	}
 }
