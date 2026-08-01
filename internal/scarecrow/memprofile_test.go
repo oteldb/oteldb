@@ -63,17 +63,28 @@ func (g *genScanner) Series(
 	return out, nil
 }
 
+// Scan only generates samples inside [mint, maxt], matching the partitioned-storage contract
+// M16's time-chunking relies on ("a chunk's fetch touches only its own parts and decodes
+// nothing extra" — docs/promql-engine.md §4.4). Without this, a chunked query's per-chunk Scan
+// calls would each synthesize the *whole* series regardless of chunk size, hiding chunking's
+// fetch-side savings behind a scanner that does not model them.
 func (g *genScanner) Scan(
-	_ context.Context, mint, _ int64, _ []*labels.Matcher,
+	_ context.Context, mint, maxt int64, _ []*labels.Matcher,
 ) (scarecrow.SeriesIterator, error) {
 	g.scans.Add(1)
 
-	return &genIterator{g: g, mint: mint}, nil
+	n := g.samples
+	if maxt > mint {
+		n = min(int((maxt-mint)/g.stepMs)+1, g.samples)
+	}
+
+	return &genIterator{g: g, mint: mint, n: n}, nil
 }
 
 type genIterator struct {
 	g    *genScanner
 	mint int64
+	n    int
 	next int
 
 	cur scarecrow.Samples
@@ -94,11 +105,11 @@ func (it *genIterator) Next(context.Context) (*scarecrow.Samples, error) {
 	// Buffers are allocated once and refilled, so the iterator holds one series' samples at a
 	// time — the same contract oteldb/storage's fetch seam offers.
 	if it.t == nil {
-		it.t = make([]int64, it.g.samples)
-		it.v = make([]float64, it.g.samples)
+		it.t = make([]int64, it.n)
+		it.v = make([]float64, it.n)
 	}
 
-	for j := range it.g.samples {
+	for j := range it.n {
 		it.t[j] = it.mint + int64(j)*it.g.stepMs
 		it.v[j] = float64(i*it.g.samples + j)
 	}
@@ -193,9 +204,19 @@ func measure(t *testing.T, fn func() any) memReport {
 func runQuery(t *testing.T, g *genScanner, qs string, start, end time.Time, step time.Duration) any {
 	t.Helper()
 
-	e := scarecrow.NewEngine(scarecrow.Opts{
-		NewScanner: func(storage.Queryable) scarecrow.Scanner { return g },
-	})
+	return runQueryOpts(t, scarecrow.Opts{}, g, qs, start, end, step)
+}
+
+// runQueryOpts is [runQuery] with caller-supplied engine options (e.g. ChunkSteps), so a
+// workload can compare chunked against unchunked without duplicating the query-execution
+// plumbing.
+func runQueryOpts(
+	t *testing.T, opts scarecrow.Opts, g *genScanner, qs string, start, end time.Time, step time.Duration,
+) any {
+	t.Helper()
+
+	opts.NewScanner = func(storage.Queryable) scarecrow.Scanner { return g }
+	e := scarecrow.NewEngine(opts)
 
 	ctx := context.Background()
 
@@ -317,5 +338,32 @@ func TestMemoryArchetypes(t *testing.T) {
 
 			t.Logf("E  5000 series, %5d steps, 1:1 join:   %s", steps, r)
 		}
+	})
+
+	t.Run("F_time_chunking", func(t *testing.T) {
+		// M16: the same one-to-one join as E, at enough steps that its O(series × steps) build
+		// side is the dominant cost, run once with chunking off (ChunkSteps: -1, §4.4's
+		// "not implemented" baseline) and once with a small chunk budget. The chunked peak
+		// should stay near one chunk's accumulator regardless of how many chunks that takes;
+		// the unchunked peak scales with the whole range, exactly the shape M16 exists to cap.
+		const (
+			series = 500
+			steps  = 50_000
+		)
+
+		g := &genScanner{series: series, samples: steps, stepMs: 15_000, jobs: 1}
+		end := time.Unix(int64(steps)*15, 0)
+
+		unchunked := measure(t, func() any {
+			return runQueryOpts(t, scarecrow.Opts{ChunkSteps: -1}, g,
+				`metric / on(instance, job) metric`, time.Unix(0, 0), end, 15*time.Second)
+		})
+		t.Logf("F  %d series, %d steps, 1:1 join, unchunked:      %s", series, steps, unchunked)
+
+		chunked := measure(t, func() any {
+			return runQueryOpts(t, scarecrow.Opts{ChunkSteps: 2_000}, g,
+				`metric / on(instance, job) metric`, time.Unix(0, 0), end, 15*time.Second)
+		})
+		t.Logf("F  %d series, %d steps, 1:1 join, chunked(2000): %s", series, steps, chunked)
 	})
 }
