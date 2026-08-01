@@ -31,6 +31,14 @@ func (p *planner) buildInstantCall(e *parser.Call) (Operator, bool, error) {
 	}
 
 	switch name {
+	case "absent":
+		input, err := p.buildArg(e, 0)
+		if err != nil {
+			return nil, true, err
+		}
+
+		return newAbsentOp(input, createLabelsForAbsentFunction(e.Args[0]), p.ec), true, nil
+
 	case "pi":
 		return newNumberLiteral(math.Pi, p.ec), true, nil
 

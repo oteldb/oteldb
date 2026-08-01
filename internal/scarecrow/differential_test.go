@@ -146,6 +146,21 @@ var diffQueries = []string{
 	`cos(gauge)`,
 	`deg(gauge)`,
 	`rad(gauge)`,
+
+	// absent / absent_over_time (M13).
+	`absent(counter)`,
+	`absent(nonexistent)`,
+	`absent(counter{job="a"})`,
+	`absent(counter{job="c"})`,
+	`absent(counter{job=~"a|b"})`,
+	`absent(counter{job="a",job="b"})`,
+	`absent(sum(counter))`,
+	`absent(counter + counter)`,
+	`absent_over_time(counter[1m])`,
+	`absent_over_time(nonexistent[1m])`,
+	`absent_over_time(counter{job="a"}[1m])`,
+	`absent_over_time(sparse[15s])`,
+	`absent_over_time(sum(counter)[1m:10s])`,
 }
 
 // upstreamEngine builds Prometheus' own engine, the reference implementation.
