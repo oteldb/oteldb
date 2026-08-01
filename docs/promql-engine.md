@@ -6,9 +6,10 @@ fetch seam, replacing the `github.com/oteldb/promql-engine` (Thanos) fork on the
 
 Status: implemented through M5 (selectors, range functions, aggregations including the
 full-set forms, binary operators, instant functions, subqueries, concurrent binop sides,
-storage pushdowns) in `internal/scarecrow` — 6/21 upstream corpus files, 902/2117 eval cases
-(§8.1). Codename from the `gemini/scarecrow-engine-initial` prototype. Milestones and their
-gates are in §10.
+storage pushdowns) plus M16 (time-chunking, taken out of order per its own note) in
+`internal/scarecrow` — 6/21 upstream corpus files, 902/2117 eval cases (§8.1, unchanged by
+M16, which has no corpus gate). Codename from the `gemini/scarecrow-engine-initial` prototype.
+Milestones and their gates are in §10.
 
 ## 1. Scope
 
@@ -407,19 +408,31 @@ like `http_requests_total[1h:15s]` with no aggregation was `O(series × steps)` 
 but here each series' column streams straight to the response encoder and is released. The
 response body is large; the engine's footprint is not.
 
-**Chunking.** Long ranges are split into sequential chunks so that the largest accumulator stays
-under budget — `sum by (instance)` where groups ≈ series is genuinely `O(series × steps)`, and 30
-days at 15s is 172k steps. The planner sizes `stepsInChunk` from the widest accumulator in the
-tree and re-runs the pipeline per chunk, concatenating results. Parts are time-partitioned, so a
+**Chunking.** *Done (M16).* Long ranges are split into sequential chunks so that the largest
+accumulator stays under budget — `sum by (instance)` where groups ≈ series is genuinely
+`O(series × steps)`, and 30 days at 15s is 172k steps. `query.execRange` splits `stepGrid`'s
+output into `Opts.ChunkSteps`-sized windows (default 10,000) and re-plans and re-runs the whole
+operator tree per chunk against a chunk-scoped `EvalContext`, concatenating each chunk's
+`collectRange` result by series identity (`rangeMerger`, keyed by label hash — stable across
+chunks because no operator's *schema* depends on values, only full-set operators' data-dependent
+*output selection* does, and that selection is itself already per-step, so a chunk boundary
+changes nothing about which series survive at a given step). Parts are time-partitioned, so a
 chunk's fetch touches only its own parts and decodes nothing extra.
 
-**Not implemented.** `stepGrid` builds the whole query's grid into one `EvalContext`, so every
-figure in the `steps` column above is currently the *entire range*, not a chunk. An earlier draft
-of this section called chunking "a policy knob for a minority of queries"; that was written when
-the only `O(series × steps)` operator was `quantile`. It is no longer true — the one-to-one
-vector binop (§4.6), the `aggregateOverTime` pushdown (M5) and every group-heavy accumulator all
-depend on the step axis being bounded, so chunking is the single mitigation covering all three.
-See M16.
+This is a fixed, configured budget rather than the dynamic "size `stepsInChunk` from the widest
+accumulator in the tree" this section originally proposed: resolving that width would mean
+running a data-dependent operator's `Schema()` (§4.4's `quantile`/`topk`/`aggregateOverTime`
+row) once to measure it and again per chunk, defeating the exact operators chunking exists to
+bound. A static default is simpler and already delivers the property that matters — peak
+resident is flat in range length, not in cardinality — leaving per-query tuning to `Opts` rather
+than a planner heuristic.
+
+No corpus gate (the corpus is short-range); verified instead by a differential suite
+(`chunk_test.go`) proving chunked and unchunked evaluation agree with each other and with the
+upstream engine down to `ChunkSteps: 1`, across selectors, aggregations, one-to-one binops,
+subqueries and every full-set aggregation, and by a memory-archetype benchmark (`F_time_chunking`
+in `memprofile_test.go`) showing a lower peak for a one-to-one join chunked against the same join
+run unchunked.
 
 **Storage ask, unchanged in value but not in urgency.** Time-chunk-major `Fetch` iteration
 (§3.4, ask #2) would let chunking collapse into the iterator and drop the repeated postings
@@ -1100,27 +1113,36 @@ The last one is numbered last and should be built early. It is the only mileston
 closes a memory problem rather than adding a capability, and three separate operators are waiting
 on it.
 
-- **M16 — time-chunking.** Split a long range into sequential chunks of `stepsInChunk` steps,
-  sized by the planner from the widest accumulator in the tree, and re-run the pipeline per chunk
-  with the results concatenated (§4.4). Parts are time-partitioned, so a chunk's fetch touches
-  only its own parts.
+- **M16 — time-chunking.** *Done.* Split a long range into sequential chunks of `Opts.ChunkSteps`
+  steps (default 10,000) and re-run the whole pipeline per chunk, concatenating results by series
+  identity (§4.4). Parts are time-partitioned, so a chunk's fetch touches only its own parts.
 
-  `stepGrid` currently builds the entire query grid into one `EvalContext`, so **every operator
-  whose cost carries a `steps` factor is today multiplied by the whole range** — 172,801 steps for
-  30 days at 15s, or 1.4 MB per buffered series. Three of them depend on this being bounded: the
+  Shipped with a **static, configured** chunk size rather than the dynamic "sized by the planner
+  from the widest accumulator in the tree" this milestone was originally scoped as: measuring that
+  width would require resolving a data-dependent operator's `Schema()` (`quantile`/`topk`/the
+  `aggregateOverTime` pushdown) once to size chunks and again per chunk, which runs the exact
+  full-range computation chunking exists to avoid. A fixed budget still delivers the property that
+  matters — peak resident flat in range length — and is one field on `Opts` rather than a planner
+  pass; the dynamic version is a possible follow-up if `ChunkSteps`'s one-size-fits-all default
+  ever proves wrong for a real workload.
+
+  Before this, `stepGrid` built the entire query grid into one `EvalContext`, so **every operator
+  whose cost carries a `steps` factor was multiplied by the whole range** — 172,801 steps for
+  30 days at 15s, or 1.4 MB per buffered series. Three of them depended on this being bounded: the
   one-to-one vector binop's build side (§4.6), the `aggregateOverTime` pushdown's per-window
   results (M5), and any group-heavy accumulator where groups approach series. Each is individually
-  defensible; together they are the same `O(series × steps)` shape the design rejects in the fork,
-  and chunking is the one fix that covers all three at once.
+  defensible; together they were the same `O(series × steps)` shape the design rejects in the
+  fork, and chunking is the one fix that covers all three at once.
 
-  Doing this earlier than its number suggests is the point. It was originally folded into M11 as
+  Doing this earlier than its number suggests was the point. It was originally folded into M11 as
   a companion to resource limits, which understated it: a limit *refuses* a query that would use
   too much memory, while chunking lets the same query *succeed*. They pair well but they are not
   the same work, and only one of them makes long-range queries usable.
 
-  No corpus gate — the corpus is entirely short-range, so nothing in §8 exercises this. That is
-  precisely why it needs a benchmark instead: peak resident for a 30d/15s one-to-one join should
-  be flat in the range length.
+  No corpus gate — the corpus is entirely short-range, so nothing in §8 exercises this. Verified
+  instead by a differential suite (agreement between chunked and unchunked evaluation, and with
+  the upstream engine, down to one step per chunk) and a memory-archetype benchmark showing a
+  lower peak for a chunked one-to-one join than the same join run unchunked.
 
 ## 11. Open questions
 
