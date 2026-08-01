@@ -1,0 +1,9 @@
+# Overlay on docker-compose.embedded.yml that turns on internal/scarecrow
+# (enable_scarecrow_engine: true, via oteldb.embedded.yml). Kept out of the base file because
+# .github/workflows/storage-compliance.yml runs that file directly, gated at 100% against the
+# fork engine; scarecrow is still short of that (§8.1 in docs/promql-engine.md), so it must not
+# be on by default there. Used only by run-embedded.sh.
+services:
+  oteldb:
+    volumes:
+      - ./oteldb.embedded.yml:/app/oteldb.yml
