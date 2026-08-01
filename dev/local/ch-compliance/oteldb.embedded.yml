@@ -1,0 +1,5 @@
+# Config for docker-compose.embedded.yml: oteldb on the embedded storage engine (--embedded), with
+# internal/scarecrow opted in over the fork engine, so this compliance run also exercises the
+# storagebackend Scanner and its AggregateScanner/SeriesCounter pushdowns (docs/promql-engine.md M5).
+prometheus:
+  enable_scarecrow_engine: true
