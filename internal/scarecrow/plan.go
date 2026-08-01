@@ -91,16 +91,16 @@ var aggregateOps = map[parser.ItemType]bool{
 }
 
 // fullSetOps need the full per-step series set rather than an incremental fold — an exact
-// quantile, or a selection that only value comparison across the whole set can answer (§4.4).
-// count_values is deliberately absent: its output labels are the observed *values*, which makes
-// its schema data-dependent in a way §3.3's plan-time resolution cannot accommodate (see
-// docs/promql-engine.md, open question 4); it stays an [ErrUnsupported] rather than a silent gap.
+// quantile, a selection that only value comparison across the whole set can answer, or (for
+// count_values) output labels synthesized from observed values rather than selected from the
+// input's own (§4.4).
 var fullSetOps = map[parser.ItemType]bool{
-	parser.QUANTILE:    true,
-	parser.TOPK:        true,
-	parser.BOTTOMK:     true,
-	parser.LIMITK:      true,
-	parser.LIMIT_RATIO: true,
+	parser.QUANTILE:     true,
+	parser.TOPK:         true,
+	parser.BOTTOMK:      true,
+	parser.LIMITK:       true,
+	parser.LIMIT_RATIO:  true,
+	parser.COUNT_VALUES: true,
 }
 
 func (p *planner) buildAggregate(e *parser.AggregateExpr) (Operator, error) {
@@ -123,6 +123,17 @@ func (p *planner) buildAggregate(e *parser.AggregateExpr) (Operator, error) {
 
 	if e.Param == nil {
 		return nil, unsupportedf("aggregation %s without a parameter", e.Op)
+	}
+
+	// count_values' parameter is the output label name, a string literal, not a scalar subtree
+	// like every other fullSetOps parameter.
+	if e.Op == parser.COUNT_VALUES {
+		lit, ok := e.Param.(*parser.StringLiteral)
+		if !ok {
+			return nil, unsupportedf("count_values with a non-literal label name")
+		}
+
+		return newCountValuesAgg(input, lit.Val, e, p.ec)
 	}
 
 	param, err := p.build(e.Param)

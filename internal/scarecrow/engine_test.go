@@ -112,7 +112,6 @@ func TestEngineUnsupportedIsExplicit(t *testing.T) {
 	e := scarecrow.NewEngine(scarecrow.Opts{})
 
 	for _, qs := range []string{
-		`count_values("v", up)`,       // output schema is data-dependent
 		`histogram_quantile(0.9, up)`, // M6: histograms
 	} {
 		t.Run(qs, func(t *testing.T) {
@@ -129,6 +128,23 @@ func TestEngineUnsupportedIsExplicit(t *testing.T) {
 			require.ErrorIs(t, res.Err, scarecrow.ErrUnsupported)
 		})
 	}
+}
+
+// TestEngineCountValuesInvalidLabelName pins count_values' plan-time validation of its output
+// label name, matching upstream's message exactly (docs/promql-engine.md's function-tail note).
+func TestEngineCountValuesInvalidLabelName(t *testing.T) {
+	t.Parallel()
+
+	e := scarecrow.NewEngine(scarecrow.Opts{})
+
+	q, err := e.NewInstantQuery(
+		context.Background(), emptyStorage(t).Queryable(), nil, `count_values("a\xc5z", up)`, time.Unix(0, 0),
+	)
+	require.NoError(t, err)
+	defer q.Close()
+
+	res := q.Exec(context.Background())
+	require.EqualError(t, res.Err, `invalid label name "a\xc5z"`)
 }
 
 // TestEngineParseErrorsSurface confirms the upstream parser's diagnostics reach the caller
