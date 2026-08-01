@@ -6,10 +6,10 @@ fetch seam, replacing the `github.com/oteldb/promql-engine` (Thanos) fork on the
 
 Status: implemented through M5 (selectors, range functions, aggregations including the
 full-set forms, binary operators, instant functions, subqueries, concurrent binop sides,
-storage pushdowns) plus M16 (time-chunking, taken out of order per its own note) in
-`internal/scarecrow` — 6/21 upstream corpus files, 902/2117 eval cases (§8.1, unchanged by
-M16, which has no corpus gate). Codename from the `gemini/scarecrow-engine-initial` prototype.
-Milestones and their gates are in §10.
+storage pushdowns), plus M12 (the function tail) and M16 (time-chunking), both taken out of
+order per their own notes, in `internal/scarecrow` — 6/21 upstream corpus files, 977/2117 eval
+cases (§8.1; M16 doesn't move this number, it has no corpus gate). Codename from the
+`gemini/scarecrow-engine-initial` prototype. Milestones and their gates are in §10.
 
 ## 1. Scope
 
@@ -777,10 +777,10 @@ Compliance is not a phase at the end; it is the first thing wired up.
 The file-level pass count (6/21 after M5) is the number milestones are judged by, but it is a
 harsh metric: one unimplemented function fails a 413-case file, and the skip list then hides the
 other 412 cases. `TestPromQLGap` runs the corpus unskipped — promqltest makes every `eval` its
-own subtest and keeps going after a failure — which gives the finer number: **902/2117 eval cases
-(42.6%)**.
+own subtest and keeps going after a failure — which gives the finer number: **977/2117 eval cases
+(46.2%)**.
 
-Attributing the 1215 failures:
+Attributing the 1140 failures:
 
 | Cause | Cases | Milestone |
 |---|---:|---|
@@ -788,9 +788,7 @@ Attributing the 1215 failures:
 | Missing annotations (`info`/`warn` expected, none produced) | 117 | M9 |
 | `count_values` | 6 | resolved — stays unsupported (§11 open question 4) |
 | Extended range selectors (`anchored`/`smoothed`) | 74 | — |
-| `absent`, `absent_over_time` | 42 | — |
-| Date/time functions (`year`, `month`, `hour`, `minute`, `time`, …) | ~45 | — |
-| `predict_linear`, `deriv`, `quantile_over_time`, `mad_over_time`, `ts_of_*`, … | ~45 | — |
+| `absent`, `absent_over_time` | 42 | M13 |
 | Binop fill modifiers | 39 | — |
 | `info()` | 41 | — |
 | Created timestamps | 16 | M10 |
@@ -802,12 +800,19 @@ turned out to already be double-counted under the rows above — a `limitk`/`top
 native-histogram series was always going to fail on M7 regardless of M2b, and `sort()`'s "expect
 warn" cases were always an M9 gap, not a sorting bug.
 
+Date/time functions and the `predict_linear`/`deriv`/`quantile_over_time`/`mad_over_time`/
+`ts_of_*` row are gone the same way: M12 implemented all of them, closing 75 cases. The
+~90-vs-75 gap between what those two rows used to estimate and what actually closed is the same
+double-counting pattern — a `quantile_over_time` or `predict_linear` case over a mixed
+float/histogram series was always an M7 failure regardless of M12, and the invalid-quantile
+"expect warn" cases were always M9.
+
 The shape of that table is the useful part: **almost everything left is a missing feature, not a
 wrong answer.** Outside the two native-histogram files there are 128 wrong-answer failures, and
 all but a handful belong to features that are absent rather than broken — 39 are the fill
 modifiers, 16 created timestamps, 15 `type`/`unit` metadata. What that says is that the execution
 model is carrying the semantics correctly and the remaining work is breadth, which is the
-cheerful reading of a 42.6% number.
+cheerful reading of a 46.2% number.
 
 ## 9. Salvage from `gemini/scarecrow-engine-initial`
 
@@ -1071,21 +1076,47 @@ What they missed is a long tail of features that are mostly easy — 25 of the 3
 functions, plus two pieces of syntax, worth ~286 corpus cases or **22% of all remaining
 failures**. Cheap and unowned is how work stays undone indefinitely, so it gets milestones.
 
-- **M12 — the function tail.** Three groups, all of which drop into tables that already exist:
+- **M12 — the function tail.** *Done.* Three groups, all of which dropped into tables that
+  already existed:
 
   - **Date/time** — `time`, `year`, `month`, `hour`, `minute`, `day_of_month`, `day_of_week`,
-    `day_of_year`, `days_in_month`. Pure functions of the step timestamp with no data access, so
-    the columnar model makes each a few lines. 41 cases.
-  - **Range functions** — `deriv`, `predict_linear`, `quantile_over_time`, `mad_over_time`.
-    New entries in `rangeFuncs` against the existing `window` type, nothing structural.
-    `predict_linear` and `deriv` matter beyond the corpus: alerting rules lean on them. 34 cases.
+    `day_of_year`, `days_in_month`. With an argument they are `unaryFn` plus a
+    unix-seconds-to-`time.Time` adapter (`datefn.go`); with none, a new tiny operator,
+    `stepDateFn`, since nothing existing emits a value that is a pure function of the step
+    timestamp with no input column at all — `numberLiteral` is constant across steps, and
+    `time()`'s whole point is that it isn't. 41 cases.
+  - **Range functions** — `deriv`, `predict_linear`, `quantile_over_time`, `mad_over_time`. All
+    four are new entries in `rangeFuncs`, but `quantile_over_time` and `predict_linear` also
+    needed a real capability the type didn't have: a second, per-step scalar argument. `rangeFunc`
+    grew a `param float64` parameter (every existing entry now ignores it), and `matrixFold`
+    grew an optional `param Operator`, evaluated once via the same `scalarValues` helper
+    [`quantileAgg`]/[`limitAgg`] already used for `quantile`/`topk`'s per-step k. The two
+    functions disagree on argument order — `quantile_over_time(q, matrix)` vs.
+    `predict_linear(matrix, t)` — so `buildCall` resolves which argument is which by name rather
+    than by position. `predict_linear` also needed the window to carry its own step's *un-offset*
+    evaluation timestamp (`window.EvalMs`) separately from `RangeEnd` (which offset shifts):
+    upstream anchors the regression at the query's own step time regardless of what `offset`
+    shifted the sample window to, so a naive reuse of `RangeEnd` would answer at the wrong point
+    for any query using both `predict_linear` and `offset` together — caught by
+    `functiontail_test.go`'s `predict_linear(counter[1m] offset 10s, 3600)` case, which pins
+    exactly that combination against the upstream engine. `predict_linear` and `deriv` matter
+    beyond the corpus: alerting rules lean on them. 34 cases.
   - **Timestamp-of** — `ts_of_first_over_time`, `ts_of_last_over_time`, `ts_of_max_over_time`,
-    `ts_of_min_over_time`, and the query-context accessors `start`/`end`/`step`/`range`. 11 cases;
-    the accessors have none at all, which is the only reason they are still missing.
+    `ts_of_min_over_time`. Plain `rangeFunc` entries; `ts_of_max_over_time`/`ts_of_min_over_time`
+    replicate upstream's tie-break exactly (`>=`/`<=`, not a strict inequality — ties resolve to
+    the *latest* matching sample, not the first). The query-context accessors
+    (`start`/`end`/`step`/`range`) turned out to need **no engine code at all**: upstream's
+    `promql.PreprocessExpr` — already called once per query, against the whole query's own
+    start/end/interval, specifically so `@ start()`/`@ end()` resolve correctly ahead of M16's
+    chunking — rewrites bare `start()`/`end()`/`step()`/`range()` calls into plain
+    `NumberLiteral` nodes before the planner ever sees them. 11 cases; the accessors have none at
+    all, which is the only reason they looked unimplemented.
 
-  This is the best ratio of corpus cases to effort left anywhere in the plan — roughly 90 cases
-  for work that is almost entirely table entries. Gate: the corresponding cases in
-  `functions.test`.
+  Verified by a differential suite (`functiontail_test.go`) against the upstream engine, at
+  several instants and step sizes, in addition to the corpus. Gate: the corresponding cases in
+  `functions.test` — the file itself still doesn't pass outright, gated on unrelated M7/M9/M13
+  gaps (native histograms, warning/info annotations, `absent`) and one unrelated function
+  (`double_exponential_smoothing`) this milestone never covered.
 
 - **M13 — `absent` / `absent_over_time`.** Small in surface, awkward in shape: both must emit a
   series precisely when the input produced none, and "no columns" is exactly how a streaming
