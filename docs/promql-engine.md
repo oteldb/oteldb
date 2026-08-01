@@ -5,11 +5,11 @@ fetch seam, replacing the `github.com/oteldb/promql-engine` (Thanos) fork on the
 `internal/storagebackend` path.
 
 Status: implemented through M5 (selectors, range functions, aggregations including the
-full-set forms, binary operators, instant functions, subqueries, concurrent binop sides,
-storage pushdowns), plus M12 (the function tail) and M16 (time-chunking), both taken out of
-order per their own notes, in `internal/scarecrow` — 6/21 upstream corpus files, 977/2117 eval
-cases (§8.1; M16 doesn't move this number, it has no corpus gate). Codename from the
-`gemini/scarecrow-engine-initial` prototype. Milestones and their gates are in §10.
+full-set forms and `count_values`, binary operators, instant functions, subqueries, concurrent
+binop sides, storage pushdowns), plus M12 (the function tail) and M16 (time-chunking), both
+taken out of order per their own notes, in `internal/scarecrow` — 6/21 upstream corpus files,
+978/2117 eval cases (§8.1; M16 doesn't move this number, it has no corpus gate). Codename from
+the `gemini/scarecrow-engine-initial` prototype. Milestones and their gates are in §10.
 
 ## 1. Scope
 
@@ -395,6 +395,11 @@ column at a time, "what does this operator have to remember" is answerable per o
 | `quantile`, `count_values`, `sort` | every input value | `O(series × steps)` |
 | bare selector (no consumer above) | none — streams to the encoder | `O(steps)` |
 
+Every `steps` in this table means one chunk's steps, not the whole query's, as of M16 below:
+chunking re-runs the entire operator tree per chunk against a chunk-scoped `EvalContext`, so
+every row here — including the three data-dependent ones — is bounded by `Opts.ChunkSteps`
+regardless of how long the query's actual range is.
+
 Three rows deserve comment. The vector binop buffers only its **build side** — the "one" side of
 a match — and only those of its series some many-side series actually pairs with, which is known
 at plan time because matching is resolved from label sets alone. `group_left`/`group_right`
@@ -777,16 +782,15 @@ Compliance is not a phase at the end; it is the first thing wired up.
 The file-level pass count (6/21 after M5) is the number milestones are judged by, but it is a
 harsh metric: one unimplemented function fails a 413-case file, and the skip list then hides the
 other 412 cases. `TestPromQLGap` runs the corpus unskipped — promqltest makes every `eval` its
-own subtest and keeps going after a failure — which gives the finer number: **977/2117 eval cases
+own subtest and keeps going after a failure — which gives the finer number: **978/2117 eval cases
 (46.2%)**.
 
-Attributing the 1140 failures:
+Attributing the 1139 failures:
 
 | Cause | Cases | Milestone |
 |---|---:|---|
-| Native histograms (`histogram_*`, histogram operands and expectations) | ~700 | M7 |
+| Native histograms (`histogram_*`, histogram operands and expectations, including `count_values` over a mixed float/histogram series) | ~700 | M7 |
 | Missing annotations (`info`/`warn` expected, none produced) | 117 | M9 |
-| `count_values` | 6 | resolved — stays unsupported (§11 open question 4) |
 | Extended range selectors (`anchored`/`smoothed`) | 74 | — |
 | `absent`, `absent_over_time` | 42 | M13 |
 | Binop fill modifiers | 39 | — |
@@ -879,12 +883,8 @@ Each milestone ends with a number: upstream `promqltest` files passing.
 
   **Deferred within M2**, because each needs the full per-step series set, which the accumulator
   shape does not give: `topk`/`bottomk` (a per-step bounded heap, §4.4), `quantile`
-  (`O(series × steps)`, inherent), `sort`/`sort_by_label`, and the `limitk` family.
-  **`count_values` is worse than deferred** — its output series are labelled by the observed
-  *values*, so its schema is data-dependent and cannot be resolved at plan time. That conflicts
-  with §3.3's invariant. The invariant could be weakened from "resolved at plan time" to
-  "resolved before this operator emits its first column", which preserves ref stability; that is
-  a design decision, not an implementation detail, so it is deliberately not made here.
+  (`O(series × steps)`, inherent), `sort`/`sort_by_label`, `limitk`, and `count_values`. All are
+  done now (M2b, and `count_values` alongside it — see below).
 
   Three upstream behaviours worth recording, each found by the corpus rather than by reading:
   a comparison keeps the **vector's** value even when the scalar is the left operand; `sum` and
@@ -905,8 +905,18 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   `sort`/`sort_desc`/`sort_by_label`/`sort_by_label_desc` (`sortOp`, instant-only, so it ranks by
   the child's first step), and the `limitk`/`limit_ratio` family (`limitAgg` again — `limit_ratio`
   admits by a deterministic per-series label-hash offset, not by value, so it needs no heap at
-  all). `count_values` is **not** in scope: its schema is data-dependent, and per open question 4
-  it stays unsupported rather than weakening §3.3's invariant.
+  all).
+
+  **`count_values`** shipped separately from the rest of M2b, once the pattern above proved out:
+  `countValuesAgg` groups by (grouping labels, observed value) and counts per group, per step.
+  Its schema is data-dependent in a stronger sense than `limitAgg`'s, though — a survivor set is
+  a *subset* of the input's own label sets, known at plan time even if which subset isn't; a
+  `count_values` group's labels are *synthesized* from a value, an identity that exists nowhere
+  until the data is read, and can differ for the same input series from one step to the next.
+  Despite that, the implementation is the same shape as every other operator here: drain the
+  child once inside `Schema()`, keying each (series, step) pair's output label set by its string
+  form so a repeat occurrence reuses the row rather than duplicating it. Open question 4
+  originally called this out for special treatment; in practice it needed none.
 
   `topk`/`bottomk` additionally have to reproduce upstream's *output order* — descending or
   ascending by value — which only an instant query (one step) can observe, since a range query
@@ -1194,10 +1204,9 @@ on it.
    specifies only the cumulative rule, which is well-defined; the delta branch cannot be written
    until that issue is answered, because it presupposes a semantics that does not exist. This is
    an ingest-and-storage question, not an engine one.
-4. *(resolved)* **`count_values`** — **stays unsupported.** It is the only construct whose output
-   labels come from observed *values*, so supporting it means either weakening §3.3's invariant
-   globally (making `Schema()` able to drain a child, so planning can execute — losing the
-   "planning is cheap" property that makes eager resolution safe) or carving out a root-only
-   exception. Neither is worth it for one rarely used diagnostic aggregation. It returns
-   [ErrUnsupported], which is a visible, honest gap rather than a silent wrong answer, and the
-   invariant stays a real invariant.
+4. *(superseded)* **`count_values`** — originally resolved as **stays unsupported**, on the
+   premise that supporting it meant weakening §3.3's invariant globally. Revisited once M2b's
+   `quantileAgg`/`limitAgg` shipped: they *already* drain their child inside `Schema()` to answer
+   a data-dependent question (which series survive `topk`, what the exact quantile is), so the
+   invariant was never a hard wall — `count_values` is now `countValuesAgg`, one more member of
+   that same "eager `Schema()`" family rather than a special case. Implemented; see M2's note.
