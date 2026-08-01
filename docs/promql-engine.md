@@ -6,10 +6,11 @@ fetch seam, replacing the `github.com/oteldb/promql-engine` (Thanos) fork on the
 
 Status: implemented through M5 (selectors, range functions, aggregations including the
 full-set forms and `count_values`, binary operators, instant functions, subqueries, concurrent
-binop sides, storage pushdowns), plus M12 (the function tail) and M16 (time-chunking), both
-taken out of order per their own notes, in `internal/scarecrow` — 6/21 upstream corpus files,
-978/2117 eval cases (§8.1; M16 doesn't move this number, it has no corpus gate). Codename from
-the `gemini/scarecrow-engine-initial` prototype. Milestones and their gates are in §10.
+binop sides, storage pushdowns), plus M12 (the function tail), M13 (`absent`/`absent_over_time`)
+and M16 (time-chunking), all taken out of order per their own notes, in `internal/scarecrow` —
+6/21 upstream corpus files, 1016/2117 eval cases (§8.1; M16 doesn't move this number, it has no
+corpus gate). Codename from the `gemini/scarecrow-engine-initial` prototype. Milestones and
+their gates are in §10.
 
 ## 1. Scope
 
@@ -782,17 +783,16 @@ Compliance is not a phase at the end; it is the first thing wired up.
 The file-level pass count (6/21 after M5) is the number milestones are judged by, but it is a
 harsh metric: one unimplemented function fails a 413-case file, and the skip list then hides the
 other 412 cases. `TestPromQLGap` runs the corpus unskipped — promqltest makes every `eval` its
-own subtest and keeps going after a failure — which gives the finer number: **978/2117 eval cases
-(46.2%)**.
+own subtest and keeps going after a failure — which gives the finer number: **1016/2117 eval
+cases (48.0%)**.
 
-Attributing the 1139 failures:
+Attributing the 1101 failures:
 
 | Cause | Cases | Milestone |
 |---|---:|---|
 | Native histograms (`histogram_*`, histogram operands and expectations, including `count_values` over a mixed float/histogram series) | ~700 | M7 |
 | Missing annotations (`info`/`warn` expected, none produced) | 117 | M9 |
 | Extended range selectors (`anchored`/`smoothed`) | 74 | — |
-| `absent`, `absent_over_time` | 42 | M13 |
 | Binop fill modifiers | 39 | — |
 | `info()` | 41 | — |
 | Created timestamps | 16 | M10 |
@@ -811,12 +811,16 @@ double-counting pattern — a `quantile_over_time` or `predict_linear` case over
 float/histogram series was always an M7 failure regardless of M12, and the invalid-quantile
 "expect warn" cases were always M9.
 
+`absent`/`absent_over_time` is gone from this table too: M13 closed 38 of the 42 cases the row
+used to estimate. The remaining 4 are the same double-counting pattern once more — an `absent`
+case wrapping a native-histogram selector, always an M7 failure regardless of M13.
+
 The shape of that table is the useful part: **almost everything left is a missing feature, not a
-wrong answer.** Outside the two native-histogram files there are 128 wrong-answer failures, and
+wrong answer.** Outside the two native-histogram files there are 90 wrong-answer failures, and
 all but a handful belong to features that are absent rather than broken — 39 are the fill
 modifiers, 16 created timestamps, 15 `type`/`unit` metadata. What that says is that the execution
 model is carrying the semantics correctly and the remaining work is breadth, which is the
-cheerful reading of a 46.2% number.
+cheerful reading of a 48.0% number.
 
 ## 9. Salvage from `gemini/scarecrow-engine-initial`
 
@@ -932,8 +936,8 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   over zero steps instead of indexing into an empty timestamp slice.
 
   Gate: `aggregators.test`, and the `sort` cases in `range_queries.test`. Neither file passes
-  outright yet — both still carry unrelated M7/M9/M12/M13 gaps — but the M2b-attributed failures
-  in them are gone; see §8.1.
+  outright yet — both still carry unrelated M7/M9 gaps — but the M2b-attributed failures in them
+  are gone; see §8.1.
 - **M3 — subqueries.** *Done.* (`@` and `offset` landed in M1, forced by the corpus.) A subquery
   plans its inner expression against its own step grid — aligned to the subquery step rather than
   to the outer query's start, as upstream does — and the results become a fold's samples.
@@ -1124,16 +1128,31 @@ failures**. Cheap and unowned is how work stays undone indefinitely, so it gets 
 
   Verified by a differential suite (`functiontail_test.go`) against the upstream engine, at
   several instants and step sizes, in addition to the corpus. Gate: the corresponding cases in
-  `functions.test` — the file itself still doesn't pass outright, gated on unrelated M7/M9/M13
-  gaps (native histograms, warning/info annotations, `absent`) and one unrelated function
+  `functions.test` — the file itself still doesn't pass outright, gated on unrelated M7/M9 gaps
+  (native histograms, warning/info annotations) and one unrelated function
   (`double_exponential_smoothing`) this milestone never covered.
 
-- **M13 — `absent` / `absent_over_time`.** Small in surface, awkward in shape: both must emit a
-  series precisely when the input produced none, and "no columns" is exactly how a streaming
-  operator signals it is finished. So this is not a fold — it is an operator that must distinguish
-  "my child is done" from "my child had nothing", and synthesize an identity from the selector's
-  *matchers* rather than from any observed series. Worth its own milestone for that reason alone,
-  despite being two functions. 42 cases.
+- **M13 — `absent` / `absent_over_time`.** *Done.* Small in surface, awkward in shape: both must
+  emit a series precisely when the input produced none, and "no columns" is exactly how a
+  streaming operator signals it is finished (`present`/`absent_over_time` in §4.4's table).
+  So this is not a per-series fold — it is one operator (`absentOp`) that drains its child
+  entirely, OR-reduces presence across every input series per step, and emits a single series at
+  the steps where that OR came back false. Its identity is synthesized from the argument's own
+  label *matchers* rather than from any observed series (`createLabelsForAbsentFunction`, a
+  faithful port of upstream's, including the "same label used twice as an equality matcher drops
+  it" backwards-compatibility quirk) — the sole scarecrow operator whose schema comes from AST
+  syntax rather than data.
+
+  `absent()`'s argument is a general vector expression, so it just wraps whatever operator
+  `p.build` already produces for it. `absent_over_time()` is the one that doesn't fit the
+  `rangeFunc`/`matrixFold` contract at all: `matrixFold.fold` skips calling the range function
+  precisely when a step's window is empty, which is the one condition `absent_over_time` needs to
+  observe. It is planned instead as `presentOverTime` — an ordinary range function, still eligible
+  for the same `AggregateScanner` pushdown every other `*_over_time` reducer gets — wrapped in the
+  same `absentOp`, so the OR-reduce-and-invert trick does double duty for both functions. Verified
+  against the upstream engine via `differential_test.go`, including the duplicate-matcher and
+  non-selector-argument edge cases. Closed 38 of the corpus's 42 cases; the remaining 4 wrap a
+  native-histogram selector and are an M7 gap, not an M13 one.
 
 - **M14 — extended range selectors.** The `anchored` and `smoothed` modifiers on a range
   selector, which change how the window's endpoints are chosen — `smoothed` interpolates at the
