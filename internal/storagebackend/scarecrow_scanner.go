@@ -30,8 +30,9 @@ type scarecrowScanner struct {
 var _ scarecrow.Scanner = (*scarecrowScanner)(nil)
 
 var (
-	_ scarecrow.AggregateScanner = (*scarecrowScanner)(nil)
-	_ scarecrow.SeriesCounter    = (*scarecrowScanner)(nil)
+	_ scarecrow.AggregateScanner     = (*scarecrowScanner)(nil)
+	_ scarecrow.SeriesCounter        = (*scarecrowScanner)(nil)
+	_ scarecrow.GroupedSeriesCounter = (*scarecrowScanner)(nil)
 )
 
 func (s *scarecrowScanner) Close() error { return nil }
@@ -99,6 +100,28 @@ func (s *scarecrowScanner) CountSeries(
 	}
 
 	return sc.CountSeries(ctx, mint, maxt, matchers...)
+}
+
+// CountSeriesBy implements [scarecrow.GroupedSeriesCounter], delegating to the same
+// [storagepromql.Queryable]-backed CountSeriesBy the fork engine's count-by pushdown uses
+// ([backendGroupCounter]).
+func (s *scarecrowScanner) CountSeriesBy(
+	ctx context.Context, mint, maxt int64, label string, matchers []*labels.Matcher,
+) (map[string]uint64, error) {
+	q, err := s.b.queryable().Querier(mint, maxt)
+	if err != nil {
+		return nil, errors.Wrap(err, "count-by pushdown: create querier")
+	}
+	defer func() { _ = q.Close() }()
+
+	sc, ok := q.(interface {
+		CountSeriesBy(ctx context.Context, startMs, endMs int64, label string, matchers ...*labels.Matcher) (map[string]uint64, error)
+	})
+	if !ok {
+		return nil, errors.New("count-by pushdown: querier does not implement CountSeriesBy")
+	}
+
+	return sc.CountSeriesBy(ctx, mint, maxt, label, matchers...)
 }
 
 // Series implements [scarecrow.Scanner].
