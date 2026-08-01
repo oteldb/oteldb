@@ -214,23 +214,51 @@ func (p *planner) buildCall(e *parser.Call) (Operator, error) {
 		return nil, unsupportedf("function %s", e.Func.Name)
 	}
 
-	if len(e.Args) != 1 {
+	// quantile_over_time(q, matrix) and predict_linear(matrix, t) are the only range-vector
+	// functions with a second, scalar argument, and disagree with each other on which position
+	// it's in.
+	matrixArg := 0
+	paramArg := -1
+
+	switch e.Func.Name {
+	case "quantile_over_time":
+		matrixArg, paramArg = 1, 0
+	case "predict_linear":
+		matrixArg, paramArg = 0, 1
+	}
+
+	wantArgs := 1
+	if paramArg >= 0 {
+		wantArgs = 2
+	}
+
+	if len(e.Args) != wantArgs {
 		return nil, unsupportedf("function %s with %d arguments", e.Func.Name, len(e.Args))
 	}
 
-	switch arg := e.Args[0].(type) {
+	var param Operator
+	if paramArg >= 0 {
+		var err error
+		if param, err = p.build(e.Args[paramArg]); err != nil {
+			return nil, err
+		}
+	}
+
+	switch arg := e.Args[matrixArg].(type) {
 	case *parser.MatrixSelector:
-		return p.buildSelectorFold(e.Func.Name, fn, arg)
+		return p.buildSelectorFold(e.Func.Name, fn, arg, param)
 
 	case *parser.SubqueryExpr:
-		return p.buildSubqueryFold(e.Func.Name, fn, arg)
+		return p.buildSubqueryFold(e.Func.Name, fn, arg, param)
 
 	default:
-		return nil, unsupportedf("function %s over %T", e.Func.Name, e.Args[0])
+		return nil, unsupportedf("function %s over %T", e.Func.Name, e.Args[matrixArg])
 	}
 }
 
-func (p *planner) buildSelectorFold(fnName string, fn rangeFunc, ms *parser.MatrixSelector) (Operator, error) {
+func (p *planner) buildSelectorFold(
+	fnName string, fn rangeFunc, ms *parser.MatrixSelector, param Operator,
+) (Operator, error) {
 	vs, ok := ms.VectorSelector.(*parser.VectorSelector)
 	if !ok {
 		return nil, unsupportedf("matrix selector over %T", ms.VectorSelector)
@@ -240,8 +268,11 @@ func (p *planner) buildSelectorFold(fnName string, fn rangeFunc, ms *parser.Matr
 		return nil, unsupportedf("extended range selector")
 	}
 
-	if op, ok := p.pushDownOverTime(fnName, vs, ms); ok {
-		return op, nil
+	// The pushdown-eligible functions never carry a param, so this is unaffected by it.
+	if param == nil {
+		if op, ok := p.pushDownOverTime(fnName, vs, ms); ok {
+			return op, nil
+		}
 	}
 
 	refs := refTimes(p.ec.Steps, vs.OriginalOffset, vs.Timestamp)
@@ -254,13 +285,15 @@ func (p *planner) buildSelectorFold(fnName string, fn rangeFunc, ms *parser.Matr
 
 	return newMatrixFold(
 		src, matchersString(vs.LabelMatchers), fnName, fn,
-		ms.Range, vs.OriginalOffset, vs.Timestamp, p.ec,
+		ms.Range, vs.OriginalOffset, vs.Timestamp, param, p.ec,
 	), nil
 }
 
 // buildSubqueryFold plans a range function over a subquery. The inner expression is planned
 // against its own step grid and its results become the fold's samples.
-func (p *planner) buildSubqueryFold(fnName string, fn rangeFunc, sq *parser.SubqueryExpr) (Operator, error) {
+func (p *planner) buildSubqueryFold(
+	fnName string, fn rangeFunc, sq *parser.SubqueryExpr, param Operator,
+) (Operator, error) {
 	inner, innerEC, err := p.buildSubquery(sq)
 	if err != nil {
 		return nil, err
@@ -269,7 +302,7 @@ func (p *planner) buildSubqueryFold(fnName string, fn rangeFunc, sq *parser.Subq
 	src := &subquerySource{inner: inner, ec: innerEC}
 
 	return newMatrixFold(
-		src, sq.Expr.String(), fnName, fn, sq.Range, sq.OriginalOffset, sq.Timestamp, p.ec,
+		src, sq.Expr.String(), fnName, fn, sq.Range, sq.OriginalOffset, sq.Timestamp, param, p.ec,
 	), nil
 }
 
