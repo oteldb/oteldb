@@ -39,6 +39,8 @@ var diffQueries = []string{
 	`stale_metric`,
 	`counter offset 30s`,
 	`sparse offset 1m`,
+	`counter offset -30s`,
+	`gauge offset -1m`,
 	`rate(counter[30s])`,
 	`rate(counter[1m])`,
 	`rate(counter[90s])`,
