@@ -27,7 +27,7 @@ require (
 	github.com/fatih/color v1.19.0
 	github.com/go-faster/errors v0.8.0
 	github.com/go-faster/jx v1.2.0
-	github.com/go-faster/sdk v0.37.0
+	github.com/go-faster/sdk v0.38.0
 	github.com/go-faster/tetragon v1.3.2
 	github.com/go-faster/yaml v0.4.6
 	github.com/go-logfmt/logfmt v0.6.1
@@ -36,7 +36,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/grafana/loki/pkg/push v0.0.0-20241223090937-bf7301470453
-	github.com/grafana/pyroscope-go v1.3.1
+	github.com/grafana/pyroscope-go v1.4.1
 	github.com/grafana/pyroscope/api v1.5.0
 	github.com/klauspost/compress v1.19.1
 	github.com/kr/logfmt v0.0.0-20210122060352-19f9bcb100e6
@@ -154,7 +154,7 @@ require (
 	golang.org/x/exp v0.0.0-20260603202125-055de637280b
 	golang.org/x/perf v0.0.0-20260512194132-3cf34090a3db
 	golang.org/x/sync v0.22.0
-	google.golang.org/grpc v1.82.1
+	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gopkg.in/yaml.v2 v2.4.0
 	sigs.k8s.io/yaml v1.6.0
@@ -179,7 +179,7 @@ require (
 	buf.build/go/protoyaml v0.6.0 // indirect
 	buf.build/go/spdx v0.2.0 // indirect
 	buf.build/go/standard v0.1.1-0.20260325175353-2b287e071df5 // indirect
-	cel.dev/expr v0.25.1 // indirect
+	cel.dev/expr v0.25.2 // indirect
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute v1.60.0 // indirect
