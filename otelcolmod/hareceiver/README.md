@@ -138,9 +138,12 @@ comes from the same process, does not itself start an application log line, and 
 within the window. Only an application log line opens a block — otherwise sources that never
 use the format, like systemd and CoreDNS, would have runs of unrelated entries merged.
 
-In a 6000-entry sample the gap between fragments of one message was 7ms at p99, while
-unrelated entries from the same process sat minutes apart, so the 1s default separates them
-with a wide margin. Set it to `0` to disable and emit one record per journal entry.
+The exact value barely matters. Measured over 11.5k captured entries the gap between fragments
+was **58ms at p99**, and every window from 100ms to 1s produced byte-identical output; 10s
+differed by a single record in 2529. Only 4 of 491 fragments exceeded 1s, and those were lines
+that merely followed an unrelated entry from the same process — ending the block there is the
+wanted outcome, not a lost fragment. Set it to `0` to disable and emit one record per journal
+entry.
 
 Recombination never changes the journal entry count the cursor arithmetic depends on. A block
 straddling a `batch_size` boundary is the one case it cannot join, and yields two records.

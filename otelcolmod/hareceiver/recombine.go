@@ -14,9 +14,12 @@ import "time"
 // CoreDNS — would have entire runs of unrelated entries merged, since none of
 // them starts a new application log line.
 //
-// A fragment must also come from the same process and follow within window. In a
-// captured sample the gap between fragments of one message was 7ms at p99, while
-// unrelated entries from the same process sat minutes apart.
+// A fragment must also come from the same process and follow within window. The
+// exact window barely matters: measured over 11.5k captured entries the gap
+// between fragments was 58ms at p99, and anything from 100ms to 1s produced
+// byte-identical output. Only 4 of 491 fragments exceeded 1s, all of them lines
+// that merely followed an unrelated entry from the same process, so ending the
+// block there is the wanted outcome rather than a loss.
 //
 // Fragments are only ever appended to an entry already in the batch, so the
 // journal entry count — which the cursor arithmetic depends on — is unchanged.
