@@ -1,0 +1,402 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786265552482000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "severityNumber": 13,
+              "severityText": "WARNING",
+              "body": {
+                "stringValue": "Referenced entities switch.example_led are missing"
+              },
+              "attributes": [
+                {
+                  "key": "ha.logger",
+                  "value": {
+                    "stringValue": "homeassistant.helpers.service"
+                  }
+                },
+                {
+                  "key": "ha.thread",
+                  "value": {
+                    "stringValue": "MainThread"
+                  }
+                },
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786265557745000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "--- Logging error ---"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786265557747000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "severityNumber": 17,
+              "severityText": "ERROR",
+              "body": {
+                "stringValue": "Error adding entity"
+              },
+              "attributes": [
+                {
+                  "key": "ha.logger",
+                  "value": {
+                    "stringValue": "homeassistant.components.light"
+                  }
+                },
+                {
+                  "key": "ha.thread",
+                  "value": {
+                    "stringValue": "MainThread"
+                  }
+                },
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786265557749000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "Traceback (most recent call last):"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786265557750000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "  File \"/usr/src/homeassistant/homeassistant/components/light/__init__.py\", line 977, in __validate"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786265557750000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "    valid_supported_color_modes(supported_color_modes)"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786265557750000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "voluptuous.error.Error: Invalid supported_color_modes ['brightness', 'rgb']"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786265557751000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": ""
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786265557751000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "The above exception was the direct cause of the following exception:"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786265557752000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "Traceback (most recent call last):"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786265557752000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "  File \"/usr/src/homeassistant/homeassistant/helpers/entity_platform.py\", line 680, in _async_add"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786265560000000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "Recovered"
+              },
+              "attributes": [
+                {
+                  "key": "ha.logger",
+                  "value": {
+                    "stringValue": "homeassistant.core"
+                  }
+                },
+                {
+                  "key": "ha.thread",
+                  "value": {
+                    "stringValue": "MainThread"
+                  }
+                },
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "systemd"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786265560100000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "Started something unrelated."
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "1"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786265560200000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "Started another unrelated thing."
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "1"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
