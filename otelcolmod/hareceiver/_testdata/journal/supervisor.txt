@@ -1,0 +1,4 @@
+2026-08-09 12:26:04.892 homeassistant hassio_supervisor[655]: 2026-08-09 15:26:04.892 INFO (MainThread) [supervisor.backups.manager] Backup 00000000 starting stage home_assistant
+2026-08-09 12:26:04.893 homeassistant hassio_supervisor[655]: 2026-08-09 15:26:04.893 INFO (SyncWorker_2) [supervisor.backups.backup] Backing up folder ssl
+2026-08-09 12:26:05.100 homeassistant hassio_supervisor[655]: 2026-08-09 15:26:05.099 WARNING (MainThread) [supervisor.resolution.check] Found issue reboot_required
+2026-08-09 12:26:06.245 homeassistant hassio_supervisor[655]: 2026-08-09 15:26:06.245 VERBOSE (MainThread) [supervisor.api.backups] Unmapped level stays structured
