@@ -6,6 +6,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+
+	"github.com/oteldb/oteldb/internal/logparser"
 )
 
 // serviceNamespace is set on every resource emitted by this receiver.
@@ -61,9 +63,7 @@ func translateEntries(entries []Entry, src Source, cfg *Config, observed time.Ti
 				attrs.PutStr("ha.thread", app.Thread)
 			}
 			r.SetSeverityText(app.Level)
-			if sev, ok := severityLevels[app.Level]; ok {
-				r.SetSeverityNumber(sev)
-			}
+			r.SetSeverityNumber(logparser.DeduceSeverity(app.Level))
 		case cfg.SeverityFromMessage:
 			if sev, text, ok := detectSeverity(e.Message); ok {
 				r.SetSeverityNumber(sev)

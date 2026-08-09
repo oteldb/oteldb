@@ -41,14 +41,17 @@ receivers:
 | `poll_interval` | `10s` | Delay between cursor-advancing requests. |
 | `batch_size` | `1000` | Maximum journal entries per request. |
 | `parse_message` | `true` | Extract the level, thread and logger Core and Supervisor embed in the message, see below. |
+| `recombine_window` | `1s` | Join journal entries that are fragments of one multi-line message, see below. `0` disables. |
 | `severity_from_message` | `false` | Best-effort severity detection for messages `parse_message` does not recognize. |
 | `storage` | — | Storage extension holding cursors. Without it, every start begins at the tail. |
 
 The remaining settings come from `confighttp.ClientConfig` (TLS, timeouts, extra headers,
 compression).
 
-`kind` is one of `host`, `core`, `supervisor`, or `addon`; `addon` also requires the add-on
-`slug`.
+`kind` is one of `host`, `core`, `supervisor`, `dns`, `audio`, `multicast`, `cli`, `observer`,
+or `addon`; `addon` also requires the add-on `slug`. Everything but `addon` maps to a path
+Core allowlists at `/api/hassio/<kind>/logs`. Which plugins exist depends on the installation
+— `cli` and `observer` are absent on some, and return 404.
 
 ### Token
 
@@ -88,10 +91,20 @@ timestamp is discarded — it is the application's own, rendered in the instance
 timezone, so it disagrees with `Timestamp` by the UTC offset and is redundant besides.
 Nothing is lost: the prefix is fully described by the resulting fields.
 
+The format is the one Core and Supervisor both configure in their `bootstrap.py`
+(`%(asctime)s.%(msecs)03d %(levelname)s (%(threadName)s) [%(name)s] %(message)s`) — not
+Python's default, which is why this lives here rather than in `internal/logparser`. The level
+is mapped through `logparser.DeduceSeverity`, shared with the other parsers.
+
 This applies to `core` and `supervisor`, and to add-ons that log through the same formatter.
-Host logs are heterogeneous — systemd prose, `kernel`, and `containerd`/`dockerd` **logfmt** —
-and are left untouched. To structure those, put `odblogparser` downstream in the pipeline;
-this receiver deliberately does not reimplement logfmt.
+Host, `dns` and other plugin logs are heterogeneous — systemd prose, `kernel`, CoreDNS
+`[INFO]`, and `containerd`/`dockerd` **logfmt** — and are left untouched.
+
+`odblogparser` exposes oteldb's shared parsers (`logfmt`, `generic-json`, `klog`,
+`zap-development`) as a stanza operator, but stanza operators only run inside stanza-based
+receivers such as `filelog`. This receiver is not stanza-based, and odbagent does not register
+`logstransformprocessor`, so **`odblogparser` cannot currently be applied to this receiver's
+output**. Structuring the remaining host formats needs either that processor or support here.
 
 ### Severity fallback
 
@@ -114,11 +127,23 @@ The `2` matters: `entries=:-1:N` starts one entry *before* the last and returns 
 anchors on the second-to-last entry and the first poll re-emits the last one as if it were
 new. Supervisor clamps its own `lines` parameter to a minimum of 2 for the same reason.
 
-Because entries are counted, a multi-line `MESSAGE` must not be miscounted: a line that does
-not start with a valid timestamp is treated as a continuation of the previous entry. A
-continuation line that itself begins with a plausible `YYYY-MM-DD HH:MM:SS.mmm ` prefix and
-contains `: ` would be over-counted and cause a gap. No Home Assistant log format does this
-today.
+### Multi-line events
+
+journald splits a multi-line message at every newline, so a Python traceback arrives as one
+journal entry per line — each with a full envelope, the same identifier and PID, and
+near-identical timestamps. Emitted verbatim that is one severity-less record per stack frame.
+
+`recombine_window` joins them back: a fragment is appended to the preceding entry when it
+comes from the same process, does not itself start an application log line, and follows
+within the window. Only an application log line opens a block — otherwise sources that never
+use the format, like systemd and CoreDNS, would have runs of unrelated entries merged.
+
+In a 6000-entry sample the gap between fragments of one message was 7ms at p99, while
+unrelated entries from the same process sat minutes apart, so the 1s default separates them
+with a wide margin. Set it to `0` to disable and emit one record per journal entry.
+
+Recombination never changes the journal entry count the cursor arithmetic depends on. A block
+straddling a `batch_size` boundary is the one case it cannot join, and yields two records.
 
 ## Delivery
 
@@ -164,7 +189,23 @@ later.
 
 ## Not implemented
 
-Metrics — Home Assistant exposes `/api/prometheus`, which the stock `prometheusreceiver`
+**Metrics.** Home Assistant exposes `/api/prometheus`, which the stock `prometheusreceiver`
 scrapes with a bearer token.
 
-Automation traces — designed in §9 of the design doc, not built.
+**Host log formats.** CoreDNS `[INFO]`, NetworkManager `<info>`, and `containerd`/`dockerd`
+logfmt are passed through unparsed. `severity_from_message` does not catch them either — it
+wants a bare upper-case token. Measured on a live instance, this leaves roughly half of all
+records without a severity.
+
+**The WebSocket API.** `system_log/list` over `/api/websocket` returns Core log entries fully
+structured, with the whole traceback in one `exception` field and the source file and line —
+strictly better data than the journal text. It is not used because as a transport it is
+worse: `system_log` captures **WARNING and above only**, covers Core alone (Supervisor is a
+separate process), dedupes by (logger, source, root cause) so repeated occurrences collapse
+into a `count`, has no cursor so a dropped connection loses events, and live push needs
+`system_log: fire_event: true` set in `configuration.yaml` on the instance — a host-side
+change this receiver otherwise avoids. It is worth adding later as an optional enrichment
+stream alongside the journal, not as a replacement.
+
+**Automation traces.** Home Assistant's automation engine produces trace-shaped data
+(`run_id`, parent context, per-step timings) in a bounded ring buffer. Not built.

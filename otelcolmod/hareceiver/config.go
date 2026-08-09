@@ -14,10 +14,19 @@ import (
 type SourceKind string
 
 // Supported [SourceKind] values.
+//
+// Everything except addon maps to a Supervisor plugin or component that Home
+// Assistant Core allowlists at /api/hassio/<kind>/logs. Which of them exist
+// depends on the installation: cli and observer are absent on some.
 const (
 	SourceKindHost       SourceKind = "host"
 	SourceKindCore       SourceKind = "core"
 	SourceKindSupervisor SourceKind = "supervisor"
+	SourceKindDNS        SourceKind = "dns"
+	SourceKindAudio      SourceKind = "audio"
+	SourceKindMulticast  SourceKind = "multicast"
+	SourceKindCLI        SourceKind = "cli"
+	SourceKindObserver   SourceKind = "observer"
 	SourceKindAddon      SourceKind = "addon"
 )
 
@@ -53,7 +62,9 @@ func (s Source) StorageKey() string {
 
 func (s Source) validate() error {
 	switch s.Kind {
-	case SourceKindHost, SourceKindCore, SourceKindSupervisor:
+	case SourceKindHost, SourceKindCore, SourceKindSupervisor,
+		SourceKindDNS, SourceKindAudio, SourceKindMulticast,
+		SourceKindCLI, SourceKindObserver:
 		if s.Addon != "" {
 			return errors.Errorf("addon is only allowed for %q kind", SourceKindAddon)
 		}
@@ -91,6 +102,11 @@ type Config struct {
 	// itself. Enabled by default; nothing is lost, since the prefix is fully
 	// described by the resulting fields.
 	ParseMessage bool `mapstructure:"parse_message"`
+
+	// RecombineWindow is how long a fragment of a multi-line message may lag
+	// the previous one and still be joined to it. Zero disables recombination
+	// and emits one record per journal entry.
+	RecombineWindow time.Duration `mapstructure:"recombine_window"`
 
 	// SeverityFromMessage enables best-effort severity detection for messages
 	// that ParseMessage does not recognize, such as host logs. Home Assistant
@@ -130,6 +146,9 @@ func (c *Config) Validate() error {
 	}
 	if c.BatchSize <= 0 {
 		return errors.New("batch_size must be positive")
+	}
+	if c.RecombineWindow < 0 {
+		return errors.New("recombine_window must not be negative")
 	}
 	return nil
 }

@@ -126,13 +126,19 @@ func (p *poller) poll(ctx context.Context) error {
 	if len(entries) == 0 {
 		return nil
 	}
+	// The cursor counts journal entries, so it must advance by the number of
+	// entries the response held, not by the number of records they produce.
+	count := len(entries)
+	if p.cfg.RecombineWindow > 0 {
+		entries = recombineEntries(entries, p.cfg.RecombineWindow)
+	}
 
 	logs := translateEntries(entries, p.src, p.cfg, p.now())
 	if err := p.consumer.ConsumeLogs(ctx, logs); err != nil {
 		return errors.Wrap(err, "consume logs")
 	}
 
-	state := p.state.advance(firstCursor, len(entries))
+	state := p.state.advance(firstCursor, count)
 	if err := saveCursor(ctx, p.storage, p.src.StorageKey(), state); err != nil {
 		return errors.Wrap(err, "save cursor")
 	}

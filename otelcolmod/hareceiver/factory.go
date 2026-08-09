@@ -18,6 +18,11 @@ const (
 
 	defaultPollInterval = 10 * time.Second
 	defaultBatchSize    = 1000
+
+	// defaultRecombineWindow is far above the observed p99 gap between
+	// fragments of one message, and far below the gap between unrelated
+	// entries from the same process.
+	defaultRecombineWindow = time.Second
 )
 
 var typ = component.MustNewType(typeStr)
@@ -30,10 +35,11 @@ func NewFactory() receiver.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		ClientConfig: confighttp.NewDefaultClientConfig(),
-		PollInterval: defaultPollInterval,
-		BatchSize:    defaultBatchSize,
-		ParseMessage: true,
+		ClientConfig:    confighttp.NewDefaultClientConfig(),
+		PollInterval:    defaultPollInterval,
+		BatchSize:       defaultBatchSize,
+		ParseMessage:    true,
+		RecombineWindow: defaultRecombineWindow,
 	}
 }
 

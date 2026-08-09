@@ -120,6 +120,12 @@ func TestParseEntries(t *testing.T) {
 					"every entry must produce exactly one record")
 				gold.Str(t, encodeLogs(t, logs), file.GoldenFile("logs"))
 			})
+			t.Run("Recombined", func(t *testing.T) {
+				joined := recombineEntries(entries, defaultRecombineWindow)
+				require.LessOrEqual(t, len(joined), len(entries))
+				logs := translateEntries(joined, file.Source(), cfg, observedAt)
+				gold.Str(t, encodeLogs(t, logs), file.GoldenFile("recombined"))
+			})
 		})
 	}
 }

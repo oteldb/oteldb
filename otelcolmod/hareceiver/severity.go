@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/collector/pdata/plog"
+
+	"github.com/oteldb/oteldb/internal/logparser"
 )
 
 // severityScanTokens is how many leading whitespace-separated tokens of a
@@ -11,17 +13,15 @@ import (
 // prefix their messages with a timestamp before the level.
 const severityScanTokens = 4
 
-var severityLevels = map[string]plog.SeverityNumber{
-	"CRITICAL": plog.SeverityNumberFatal,
-	"FATAL":    plog.SeverityNumberFatal,
-	"ERROR":    plog.SeverityNumberError,
-	"ERR":      plog.SeverityNumberError,
-	"WARNING":  plog.SeverityNumberWarn,
-	"WARN":     plog.SeverityNumberWarn,
-	"NOTICE":   plog.SeverityNumberInfo2,
-	"INFO":     plog.SeverityNumberInfo,
-	"DEBUG":    plog.SeverityNumberDebug,
-	"TRACE":    plog.SeverityNumberTrace,
+// isLevel reports whether token is a level, requiring upper case so that
+// ordinary prose is not mistaken for one. [logparser.DeduceSeverity] itself is
+// case-insensitive and accepts single letters, which is too permissive here.
+func isLevel(token string) (plog.SeverityNumber, bool) {
+	if len(token) < 3 || token != strings.ToUpper(token) {
+		return plog.SeverityNumberUnspecified, false
+	}
+	sev := logparser.DeduceSeverity(token)
+	return sev, sev != plog.SeverityNumberUnspecified
 }
 
 // detectSeverity looks for a level in the leading tokens of msg.
@@ -37,7 +37,7 @@ func detectSeverity(msg string) (plog.SeverityNumber, string, bool) {
 		if token == "" {
 			return plog.SeverityNumberUnspecified, "", false
 		}
-		if sev, ok := severityLevels[token]; ok {
+		if sev, ok := isLevel(token); ok {
 			return sev, token, true
 		}
 	}

@@ -213,6 +213,31 @@ func TestPollerMultilineCountsOneEntry(t *testing.T) {
 		"a continuation line is not a journal entry and must not be skipped over")
 }
 
+func TestPollerRecombineKeepsCursorOnEntries(t *testing.T) {
+	// Four journal entries collapse into two records; the cursor must advance
+	// by four, or the next poll would re-read the fragments it already emitted.
+	ha := newFakeHA(t,
+		response{firstCursor: "s=2", body: "" +
+			"2026-08-09 12:00:01.000 ha app[1]: 2026-08-09 12:00:01.000 ERROR (MainThread) [a.b] boom\n" +
+			"2026-08-09 12:00:01.001 ha app[1]: Traceback (most recent call last):\n" +
+			"2026-08-09 12:00:01.002 ha app[1]:   File \"x.py\", line 1\n" +
+			"2026-08-09 12:00:01.003 ha app[1]: 2026-08-09 12:00:01.003 INFO (MainThread) [a.b] done\n"},
+		response{firstCursor: "s=6", body: "2026-08-09 12:00:02.000 ha app[1]: next\n"},
+	)
+	sink := new(consumertest.LogsSink)
+	st := newMemStorage()
+	require.NoError(t, st.Set(context.Background(), "cursor/host", []byte(`{"anchor":"s=1","skip":1}`)))
+	p := newTestPoller(t, ha, sink, st)
+
+	require.NoError(t, p.poll(context.Background()))
+	require.Equal(t, 2, sink.LogRecordCount(), "the traceback joins the error record")
+	require.JSONEq(t, `{"anchor":"s=2","skip":4}`, storedCursor(t, st),
+		"skip counts journal entries, not emitted records")
+
+	require.NoError(t, p.poll(context.Background()))
+	require.Equal(t, []string{"entries=s=1:1:100", "entries=s=2:4:100"}, ha.ranges())
+}
+
 func TestPollerEmptyResponseKeepsCursor(t *testing.T) {
 	ha := newFakeHA(t,
 		response{body: ""},
