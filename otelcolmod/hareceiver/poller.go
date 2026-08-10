@@ -178,10 +178,10 @@ func (p *poller) fetch(ctx context.Context, rangeHeader string) (body, firstCurs
 	if err != nil {
 		return "", "", errors.Wrap(err, "do request")
 	}
-	defer func() {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
-	}()
+	// Do not drain the body to reuse the connection: the log endpoint returns
+	// arbitrarily large responses, so draining costs as much as reading them.
+	// Dropping the connection is cheaper.
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
