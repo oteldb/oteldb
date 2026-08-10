@@ -1,0 +1,43 @@
+[
+  {
+    "timestamp": "2026-08-09T10:46:50.061Z",
+    "hostname": "homeassistant",
+    "identifier": "systemd",
+    "pid": 1,
+    "message": "var-lib-docker-overlay2-0000\\x2dinit-merged.mount: Deactivated successfully."
+  },
+  {
+    "timestamp": "2026-08-09T10:46:50.484Z",
+    "hostname": "homeassistant",
+    "identifier": "containerd",
+    "pid": 608,
+    "message": "time=\"2026-08-09T13:46:50.484602110+03:00\" level=info msg=\"connecting to shim 0000\" namespace=moby"
+  },
+  {
+    "timestamp": "2026-08-09T10:46:50.535Z",
+    "hostname": "homeassistant",
+    "identifier": "systemd",
+    "pid": 1,
+    "message": "Started libcontainer container 0000."
+  },
+  {
+    "timestamp": "2026-08-09T10:46:52.416Z",
+    "hostname": "homeassistant",
+    "identifier": "bluetoothd",
+    "pid": 564,
+    "message": "Path /org/bleak/00/000000000000 reserved for Adv Monitor app :1.508"
+  },
+  {
+    "timestamp": "2026-08-09T11:13:24.928Z",
+    "hostname": "homeassistant",
+    "identifier": "dockerd",
+    "pid": 655,
+    "message": "time=\"2026-08-09T14:13:24.928145542+03:00\" level=error msg=\"[resolver] failed to query external DNS server\""
+  },
+  {
+    "timestamp": "2026-08-09T11:13:25Z",
+    "hostname": "homeassistant",
+    "identifier": "kernel",
+    "message": "usb 1-1: new high-speed USB device number 4 using xhci_hcd"
+  }
+]

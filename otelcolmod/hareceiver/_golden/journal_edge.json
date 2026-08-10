@@ -1,0 +1,33 @@
+[
+  {
+    "timestamp": "2026-08-09T12:00:00Z",
+    "identifier": "systemd",
+    "pid": 1,
+    "message": "entry without a hostname"
+  },
+  {
+    "timestamp": "2026-08-09T12:00:01Z",
+    "hostname": "homeassistant",
+    "message": "entry without a syslog identifier"
+  },
+  {
+    "timestamp": "2026-08-09T12:00:02Z",
+    "hostname": "homeassistant",
+    "identifier": "systemd",
+    "message": "entry without a pid"
+  },
+  {
+    "timestamp": "2026-08-09T12:00:03Z",
+    "hostname": "homeassistant",
+    "identifier": "app",
+    "pid": 7,
+    "message": ""
+  },
+  {
+    "timestamp": "2026-08-09T12:00:04Z",
+    "hostname": "homeassistant",
+    "identifier": "app",
+    "pid": 7,
+    "message": "message: containing: colons\n0001-01-01 00:00:00.000  : \n2026-13-45 99:00:00.000 homeassistant app[7]: malformed timestamp is a continuation"
+  }
+]

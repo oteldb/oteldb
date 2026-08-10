@@ -1,0 +1,6 @@
+2026-08-09 10:46:50.061 homeassistant systemd[1]: var-lib-docker-overlay2-0000\x2dinit-merged.mount: Deactivated successfully.
+2026-08-09 10:46:50.484 homeassistant containerd[608]: time="2026-08-09T13:46:50.484602110+03:00" level=info msg="connecting to shim 0000" namespace=moby
+2026-08-09 10:46:50.535 homeassistant systemd[1]: Started libcontainer container 0000.
+2026-08-09 10:46:52.416 homeassistant bluetoothd[564]: Path /org/bleak/00/000000000000 reserved for Adv Monitor app :1.508
+2026-08-09 11:13:24.928 homeassistant dockerd[655]: time="2026-08-09T14:13:24.928145542+03:00" level=error msg="[resolver] failed to query external DNS server"
+2026-08-09 11:13:25.000 homeassistant kernel: usb 1-1: new high-speed USB device number 4 using xhci_hcd

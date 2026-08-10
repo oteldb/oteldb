@@ -1,0 +1,37 @@
+[
+  {
+    "timestamp": "2026-08-09T12:00:05.952Z",
+    "hostname": "homeassistant",
+    "identifier": "homeassistant",
+    "pid": 655,
+    "message": "2026-08-09 15:00:05.950 WARNING (MainThread) [homeassistant.helpers.service] Referenced entities switch.example_led are missing or not currently available"
+  },
+  {
+    "timestamp": "2026-08-09T12:00:06.101Z",
+    "hostname": "homeassistant",
+    "identifier": "homeassistant",
+    "pid": 655,
+    "message": "2026-08-09 15:00:06.100 INFO (MainThread) [homeassistant.setup] Setting up recorder"
+  },
+  {
+    "timestamp": "2026-08-09T12:00:07.004Z",
+    "hostname": "homeassistant",
+    "identifier": "homeassistant",
+    "pid": 655,
+    "message": "2026-08-09 15:00:07.003 DEBUG (SyncWorker_0) [homeassistant.components.sensor] Updating sensor.example_temperature"
+  },
+  {
+    "timestamp": "2026-08-09T12:00:08.5Z",
+    "hostname": "homeassistant",
+    "identifier": "homeassistant",
+    "pid": 655,
+    "message": "2026-08-09 15:00:08.499 ERROR (MainThread) [homeassistant.core] Error doing job: Task exception was never retrieved\nTraceback (most recent call last):\n  File \"/usr/src/homeassistant/homeassistant/core.py\", line 1, in _run\n    raise ValueError(\"example\")\nValueError: example"
+  },
+  {
+    "timestamp": "2026-08-09T12:00:09.01Z",
+    "hostname": "homeassistant",
+    "identifier": "homeassistant",
+    "pid": 655,
+    "message": "2026-08-09 15:00:09.009 CRITICAL (MainThread) [homeassistant.bootstrap] Error doing job"
+  }
+]

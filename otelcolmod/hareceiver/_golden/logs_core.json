@@ -1,0 +1,210 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786276805952000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "severityNumber": 13,
+              "severityText": "WARNING",
+              "body": {
+                "stringValue": "Referenced entities switch.example_led are missing or not currently available"
+              },
+              "attributes": [
+                {
+                  "key": "ha.logger",
+                  "value": {
+                    "stringValue": "homeassistant.helpers.service"
+                  }
+                },
+                {
+                  "key": "ha.thread",
+                  "value": {
+                    "stringValue": "MainThread"
+                  }
+                },
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "core"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786276806101000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "Setting up recorder"
+              },
+              "attributes": [
+                {
+                  "key": "ha.logger",
+                  "value": {
+                    "stringValue": "homeassistant.setup"
+                  }
+                },
+                {
+                  "key": "ha.thread",
+                  "value": {
+                    "stringValue": "MainThread"
+                  }
+                },
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "core"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786276807004000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "severityNumber": 5,
+              "severityText": "DEBUG",
+              "body": {
+                "stringValue": "Updating sensor.example_temperature"
+              },
+              "attributes": [
+                {
+                  "key": "ha.logger",
+                  "value": {
+                    "stringValue": "homeassistant.components.sensor"
+                  }
+                },
+                {
+                  "key": "ha.thread",
+                  "value": {
+                    "stringValue": "SyncWorker_0"
+                  }
+                },
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "core"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786276808500000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "severityNumber": 17,
+              "severityText": "ERROR",
+              "body": {
+                "stringValue": "Error doing job: Task exception was never retrieved\nTraceback (most recent call last):\n  File \"/usr/src/homeassistant/homeassistant/core.py\", line 1, in _run\n    raise ValueError(\"example\")\nValueError: example"
+              },
+              "attributes": [
+                {
+                  "key": "ha.logger",
+                  "value": {
+                    "stringValue": "homeassistant.core"
+                  }
+                },
+                {
+                  "key": "ha.thread",
+                  "value": {
+                    "stringValue": "MainThread"
+                  }
+                },
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "core"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786276809010000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "severityNumber": 21,
+              "severityText": "CRITICAL",
+              "body": {
+                "stringValue": "Error doing job"
+              },
+              "attributes": [
+                {
+                  "key": "ha.logger",
+                  "value": {
+                    "stringValue": "homeassistant.bootstrap"
+                  }
+                },
+                {
+                  "key": "ha.thread",
+                  "value": {
+                    "stringValue": "MainThread"
+                  }
+                },
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "core"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

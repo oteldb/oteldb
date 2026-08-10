@@ -1,0 +1,174 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "hassio_supervisor"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786278364892000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "Backup 00000000 starting stage home_assistant"
+              },
+              "attributes": [
+                {
+                  "key": "ha.logger",
+                  "value": {
+                    "stringValue": "supervisor.backups.manager"
+                  }
+                },
+                {
+                  "key": "ha.thread",
+                  "value": {
+                    "stringValue": "MainThread"
+                  }
+                },
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "supervisor"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786278364893000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "Backing up folder ssl"
+              },
+              "attributes": [
+                {
+                  "key": "ha.logger",
+                  "value": {
+                    "stringValue": "supervisor.backups.backup"
+                  }
+                },
+                {
+                  "key": "ha.thread",
+                  "value": {
+                    "stringValue": "SyncWorker_2"
+                  }
+                },
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "supervisor"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786278365100000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "severityNumber": 13,
+              "severityText": "WARNING",
+              "body": {
+                "stringValue": "Found issue reboot_required"
+              },
+              "attributes": [
+                {
+                  "key": "ha.logger",
+                  "value": {
+                    "stringValue": "supervisor.resolution.check"
+                  }
+                },
+                {
+                  "key": "ha.thread",
+                  "value": {
+                    "stringValue": "MainThread"
+                  }
+                },
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "supervisor"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786278366245000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "severityText": "VERBOSE",
+              "body": {
+                "stringValue": "Unmapped level stays structured"
+              },
+              "attributes": [
+                {
+                  "key": "ha.logger",
+                  "value": {
+                    "stringValue": "supervisor.api.backups"
+                  }
+                },
+                {
+                  "key": "ha.thread",
+                  "value": {
+                    "stringValue": "MainThread"
+                  }
+                },
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "supervisor"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

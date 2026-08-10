@@ -1,0 +1,30 @@
+[
+  {
+    "timestamp": "2026-08-09T12:26:04.892Z",
+    "hostname": "homeassistant",
+    "identifier": "hassio_supervisor",
+    "pid": 655,
+    "message": "2026-08-09 15:26:04.892 INFO (MainThread) [supervisor.backups.manager] Backup 00000000 starting stage home_assistant"
+  },
+  {
+    "timestamp": "2026-08-09T12:26:04.893Z",
+    "hostname": "homeassistant",
+    "identifier": "hassio_supervisor",
+    "pid": 655,
+    "message": "2026-08-09 15:26:04.893 INFO (SyncWorker_2) [supervisor.backups.backup] Backing up folder ssl"
+  },
+  {
+    "timestamp": "2026-08-09T12:26:05.1Z",
+    "hostname": "homeassistant",
+    "identifier": "hassio_supervisor",
+    "pid": 655,
+    "message": "2026-08-09 15:26:05.099 WARNING (MainThread) [supervisor.resolution.check] Found issue reboot_required"
+  },
+  {
+    "timestamp": "2026-08-09T12:26:06.245Z",
+    "hostname": "homeassistant",
+    "identifier": "hassio_supervisor",
+    "pid": 655,
+    "message": "2026-08-09 15:26:06.245 VERBOSE (MainThread) [supervisor.api.backups] Unmapped level stays structured"
+  }
+]

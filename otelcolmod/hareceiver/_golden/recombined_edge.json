@@ -1,0 +1,215 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "systemd"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786276800000000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "entry without a hostname"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "1"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "host"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786276801000000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "entry without a syslog identifier"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "systemd"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786276802000000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "entry without a pid"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "app"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786276803000000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": ""
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "7"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786276804000000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "message: containing: colons\n0001-01-01 00:00:00.000  : \n2026-13-45 99:00:00.000 homeassistant app[7]: malformed timestamp is a continuation"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "7"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

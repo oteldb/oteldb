@@ -1,0 +1,9 @@
+2026-08-09 12:00:05.952 homeassistant homeassistant[655]: 2026-08-09 15:00:05.950 WARNING (MainThread) [homeassistant.helpers.service] Referenced entities switch.example_led are missing or not currently available
+2026-08-09 12:00:06.101 homeassistant homeassistant[655]: 2026-08-09 15:00:06.100 INFO (MainThread) [homeassistant.setup] Setting up recorder
+2026-08-09 12:00:07.004 homeassistant homeassistant[655]: 2026-08-09 15:00:07.003 DEBUG (SyncWorker_0) [homeassistant.components.sensor] Updating sensor.example_temperature
+2026-08-09 12:00:08.500 homeassistant homeassistant[655]: 2026-08-09 15:00:08.499 ERROR (MainThread) [homeassistant.core] Error doing job: Task exception was never retrieved
+Traceback (most recent call last):
+  File "/usr/src/homeassistant/homeassistant/core.py", line 1, in _run
+    raise ValueError("example")
+ValueError: example
+2026-08-09 12:00:09.010 homeassistant homeassistant[655]: 2026-08-09 15:00:09.009 CRITICAL (MainThread) [homeassistant.bootstrap] Error doing job

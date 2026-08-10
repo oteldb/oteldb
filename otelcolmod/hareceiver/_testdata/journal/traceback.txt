@@ -1,0 +1,14 @@
+2026-08-09 08:52:32.482 homeassistant homeassistant[655]: 2026-08-09 11:52:32.480 WARNING (MainThread) [homeassistant.helpers.service] Referenced entities switch.example_led are missing
+2026-08-09 08:52:37.745 homeassistant homeassistant[655]: --- Logging error ---
+2026-08-09 08:52:37.747 homeassistant homeassistant[655]: 2026-08-09 11:52:37.744 ERROR (MainThread) [homeassistant.components.light] Error adding entity
+2026-08-09 08:52:37.749 homeassistant homeassistant[655]: Traceback (most recent call last):
+2026-08-09 08:52:37.750 homeassistant homeassistant[655]:   File "/usr/src/homeassistant/homeassistant/components/light/__init__.py", line 977, in __validate
+2026-08-09 08:52:37.750 homeassistant homeassistant[655]:     valid_supported_color_modes(supported_color_modes)
+2026-08-09 08:52:37.750 homeassistant homeassistant[655]: voluptuous.error.Error: Invalid supported_color_modes ['brightness', 'rgb']
+2026-08-09 08:52:37.751 homeassistant homeassistant[655]: 
+2026-08-09 08:52:37.751 homeassistant homeassistant[655]: The above exception was the direct cause of the following exception:
+2026-08-09 08:52:37.752 homeassistant homeassistant[655]: Traceback (most recent call last):
+2026-08-09 08:52:37.752 homeassistant homeassistant[655]:   File "/usr/src/homeassistant/homeassistant/helpers/entity_platform.py", line 680, in _async_add
+2026-08-09 08:52:40.000 homeassistant homeassistant[655]: 2026-08-09 11:52:40.000 INFO (MainThread) [homeassistant.core] Recovered
+2026-08-09 08:52:40.100 homeassistant systemd[1]: Started something unrelated.
+2026-08-09 08:52:40.200 homeassistant systemd[1]: Started another unrelated thing.

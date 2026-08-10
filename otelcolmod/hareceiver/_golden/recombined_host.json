@@ -1,0 +1,279 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "systemd"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786272410061000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "var-lib-docker-overlay2-0000\\x2dinit-merged.mount: Deactivated successfully."
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "1"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1786272410535000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "Started libcontainer container 0000."
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "1"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "containerd"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786272410484000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "time=\"2026-08-09T13:46:50.484602110+03:00\" level=info msg=\"connecting to shim 0000\" namespace=moby"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "608"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "bluetoothd"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786272412416000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "Path /org/bleak/00/000000000000 reserved for Adv Monitor app :1.508"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "564"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "dockerd"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786274004928000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "time=\"2026-08-09T14:13:24.928145542+03:00\" level=error msg=\"[resolver] failed to query external DNS server\""
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "process.pid",
+                  "value": {
+                    "intValue": "655"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "kernel"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "homeassistant"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1786274005000000000",
+              "observedTimeUnixNano": "1768870923000000004",
+              "body": {
+                "stringValue": "usb 1-1: new high-speed USB device number 4 using xhci_hcd"
+              },
+              "attributes": [
+                {
+                  "key": "ha.source",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
