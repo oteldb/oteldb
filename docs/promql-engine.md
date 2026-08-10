@@ -1007,6 +1007,33 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   slower, which is the property the tests assert rather than assume — verified here with a
   differential oracle against the fork engine over `sum_over_time`, `count`, and `count by`.
 
+  **A pushdown that is not grid-aware is not an optimization.** All three capabilities above take
+  a single window, so a range query calls them once per step. That reads as cheap — an index
+  lookup, no samples decoded — and is catastrophic in practice: measured against a live
+  deployment, `count by (cpu)` over a 1h/15s grid (241 steps) took **11.9 s** through the
+  per-step path against **0.04 s** for the same query with no pushdown at all, and scaled
+  linearly in step count (13 steps → 0.81 s, 61 → 2.63 s). That is ~49 ms of fixed cost per step
+  — a fresh querier per call, and a storage-side fallback that re-fetches every matching series
+  — where the naive path fetches the window once and counts in the engine. The "optimization" was
+  ~240× slower than doing nothing.
+
+  `GridAggregateScanner` fixes this with one call for the whole grid, implemented over storage's
+  `AggregateMetricsWindowNamed` — the same windowed call the fork engine's range `*_over_time`
+  pushdown already used and which `count` never got. Storage folds each series' samples once into
+  step buckets and slides them into every overlapping window, so cost tracks the data in range
+  rather than range/step times it. When present it supersedes all three per-window capabilities;
+  instant queries and `@`-pinned grids keep the per-window path, where a single window is exactly
+  the right question.
+
+  Two things about that seam are worth stating because both were caught by tests rather than by
+  reading. Windows come back **keyed by evaluation timestamp, not by position** — the request
+  reaches a full window-width before the first step, so storage legitimately returns windows
+  ending before it, and indexing positionally shifts every value onto the wrong step whenever the
+  step does not divide the window evenly. And a **single-step grid is not a grid**: synthesizing
+  one means inventing a step the query never had, which storage reads as the bucket width it
+  folds into, silently truncating the window. Both failures are invisible at step sizes that
+  divide evenly, which is why the differential tests run a step that does not.
+
   Two obligations bind an implementer, and they are why the capabilities are opt-in rather than
   assumed. Windows are PromQL's half-open `(mint, maxt]`, not storage's inclusive range — widening
   produces wrong answers at window edges that the corpus will not reliably catch. And staleness
