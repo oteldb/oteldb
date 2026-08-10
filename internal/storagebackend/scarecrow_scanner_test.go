@@ -248,3 +248,70 @@ func TestScarecrowScannerEngineMatchesFork(t *testing.T) {
 		})
 	}
 }
+
+// TestScarecrowScannerGridMatchesFork is [TestScarecrowScannerEngineMatchesFork] over a stepped
+// range, which is the only shape that reaches the [scarecrow.GridAggregateScanner] pushdown:
+// gridFor declines a single-step grid, so every instant query above takes the per-window path and
+// leaves AggregateGrid entirely untested.
+//
+// It is the oracle for the parts of AggregateGrid that no unit test can check on its own — the
+// WindowSpec anchor (storage evaluates on the absolute grid without it, answering at timestamps
+// the query never asked about), the half-open (t-width, t] boundary, and the request span having
+// to reach back a full window before the first step.
+//
+// Several step sizes on purpose: a step that divides the range evenly and one that does not
+// exercise different bucket-to-window slides inside storage.
+func TestScarecrowScannerGridMatchesFork(t *testing.T) {
+	ctx := context.Background()
+	base := time.Unix(2_000_000, 0).UTC()
+
+	b := ingestScannerFixture(ctx, t, base)
+
+	forkEng, err := otelpromql.New(b, promql.EngineOpts{
+		MaxSamples: 1_000_000, Timeout: time.Minute, LookbackDelta: 5 * time.Minute,
+	})
+	require.NoError(t, err)
+
+	scarecrowEng := scarecrow.NewEngine(scarecrow.Opts{
+		NewScanner: func(storage.Queryable) scarecrow.Scanner { return b.ScarecrowScanner() },
+		Parser:     promqlparser.Options{},
+	})
+
+	queries := []string{
+		`count(scan_metric)`,
+		`count by (foo) (scan_metric)`,
+		`sum_over_time(scan_metric[1m])`,
+		`count_over_time(scan_metric[1m])`,
+		`avg_over_time(scan_metric[1m])`,
+		`min_over_time(scan_metric[1m])`,
+		`max_over_time(scan_metric[1m])`,
+		`present_over_time(scan_metric[1m])`,
+		`sum by (foo) (scan_metric)`,
+	}
+
+	start := base.Add(-4 * time.Minute)
+
+	for _, step := range []time.Duration{15 * time.Second, 30 * time.Second, 37 * time.Second} {
+		for _, query := range queries {
+			t.Run(query+" step="+step.String(), func(t *testing.T) {
+				forkQ, err := forkEng.NewRangeQuery(ctx, b, nil, query, start, base, step)
+				require.NoError(t, err)
+				t.Cleanup(forkQ.Close)
+				forkRes := forkQ.Exec(ctx)
+				require.NoError(t, forkRes.Err)
+				forkMx, err := forkRes.Matrix()
+				require.NoError(t, err)
+
+				scarecrowQ, err := scarecrowEng.NewRangeQuery(ctx, b, nil, query, start, base, step)
+				require.NoError(t, err)
+				t.Cleanup(scarecrowQ.Close)
+				scarecrowRes := scarecrowQ.Exec(ctx)
+				require.NoError(t, scarecrowRes.Err)
+				scarecrowMx, err := scarecrowRes.Matrix()
+				require.NoError(t, err)
+
+				require.Equal(t, forkMx.String(), scarecrowMx.String())
+			})
+		}
+	}
+}

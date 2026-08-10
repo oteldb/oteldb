@@ -26,7 +26,10 @@ import (
 // memory scales with the matched series set. A series-major aggregate API on the storage side
 // would remove it; see the note in docs/promql-engine.md §5.2.
 type aggregateOverTime struct {
-	scanner  AggregateScanner
+	scanner AggregateScanner
+	// grid, when non-nil, folds every step's window in one call instead of one call per step.
+	// See [GridAggregateScanner]: the per-window seam is a pessimization at range-query scale.
+	grid     GridAggregateScanner
 	matchers []*labels.Matcher
 	label    string
 	fnName   string
@@ -51,6 +54,7 @@ type aggregateOverTime struct {
 
 func newAggregateOverTime(
 	scanner AggregateScanner,
+	grid GridAggregateScanner,
 	matchers []*labels.Matcher,
 	label, fnName string,
 	fold func(WindowAggregate) float64,
@@ -60,6 +64,7 @@ func newAggregateOverTime(
 ) *aggregateOverTime {
 	return &aggregateOverTime{
 		scanner:  scanner,
+		grid:     grid,
 		matchers: matchers,
 		label:    label,
 		fnName:   fnName,
@@ -94,6 +99,62 @@ func (o *aggregateOverTime) Schema(ctx context.Context) (*Schema, error) {
 	return o.schema, nil
 }
 
+// collect fills perStep with each step's window aggregates, preferring the one-call grid path.
+func (o *aggregateOverTime) collect(
+	ctx context.Context, refs []int64, rngMs int64, perStep [][]WindowAggregate,
+) error {
+	if o.grid != nil {
+		if grid, ok := gridFor(refs, rngMs); ok {
+			return o.collectGrid(ctx, grid, perStep)
+		}
+	}
+
+	for i, maxt := range refs {
+		// An @-modified selector pins every step to the same window, so one call answers them
+		// all; without this the engine would ask storage the identical question once per step.
+		if i > 0 && refs[i-1] == maxt {
+			perStep[i] = perStep[i-1]
+			continue
+		}
+
+		aggs, err := o.scanner.AggregateOverTime(ctx, maxt-rngMs, maxt, o.matchers)
+		if err != nil {
+			return errors.Wrapf(err, "aggregate over time at %d", maxt)
+		}
+
+		perStep[i] = aggs
+	}
+
+	return nil
+}
+
+// collectGrid pivots one grid call, which is series-major, into the step-major shape load needs.
+// Windows a series had no sample in are dropped rather than carried as zero-count entries, so the
+// resulting series set matches the per-step path's exactly.
+func (o *aggregateOverTime) collectGrid(
+	ctx context.Context, grid WindowGrid, perStep [][]WindowAggregate,
+) error {
+	series, err := aggregateGrid(ctx, o.grid, grid, o.matchers)
+	if err != nil {
+		return err
+	}
+
+	for i := range series {
+		for step, w := range series[i].Windows {
+			if w.Count == 0 {
+				continue
+			}
+
+			perStep[step] = append(perStep[step], WindowAggregate{
+				Labels:    series[i].Labels,
+				Aggregate: w,
+			})
+		}
+	}
+
+	return nil
+}
+
 func (o *aggregateOverTime) load(ctx context.Context) error {
 	if o.loaded {
 		return nil
@@ -110,21 +171,12 @@ func (o *aggregateOverTime) load(ctx context.Context) error {
 		perStep = make([][]WindowAggregate, steps)
 	)
 
-	for i, maxt := range refs {
-		// An @-modified selector pins every step to the same window, so one call answers them
-		// all; without this the engine would ask storage the identical question once per step.
-		if i > 0 && refs[i-1] == maxt {
-			perStep[i] = perStep[i-1]
-			continue
-		}
+	if err := o.collect(ctx, refs, rngMs, perStep); err != nil {
+		return err
+	}
 
-		aggs, err := o.scanner.AggregateOverTime(ctx, maxt-rngMs, maxt, o.matchers)
-		if err != nil {
-			return errors.Wrapf(err, "aggregate over time at %d", maxt)
-		}
-
-		perStep[i] = aggs
-
+	for i := range perStep {
+		aggs := perStep[i]
 		for j := range aggs {
 			// Range-vector functions drop __name__; none of the pushable folds retain it.
 			ls := dropMetricName(aggs[j].Labels)

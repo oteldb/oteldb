@@ -7,6 +7,7 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/oteldb/storage/engine"
 	"github.com/oteldb/storage/query/fetch"
 	storagepromql "github.com/oteldb/storage/query/promql"
 
@@ -33,9 +34,89 @@ var (
 	_ scarecrow.AggregateScanner     = (*scarecrowScanner)(nil)
 	_ scarecrow.SeriesCounter        = (*scarecrowScanner)(nil)
 	_ scarecrow.GroupedSeriesCounter = (*scarecrowScanner)(nil)
+	_ scarecrow.GridAggregateScanner = (*scarecrowScanner)(nil)
 )
 
 func (s *scarecrowScanner) Close() error { return nil }
+
+// AggregateGrid implements [scarecrow.GridAggregateScanner]: it answers a whole PromQL step grid
+// with one [storage.Storage.AggregateMetricsWindowNamed] call, which folds each series' samples
+// once into step-wide buckets and slides them into every overlapping window.
+//
+// This is the same windowed call the fork engine's range `*_over_time` pushdown uses
+// ([aggregateOverTimeRangeOp]); the per-window entry points above predate it and cost one storage
+// round-trip per step, which measured ~240x slower than no pushdown at all on a 241-step grid.
+//
+// The grid's anchor matters: storage would otherwise evaluate on the absolute grid (multiples of
+// Step from the epoch) and answer at timestamps the query never asked about.
+func (s *scarecrowScanner) AggregateGrid(
+	ctx context.Context, grid scarecrow.WindowGrid, matchers []*labels.Matcher,
+) ([]scarecrow.GridAggregate, error) {
+	const nsPerMs = int64(time.Millisecond)
+
+	// The request must span every window the grid touches: from the first window's exclusive
+	// start to the last window's inclusive end.
+	var (
+		firstEnd = grid.Start
+		lastEnd  = grid.Start + int64(grid.NumSteps-1)*grid.Step
+	)
+
+	named, err := s.b.store.AggregateMetricsWindowNamed(ctx, s.b.tenant, fetch.Request{
+		Tenant: s.b.tenant,
+		// Lead-in: the first window opens a full width before the first step.
+		Start:    (firstEnd - grid.Width + 1) * nsPerMs,
+		End:      lastEnd * nsPerMs,
+		Matchers: storagepromql.PushableMatchers(matchers),
+	}, engine.WindowSpec{
+		Step:   grid.Step * nsPerMs,
+		Window: grid.Width * nsPerMs,
+		Anchor: grid.Start * nsPerMs,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "aggregate metrics window")
+	}
+
+	out := make([]scarecrow.GridAggregate, 0, len(named))
+
+	for i := range named {
+		lset := storagepromql.PromLabels(named[i].Series)
+		if !storagepromql.MatchesAll(lset, matchers) {
+			continue
+		}
+
+		// Windows are keyed by their evaluation timestamp, not by position: the request reaches a
+		// full width back before the first step, so storage legitimately returns windows ending
+		// before it, and a step the series has no sample in is absent entirely. Indexing
+		// positionally silently shifts every value onto the wrong step whenever the two disagree
+		// — which is what TestScarecrowScannerGridMatchesFork caught at a step that does not
+		// divide the window evenly.
+		windows := make([]scarecrow.Aggregate, grid.NumSteps)
+
+		for _, w := range named[i].Windows {
+			endMs := w.End / nsPerMs
+
+			step := (endMs - grid.Start) / grid.Step
+			if step < 0 || step >= int64(grid.NumSteps) {
+				continue
+			}
+
+			if grid.Start+step*grid.Step != endMs {
+				continue // Not on this query's grid.
+			}
+
+			windows[step] = scarecrow.Aggregate{
+				Count: w.Count,
+				Sum:   w.Sum,
+				Min:   w.Min,
+				Max:   w.Max,
+			}
+		}
+
+		out = append(out, scarecrow.GridAggregate{Labels: lset, Windows: windows})
+	}
+
+	return out, nil
+}
 
 // AggregateOverTime implements [scarecrow.AggregateScanner], answering a reducer `*_over_time`
 // from the stats sidecar ([storage.Storage.AggregateMetricsNamed]) instead of a raw fetch-and-fold
@@ -70,10 +151,12 @@ func (s *scarecrowScanner) AggregateOverTime(
 
 		out = append(out, scarecrow.WindowAggregate{
 			Labels: lset,
-			Count:  la.Count,
-			Sum:    la.Sum,
-			Min:    la.Min,
-			Max:    la.Max,
+			Aggregate: scarecrow.Aggregate{
+				Count: la.Count,
+				Sum:   la.Sum,
+				Min:   la.Min,
+				Max:   la.Max,
+			},
 		})
 	}
 

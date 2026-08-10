@@ -35,13 +35,105 @@ type pushdownScanner struct {
 	aggregates atomic.Int64
 	counts     atomic.Int64
 	groupCount atomic.Int64
+	grids      atomic.Int64
+}
+
+// perWindowScanner exposes a [pushdownScanner] *without* the grid capability, so the same corpus
+// can be run down the per-window path and the grid path and the two compared.
+//
+// It forwards method by method rather than embedding: a capability is a static interface
+// satisfaction, and the planner discovers it by type assertion, so an embedded scanner would keep
+// advertising AggregateGrid no matter what a field said.
+type perWindowScanner struct{ s *pushdownScanner }
+
+var (
+	_ scarecrow.AggregateScanner     = perWindowScanner{}
+	_ scarecrow.SeriesCounter        = perWindowScanner{}
+	_ scarecrow.GroupedSeriesCounter = perWindowScanner{}
+)
+
+func (w perWindowScanner) Close() error { return w.s.Close() }
+
+func (w perWindowScanner) Series(
+	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
+) ([]labels.Labels, error) {
+	return w.s.Series(ctx, mint, maxt, matchers)
+}
+
+func (w perWindowScanner) Scan(
+	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
+) (scarecrow.SeriesIterator, error) {
+	return w.s.Scan(ctx, mint, maxt, matchers)
+}
+
+func (w perWindowScanner) AggregateOverTime(
+	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
+) ([]scarecrow.WindowAggregate, error) {
+	return w.s.AggregateOverTime(ctx, mint, maxt, matchers)
+}
+
+func (w perWindowScanner) CountSeries(
+	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
+) (uint64, error) {
+	return w.s.CountSeries(ctx, mint, maxt, matchers)
+}
+
+func (w perWindowScanner) CountSeriesBy(
+	ctx context.Context, mint, maxt int64, label string, matchers []*labels.Matcher,
+) (map[string]uint64, error) {
+	return w.s.CountSeriesBy(ctx, mint, maxt, label, matchers)
 }
 
 var (
 	_ scarecrow.AggregateScanner     = (*pushdownScanner)(nil)
 	_ scarecrow.SeriesCounter        = (*pushdownScanner)(nil)
 	_ scarecrow.GroupedSeriesCounter = (*pushdownScanner)(nil)
+	_ scarecrow.GridAggregateScanner = (*pushdownScanner)(nil)
 )
+
+// AggregateGrid answers the whole grid by folding each window independently. That is deliberately
+// the naive implementation: this fake exists to prove the *engine* side of the grid pushdown
+// agrees with the per-window side, so it must not share code with either.
+func (s *pushdownScanner) AggregateGrid(
+	ctx context.Context, grid scarecrow.WindowGrid, matchers []*labels.Matcher,
+) ([]scarecrow.GridAggregate, error) {
+	s.grids.Add(1)
+
+	var (
+		byKey = map[string]*scarecrow.GridAggregate{}
+		order []string
+	)
+
+	for step := range grid.NumSteps {
+		end := grid.Start + int64(step)*grid.Step
+
+		windowed, windowOrder, err := s.window(ctx, end-grid.Width, end, matchers)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, k := range windowOrder {
+			g, ok := byKey[k]
+			if !ok {
+				g = &scarecrow.GridAggregate{
+					Labels:  windowed[k].Labels,
+					Windows: make([]scarecrow.Aggregate, grid.NumSteps),
+				}
+				byKey[k] = g
+				order = append(order, k)
+			}
+
+			g.Windows[step] = windowed[k].Aggregate
+		}
+	}
+
+	out := make([]scarecrow.GridAggregate, 0, len(order))
+	for _, k := range order {
+		out = append(out, *byKey[k])
+	}
+
+	return out, nil
+}
 
 // window collects the samples in (mint, maxt] per series, the exact window PromQL folds over.
 func (s *pushdownScanner) window(
@@ -85,8 +177,10 @@ func (s *pushdownScanner) window(
 			if !ok {
 				a = &scarecrow.WindowAggregate{
 					Labels: smp.Labels.Copy(),
-					Min:    math.Inf(1),
-					Max:    math.Inf(-1),
+					Aggregate: scarecrow.Aggregate{
+						Min: math.Inf(1),
+						Max: math.Inf(-1),
+					},
 				}
 				byKey[key] = a
 				order = append(order, key)
@@ -238,6 +332,88 @@ func TestPushdownsPreserveResults(t *testing.T) {
 			want := execRange(t, plain, store, qs, start, end, time.Minute)
 			got := execRange(t, pushed, store, qs, start, end, time.Minute)
 			require.Equal(t, want, got, "range 0..600 step 60s")
+		})
+	}
+}
+
+// TestGridPushdownMatchesPerWindow pins the grid pushdown against the per-window pushdown over
+// the same corpus and the same data.
+//
+// This is the property that makes [scarecrow.GridAggregateScanner] safe to prefer: it is purely a
+// call-shape optimization, so answering a grid in one call must be indistinguishable from
+// answering each of its windows separately. Several step sizes on purpose — a step that divides
+// the window evenly hides an off-by-one in the window-to-step mapping that a step which does not
+// divide it exposes immediately.
+func TestGridPushdownMatchesPerWindow(t *testing.T) {
+	t.Parallel()
+
+	store := promqltest.LoadedStorage(t, pushdownData)
+	defer func() { require.NoError(t, store.Close()) }()
+
+	var gridScanner, windowScanner *pushdownScanner
+
+	gridEngine := scarecrow.NewEngine(scarecrow.Opts{
+		EnableAtModifier: true,
+		NewScanner: func(q storage.Queryable) scarecrow.Scanner {
+			gridScanner = &pushdownScanner{Scanner: scarecrow.NewQueryableScanner(q)}
+
+			return gridScanner
+		},
+	})
+
+	perWindow := scarecrow.NewEngine(scarecrow.Opts{
+		EnableAtModifier: true,
+		NewScanner: func(q storage.Queryable) scarecrow.Scanner {
+			windowScanner = &pushdownScanner{Scanner: scarecrow.NewQueryableScanner(q)}
+
+			return perWindowScanner{s: windowScanner}
+		},
+	})
+
+	start, end := time.Unix(0, 0), time.Unix(600, 0)
+
+	for _, step := range []time.Duration{30 * time.Second, time.Minute, 70 * time.Second} {
+		for _, qs := range pushdownQueries {
+			t.Run(qs+" step="+step.String(), func(t *testing.T) {
+				want := execRange(t, perWindow, store, qs, start, end, step)
+				got := execRange(t, gridEngine, store, qs, start, end, step)
+
+				require.Equal(t, want, got)
+			})
+		}
+	}
+}
+
+// TestGridPushdownActuallyFires is [TestPushdownsActuallyFire] for the grid path: a grid pushdown
+// that silently never engages would agree with the per-window path perfectly, and would also
+// leave the per-step blowup it exists to remove fully in place.
+func TestGridPushdownActuallyFires(t *testing.T) {
+	t.Parallel()
+
+	store := promqltest.LoadedStorage(t, pushdownData)
+	defer func() { require.NoError(t, store.Close()) }()
+
+	var scanner *pushdownScanner
+	engine := scarecrow.NewEngine(scarecrow.Opts{
+		NewScanner: func(q storage.Queryable) scarecrow.Scanner {
+			scanner = &pushdownScanner{Scanner: scarecrow.NewQueryableScanner(q)}
+
+			return scanner
+		},
+	})
+
+	for _, qs := range []string{
+		`count(http_requests)`,
+		`count by (job) (http_requests)`,
+		`sum_over_time(http_requests[2m])`,
+	} {
+		t.Run(qs, func(t *testing.T) {
+			execRange(t, engine, store, qs, time.Unix(0, 0), time.Unix(600, 0), time.Minute)
+
+			require.Equal(t, int64(1), scanner.grids.Load(), "one grid call for the whole range")
+			require.Zero(t, scanner.counts.Load(), "per-window count must not run")
+			require.Zero(t, scanner.groupCount.Load(), "per-window grouped count must not run")
+			require.Zero(t, scanner.aggregates.Load(), "per-window aggregate must not run")
 		})
 	}
 }

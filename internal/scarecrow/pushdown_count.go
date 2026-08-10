@@ -16,7 +16,10 @@ import (
 // number of series with a sample in (t-lookback, t]. Storage answers that from its index, so a
 // query whose whole purpose is cardinality never touches sample data.
 type countSeries struct {
-	counter  SeriesCounter
+	counter SeriesCounter
+	// grid, when non-nil, answers every step in one call instead of one per step. See
+	// [GridAggregateScanner] for why that distinction decides whether this pushdown helps at all.
+	grid     GridAggregateScanner
 	matchers []*labels.Matcher
 	label    string
 
@@ -30,11 +33,12 @@ type countSeries struct {
 }
 
 func newCountSeries(
-	counter SeriesCounter, matchers []*labels.Matcher, label string,
+	counter SeriesCounter, grid GridAggregateScanner, matchers []*labels.Matcher, label string,
 	offset time.Duration, at *int64, ec *EvalContext,
 ) *countSeries {
 	return &countSeries{
 		counter:  counter,
+		grid:     grid,
 		matchers: matchers,
 		label:    label,
 		offset:   offset,
@@ -74,16 +78,11 @@ func (o *countSeries) Next(ctx context.Context) (*Column, error) {
 
 	o.out.Resize(0, o.ec.NumSteps())
 
-	for step, maxt := range refTimes(o.ec.Steps, o.offset, o.at) {
-		n, err := o.counter.CountSeries(ctx, maxt-o.ec.LookbackDelta.Milliseconds(), maxt, o.matchers)
-		if err != nil {
-			return nil, errors.Wrapf(err, "count series at %d", maxt)
-		}
+	refs := refTimes(o.ec.Steps, o.offset, o.at)
+	lookback := o.ec.LookbackDelta.Milliseconds()
 
-		// An empty selector yields no series at all, not a zero — `count(absent_metric)` is empty.
-		if n > 0 {
-			o.out.Set(step, float64(n))
-		}
+	if err := o.count(ctx, refs, lookback); err != nil {
+		return nil, err
 	}
 
 	if o.out.Empty() {
@@ -93,10 +92,61 @@ func (o *countSeries) Next(ctx context.Context) (*Column, error) {
 	return &o.out, nil
 }
 
+// count fills o.out with the per-step series count, preferring the one-call grid path.
+func (o *countSeries) count(ctx context.Context, refs []int64, lookback int64) error {
+	if o.grid != nil {
+		if grid, ok := gridFor(refs, lookback); ok {
+			return o.countGrid(ctx, grid)
+		}
+	}
+
+	for step, maxt := range refs {
+		n, err := o.counter.CountSeries(ctx, maxt-lookback, maxt, o.matchers)
+		if err != nil {
+			return errors.Wrapf(err, "count series at %d", maxt)
+		}
+
+		// An empty selector yields no series at all, not a zero — `count(absent_metric)` is empty.
+		if n > 0 {
+			o.out.Set(step, float64(n))
+		}
+	}
+
+	return nil
+}
+
+// countGrid answers every step from one grid call: a series counts at a step when it has any
+// sample in that step's window, which is exactly a non-zero aggregate count.
+func (o *countSeries) countGrid(ctx context.Context, grid WindowGrid) error {
+	series, err := aggregateGrid(ctx, o.grid, grid, o.matchers)
+	if err != nil {
+		return err
+	}
+
+	counts := make([]float64, grid.NumSteps)
+	for i := range series {
+		for step, w := range series[i].Windows {
+			if w.Count > 0 {
+				counts[step]++
+			}
+		}
+	}
+
+	for step, n := range counts {
+		if n > 0 {
+			o.out.Set(step, n)
+		}
+	}
+
+	return nil
+}
+
 // countSeriesBy answers `count by (label) (selector)` from a [GroupedSeriesCounter]. It is the
 // grouped analog of [countSeries] and carries the same window semantics.
 type countSeriesBy struct {
-	counter  GroupedSeriesCounter
+	counter GroupedSeriesCounter
+	// grid, when non-nil, answers every step in one call. See [countSeries.grid].
+	grid     GridAggregateScanner
 	matchers []*labels.Matcher
 	label    string
 	by       string
@@ -117,11 +167,12 @@ type countSeriesBy struct {
 }
 
 func newCountSeriesBy(
-	counter GroupedSeriesCounter, matchers []*labels.Matcher, label, by string,
+	counter GroupedSeriesCounter, grid GridAggregateScanner, matchers []*labels.Matcher, label, by string,
 	offset time.Duration, at *int64, ec *EvalContext,
 ) *countSeriesBy {
 	return &countSeriesBy{
 		counter:  counter,
+		grid:     grid,
 		matchers: matchers,
 		label:    label,
 		by:       by,
@@ -151,6 +202,60 @@ func (o *countSeriesBy) Schema(ctx context.Context) (*Schema, error) {
 	return o.schema, nil
 }
 
+// collect returns the per-value counts at each step, preferring the one-call grid path over one
+// [GroupedSeriesCounter] call per step.
+func (o *countSeriesBy) collect(ctx context.Context, refs []int64) ([]map[string]uint64, error) {
+	lookback := o.ec.LookbackDelta.Milliseconds()
+
+	if o.grid != nil {
+		if grid, ok := gridFor(refs, lookback); ok {
+			return o.collectGrid(ctx, grid)
+		}
+	}
+
+	perStep := make([]map[string]uint64, len(refs))
+
+	for i, maxt := range refs {
+		counts, err := o.counter.CountSeriesBy(ctx, maxt-lookback, maxt, o.by, o.matchers)
+		if err != nil {
+			return nil, errors.Wrapf(err, "count series by %s at %d", o.by, maxt)
+		}
+
+		perStep[i] = counts
+	}
+
+	return perStep, nil
+}
+
+// collectGrid groups one grid call's series into per-step counts. The grouping happens here
+// rather than in storage because it is trivially cheap once the series are in hand — the label
+// value is on the series identity, no sample is consulted — and it keeps the pushdown seam a
+// single general-purpose call rather than one variant per grouping shape.
+func (o *countSeriesBy) collectGrid(ctx context.Context, grid WindowGrid) ([]map[string]uint64, error) {
+	series, err := aggregateGrid(ctx, o.grid, grid, o.matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	perStep := make([]map[string]uint64, grid.NumSteps)
+	for i := range perStep {
+		perStep[i] = map[string]uint64{}
+	}
+
+	for i := range series {
+		// A series without the label groups under "", matching PromQL's absent-label group.
+		v := series[i].Labels.Get(o.by)
+
+		for step, w := range series[i].Windows {
+			if w.Count > 0 {
+				perStep[step][v]++
+			}
+		}
+	}
+
+	return perStep, nil
+}
+
 // load counts every step, then pivots the per-step maps into the (ref, step) grid the engine
 // emits from. Unlike [aggregateOverTime] this is bounded by the *group* count, not the series
 // count, which is the whole point of pushing the grouping down.
@@ -161,23 +266,18 @@ func (o *countSeriesBy) load(ctx context.Context) error {
 	o.loaded = true
 
 	var (
-		refs    = refTimes(o.ec.Steps, o.offset, o.at)
-		steps   = len(refs)
-		perStep = make([]map[string]uint64, steps)
-		values  []string
-		seen    = map[string]bool{}
+		refs   = refTimes(o.ec.Steps, o.offset, o.at)
+		steps  = len(refs)
+		values []string
+		seen   = map[string]bool{}
 	)
 
-	for i, maxt := range refs {
-		counts, err := o.counter.CountSeriesBy(
-			ctx, maxt-o.ec.LookbackDelta.Milliseconds(), maxt, o.by, o.matchers,
-		)
-		if err != nil {
-			return errors.Wrapf(err, "count series by %s at %d", o.by, maxt)
-		}
+	perStep, err := o.collect(ctx, refs)
+	if err != nil {
+		return err
+	}
 
-		perStep[i] = counts
-
+	for _, counts := range perStep {
 		for v, n := range counts {
 			if n == 0 || seen[v] {
 				continue

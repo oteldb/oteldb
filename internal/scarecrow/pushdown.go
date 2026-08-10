@@ -31,13 +31,71 @@ import (
 // index-safe subset and re-checks the rest; that re-check belongs behind this interface, so the
 // engine can treat what it gets back as final.
 
+// Aggregate is a fold of one series' samples over one window. A zero Count means the series had
+// no sample in that window, which PromQL renders as a gap rather than a zero.
+type Aggregate struct {
+	Count int64
+	Sum   float64
+	Min   float64
+	Max   float64
+}
+
 // WindowAggregate is one series' aggregate over a single window.
 type WindowAggregate struct {
 	Labels labels.Labels
-	Count  int64
-	Sum    float64
-	Min    float64
-	Max    float64
+
+	Aggregate
+}
+
+// WindowGrid is an evaluation grid of NumSteps equally spaced windows: window i covers
+// (Start + i*Step - Width, Start + i*Step].
+//
+// It is the shape a range query actually asks about, and asking for it in one call rather than
+// one call per step is the difference between a pushdown that helps and one that is far slower
+// than no pushdown at all — see [GridAggregateScanner].
+type WindowGrid struct {
+	// Start is the end timestamp of the first window, in unix milliseconds.
+	Start int64
+	// Step is the spacing between consecutive window ends, in milliseconds. Always > 0.
+	Step int64
+	// NumSteps is the number of windows. Always > 0.
+	NumSteps int
+	// Width is each window's width in milliseconds: the range for a range-vector function, the
+	// lookback delta for a plain selector.
+	Width int64
+}
+
+// GridAggregate is one series' aggregates across every window of a [WindowGrid].
+type GridAggregate struct {
+	Labels labels.Labels
+	// Windows is index-aligned with the grid's steps and has exactly NumSteps entries. A window
+	// the series had no sample in carries a zero Count.
+	Windows []Aggregate
+}
+
+// GridAggregateScanner answers a whole [WindowGrid] in one call.
+//
+// This exists because the per-window interfaces below are a trap at range-query scale. They read
+// as cheap — an index lookup, no samples decoded — but the engine has to call them once per step,
+// and each call pays a fresh querier plus whatever fixed setup the storage side does. Measured
+// against a live deployment, `count by (cpu)` over a 1h/15s grid (241 steps) took 11.9s through
+// the per-step [GroupedSeriesCounter] path against 0.04s for the same query with no pushdown at
+// all: ~49ms of fixed cost per step, ~240x slower than simply fetching the window once and
+// counting in the engine.
+//
+// So a pushdown that is not grid-aware is not an optimization. Storage folds each series' samples
+// once and slides them into every overlapping window, making the cost proportional to the data in
+// range rather than to range/step times it.
+//
+// A scanner implementing this supersedes [AggregateScanner], [SeriesCounter] and
+// [GroupedSeriesCounter] for range queries; those remain for instant queries (one step, where the
+// per-window call is exactly right) and for scanners that cannot answer a grid.
+type GridAggregateScanner interface {
+	Scanner
+
+	// AggregateGrid returns one entry per matching series with a sample in any window of the
+	// grid, each carrying that series' aggregate in every window.
+	AggregateGrid(ctx context.Context, grid WindowGrid, matchers []*labels.Matcher) ([]GridAggregate, error)
 }
 
 // AggregateScanner is a [Scanner] that can fold a range-vector window itself, answering the

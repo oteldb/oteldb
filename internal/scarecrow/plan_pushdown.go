@@ -27,8 +27,10 @@ func (p *planner) pushDownOverTime(
 		return nil, false
 	}
 
+	grid, _ := p.scanner.(GridAggregateScanner)
+
 	return newAggregateOverTime(
-		scanner, vs.LabelMatchers, matchersString(vs.LabelMatchers), fnName, fold,
+		scanner, grid, vs.LabelMatchers, matchersString(vs.LabelMatchers), fnName, fold,
 		ms.Range, vs.OriginalOffset, vs.Timestamp, p.ec,
 	), true
 }
@@ -51,6 +53,11 @@ func (p *planner) pushDownCount(e *parser.AggregateExpr) (Operator, bool) {
 
 	label := matchersString(vs.LabelMatchers)
 
+	// A grid-aware scanner answers the whole step grid in one call; without it the operator falls
+	// back to one call per step, which is a pessimization at range-query scale
+	// ([GridAggregateScanner]).
+	grid, _ := p.scanner.(GridAggregateScanner)
+
 	switch len(e.Grouping) {
 	case 0:
 		counter, ok := p.scanner.(SeriesCounter)
@@ -59,7 +66,7 @@ func (p *planner) pushDownCount(e *parser.AggregateExpr) (Operator, bool) {
 		}
 
 		return newCountSeries(
-			counter, vs.LabelMatchers, label, vs.OriginalOffset, vs.Timestamp, p.ec,
+			counter, grid, vs.LabelMatchers, label, vs.OriginalOffset, vs.Timestamp, p.ec,
 		), true
 
 	case 1:
@@ -69,7 +76,8 @@ func (p *planner) pushDownCount(e *parser.AggregateExpr) (Operator, bool) {
 		}
 
 		return newCountSeriesBy(
-			counter, vs.LabelMatchers, label, e.Grouping[0], vs.OriginalOffset, vs.Timestamp, p.ec,
+			counter, grid, vs.LabelMatchers, label, e.Grouping[0],
+			vs.OriginalOffset, vs.Timestamp, p.ec,
 		), true
 
 	default:
