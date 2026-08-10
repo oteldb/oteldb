@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // aggregateOverTime answers a reducer `*_over_time` from an [AggregateScanner] instead of folding
@@ -109,6 +110,13 @@ func (o *aggregateOverTime) collect(
 		}
 	}
 
+	// See the note in [countSeries.count]: the call count is the whole diagnosis.
+	ctx, span := o.ec.span(ctx, "scarecrow.AggregateOverTime.PerWindow",
+		attribute.Int("promql.calls", len(refs)),
+		attribute.String("promql.function", o.fnName),
+	)
+	defer span.End()
+
 	for i, maxt := range refs {
 		// An @-modified selector pins every step to the same window, so one call answers them
 		// all; without this the engine would ask storage the identical question once per step.
@@ -119,6 +127,8 @@ func (o *aggregateOverTime) collect(
 
 		aggs, err := o.scanner.AggregateOverTime(ctx, maxt-rngMs, maxt, o.matchers)
 		if err != nil {
+			span.RecordError(err)
+
 			return errors.Wrapf(err, "aggregate over time at %d", maxt)
 		}
 
@@ -134,7 +144,7 @@ func (o *aggregateOverTime) collect(
 func (o *aggregateOverTime) collectGrid(
 	ctx context.Context, grid WindowGrid, perStep [][]WindowAggregate,
 ) error {
-	series, err := aggregateGrid(ctx, o.grid, grid, o.matchers)
+	series, err := aggregateGrid(ctx, o.ec, o.grid, grid, o.matchers)
 	if err != nil {
 		return err
 	}

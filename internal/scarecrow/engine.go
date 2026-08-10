@@ -9,6 +9,10 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/stats"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Opts configures an [Engine].
@@ -30,6 +34,9 @@ type Opts struct {
 	// storage.Queryable it is handed via [NewQueryableScanner] — the path the upstream test
 	// corpus and any non-columnar backend take.
 	NewScanner func(storage.Queryable) Scanner
+	// TracerProvider provides the OpenTelemetry tracer for this engine. Nil selects the global
+	// provider, matching internal/logql/logqlengine.
+	TracerProvider trace.TracerProvider
 	// ChunkSteps bounds how many steps a range query plans and executes at once (§4.4's
 	// time-chunking). A query with more steps than this runs as several sequential chunks
 	// whose results are concatenated, so accumulator memory stays bounded in the query's step
@@ -62,13 +69,18 @@ func (o *Opts) setDefaults() {
 	if o.ChunkSteps == 0 {
 		o.ChunkSteps = defaultChunkSteps
 	}
+
+	if o.TracerProvider == nil {
+		o.TracerProvider = otel.GetTracerProvider()
+	}
 }
 
 // Engine evaluates PromQL queries using the series-major columnar execution model.
 //
 // It implements promql.QueryEngine, so it is a drop-in for the existing engine seam.
 type Engine struct {
-	opts Opts
+	opts   Opts
+	tracer trace.Tracer
 }
 
 var _ promql.QueryEngine = (*Engine)(nil)
@@ -77,7 +89,10 @@ var _ promql.QueryEngine = (*Engine)(nil)
 func NewEngine(opts Opts) *Engine {
 	opts.setDefaults()
 
-	return &Engine{opts: opts}
+	return &Engine{
+		opts:   opts,
+		tracer: opts.TracerProvider.Tracer("scarecrow.Engine"),
+	}
 }
 
 // NewInstantQuery builds a query evaluating expr at a single timestamp.
@@ -216,10 +231,27 @@ func (q *query) Exec(ctx context.Context) *promql.Result {
 
 	defer cancel()
 
+	steps := len(stepGrid(q.start, q.end, q.interval))
+
+	ctx, span := q.engine.tracer.Start(ctx, "scarecrow.Exec", trace.WithAttributes(
+		attribute.String("promql.query", q.text),
+		attribute.String("promql.start", q.start.Format(time.RFC3339Nano)),
+		attribute.String("promql.end", q.end.Format(time.RFC3339Nano)),
+		attribute.Stringer("promql.step", q.interval),
+		attribute.Int("promql.steps", steps),
+		attribute.Bool("promql.instant", q.instant()),
+	))
+	defer span.End()
+
 	v, err := q.exec(ctx)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+
 		return &promql.Result{Err: err}
 	}
+
+	span.SetStatus(codes.Ok, "")
 
 	return &promql.Result{Value: v}
 }
@@ -246,7 +278,11 @@ func (q *query) exec(ctx context.Context) (parser.Value, error) {
 	// It is the one result shape no operator produces (nothing in this engine emits a range
 	// vector), so it is materialized at the result boundary rather than planned.
 	if q.instant() {
-		ec := &EvalContext{Steps: stepGrid(q.start, q.end, q.interval), LookbackDelta: q.lookback}
+		ec := &EvalContext{
+			Steps:         stepGrid(q.start, q.end, q.interval),
+			LookbackDelta: q.lookback,
+			Tracer:        q.engine.tracer,
+		}
 		p := &planner{scanner: scanner, ec: ec, noStepSubqueryInterval: q.engine.opts.NoStepSubqueryInterval}
 
 		if ms, ok := unwrapMatrixSelector(expr); ok {
@@ -271,6 +307,12 @@ func (q *query) exec(ctx context.Context) (parser.Value, error) {
 
 // buildRoot plans expr against ec and resolves its schema, ready for Next.
 func (q *query) buildRoot(ctx context.Context, p *planner, expr parser.Expr) (Operator, *Schema, error) {
+	// This span covers schema resolution as well as planning, which is deliberate: schemas
+	// resolve eagerly (§3.3), so every data-dependent operator — the pushdowns, quantile, topk,
+	// count_values — does all of its storage work inside here rather than during Next.
+	ctx, span := p.ec.span(ctx, "scarecrow.Plan")
+	defer span.End()
+
 	root, err := p.plan(ctx, expr)
 	if err != nil {
 		return nil, nil, err
@@ -282,6 +324,11 @@ func (q *query) buildRoot(ctx context.Context, p *planner, expr parser.Expr) (Op
 
 		return nil, nil, err
 	}
+
+	span.SetAttributes(
+		attribute.String("promql.plan", root.String()),
+		attribute.Int("promql.series", schema.Len()),
+	)
 
 	return root, schema, nil
 }
@@ -300,20 +347,12 @@ func (q *query) execRange(ctx context.Context, scanner Scanner, expr parser.Expr
 	}
 
 	merged := rangeMerger{totalSteps: len(steps)}
+	chunks := (len(steps) + chunkSteps - 1) / chunkSteps
 
 	for start := 0; start < len(steps); start += chunkSteps {
 		end := min(start+chunkSteps, len(steps))
 
-		ec := &EvalContext{Steps: steps[start:end], Interval: q.interval, LookbackDelta: q.lookback}
-		p := &planner{scanner: scanner, ec: ec, noStepSubqueryInterval: q.engine.opts.NoStepSubqueryInterval}
-
-		root, schema, err := q.buildRoot(ctx, p, expr)
-		if err != nil {
-			return nil, err
-		}
-
-		v, err := collectRange(ctx, root, schema, ec)
-		_ = root.Close()
+		v, err := q.execChunk(ctx, scanner, expr, steps[start:end], start/chunkSteps, chunks)
 		if err != nil {
 			return nil, err
 		}
@@ -324,6 +363,45 @@ func (q *query) execRange(ctx context.Context, scanner Scanner, expr parser.Expr
 	}
 
 	return merged.result(), nil
+}
+
+// execChunk plans and evaluates one chunk of a range query. It is a method rather than the body
+// of the loop above so its span closes when the chunk finishes: a deferred End inside the loop
+// would hold every chunk's span open until the whole query returned, reporting each chunk as
+// lasting until the end of the query.
+func (q *query) execChunk(
+	ctx context.Context, scanner Scanner, expr parser.Expr, steps []int64, index, chunks int,
+) (parser.Value, error) {
+	ec := &EvalContext{
+		Steps:         steps,
+		Interval:      q.interval,
+		LookbackDelta: q.lookback,
+		Tracer:        q.engine.tracer,
+	}
+
+	// Only span the chunks when there is more than one: an unchunked query would otherwise get a
+	// redundant span wrapping the whole of its only chunk.
+	if chunks > 1 {
+		var span trace.Span
+
+		ctx, span = ec.span(ctx, "scarecrow.Chunk",
+			attribute.Int("promql.chunk", index),
+			attribute.Int("promql.chunks", chunks),
+			attribute.Int("promql.steps", len(steps)),
+		)
+		defer span.End()
+	}
+
+	p := &planner{scanner: scanner, ec: ec, noStepSubqueryInterval: q.engine.opts.NoStepSubqueryInterval}
+
+	root, schema, err := q.buildRoot(ctx, p, expr)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = root.Close() }()
+
+	return collectRange(ctx, root, schema, ec)
 }
 
 func (q *query) instant() bool {

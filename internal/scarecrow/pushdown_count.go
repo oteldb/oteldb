@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // countSeries answers `count(selector)` from a [SeriesCounter] without reading a sample.
@@ -100,9 +101,19 @@ func (o *countSeries) count(ctx context.Context, refs []int64, lookback int64) e
 		}
 	}
 
+	// Per-window fallback: one storage call per step. Spanned as a group with the call count on
+	// it, because the count is the diagnosis — a hundred sibling calls here is the pathology
+	// [GridAggregateScanner] exists to remove, and it is invisible if only the total shows up.
+	ctx, span := o.ec.span(ctx, "scarecrow.CountSeries.PerWindow",
+		attribute.Int("promql.calls", len(refs)),
+	)
+	defer span.End()
+
 	for step, maxt := range refs {
 		n, err := o.counter.CountSeries(ctx, maxt-lookback, maxt, o.matchers)
 		if err != nil {
+			span.RecordError(err)
+
 			return errors.Wrapf(err, "count series at %d", maxt)
 		}
 
@@ -118,7 +129,7 @@ func (o *countSeries) count(ctx context.Context, refs []int64, lookback int64) e
 // countGrid answers every step from one grid call: a series counts at a step when it has any
 // sample in that step's window, which is exactly a non-zero aggregate count.
 func (o *countSeries) countGrid(ctx context.Context, grid WindowGrid) error {
-	series, err := aggregateGrid(ctx, o.grid, grid, o.matchers)
+	series, err := aggregateGrid(ctx, o.ec, o.grid, grid, o.matchers)
 	if err != nil {
 		return err
 	}
@@ -213,11 +224,20 @@ func (o *countSeriesBy) collect(ctx context.Context, refs []int64) ([]map[string
 		}
 	}
 
+	// See the note in [countSeries.count]: the call count is the whole diagnosis.
+	ctx, span := o.ec.span(ctx, "scarecrow.CountSeriesBy.PerWindow",
+		attribute.Int("promql.calls", len(refs)),
+		attribute.String("promql.by", o.by),
+	)
+	defer span.End()
+
 	perStep := make([]map[string]uint64, len(refs))
 
 	for i, maxt := range refs {
 		counts, err := o.counter.CountSeriesBy(ctx, maxt-lookback, maxt, o.by, o.matchers)
 		if err != nil {
+			span.RecordError(err)
+
 			return nil, errors.Wrapf(err, "count series by %s at %d", o.by, maxt)
 		}
 
@@ -232,7 +252,7 @@ func (o *countSeriesBy) collect(ctx context.Context, refs []int64) ([]map[string
 // value is on the series identity, no sample is consulted — and it keeps the pushdown seam a
 // single general-purpose call rather than one variant per grouping shape.
 func (o *countSeriesBy) collectGrid(ctx context.Context, grid WindowGrid) ([]map[string]uint64, error) {
-	series, err := aggregateGrid(ctx, o.grid, grid, o.matchers)
+	series, err := aggregateGrid(ctx, o.ec, o.grid, grid, o.matchers)
 	if err != nil {
 		return nil, err
 	}

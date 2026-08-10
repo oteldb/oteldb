@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // gridFor derives the [WindowGrid] covering refs, or ok=false when refs are not a multi-step,
@@ -43,12 +44,24 @@ func gridFor(refs []int64, width int64) (WindowGrid, bool) {
 // series carries exactly one aggregate per step, so callers can index Windows by step without
 // bounds-checking each one.
 func aggregateGrid(
-	ctx context.Context, scanner GridAggregateScanner, grid WindowGrid, matchers []*labels.Matcher,
+	ctx context.Context, ec *EvalContext, scanner GridAggregateScanner,
+	grid WindowGrid, matchers []*labels.Matcher,
 ) ([]GridAggregate, error) {
+	ctx, span := ec.span(ctx, "scarecrow.AggregateGrid",
+		attribute.Int("promql.steps", grid.NumSteps),
+		attribute.Int64("promql.step_ms", grid.Step),
+		attribute.Int64("promql.window_ms", grid.Width),
+	)
+	defer span.End()
+
 	out, err := scanner.AggregateGrid(ctx, grid, matchers)
 	if err != nil {
+		span.RecordError(err)
+
 		return nil, errors.Wrap(err, "aggregate grid")
 	}
+
+	span.SetAttributes(attribute.Int("promql.series", len(out)))
 
 	for i := range out {
 		if len(out[i].Windows) != grid.NumSteps {

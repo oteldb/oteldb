@@ -9,6 +9,7 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // vectorSelect folds a series' raw samples onto the step grid using PromQL lookback: step t
@@ -110,10 +111,21 @@ func (o *vectorSelect) Schema(ctx context.Context) (*Schema, error) {
 
 	mint, maxt := o.window()
 
+	ctx, span := o.ec.span(ctx, "scarecrow.Series",
+		attribute.String("promql.selector", matchersString(o.matchers)),
+		attribute.Int64("promql.mint", mint),
+		attribute.Int64("promql.maxt", maxt),
+	)
+	defer span.End()
+
 	series, err := o.scanner.Series(ctx, mint, maxt, o.matchers)
 	if err != nil {
+		span.RecordError(err)
+
 		return nil, errors.Wrap(err, "enumerate series")
 	}
+
+	span.SetAttributes(attribute.Int("promql.series", len(series)))
 
 	// timestamp() yields a property of the sample, not the metric, so __name__ is dropped.
 	if o.emitTimestamp {
@@ -145,8 +157,21 @@ func (o *vectorSelect) Next(ctx context.Context) (*Column, error) {
 	if o.iter == nil {
 		mint, maxt := o.window()
 
-		it, err := o.scanner.Scan(ctx, mint, maxt, o.matchers)
+		scanCtx, span := o.ec.span(ctx, "scarecrow.Scan",
+			attribute.String("promql.selector", matchersString(o.matchers)),
+			attribute.Int64("promql.mint", mint),
+			attribute.Int64("promql.maxt", maxt),
+		)
+
+		it, err := o.scanner.Scan(scanCtx, mint, maxt, o.matchers)
+
+		// The span covers opening the scan, not draining it: the iterator outlives this call and
+		// is consumed lazily across many Next calls, so ending it here is the honest boundary.
+		span.End()
+
 		if err != nil {
+			span.RecordError(err)
+
 			return nil, errors.Wrap(err, "scan series")
 		}
 		o.iter = it

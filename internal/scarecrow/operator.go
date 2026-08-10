@@ -4,6 +4,10 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
 // EvalContext is the per-chunk evaluation grid, shared by every operator in a tree. Step
@@ -16,6 +20,23 @@ type EvalContext struct {
 	Interval time.Duration
 	// LookbackDelta bounds how far back a vector selector may reach for a sample.
 	LookbackDelta time.Duration
+	// Tracer instruments the operators in this chunk. It lives here rather than being threaded
+	// through every constructor because it is exactly what an EvalContext already is: the state
+	// every operator in one evaluation shares. Nil is legal and means no spans, so a test or an
+	// embedder building an EvalContext by hand need not care.
+	Tracer trace.Tracer
+}
+
+// span starts a span on the context's tracer, returning a no-op end function when tracing is off.
+// Operators call it rather than touching Tracer directly, so the nil case lives in one place.
+func (e *EvalContext) span(
+	ctx context.Context, name string, attrs ...attribute.KeyValue,
+) (context.Context, trace.Span) {
+	if e == nil || e.Tracer == nil {
+		return ctx, tracenoop.Span{}
+	}
+
+	return e.Tracer.Start(ctx, name, trace.WithAttributes(attrs...))
 }
 
 // NumSteps returns the number of steps in this chunk.

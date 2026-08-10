@@ -495,6 +495,12 @@ func (app *App) newScarecrowEngine(q metricQuerier, cfg PrometheusConfig) *scare
 		EnableNegativeOffset: *cfg.EnableNegativeOffset,
 	}
 
+	// Telemetry is absent in tests that build an App directly; scarecrow falls back to the global
+	// provider when this is unset.
+	if app.telemetry != nil {
+		opts.TracerProvider = app.telemetry.TracerProvider()
+	}
+
 	if backend, ok := q.(*storagebackend.Backend); ok {
 		opts.NewScanner = func(storage.Queryable) scarecrow.Scanner { return backend.ScarecrowScanner() }
 		app.lg.Info("Using scarecrow PromQL engine with the native storage Scanner")
