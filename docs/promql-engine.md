@@ -759,6 +759,33 @@ already have:
 Both are pure kernel work behind the existing interface, and both are measured in M6 before
 any assembly is written.
 
+## 7.1 Tracing
+
+The engine emits OpenTelemetry spans through `Opts.TracerProvider` (nil selects the global
+provider, as `internal/logql/logqlengine` does). The tracer rides on `EvalContext` — the state
+every operator in one evaluation already shares — so no constructor had to grow a parameter, and
+a nil tracer is legal so test doubles and embedders need not care.
+
+| Span | Emitted by | Carries |
+|---|---|---|
+| `scarecrow.Exec` | every query | query text, start/end/step, step count, instant flag |
+| `scarecrow.Chunk` | chunked range queries only (§4.4) | chunk index, chunk count, this chunk's steps |
+| `scarecrow.Plan` | per chunk | the planned tree (`root.String()`), resolved series count |
+| `scarecrow.Series` / `scarecrow.Scan` | vector selectors | selector, window, series count |
+| `scarecrow.AggregateGrid` | the grid pushdown | steps, step width, window width, series count |
+| `scarecrow.*.PerWindow` | the per-window pushdown fallbacks | **call count**, function/grouping label |
+
+`scarecrow.Plan` deliberately spans schema resolution as well as planning: schemas resolve eagerly
+(§3.3), so every data-dependent operator — the pushdowns, `quantile`, `topk`, `count_values` —
+does all of its storage work inside it rather than during `Next`.
+
+The `PerWindow` spans exist for one reason, and it is worth stating because it shapes what the
+attribute has to be. The per-step pushdown blowup in §10's M5 note was diagnosed by A/B-ing query
+shapes against a live deployment, because the engine emitted no spans at all — and even with
+spans, a single aggregate duration would have read as "storage is slow". What names the bug is the
+**number of calls**, so that is an attribute rather than something to be inferred from counting
+sibling spans, which sampling may well have dropped. `TestTracingShowsPerWindowCallCount` pins it.
+
 ## 8. Correctness strategy
 
 Compliance is not a phase at the end; it is the first thing wired up.
