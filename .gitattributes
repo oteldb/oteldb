@@ -4,3 +4,6 @@
 *.rwq binary
 *.hex text
 *.mp4 filter=lfs diff=lfs merge=lfs -text
+
+# Captured HTTP response bodies parsed byte-for-byte by tests and fuzzers.
+otelcolmod/hareceiver/_testdata/** text eol=lf
