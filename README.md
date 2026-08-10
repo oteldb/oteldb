@@ -99,6 +99,42 @@ Any signal left unset (or set to `clickhouse`) keeps using ClickHouse, so the tw
 mixed. Profiles have no ClickHouse implementation and are served only when `profiles_backend` is
 `storage`.
 
+## Profiling oteldb itself
+
+Both are off by default, need no code or config-file changes, and are driven entirely by the
+environment (`go-faster/sdk` wires them from `app.Run`).
+
+**Continuous profiling** ships CPU, heap, goroutine, mutex and block profiles to any
+Pyroscope-compatible endpoint — including another oteldb, since oteldb serves the Pyroscope ingest
+API itself. Enabling it also links traces to profiles, so a span can be opened straight into the
+profile recorded while it ran:
+
+```shell
+PYROSCOPE_ENABLE=true                  # required; anything strconv.ParseBool accepts
+PYROSCOPE_URL=http://oteldb-svc:4040   # ingest endpoint
+PYROSCOPE_APP_NAME=oteldb              # application name the profiles appear under
+PYROSCOPE_USER=...                     # optional basic auth
+PYROSCOPE_PASSWORD=...                 # optional basic auth
+PYROSCOPE_TENANT_ID=...                # optional multi-tenant header
+```
+
+Mutex and block profiling are sampled by the Go runtime rather than collected on demand; enabling
+Pyroscope switches both on (`SetMutexProfileFraction(5)`, `SetBlockProfileRate(5)`), which costs a
+little throughput on contended locks.
+
+This is what catches a slow leak: `inuse_space` growing across hours is invisible to a profile
+taken by hand, because by the time anyone looks at the memory graph the process is minutes from an
+OOM kill.
+
+**On-demand pprof** exposes the standard `/debug/pprof/` handlers on their own listener:
+
+```shell
+PPROF_ADDR=:6060
+```
+
+Note that the two can interfere: while the Pyroscope client is collecting, an overlapping CPU
+profile fetched from `/debug/pprof/profile` may fail.
+
 ## License
 
 Apache License 2.0, see [LICENSE](./LICENSE).
