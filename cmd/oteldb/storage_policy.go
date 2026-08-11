@@ -26,8 +26,10 @@ type StoragePolicyConfig struct {
 	// Downsample is the age-tiered merge-time rollup: each tier replaces samples older than After
 	// with one representative per Interval-wide bucket, the bucket combined by Agg. Empty ⇒ raw.
 	Downsample []DownsampleTierConfig `json:"downsample" yaml:"downsample"`
-	// Recompress rewrites fully-cold parts (older than After) with a higher-ratio Zstandard profile
-	// at merge, trading merge CPU for storage. It is decode-transparent. Nil ⇒ disabled.
+	// Recompress rewrites fully-cold parts (older than After) at a higher Zstandard level than the
+	// size ladder picks, trading merge CPU for storage. It is decode-transparent. Nil ⇒ no archival
+	// tier, which does not mean uncompressed: a merge always compresses at a level its part's size
+	// earns.
 	Recompress *RecompressConfig `json:"recompress" yaml:"recompress"`
 	// Retention bounds how long data is kept: parts older than MaxAge are dropped whole at merge.
 	// Nil ⇒ retain forever.
@@ -56,12 +58,15 @@ type DownsampleTierConfig struct {
 	Agg string `json:"agg" yaml:"agg"`
 }
 
-// RecompressConfig configures cold-data recompression.
+// RecompressConfig configures the cold-data archival tier. It sits above the size-graduated level
+// every merge already applies, so it is worth setting only for a level that ladder will not reach.
 type RecompressConfig struct {
 	// After is the age past which a fully-cold part is recompressed at merge. Zero is invalid here
 	// (a Recompress block is present only to enable it); use a positive age.
 	After time.Duration `json:"after" yaml:"after"`
-	// Level is the Zstandard level (1 fastest … 19 best ratio). Zero ⇒ the best-ratio default.
+	// Level is the Zstandard level (1 fastest … 19 best ratio). Zero ⇒
+	// [tenant.DefaultRecompressLevel]. Levels past ~9 buy single-digit percent for roughly an order
+	// of magnitude more CPU, which competes with merge and retention.
 	Level int `json:"level" yaml:"level"`
 }
 
@@ -71,9 +76,6 @@ type RetentionConfig struct {
 	// MaxAge is the maximum age of retained data. Zero ⇒ retain forever.
 	MaxAge time.Duration `json:"max_age" yaml:"max_age"`
 	// MaxBytes is the maximum total retained bytes. Zero ⇒ unlimited.
-	//
-	// Accepted and passed through, but the storage library does not enforce it yet
-	// (oteldb/storage#224): setting it alone bounds nothing. Use MaxAge to bound disk growth.
 	MaxBytes xbytes.Bytes `json:"max_bytes" yaml:"max_bytes"`
 }
 
