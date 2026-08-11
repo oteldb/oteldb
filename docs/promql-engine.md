@@ -1081,9 +1081,8 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   precisely the sort of thing that would otherwise be found in production.
 
   `internal/storagebackend` now wires `scarecrow.NewEngine` to `Backend.ScarecrowScanner()`
-  (opt-in behind `prometheus.enable_scarecrow_engine`, since the engine's own resource limits and
-  corpus coverage are still partial — see M11 and §8.1), which is what closes #1116/#1117 on this
-  path once the flag is on by default.
+  (opt-in behind `prometheus.enable_scarecrow_engine`, since corpus coverage is still partial —
+  see §8.1), which is what closes #1116/#1117 on this path once the flag is on by default.
 - **M6 — kernels.** Assembly paths + golden benchmarks vs the fork.
 - **M7 — native histograms.** **Blocked on storage:** `fetch.Batch` has no histogram column
   (`Timestamps []int64` + `Values []float64` only) and `signal/metric` has no histogram kind.
@@ -1129,11 +1128,27 @@ a feature in its own right, not a gap in a milestone above, so each gets its own
 
   Gate: `start_timestamps.test`.
 
-- **M11 — resource limits.** A `MaxSamples`-style budget (open question 2), counted as the
-  engine materializes values and checked as accumulators grow, so a query that would exhaust
-  memory fails with a clear error instead of the process dying. Pairs with M16's time-chunking,
-  which bounds the accumulator but cannot bound a genuinely large result; a limit refuses the
-  query that chunking cannot rescue.
+- **M11 — resource limits.** *Done.* `Opts.MaxSamples` and `Opts.Timeout`, mirroring the
+  upstream engine's so `prometheus.max_samples` and `prometheus.timeout` keep working when
+  `enable_scarecrow_engine` is on. Failures are upstream's own `promql.ErrTooManySamples` and
+  `promql.ErrQueryTimeout`, so the HTTP status mapping and the error text are identical between
+  engines. Zero means unlimited, which is where scarecrow deliberately differs: upstream treats
+  a zero value as "fail every query", a footgun for an embedder that simply did not set it.
+
+  The count is cumulative over the query rather than a live high-water mark. The columnar model
+  holds one series' raw samples at a time (§3.2), so a peak gauge would never trip on the shape
+  worth stopping — a scan touching millions of series — and would only ever measure the output
+  grid. One budget covers the whole query, so M16's chunking cannot be used to read past it.
+
+  Charged at every point data enters the engine: the two selector leaves, the raw-matrix
+  collector, and the pushdowns. That last one matters most in production: a pushed-down query
+  reads no raw samples at all, so charging only the leaves would exempt exactly the large
+  queries the pushdown exists for.
+
+  **What it does not bound:** the work storage does. A pushdown is charged for the values it
+  returns, not the samples scanned to produce them — `count(x)` over a million series charges
+  one value per step. That limit belongs where the counts are known; see
+  [oteldb/storage#263](https://github.com/oteldb/storage/issues/263).
 
   No corpus gate — this is about what happens past the corpus' scale.
 
@@ -1269,7 +1284,7 @@ on it.
    `O(series × steps)` has a result that large *anyway* — spilling to disk would buy a
    completed query whose response body is the real problem, at the cost of real machinery
    (encoding, temp-file lifecycle, cleanup) for what is usually a mistaken `by (instance)`.
-   Failing fast and legibly beats succeeding slowly. **Not yet implemented**; see M11.
+   Failing fast and legibly beats succeeding slowly. Implemented; see M11.
 3. *(tracked elsewhere)* **Delta-temporality `rate`** — [#1190](https://github.com/oteldb/oteldb/issues/1190).
    Investigating this turned up something larger than the sampling question: oteldb performs no
    delta→cumulative conversion anywhere, so delta-temporality sums reach PromQL as-is, and

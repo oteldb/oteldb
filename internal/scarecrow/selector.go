@@ -187,6 +187,10 @@ func (o *vectorSelect) Next(ctx context.Context) (*Column, error) {
 			return nil, nil
 		}
 
+		if err := o.ec.charge(len(s.T)); err != nil {
+			return nil, err
+		}
+
 		ls := s.Labels
 		if o.emitTimestamp {
 			ls = dropMetricName(ls)

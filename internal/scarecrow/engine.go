@@ -43,6 +43,18 @@ type Opts struct {
 	// count rather than growing with the range. Zero selects the default; negative disables
 	// chunking (one chunk covers the whole range, the pre-M16 behavior).
 	ChunkSteps int
+	// MaxSamples caps how many samples one query may read before it fails with
+	// [promql.ErrTooManySamples]. It mirrors promql.EngineOpts.MaxSamples so switching engines
+	// does not silently drop the limit. Zero disables it — unlike the upstream engine, where a
+	// zero value fails every query.
+	//
+	// The count is cumulative over the query rather than a live peak: the columnar model holds
+	// one series' raw samples at a time, so a peak gauge would not trip on a scan touching
+	// millions of series, which is the shape worth stopping. See [sampleBudget].
+	MaxSamples int
+	// Timeout bounds a single query's wall time, after which it fails with
+	// [promql.ErrQueryTimeout]. Zero disables it — again unlike the upstream engine.
+	Timeout time.Duration
 }
 
 const (
@@ -206,6 +218,9 @@ type query struct {
 
 	cancel func()
 	stats  *stats.Statistics
+	// budget is the query's sample allowance, created in Exec and shared by every EvalContext
+	// the query builds.
+	budget *sampleBudget
 }
 
 var _ promql.Query = (*query)(nil)
@@ -226,7 +241,7 @@ func (q *query) Cancel() {
 
 // Exec plans and evaluates the query.
 func (q *query) Exec(ctx context.Context) *promql.Result {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := q.engine.withTimeout(ctx)
 	q.cancel = cancel
 
 	defer cancel()
@@ -243,8 +258,20 @@ func (q *query) Exec(ctx context.Context) *promql.Result {
 	))
 	defer span.End()
 
+	// One budget for the whole query, so a range query's chunks and any subquery share it and
+	// time-chunking cannot be used to read past the limit.
+	q.budget = newSampleBudget(q.engine.opts.MaxSamples)
+
 	v, err := q.exec(ctx)
+
+	span.SetAttributes(attribute.Int64("promql.samples_read", q.budget.Used()))
+
 	if err != nil {
+		// A canceled or expired context surfaces as a storage/iteration error deep in the tree;
+		// map it to the error the upstream engine returns so callers (and the HTTP layer's status
+		// mapping) cannot tell the two engines apart.
+		err = queryContextErr(ctx, err)
+
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 
@@ -254,6 +281,29 @@ func (q *query) Exec(ctx context.Context) *promql.Result {
 	span.SetStatus(codes.Ok, "")
 
 	return &promql.Result{Value: v}
+}
+
+// withTimeout applies the engine's query timeout, falling back to a plain cancel context when
+// none is configured. The returned cancel is always non-nil.
+func (e *Engine) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if e.opts.Timeout > 0 {
+		return context.WithTimeout(ctx, e.opts.Timeout)
+	}
+
+	return context.WithCancel(ctx)
+}
+
+// queryContextErr replaces err with the upstream engine's timeout/cancellation error when the
+// query's context is what actually ended it. Errors unrelated to the context pass through.
+func queryContextErr(ctx context.Context, err error) error {
+	switch ctx.Err() {
+	case context.DeadlineExceeded:
+		return promql.ErrQueryTimeout("query execution")
+	case context.Canceled:
+		return promql.ErrQueryCanceled("query execution")
+	default:
+		return err
+	}
 }
 
 func (q *query) exec(ctx context.Context) (parser.Value, error) {
@@ -282,6 +332,7 @@ func (q *query) exec(ctx context.Context) (parser.Value, error) {
 			Steps:         stepGrid(q.start, q.end, q.interval),
 			LookbackDelta: q.lookback,
 			Tracer:        q.engine.tracer,
+			Budget:        q.budget,
 		}
 		p := &planner{scanner: scanner, ec: ec, noStepSubqueryInterval: q.engine.opts.NoStepSubqueryInterval}
 
@@ -377,6 +428,7 @@ func (q *query) execChunk(
 		Interval:      q.interval,
 		LookbackDelta: q.lookback,
 		Tracer:        q.engine.tracer,
+		Budget:        q.budget,
 	}
 
 	// Only span the chunks when there is more than one: an unchunked query would otherwise get a

@@ -132,6 +132,10 @@ func (o *aggregateOverTime) collect(
 			return errors.Wrapf(err, "aggregate over time at %d", maxt)
 		}
 
+		if err := o.ec.charge(len(aggs)); err != nil {
+			return err
+		}
+
 		perStep[i] = aggs
 	}
 

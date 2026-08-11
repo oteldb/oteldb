@@ -120,6 +120,10 @@ func (o *countSeries) count(ctx context.Context, refs []int64, lookback int64) e
 		// An empty selector yields no series at all, not a zero — `count(absent_metric)` is empty.
 		if n > 0 {
 			o.out.Set(step, float64(n))
+
+			if err := o.ec.charge(1); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -239,6 +243,10 @@ func (o *countSeriesBy) collect(ctx context.Context, refs []int64) ([]map[string
 			span.RecordError(err)
 
 			return nil, errors.Wrapf(err, "count series by %s at %d", o.by, maxt)
+		}
+
+		if err := o.ec.charge(len(counts)); err != nil {
+			return nil, err
 		}
 
 		perStep[i] = counts

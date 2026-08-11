@@ -25,6 +25,22 @@ type EvalContext struct {
 	// every operator in one evaluation shares. Nil is legal and means no spans, so a test or an
 	// embedder building an EvalContext by hand need not care.
 	Tracer trace.Tracer
+	// Budget caps the samples this query may read. It is shared by every chunk of a range query
+	// (and by a subquery's inner context), so chunking cannot be used to evade the limit. Nil is
+	// legal and means unlimited, so a test or an embedder building an EvalContext by hand need
+	// not care.
+	Budget *sampleBudget
+}
+
+// charge books n samples read from storage against the query's budget, returning
+// [promql.ErrTooManySamples] once it is exhausted. Selectors call it as they consume raw
+// samples, so the nil-budget case lives in one place.
+func (e *EvalContext) charge(n int) error {
+	if e == nil {
+		return nil
+	}
+
+	return e.Budget.add(n)
 }
 
 // span starts a span on the context's tracer, returning a no-op end function when tracing is off.

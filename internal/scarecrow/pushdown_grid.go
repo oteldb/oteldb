@@ -63,6 +63,14 @@ func aggregateGrid(
 
 	span.SetAttributes(attribute.Int("promql.series", len(out)))
 
+	// A pushdown reads no raw [Samples], so the selector leaves never charge it. Charge the grid
+	// it materialized instead — one folded value per (series, step) — or a pushed-down query
+	// would be the one shape that escapes the budget entirely, which is exactly backwards: the
+	// pushdown exists because those queries are the large ones.
+	if err := ec.charge(len(out) * grid.NumSteps); err != nil {
+		return nil, err
+	}
+
 	for i := range out {
 		if len(out[i].Windows) != grid.NumSteps {
 			return nil, errors.Errorf(

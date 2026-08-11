@@ -153,6 +153,10 @@ func (o *matrixFold) Next(ctx context.Context) (*Column, error) {
 			return nil, nil
 		}
 
+		if err := o.ec.charge(len(s.T)); err != nil {
+			return nil, err
+		}
+
 		ref, ok := o.refFor(s.Labels)
 		if !ok {
 			return nil, errors.Errorf("series %s absent from resolved schema", s.Labels)

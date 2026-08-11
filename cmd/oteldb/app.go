@@ -493,6 +493,8 @@ func (app *App) newScarecrowEngine(q metricQuerier, cfg PrometheusConfig) *scare
 		LookbackDelta:        cfg.LookbackDelta,
 		EnableAtModifier:     cfg.EnableAtModifier,
 		EnableNegativeOffset: *cfg.EnableNegativeOffset,
+		MaxSamples:           cfg.MaxSamples,
+		Timeout:              cfg.Timeout,
 	}
 
 	// Telemetry is absent in tests that build an App directly; scarecrow falls back to the global

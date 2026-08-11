@@ -145,6 +145,12 @@ func collectRawMatrix(
 			break
 		}
 
+		// This path materializes every sample into the result, so it is the one shape where the
+		// budget bounds resident memory rather than only the work done to produce it.
+		if err := ec.charge(len(s.T)); err != nil {
+			return nil, err
+		}
+
 		pts := make([]promql.FPoint, 0, len(s.T))
 		for i, t := range s.T {
 			// Left-open window, and staleness markers are never reported.

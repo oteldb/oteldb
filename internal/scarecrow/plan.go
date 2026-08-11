@@ -340,6 +340,7 @@ func (p *planner) buildSubquery(sq *parser.SubqueryExpr) (Operator, *EvalContext
 		Steps:         grid,
 		Interval:      time.Duration(stepMs) * time.Millisecond,
 		LookbackDelta: p.ec.LookbackDelta,
+		Budget:        p.ec.Budget,
 	}
 
 	inner, err := (&planner{
