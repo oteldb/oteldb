@@ -849,8 +849,8 @@ github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f/go.mod h1:qRW
 github.com/nginx/nginx-prometheus-exporter v1.5.1 h1:44jvKTJ4S0SydKbXw7H9V5VjcGdM3tdOPDd4em86GZQ=
 github.com/nginx/nginx-prometheus-exporter v1.5.1/go.mod h1:5b+M6fx4v6UQsihjrN/UeBBR2DabEsfgTjhqG/Xt12w=
 github.com/npillmayer/nestext v0.1.3/go.mod h1:h2lrijH8jpicr25dFY+oAJLyzlya6jhnuG+zWp9L0Uk=
-github.com/ogen-go/ogen v1.23.0 h1:QaWeKm2KZ2zy7NkqqO1Vdl5idNqlG+svxdgwVAX+zbo=
-github.com/ogen-go/ogen v1.23.0/go.mod h1:bwwvC3AmCV+LrL5lazyQwwof90402mdcSyI0FOzzpfM=
+github.com/ogen-go/ogen v1.24.0 h1:NehBG/8s0JeM6jYHPJeFJntBG3cE/xQgZd1q8BchPNM=
+github.com/ogen-go/ogen v1.24.0/go.mod h1:hcg4aTzLcu/MS1SGGahUriPBEOZB3c82RGIC6dYcdFU=
 github.com/oklog/run v1.0.0/go.mod h1:dlhp/R75TPv97u0XWUtDeV/lRKWPKSdTuV0TZvrmrQA=
 github.com/oklog/ulid/v2 v2.1.1 h1:suPZ4ARWLOJLegGFiZZ1dFAkqzhMjL3J1TzI+5wHz8s=
 github.com/oklog/ulid/v2 v2.1.1/go.mod h1:rcEKHmBBKfef9DhnvX7y1HZBYxjXb0cP5ExxNsTT1QQ=
