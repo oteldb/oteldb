@@ -17,7 +17,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/VictoriaMetrics/VictoriaMetrics v1.141.0
 	github.com/VictoriaMetrics/easyproto v1.2.0
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.106.3
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.107.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cheggaaa/pb/v3 v3.2.0
@@ -86,7 +86,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.158.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/webhookeventreceiver v0.158.0
 	github.com/oteldb/promql-engine v0.10.0
-	github.com/oteldb/storage v0.36.0
+	github.com/oteldb/storage v0.36.1-0.20260811204311-b8f68db8fc78
 	github.com/pierrec/lz4/v4 v4.1.28
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.70.1
@@ -165,6 +165,7 @@ require (
 	github.com/cenkalti/backoff/v7 v7.0.0 // indirect
 	github.com/klauspost/reedsolomon v1.14.1 // indirect
 	github.com/maypok86/otter/v2 v2.3.0 // indirect
+	github.com/valyala/gozstd v1.26.0 // indirect
 )
 
 require (
@@ -230,9 +231,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.83.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/elasticache v1.54.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.15 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.27 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.28 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.35 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.35 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.36 // indirect
 	github.com/aws/aws-sdk-go-v2/service/kafka v1.52.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/lightsail v1.56.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/rds v1.119.3 // indirect
@@ -240,7 +241,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.33.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.38.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.4 // indirect
-	github.com/aws/smithy-go v1.27.6 // indirect
+	github.com/aws/smithy-go v1.27.7 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
