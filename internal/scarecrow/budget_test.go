@@ -210,27 +210,6 @@ func TestMaxSamplesChargesPushdowns(t *testing.T) {
 	}
 }
 
-func TestQueryTimeout(t *testing.T) {
-	t.Parallel()
-
-	st := promqltest.LoadedStorage(t, budgetCorpus)
-	t.Cleanup(func() { require.NoError(t, st.Close()) })
-
-	// A timeout already elapsed by the time evaluation starts, so the test needs no sleep and
-	// cannot flake on a slow machine.
-	e := scarecrow.NewEngine(scarecrow.Opts{Timeout: time.Nanosecond})
-
-	q, err := e.NewInstantQuery(context.Background(), st, nil, `counter`, time.Unix(90, 0))
-	require.NoError(t, err)
-
-	defer q.Close()
-
-	res := q.Exec(context.Background())
-	require.Error(t, res.Err)
-	assert.Equal(t, "query timed out in query execution", res.Err.Error())
-	assert.ErrorAs(t, res.Err, new(promql.ErrQueryTimeout))
-}
-
 func TestQueryCanceled(t *testing.T) {
 	t.Parallel()
 
@@ -276,10 +255,11 @@ func (blockingScanner) Scan(
 
 func (blockingScanner) Close() error { return nil }
 
-// TestQueryTimeoutInterruptsInFlight is the test that makes the timeout meaningful:
-// [TestQueryTimeout] only proves the error mapping, since its deadline has already passed before
-// evaluation starts. This one is blocked inside the storage seam when the deadline fires.
-func TestQueryTimeoutInterruptsInFlight(t *testing.T) {
+// TestQueryTimeout runs against a scanner that never returns, so the deadline is guaranteed to
+// fire while the query is in flight. An already-elapsed deadline over real storage would be
+// racy instead: whether the context is canceled before a ten-sample query finishes depends on
+// the platform's timer granularity, which is coarse on Windows.
+func TestQueryTimeout(t *testing.T) {
 	t.Parallel()
 
 	e := scarecrow.NewEngine(scarecrow.Opts{
@@ -294,6 +274,8 @@ func TestQueryTimeoutInterruptsInFlight(t *testing.T) {
 
 	res := q.Exec(context.Background())
 	require.Error(t, res.Err)
+	// The message must match upstream exactly, for the same reason as in [TestMaxSamples].
+	assert.Equal(t, "query timed out in query execution", res.Err.Error())
 	assert.ErrorAs(t, res.Err, new(promql.ErrQueryTimeout))
 }
 
