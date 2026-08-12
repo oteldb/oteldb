@@ -27,6 +27,8 @@ import (
 	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/prometheus/prometheus/storage"
+
 	"github.com/oteldb/oteldb/internal/chembed"
 	"github.com/oteldb/oteldb/internal/chstorage"
 	"github.com/oteldb/oteldb/internal/httpmiddleware"
@@ -41,6 +43,7 @@ import (
 	"github.com/oteldb/oteldb/internal/promhandler"
 	"github.com/oteldb/oteldb/internal/promql"
 	"github.com/oteldb/oteldb/internal/pyroscopeapi"
+	"github.com/oteldb/oteldb/internal/scarecrow"
 	"github.com/oteldb/oteldb/internal/storagebackend"
 	"github.com/oteldb/oteldb/internal/tempoapi"
 	"github.com/oteldb/oteldb/internal/tempohandler"
@@ -445,18 +448,24 @@ func (app *App) trySetupProm() error {
 	cfg := app.cfg.Prometheus
 	cfg.setDefaults()
 
-	engine, err := promql.New(q, promql.EngineOpts{
-		// NOTE: zero-value MaxSamples and Timeout makes
-		// all queries to fail with error.
-		MaxSamples:           cfg.MaxSamples,
-		Timeout:              cfg.Timeout,
-		LookbackDelta:        cfg.LookbackDelta,
-		EnableAtModifier:     cfg.EnableAtModifier,
-		EnableNegativeOffset: *cfg.EnableNegativeOffset,
-		EnablePerStepStats:   cfg.EnablePerStepStats,
-	})
-	if err != nil {
-		return errors.Wrap(err, "create PromQL engine")
+	var engine promhandler.Engine
+	if cfg.EnableScarecrowEngine {
+		engine = app.newScarecrowEngine(q, cfg)
+	} else {
+		eng, err := promql.New(q, promql.EngineOpts{
+			// NOTE: zero-value MaxSamples and Timeout makes
+			// all queries to fail with error.
+			MaxSamples:           cfg.MaxSamples,
+			Timeout:              cfg.Timeout,
+			LookbackDelta:        cfg.LookbackDelta,
+			EnableAtModifier:     cfg.EnableAtModifier,
+			EnableNegativeOffset: *cfg.EnableNegativeOffset,
+			EnablePerStepStats:   cfg.EnablePerStepStats,
+		})
+		if err != nil {
+			return errors.Wrap(err, "create PromQL engine")
+		}
+		engine = eng
 	}
 	prom := promhandler.NewPromAPI(engine, q, q, q, promhandler.PromAPIOptions{})
 
@@ -472,6 +481,37 @@ func (app *App) trySetupProm() error {
 
 	addOgen(app, "prom", s, cfg.Bind, cfg.Auth, promhandler.PatchForm)
 	return nil
+}
+
+// newScarecrowEngine builds the internal/scarecrow engine for [App.trySetupProm]. When q is the
+// embedded storage engine, it gets scarecrow's native columnar Scanner
+// (storagebackend.Backend.ScarecrowScanner); over any other querier (e.g. ClickHouse) it falls
+// back to scarecrow's generic storage.Queryable adapter, which is correct but pays the same
+// per-sample conversion cost the fork already does.
+func (app *App) newScarecrowEngine(q metricQuerier, cfg PrometheusConfig) *scarecrow.Engine {
+	opts := scarecrow.Opts{
+		LookbackDelta:        cfg.LookbackDelta,
+		EnableAtModifier:     cfg.EnableAtModifier,
+		EnableNegativeOffset: *cfg.EnableNegativeOffset,
+		MaxSamples:           cfg.MaxSamples,
+		Timeout:              cfg.Timeout,
+	}
+
+	// Telemetry is absent in tests that build an App directly; scarecrow falls back to the global
+	// provider when this is unset.
+	if app.telemetry != nil {
+		opts.TracerProvider = app.telemetry.TracerProvider()
+	}
+
+	if backend, ok := q.(*storagebackend.Backend); ok {
+		opts.NewScanner = func(storage.Queryable) scarecrow.Scanner { return backend.ScarecrowScanner() }
+		app.lg.Info("Using scarecrow PromQL engine with the native storage Scanner")
+	} else {
+		app.lg.Warn("Using scarecrow PromQL engine over the generic storage.Queryable adapter; " +
+			"switch metrics.backend to storage for the native Scanner")
+	}
+
+	return scarecrow.NewEngine(opts)
 }
 
 func (app *App) setupHealthCheck() error {

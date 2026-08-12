@@ -96,8 +96,7 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
   and `limits{ingest_bytes_per_second,max_in_flight_bytes,max_series,max_series_soft,max_part_size}`.
   oteldb runs the embedded engine single-tenant, so a static `tenant.ResolverFunc` returns one
   policy for every tenant — retention is therefore one global window, not per-tenant.
-  `retention.max_bytes` parses and passes through but the library does not enforce it yet
-  (oteldb/storage#224); `max_age` is the knob that actually bounds disk growth.
+  Both `retention.max_age` and `retention.max_bytes` are enforced by the library.
 - **Sampling weights:** honour `fetch.Batch.ScaleFactors` in PromQL `sum`/`rate`/`count` for
   sampled tenants. The aggregate sidecar is skipped for sampled parts, so those fall back to a
   weighted raw fold. **Not implemented.** oteldb does not yet expose a `tenant.Sampling` policy,
@@ -108,4 +107,6 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
   with sampling itself.
 - **Cluster:** aggregate fan-out is automatic — just call the facade per tenant.
 - **Metadata:** querier `LabelValues` / `LabelNames` are implemented in the promql `Queryable`
-  adapter.
+  adapter. Since oteldb/storage#262 they answer from the postings index rather than draining
+  samples; oteldb gets that for free, because the capability is detected on the `fetch.Fetcher`
+  it already passes in.
