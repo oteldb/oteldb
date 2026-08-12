@@ -2,6 +2,7 @@ package storagebackend
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -207,87 +208,80 @@ func (s *scarecrowScanner) CountSeriesBy(
 	return sc.CountSeriesBy(ctx, mint, maxt, label, matchers...)
 }
 
-// Series implements [scarecrow.Scanner].
+// Series implements [scarecrow.Scanner], answering from the series index rather than by reading
+// samples: [storage.Storage.MetricSeries] is the metrics twin of LogSeries, so enumerating the
+// selector's schema costs O(matching series) instead of (cardinality x window).
+//
+// Fetching instead — which this did until oteldb/storage#262 gave metrics an index seam — decoded
+// every sample of every matching series and threw them all away to keep the labels. That is what
+// made `{__name__=~".+"}` over 3h fail: the schema pass alone exhausted the process before the
+// engine's sample budget had been charged a single sample.
 func (s *scarecrowScanner) Series(
 	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
 ) ([]labels.Labels, error) {
-	batches, err := s.fetch(ctx, mint, maxt, matchers)
+	const nsPerMs = int64(time.Millisecond)
+
+	series, err := s.b.store.MetricSeries(
+		ctx, s.b.tenant, storagepromql.PushableMatchers(matchers), mint*nsPerMs, maxt*nsPerMs,
+	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "metric series")
 	}
 
-	out := make([]labels.Labels, 0, len(batches))
-	for _, b := range batches {
-		out = append(out, storagepromql.PromLabels(b.Series))
-		b.Release()
+	out := make([]labels.Labels, 0, len(series))
+
+	for i := range series {
+		// The pushed subset is a superset filter: a negated or absent matcher cannot go into the
+		// postings index without wrongly excluding series that lack the label, so re-check here.
+		lset := storagepromql.PromLabels(series[i])
+		if !storagepromql.MatchesAll(lset, matchers) {
+			continue
+		}
+
+		out = append(out, lset)
 	}
 
 	return out, nil
 }
 
-// Scan implements [scarecrow.Scanner].
+// Scan implements [scarecrow.Scanner]. The [fetch.Iterator] is handed to the returned
+// [scarecrow.SeriesIterator] unconsumed, so series arrive one at a time.
 func (s *scarecrowScanner) Scan(
 	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
 ) (scarecrow.SeriesIterator, error) {
-	batches, err := s.fetch(ctx, mint, maxt, matchers)
-	if err != nil {
-		return nil, err
-	}
-
-	return &batchIterator{batches: batches}, nil
-}
-
-// fetch resolves matchers to the matching series' batches over [mint, maxt] (Prometheus
-// milliseconds), pushing the index-safe matcher subset into the fetch request and re-checking the
-// full matcher set against each candidate — mirroring [storagepromql.Queryable]'s Select, since a
-// negated/absent matcher cannot be pushed into the postings index without wrongly excluding series
-// that lack the label.
-func (s *scarecrowScanner) fetch(
-	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
-) ([]*fetch.Batch, error) {
 	const nsPerMs = int64(time.Millisecond)
 
-	req := fetch.Request{
+	it, err := s.b.store.Fetcher(s.b.tenant).Fetch(ctx, fetch.Request{
 		Tenant:   s.b.tenant,
 		Start:    mint * nsPerMs,
 		End:      maxt * nsPerMs,
 		Matchers: storagepromql.PushableMatchers(matchers),
 		Recycle:  true,
-	}
-
-	it, err := s.b.store.Fetcher(s.b.tenant).Fetch(ctx, req)
+	})
 	if err != nil {
 		return nil, errors.Wrap(err, "fetch")
 	}
 
-	batches, err := fetch.Drain(ctx, it)
-	if err != nil {
-		return nil, errors.Wrap(err, "drain")
-	}
-
-	kept := batches[:0]
-	for _, b := range batches {
-		if storagepromql.MatchesAll(storagepromql.PromLabels(b.Series), matchers) {
-			kept = append(kept, b)
-			continue
-		}
-
-		b.Release() // not part of the result — recycle its buffers now
-	}
-
-	return kept, nil
+	return &batchIterator{it: it, matchers: matchers}, nil
 }
 
-// batchIterator adapts a resolved batch slice to [scarecrow.SeriesIterator], releasing each batch
-// (recycling its buffers) once the caller has moved past it — on the following Next, or on Close
-// for whatever is left unreleased. [fetch.Batch.Release] is idempotent, so Close after full
-// exhaustion double-releasing the last batch is safe.
+// batchIterator adapts a [fetch.Iterator] to [scarecrow.SeriesIterator], one series at a time.
+//
+// It deliberately does not drain: the engine folds each series onto the step grid and moves on
+// (see [scarecrow.Samples]), so streaming keeps the raw level O(1) in series, and — the reason it
+// matters — lets the query's sample budget reject an oversized scan partway instead of after the
+// whole result set is already resident. Draining first made the budget unreachable.
+//
+// A batch is released once the caller has moved past it — on the following Next, or on Close for
+// whichever one is still outstanding — because the [scarecrow.Samples] it yields aliases the
+// batch's Values. [fetch.Batch.Release] is idempotent, so Close after exhaustion is safe.
 type batchIterator struct {
-	batches []*fetch.Batch
-	i       int
+	it       fetch.Iterator
+	matchers []*labels.Matcher
 
-	cur scarecrow.Samples
-	ts  []int64 // reused ms-conversion buffer, valid only for the most recently returned Samples.
+	prev *fetch.Batch
+	cur  scarecrow.Samples
+	ts   []int64 // reused ms-conversion buffer, valid only for the most recently returned Samples.
 }
 
 var _ scarecrow.SeriesIterator = (*batchIterator)(nil)
@@ -299,45 +293,63 @@ func (it *batchIterator) Next(ctx context.Context) (*scarecrow.Samples, error) {
 	default:
 	}
 
-	if it.i > 0 {
-		it.batches[it.i-1].Release()
+	for {
+		b, err := it.it.Next(ctx)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				it.release()
+
+				return nil, nil
+			}
+
+			return nil, errors.Wrap(err, "next batch")
+		}
+
+		lset := storagepromql.PromLabels(b.Series)
+
+		// See [scarecrowScanner.Series]: the pushed matcher subset admits a superset.
+		if !storagepromql.MatchesAll(lset, it.matchers) {
+			b.Release()
+
+			continue
+		}
+
+		it.release()
+		it.prev = b
+
+		const nsPerMs = int64(time.Millisecond)
+
+		if cap(it.ts) < len(b.Timestamps) {
+			it.ts = make([]int64, len(b.Timestamps))
+		}
+		it.ts = it.ts[:len(b.Timestamps)]
+		for j, t := range b.Timestamps {
+			it.ts[j] = t / nsPerMs
+		}
+
+		it.cur = scarecrow.Samples{
+			Labels:  lset,
+			T:       it.ts,
+			V:       b.Values,
+			Weights: b.ScaleFactors,
+		}
+
+		return &it.cur, nil
+	}
+}
+
+// release recycles the batch the previous Next handed out, whose buffers the caller is done with.
+func (it *batchIterator) release() {
+	if it.prev == nil {
+		return
 	}
 
-	if it.i >= len(it.batches) {
-		return nil, nil
-	}
-
-	b := it.batches[it.i]
-	it.i++
-
-	const nsPerMs = int64(time.Millisecond)
-
-	if cap(it.ts) < len(b.Timestamps) {
-		it.ts = make([]int64, len(b.Timestamps))
-	}
-	it.ts = it.ts[:len(b.Timestamps)]
-	for j, t := range b.Timestamps {
-		it.ts[j] = t / nsPerMs
-	}
-
-	it.cur = scarecrow.Samples{
-		Labels:  storagepromql.PromLabels(b.Series),
-		T:       it.ts,
-		V:       b.Values,
-		Weights: b.ScaleFactors,
-	}
-
-	return &it.cur, nil
+	it.prev.Release()
+	it.prev = nil
 }
 
 func (it *batchIterator) Close() error {
-	start := max(it.i-1, 0)
+	it.release()
 
-	for j := start; j < len(it.batches); j++ {
-		it.batches[j].Release()
-	}
-
-	it.batches = nil
-
-	return nil
+	return it.it.Close()
 }
