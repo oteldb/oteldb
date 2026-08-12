@@ -106,7 +106,7 @@ func TestMigrateMetrics(t *testing.T) {
 	back := storagebackend.New(store)
 
 	m := ch2storagebackend.NewMigrator(client, tables, back, integration.Logger(t))
-	stats, err := m.MigrateMetrics(ctx, 0, 1000)
+	stats, err := m.MigrateMetrics(ctx, chstorage.Window{}, 1000)
 	require.NoError(t, err)
 	// Number points: gauge(1) + hist _count/_sum/_bucket(le=1,5,10,+Inf) = 1 + 1 + 1 + 4 = 7.
 	require.Equal(t, 7, stats.Points)

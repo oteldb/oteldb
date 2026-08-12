@@ -10,6 +10,7 @@ import (
 
 	"github.com/oteldb/storage/otlp/pdataconv"
 	siglog "github.com/oteldb/storage/signal/log"
+	sigmetric "github.com/oteldb/storage/signal/metric"
 	sigprofile "github.com/oteldb/storage/signal/profile"
 	sigtrace "github.com/oteldb/storage/signal/trace"
 )
@@ -46,6 +47,34 @@ func (b *Backend) ConsumeProfiles(ctx context.Context, pd pprofile.Profiles) err
 
 	if _, err := b.store.WriteProfiles(ctx, batch); err != nil {
 		return errors.Wrap(err, "write profiles")
+	}
+	return nil
+}
+
+// The Write* methods below take the engine's native batch types directly, for producers that
+// already build them (a bulk migration out of another store, for instance). The Consume* sinks
+// above are the OTLP entry points and go through pdataconv; these skip that translation.
+
+// WriteMetrics ingests a native metrics batch into the storage engine.
+func (b *Backend) WriteMetrics(ctx context.Context, batch sigmetric.Metrics) error {
+	if _, err := b.store.WriteMetrics(ctx, batch); err != nil {
+		return errors.Wrap(err, "write metrics")
+	}
+	return nil
+}
+
+// WriteLogs ingests a native logs batch into the storage engine.
+func (b *Backend) WriteLogs(ctx context.Context, batch siglog.Logs) error {
+	if _, err := b.store.WriteLogs(ctx, batch); err != nil {
+		return errors.Wrap(err, "write logs")
+	}
+	return nil
+}
+
+// WriteTraces ingests a native traces batch into the storage engine.
+func (b *Backend) WriteTraces(ctx context.Context, batch sigtrace.Traces) error {
+	if _, err := b.store.WriteTraces(ctx, batch); err != nil {
+		return errors.Wrap(err, "write traces")
 	}
 	return nil
 }
