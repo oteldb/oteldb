@@ -14,17 +14,22 @@ import (
 
 // Throughput defaults, in rows per second, for the projected wall-clock in an [Estimate].
 //
-// These are the *serial* end-to-end rates of the current migration path — ClickHouse scan, decode,
-// pdata construction, and ingest all run in one goroutine, so the pipeline is bounded by their sum
-// rather than by the slowest stage. Metrics is measured: NumberPointsToMetrics sustains ~3.3M
-// points/s and the engine's ingest+flush ~3.3M points/s on a 5950X, which compose to ~1.6M
-// points/s before the ClickHouse scan is counted. Logs and traces are set an order of magnitude
-// lower because their rows are far larger. They are deliberately crude — the estimate exists to
-// separate "an hour" from "a week", not to predict a finish time — and are overridable.
+// These are the *serial* rates of the migration path: conversion and ingest run in one goroutine,
+// so the pipeline is bounded by their sum rather than by the slowest stage. Each is the harmonic
+// sum of two measured legs on a 5950X — the direct converters in convert.go (see
+// BenchmarkConvert*) and the engine's own ingest+flush (its BenchmarkWrite* suites):
+//
+//	metrics   3.1M convert + 3.3M ingest ≈ 1.6M/s
+//	logs      1.8M convert + 1.0M ingest ≈ 0.64M/s
+//	traces    1.7M convert + 0.8M ingest ≈ 0.54M/s
+//
+// They are rounded down because neither leg accounts for the ClickHouse scan or the network in
+// front of it, so a real run lands below them. The estimate exists to separate "an hour" from "a
+// week", not to predict a finish time.
 const (
 	DefaultMetricsRowsPerSecond = 1_500_000
-	DefaultLogsRowsPerSecond    = 150_000
-	DefaultTracesRowsPerSecond  = 200_000
+	DefaultLogsRowsPerSecond    = 600_000
+	DefaultTracesRowsPerSecond  = 500_000
 )
 
 // RowsPerSecond returns the default projected throughput for a signal.

@@ -1,6 +1,6 @@
 // Command ch2storagebackend migrates data from chstorage's ClickHouse tables into the
-// embedded storagebackend engine, by scanning ClickHouse directly and re-ingesting the
-// decoded records as OTLP pdata. Logs, traces, and metrics are supported.
+// embedded storagebackend engine, by scanning ClickHouse directly and re-ingesting the decoded
+// rows into the engine's native types. Logs, traces, and metrics are supported.
 //
 // A migration runs one UTC day at a time. Use -estimate first to size the window, -from/-to to
 // select it, and -checkpoint to make the run resumable.
@@ -66,7 +66,7 @@ func run(ctx context.Context) error {
 		// flushes (the head has no blocking backpressure; MaxInFlightBytes would *shed* records, which a
 		// migration must not do). With a throttle the head stays small and the merge (bounded by
 		// max-part-bytes) is the only sizable transient.
-		throttle = flag.Duration("throttle", 0, "Sleep this long after every ConsumeLogs/ConsumeTraces batch, to keep ingestion from outpacing the storage engine's flush loop")
+		throttle = flag.Duration("throttle", 0, "Sleep this long after every ingested batch, to keep ingestion from outpacing the storage engine's flush loop")
 	)
 	flag.Parse()
 

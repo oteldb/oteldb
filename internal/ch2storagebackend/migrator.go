@@ -1,6 +1,10 @@
 // Package ch2storagebackend migrates data out of chstorage's ClickHouse tables into the
 // embedded storagebackend engine, by scanning ClickHouse directly (bypassing chstorage's
-// selector-oriented queriers) and re-ingesting the decoded records as OTLP pdata.
+// selector-oriented queriers) and re-ingesting the decoded rows.
+//
+// Rows are converted straight into the engine's native signal types (see convert.go). The one
+// exception is exponential histograms, which go through OTLP pdata because the engine decomposes
+// them into classic bucket series inside its own bridge.
 //
 // Logs, traces, and metrics are supported. Metrics are migrated verbatim: chstorage already
 // stores them as decomposed Prometheus-style series (histograms/summaries exploded into
@@ -39,7 +43,7 @@ const (
 type LogsStats struct {
 	// Records is the total number of log records migrated.
 	Records int
-	// Batches is the number of batches ConsumeLogs was called with.
+	// Batches is the number of batches written to the target.
 	Batches int
 	// DaysDone is the number of UTC days migrated; DaysSkipped were already in the checkpoint.
 	DaysDone    int
@@ -50,7 +54,7 @@ type LogsStats struct {
 type TracesStats struct {
 	// Spans is the total number of spans migrated.
 	Spans int
-	// Batches is the number of batches ConsumeTraces was called with.
+	// Batches is the number of batches written to the target.
 	Batches int
 	// DaysDone is the number of UTC days migrated; DaysSkipped were already in the checkpoint.
 	DaysDone    int
@@ -63,7 +67,7 @@ type MetricsStats struct {
 	Points int
 	// ExpHistograms is the total number of exponential-histogram datapoints migrated.
 	ExpHistograms int
-	// Batches is the number of batches ConsumeMetrics was called with.
+	// Batches is the number of batches written to the target.
 	Batches int
 	// DaysDone is the number of UTC days migrated; DaysSkipped were already in the checkpoint.
 	DaysDone    int
@@ -80,12 +84,15 @@ type Migrator struct {
 	throttle   time.Duration
 	checkpoint *Checkpoint
 	sync       func(context.Context) error
+	// attrs memoizes attribute-set projections across the whole migration (see convert.go). It is
+	// shared by every signal: a resource attribute set is typically common to all of them.
+	attrs *attrConv
 }
 
 // Option configures a [Migrator].
 type Option func(*Migrator)
 
-// WithThrottle sleeps d after every ConsumeLogs/ConsumeTraces batch. A bulk migration can
+// WithThrottle sleeps d after every ingested batch. A bulk migration can
 // ingest orders of magnitude faster than the storage engine's background flush/compaction
 // loop can drain, so without a cap the head grows unbounded in RAM until the process OOMs
 // (see [storagebackend], the FlushInterval/FlushThresholdBytes options alone do not apply
@@ -121,6 +128,7 @@ func NewMigrator(client chstorage.ClickHouseClient, tables chstorage.Tables, bac
 		metrics: chstorage.NewMetricsSource(client, tables, logger.Named("metrics_source")),
 		back:    back,
 		logger:  logger,
+		attrs:   newAttrConv(),
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -207,9 +215,8 @@ func (m *Migrator) MigrateLogs(ctx context.Context, w chstorage.Window, batchSiz
 
 		dayRecords := 0
 		err := m.logs.Scan(ctx, d.From, d.To, batchSize, func(ctx context.Context, records []logstorage.Record) error {
-			ld := logstorage.RecordsToLogs(records)
-			if err := m.back.ConsumeLogs(ctx, ld); err != nil {
-				return errors.Wrap(err, "consume logs")
+			if err := m.back.WriteLogs(ctx, ConvertLogs(records, m.attrs)); err != nil {
+				return errors.Wrap(err, "write logs")
 			}
 			dayRecords += len(records)
 			stats.Records += len(records)
@@ -261,9 +268,8 @@ func (m *Migrator) MigrateTraces(ctx context.Context, w chstorage.Window, batchS
 
 		daySpans := 0
 		err := m.traces.Scan(ctx, d.From, d.To, batchSize, func(ctx context.Context, spans []tracestorage.Span) error {
-			td := tracestorage.SpansToTraces(spans)
-			if err := m.back.ConsumeTraces(ctx, td); err != nil {
-				return errors.Wrap(err, "consume traces")
+			if err := m.back.WriteTraces(ctx, ConvertTraces(spans, m.attrs)); err != nil {
+				return errors.Wrap(err, "write traces")
 			}
 			daySpans += len(spans)
 			stats.Spans += len(spans)
@@ -324,9 +330,8 @@ func (m *Migrator) MigrateMetrics(ctx context.Context, w chstorage.Window, batch
 
 		dayPoints := 0
 		err := scan.ScanNumbers(ctx, d.From, d.To, batchSize, func(ctx context.Context, points []metricstorage.NumberPoint) error {
-			md := metricstorage.NumberPointsToMetrics(points)
-			if err := m.back.ConsumeMetrics(ctx, md); err != nil {
-				return errors.Wrap(err, "consume metrics")
+			if err := m.back.WriteMetrics(ctx, ConvertNumberPoints(points, m.attrs)); err != nil {
+				return errors.Wrap(err, "write metrics")
 			}
 			dayPoints += len(points)
 			stats.Points += len(points)
