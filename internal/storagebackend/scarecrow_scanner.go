@@ -22,11 +22,17 @@ import (
 // interface dispatch — the one copy this pays is the nanosecond-to-millisecond timestamp
 // conversion [scarecrow.Samples] requires; Values is aliased from the batch unchanged.
 func (b *Backend) ScarecrowScanner() scarecrow.Scanner {
-	return &scarecrowScanner{b: b}
+	return &scarecrowScanner{b: b, scope: fetch.NewScope()}
 }
 
 type scarecrowScanner struct {
 	b *Backend
+	// scope ties every read this scanner makes to one query. The engine builds a scanner per
+	// query execution and closes it with the query, so the scanner *is* the session: storage's
+	// decode-budget admission needs that identity to tell "this query again" from "another
+	// query", and without it a query holding several fetches open deadlocks against its own
+	// reservation (oteldb/storage#284).
+	scope *fetch.Scope
 }
 
 var _ scarecrow.Scanner = (*scarecrowScanner)(nil)
@@ -64,6 +70,7 @@ func (s *scarecrowScanner) AggregateGrid(
 
 	named, err := s.b.store.AggregateMetricsWindowNamed(ctx, s.b.tenant, fetch.Request{
 		Tenant: s.b.tenant,
+		Scope:  s.scope,
 		// Lead-in: the first window opens a full width before the first step.
 		Start:    (firstEnd - grid.Width + 1) * nsPerMs,
 		End:      lastEnd * nsPerMs,
@@ -133,6 +140,7 @@ func (s *scarecrowScanner) AggregateOverTime(
 	// so mint is exclusive (start = mint+1 ms) and maxt inclusive.
 	aggs, err := s.b.store.AggregateMetricsNamed(ctx, s.b.tenant, fetch.Request{
 		Tenant:   s.b.tenant,
+		Scope:    s.scope,
 		Start:    (mint + 1) * nsPerMs,
 		End:      maxt * nsPerMs,
 		Matchers: storagepromql.PushableMatchers(matchers),
@@ -170,7 +178,7 @@ func (s *scarecrowScanner) AggregateOverTime(
 func (s *scarecrowScanner) CountSeries(
 	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
 ) (uint64, error) {
-	q, err := s.b.queryable().Querier(mint, maxt)
+	q, err := s.b.queryable().QuerierWithScope(mint, maxt, s.scope)
 	if err != nil {
 		return 0, errors.Wrap(err, "count pushdown: create querier")
 	}
@@ -192,7 +200,7 @@ func (s *scarecrowScanner) CountSeries(
 func (s *scarecrowScanner) CountSeriesBy(
 	ctx context.Context, mint, maxt int64, label string, matchers []*labels.Matcher,
 ) (map[string]uint64, error) {
-	q, err := s.b.queryable().Querier(mint, maxt)
+	q, err := s.b.queryable().QuerierWithScope(mint, maxt, s.scope)
 	if err != nil {
 		return nil, errors.Wrap(err, "count-by pushdown: create querier")
 	}
@@ -253,6 +261,7 @@ func (s *scarecrowScanner) Scan(
 
 	it, err := s.b.store.Fetcher(s.b.tenant).Fetch(ctx, fetch.Request{
 		Tenant:   s.b.tenant,
+		Scope:    s.scope,
 		Start:    mint * nsPerMs,
 		End:      maxt * nsPerMs,
 		Matchers: storagepromql.PushableMatchers(matchers),
