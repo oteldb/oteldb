@@ -13,7 +13,7 @@ import (
 	"github.com/oteldb/oteldb/internal/otelstorage"
 )
 
-// NumberPointsBatchFunc is called with each decoded batch of number points read by [MetricsSource].
+// NumberPointsBatchFunc is called with each decoded batch of number points read by [MetricsScan].
 type NumberPointsBatchFunc func(ctx context.Context, points []metricstorage.NumberPoint) error
 
 // ExpHistogramsBatchFunc is called with each decoded batch of exponential histograms.
@@ -31,12 +31,13 @@ type seriesMeta struct {
 	resource    otelstorage.Attrs
 }
 
-// MetricsSource reads metrics stored in ClickHouse for migration into another storage engine. It
-// first loads the series set from metrics_timeseries (small relative to the point volume) into an
-// in-memory hash→[seriesMeta] map, then day-bucket scans metrics_points and metrics_exp_histograms
-// (mirroring [Backup]) and resolves each row's series by hash. Exemplars are not read (the target
-// engine drops them). metrics_labels is not read (it is an autocomplete index, deriving nothing
-// the timeseries rows do not already carry).
+// MetricsSource reads metrics stored in ClickHouse for migration into another storage engine.
+// Scanning is two-staged: [MetricsSource.Prepare] loads the series set from metrics_timeseries
+// (small relative to the point volume) into an in-memory hash→[seriesMeta] map, and the returned
+// [MetricsScan] then reads metrics_points and metrics_exp_histograms a day at a time, resolving
+// each row's series by hash. Exemplars are not read (the target engine drops them).
+// metrics_labels is not read (it is an autocomplete index, deriving nothing the timeseries rows do
+// not already carry).
 type MetricsSource struct {
 	client     ClickHouseClient
 	timeseries string
@@ -59,52 +60,74 @@ func NewMetricsSource(client ClickHouseClient, tables Tables, logger *zap.Logger
 	}
 }
 
-// Do migrates metrics: it loads the series set (restricted to the scan window when since is
-// positive), then scans number points and exponential histograms, invoking numberFn and expFn
-// with batches of up to batchSize decoded points. Rows whose hash is absent from the series set
-// are skipped and counted (logged at the end).
-func (s *MetricsSource) Do(
-	ctx context.Context,
-	since time.Duration,
-	batchSize int,
-	numberFn NumberPointsBatchFunc,
-	expFn ExpHistogramsBatchFunc,
-) error {
+// Range returns the timestamp bounds across both point tables. Both are zero when they are empty.
+func (s *MetricsSource) Range(ctx context.Context) (mint, maxt time.Time, _ error) {
 	mint, maxt, err := queryMinMaxTimestamp(ctx, s.client,
 		[2]string{s.points, "timestamp"},
 		[2]string{s.expHistos, "timestamp"},
 	)
 	if err != nil {
-		return errors.Wrap(err, "query min/max timestamp")
+		return mint, maxt, errors.Wrap(err, "query min/max timestamp")
 	}
-	if mint.IsZero() && maxt.IsZero() {
-		s.logger.Info("No metrics to migrate")
-		return nil
-	}
-	if since > 0 {
-		if cut := maxt.Add(-since); cut.After(mint) {
-			mint = cut
-		}
-	}
+	return mint, maxt, nil
+}
 
+// Counts returns the per-UTC-day point counts within [from, to], summing both point tables.
+func (s *MetricsSource) Counts(ctx context.Context, from, to time.Time) ([]DayCount, error) {
+	numbers, err := dayCounts(ctx, s.client, s.points, "timestamp", proto.PrecisionMilli, from, to)
+	if err != nil {
+		return nil, errors.Wrap(err, "count number points")
+	}
+	exp, err := dayCounts(ctx, s.client, s.expHistos, "timestamp", proto.PrecisionMilli, from, to)
+	if err != nil {
+		return nil, errors.Wrap(err, "count exp histograms")
+	}
+	return mergeDayCounts(numbers, exp), nil
+}
+
+// Size returns the combined active-part footprint of both point tables, for pre-flight sizing.
+func (s *MetricsSource) Size(ctx context.Context) (TableSize, error) {
+	numbers, err := tableSize(ctx, s.client, s.points)
+	if err != nil {
+		return TableSize{}, errors.Wrap(err, "size number points")
+	}
+	exp, err := tableSize(ctx, s.client, s.expHistos)
+	if err != nil {
+		return TableSize{}, errors.Wrap(err, "size exp histograms")
+	}
+	return TableSize{
+		Rows:              numbers.Rows + exp.Rows,
+		CompressedBytes:   numbers.CompressedBytes + exp.CompressedBytes,
+		UncompressedBytes: numbers.UncompressedBytes + exp.UncompressedBytes,
+	}, nil
+}
+
+// MetricsScan is a prepared metrics scan: the series set for a time range, plus the day-at-a-time
+// readers over the point tables. Obtain it from [MetricsSource.Prepare]. It is not safe for
+// concurrent use.
+type MetricsScan struct {
+	src     *MetricsSource
+	series  map[[16]byte]seriesMeta
+	missing int
+}
+
+// Prepare loads the series set covering [mint, maxt] — series whose [first_seen, last_seen]
+// overlaps the range — and returns a scan bound to it.
+func (s *MetricsSource) Prepare(ctx context.Context, mint, maxt time.Time) (*MetricsScan, error) {
 	series, err := s.loadSeries(ctx, mint, maxt)
 	if err != nil {
-		return errors.Wrap(err, "load series")
+		return nil, errors.Wrap(err, "load series")
 	}
 	s.logger.Info("Loaded metric series", zap.Int("series", len(series)))
-
-	var missing int
-	if err := s.scanNumberPoints(ctx, series, mint, maxt, batchSize, &missing, numberFn); err != nil {
-		return errors.Wrap(err, "scan number points")
-	}
-	if err := s.scanExpHistograms(ctx, series, mint, maxt, batchSize, &missing, expFn); err != nil {
-		return errors.Wrap(err, "scan exp histograms")
-	}
-	if missing > 0 {
-		s.logger.Warn("Skipped points with no matching series", zap.Int("count", missing))
-	}
-	return nil
+	return &MetricsScan{src: s, series: series}, nil
 }
+
+// Series returns the number of series loaded for the scan.
+func (m *MetricsScan) Series() int { return len(m.series) }
+
+// Missing returns the running count of points skipped because their hash was absent from the
+// series set.
+func (m *MetricsScan) Missing() int { return m.missing }
 
 // loadSeries reads metrics_timeseries into a hash→meta map, restricted to series whose
 // [first_seen, last_seen] overlaps [mint, maxt].
@@ -141,30 +164,10 @@ func (s *MetricsSource) loadSeries(ctx context.Context, mint, maxt time.Time) (m
 	return out, nil
 }
 
-func (s *MetricsSource) scanNumberPoints(
-	ctx context.Context,
-	series map[[16]byte]seriesMeta,
-	mint, maxt time.Time,
-	batchSize int,
-	missing *int,
-	fn NumberPointsBatchFunc,
-) error {
-	return forEachDayBucket(mint, maxt, func(from, to time.Time) error {
-		if err := s.scanNumberDay(ctx, series, from, to, batchSize, missing, fn); err != nil {
-			return errors.Wrapf(err, "scan %s", from)
-		}
-		return nil
-	})
-}
-
-func (s *MetricsSource) scanNumberDay(
-	ctx context.Context,
-	series map[[16]byte]seriesMeta,
-	start, end time.Time,
-	batchSize int,
-	missing *int,
-	fn NumberPointsBatchFunc,
-) error {
+// ScanNumbers reads the number points in [from, to], invoking fn with batches of up to batchSize
+// decoded points. Rows whose hash is absent from the series set are skipped and counted
+// (see [MetricsScan.Missing]).
+func (m *MetricsScan) ScanNumbers(ctx context.Context, from, to time.Time, batchSize int, fn NumberPointsBatchFunc) error {
 	var (
 		c   = newPointColumns()
 		buf []metricstorage.NumberPoint
@@ -181,15 +184,15 @@ func (s *MetricsSource) scanNumberDay(
 		return nil
 	}
 
-	query := chsql.Select(s.points, c.ChsqlResult()...).
-		Where(chsql.InTimeRange("timestamp", start, end, proto.PrecisionMilli))
+	query := chsql.Select(m.src.points, c.ChsqlResult()...).
+		Where(chsql.InTimeRange("timestamp", from, to, proto.PrecisionMilli))
 
 	chq, err := query.Prepare(func(ctx context.Context, block proto.Block) error {
 		defer c.Columns().Reset()
 		for i := 0; i < c.timestamp.Rows(); i++ {
-			meta, ok := series[c.hash.Row(i)]
+			meta, ok := m.series[c.hash.Row(i)]
 			if !ok {
-				*missing++
+				m.missing++
 				continue
 			}
 			buf = append(buf, metricstorage.NumberPoint{
@@ -213,36 +216,15 @@ func (s *MetricsSource) scanNumberDay(
 	if err != nil {
 		return errors.Wrap(err, "prepare query")
 	}
-	if err := s.client.Do(ctx, chq); err != nil {
+	if err := m.src.client.Do(ctx, chq); err != nil {
 		return errors.Wrap(err, "execute query")
 	}
 	return flush(ctx)
 }
 
-func (s *MetricsSource) scanExpHistograms(
-	ctx context.Context,
-	series map[[16]byte]seriesMeta,
-	mint, maxt time.Time,
-	batchSize int,
-	missing *int,
-	fn ExpHistogramsBatchFunc,
-) error {
-	return forEachDayBucket(mint, maxt, func(from, to time.Time) error {
-		if err := s.scanExpDay(ctx, series, from, to, batchSize, missing, fn); err != nil {
-			return errors.Wrapf(err, "scan %s", from)
-		}
-		return nil
-	})
-}
-
-func (s *MetricsSource) scanExpDay(
-	ctx context.Context,
-	series map[[16]byte]seriesMeta,
-	start, end time.Time,
-	batchSize int,
-	missing *int,
-	fn ExpHistogramsBatchFunc,
-) error {
+// ScanExpHistograms reads the exponential-histogram points in [from, to], invoking fn with batches
+// of up to batchSize decoded points.
+func (m *MetricsScan) ScanExpHistograms(ctx context.Context, from, to time.Time, batchSize int, fn ExpHistogramsBatchFunc) error {
 	var (
 		c   = newExpHistogramColumns()
 		buf []metricstorage.ExpHistogramPoint
@@ -266,15 +248,15 @@ func (s *MetricsSource) scanExpDay(
 		return &v.Value
 	}
 
-	query := chsql.Select(s.expHistos, c.ChsqlResult()...).
-		Where(chsql.InTimeRange("timestamp", start, end, proto.PrecisionMilli))
+	query := chsql.Select(m.src.expHistos, c.ChsqlResult()...).
+		Where(chsql.InTimeRange("timestamp", from, to, proto.PrecisionMilli))
 
 	chq, err := query.Prepare(func(ctx context.Context, block proto.Block) error {
 		defer c.Columns().Reset()
 		for i := 0; i < c.timestamp.Rows(); i++ {
-			meta, ok := series[c.hash.Row(i)]
+			meta, ok := m.series[c.hash.Row(i)]
 			if !ok {
-				*missing++
+				m.missing++
 				continue
 			}
 			buf = append(buf, metricstorage.ExpHistogramPoint{
@@ -308,7 +290,7 @@ func (s *MetricsSource) scanExpDay(
 	if err != nil {
 		return errors.Wrap(err, "prepare query")
 	}
-	if err := s.client.Do(ctx, chq); err != nil {
+	if err := m.src.client.Do(ctx, chq); err != nil {
 		return errors.Wrap(err, "execute query")
 	}
 	return flush(ctx)

@@ -1,6 +1,9 @@
 // Command ch2storagebackend migrates data from chstorage's ClickHouse tables into the
 // embedded storagebackend engine, by scanning ClickHouse directly and re-ingesting the
 // decoded records as OTLP pdata. Logs, traces, and metrics are supported.
+//
+// A migration runs one UTC day at a time. Use -estimate first to size the window, -from/-to to
+// select it, and -checkpoint to make the run resumable.
 package main
 
 import (
@@ -32,8 +35,23 @@ func run(ctx context.Context) error {
 		dsn        = flag.String("dsn", "clickhouse://localhost:9000", "Clickhouse connection URL")
 		storageDir = flag.String("storage-dir", "", "Directory for the embedded storage engine's file backend (empty uses an ephemeral in-memory backend)")
 		batchSize  = flag.Int("batch", 5_000, "Number of records/spans to convert and ingest per batch")
-		since      = flag.Duration("since", 0, "If positive, only migrate the last since of data (relative to the most recent record), instead of the full table")
 		signals    = flag.String("signals", "logs,traces,metrics", "Comma-separated list of signals to migrate (logs, traces, metrics)")
+
+		// Window selection. -from/-to are absolute and are what make a large migration schedulable:
+		// the job can be split into ranges that are run separately, and re-run without redoing the
+		// rest. -since remains as the "last N of data" shorthand.
+		from  = flag.String("from", "", "Migrate data at or after this time (RFC3339 or YYYY-MM-DD, UTC); empty starts at the source's oldest")
+		to    = flag.String("to", "", "Migrate data before this time (RFC3339 or YYYY-MM-DD, UTC); empty ends at the source's newest")
+		since = flag.Duration("since", 0, "If positive and -from is unset, only migrate the last since of data, relative to the window's upper bound")
+
+		// Pre-flight sizing: row counts per day and the source's compressed/uncompressed footprint,
+		// without ingesting anything.
+		estimate = flag.Bool("estimate", false, "Print a per-day sizing report for the selected window and exit without migrating")
+
+		// Resumability. Days are journalled only after the target has been synced, so an interrupted
+		// run resumes at a day boundary rather than restarting.
+		checkpointPath = flag.String("checkpoint", "", "Path to a resumable migration journal; completed UTC days are skipped on a re-run")
+
 		// A bulk migration writes orders of magnitude faster than steady production ingestion, so
 		// the engine's default flush cadence (tuned for the latter) leaves the head/WAL growing
 		// unbounded in RAM for the lifetime of this process. Flush aggressively instead.
@@ -52,6 +70,11 @@ func run(ctx context.Context) error {
 	)
 	flag.Parse()
 
+	window, err := parseWindow(*from, *to, *since)
+	if err != nil {
+		return err
+	}
+
 	lg, err := zap.NewDevelopment()
 	if err != nil {
 		return errors.Wrap(err, "create logger")
@@ -66,6 +89,25 @@ func run(ctx context.Context) error {
 		return errors.Wrap(err, "dial clickhouse")
 	}
 
+	var checkpoint *ch2storagebackend.Checkpoint
+	if *checkpointPath != "" {
+		if checkpoint, err = ch2storagebackend.OpenCheckpoint(*checkpointPath); err != nil {
+			return errors.Wrap(err, "open checkpoint")
+		}
+		defer func() {
+			_ = checkpoint.Close()
+		}()
+	}
+
+	// An estimate reads only ClickHouse metadata, so it must not open (and thereby lock or dirty)
+	// the target storage directory.
+	if *estimate {
+		m := ch2storagebackend.NewMigrator(client, chstorage.DefaultTables(), nil, zap.NewNop(),
+			ch2storagebackend.WithCheckpoint(checkpoint),
+		)
+		return printEstimates(ctx, m, *signals, window)
+	}
+
 	store, err := openStore(ctx, *storageDir, *flushInterval, *maxPartBytes, lg)
 	if err != nil {
 		return errors.Wrap(err, "open storage engine")
@@ -75,24 +117,38 @@ func run(ctx context.Context) error {
 	}()
 	back := storagebackend.New(store)
 
-	m := ch2storagebackend.NewMigrator(client, chstorage.DefaultTables(), back, lg, ch2storagebackend.WithThrottle(*throttle))
+	m := ch2storagebackend.NewMigrator(client, chstorage.DefaultTables(), back, lg,
+		ch2storagebackend.WithThrottle(*throttle),
+		ch2storagebackend.WithCheckpoint(checkpoint),
+		ch2storagebackend.WithSync(syncStore(store)),
+	)
 
 	for sig := range strings.SplitSeq(*signals, ",") {
 		switch sig {
 		case "logs":
-			stats, err := m.MigrateLogs(ctx, *since, *batchSize)
+			stats, err := m.MigrateLogs(ctx, window, *batchSize)
 			if err != nil {
 				return errors.Wrap(err, "migrate logs")
 			}
-			lg.Info("Migrated logs", zap.Int("records", stats.Records), zap.Int("batches", stats.Batches))
+			lg.Info("Migrated logs",
+				zap.Int("records", stats.Records),
+				zap.Int("batches", stats.Batches),
+				zap.Int("days", stats.DaysDone),
+				zap.Int("days_skipped", stats.DaysSkipped),
+			)
 		case "traces":
-			stats, err := m.MigrateTraces(ctx, *since, *batchSize)
+			stats, err := m.MigrateTraces(ctx, window, *batchSize)
 			if err != nil {
 				return errors.Wrap(err, "migrate traces")
 			}
-			lg.Info("Migrated traces", zap.Int("spans", stats.Spans), zap.Int("batches", stats.Batches))
+			lg.Info("Migrated traces",
+				zap.Int("spans", stats.Spans),
+				zap.Int("batches", stats.Batches),
+				zap.Int("days", stats.DaysDone),
+				zap.Int("days_skipped", stats.DaysSkipped),
+			)
 		case "metrics":
-			stats, err := m.MigrateMetrics(ctx, *since, *batchSize)
+			stats, err := m.MigrateMetrics(ctx, window, *batchSize)
 			if err != nil {
 				return errors.Wrap(err, "migrate metrics")
 			}
@@ -100,6 +156,8 @@ func run(ctx context.Context) error {
 				zap.Int("points", stats.Points),
 				zap.Int("exp_histograms", stats.ExpHistograms),
 				zap.Int("batches", stats.Batches),
+				zap.Int("days", stats.DaysDone),
+				zap.Int("days_skipped", stats.DaysSkipped),
 			)
 		default:
 			return errors.Errorf("unknown signal %q", sig)
@@ -108,6 +166,77 @@ func run(ctx context.Context) error {
 
 	lg.Info("Done")
 	return nil
+}
+
+// parseWindow builds the scan window from the time flags. Bare dates are accepted (and are the
+// common case for a day-granular backfill) alongside full RFC3339 timestamps.
+func parseWindow(from, to string, since time.Duration) (chstorage.Window, error) {
+	parse := func(name, v string) (time.Time, error) {
+		if v == "" {
+			return time.Time{}, nil
+		}
+		for _, layout := range []string{time.RFC3339, time.DateTime, time.DateOnly} {
+			if t, err := time.ParseInLocation(layout, v, time.UTC); err == nil {
+				return t.UTC(), nil
+			}
+		}
+		return time.Time{}, errors.Errorf("parse -%s %q: want RFC3339 or YYYY-MM-DD", name, v)
+	}
+
+	w := chstorage.Window{Since: since}
+
+	var err error
+	if w.From, err = parse("from", from); err != nil {
+		return w, err
+	}
+	if w.To, err = parse("to", to); err != nil {
+		return w, err
+	}
+	if !w.From.IsZero() && !w.To.IsZero() && !w.From.Before(w.To) {
+		return w, errors.Errorf("-from %s must be before -to %s", w.From, w.To)
+	}
+	return w, nil
+}
+
+func printEstimates(ctx context.Context, m *ch2storagebackend.Migrator, signals string, w chstorage.Window) error {
+	for sig := range strings.SplitSeq(signals, ",") {
+		var (
+			est ch2storagebackend.Estimate
+			err error
+		)
+		switch sig {
+		case "logs":
+			est, err = m.EstimateLogs(ctx, w)
+		case "traces":
+			est, err = m.EstimateTraces(ctx, w)
+		case "metrics":
+			est, err = m.EstimateMetrics(ctx, w)
+		default:
+			return errors.Errorf("unknown signal %q", sig)
+		}
+		if err != nil {
+			return errors.Wrapf(err, "estimate %s", sig)
+		}
+		_, _ = fmt.Fprint(os.Stdout, est)
+	}
+	return nil
+}
+
+// syncStore returns the per-day durability barrier: flush every tenant/signal head that has
+// buffered data to an immutable part. Running it before a day is checkpointed is what makes the
+// checkpoint safe to resume from — and it caps the head at one day's ingest rather than letting it
+// grow for the whole migration.
+func syncStore(store *storage.Storage) func(context.Context) error {
+	return func(ctx context.Context) error {
+		for _, t := range store.Inspect().Tenants {
+			for _, sig := range t.Signals {
+				if err := store.Admin().Flush(ctx, t.Tenant, sig.Signal); err != nil {
+					return errors.Wrapf(err, "flush %s/%s", t.Tenant, sig.Signal)
+				}
+			}
+		}
+		return nil
+	}
 }
 
 func openStore(ctx context.Context, dir string, flushInterval time.Duration, maxPartBytes int64, lg *zap.Logger) (*storage.Storage, error) {

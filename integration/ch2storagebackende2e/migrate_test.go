@@ -105,7 +105,7 @@ func TestMigrateLogs(t *testing.T) {
 	m := ch2storagebackend.NewMigrator(client, tables, back, integration.Logger(t))
 	// Use a batch size smaller than the record count so the migration exercises more than
 	// one ConsumeLogs call.
-	stats, err := m.MigrateLogs(ctx, 0, 2)
+	stats, err := m.MigrateLogs(ctx, chstorage.Window{}, 2)
 	require.NoError(t, err)
 	require.Equal(t, 4, stats.Records)
 	require.Equal(t, 2, stats.Batches)
@@ -237,7 +237,7 @@ func TestMigrateTraces(t *testing.T) {
 	m := ch2storagebackend.NewMigrator(client, tables, back, integration.Logger(t))
 	// Use a batch size smaller than the span count so the migration exercises more than one
 	// ConsumeTraces call.
-	stats, err := m.MigrateTraces(ctx, 0, 1)
+	stats, err := m.MigrateTraces(ctx, chstorage.Window{}, 1)
 	require.NoError(t, err)
 	require.Equal(t, 2, stats.Spans)
 	require.Equal(t, 2, stats.Batches)
