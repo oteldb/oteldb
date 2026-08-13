@@ -18,6 +18,14 @@ func day(s string) time.Time {
 	return t
 }
 
+func ts(s string) time.Time {
+	t, err := time.ParseInLocation(time.DateTime, s, time.UTC)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
 func tempCheckpoint(t *testing.T) (c *Checkpoint, path string) {
 	t.Helper()
 

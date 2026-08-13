@@ -170,7 +170,10 @@ func plan(w chstorage.Window, mint, maxt time.Time) (days []chstorage.DayRange, 
 	if mint.IsZero() && maxt.IsZero() {
 		return nil, from, to, false
 	}
-	from, to, ok = w.Resolve(mint, maxt)
+	// maxt is floored to whole seconds by the source's Range, so the newest row can sit up to a
+	// second past it. Days clamps its last bucket to the upper bound now, so widen maxt to keep
+	// that row in range; an explicit Window.To is exact and passes through untouched.
+	from, to, ok = w.Resolve(mint, chstorage.EndOfSecond(maxt))
 	if !ok {
 		return nil, from, to, false
 	}
