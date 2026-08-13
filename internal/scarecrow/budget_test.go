@@ -297,3 +297,74 @@ func TestNoTimeoutByDefault(t *testing.T) {
 
 	require.NoError(t, q.Exec(context.Background()).Err)
 }
+
+// groupedCorpus has eight series in two `cpu` groups, so a `count by (cpu)` folds 8 series down
+// to 2 values per step — the gap the charge has to respect.
+const groupedCorpus = `
+load 10s
+  cpu_seconds{cpu="0",mode="user"}    0 1 2 3 4 5 6 7 8 9
+  cpu_seconds{cpu="0",mode="system"}  0 1 2 3 4 5 6 7 8 9
+  cpu_seconds{cpu="0",mode="idle"}    0 1 2 3 4 5 6 7 8 9
+  cpu_seconds{cpu="0",mode="iowait"}  0 1 2 3 4 5 6 7 8 9
+  cpu_seconds{cpu="1",mode="user"}    0 1 2 3 4 5 6 7 8 9
+  cpu_seconds{cpu="1",mode="system"}  0 1 2 3 4 5 6 7 8 9
+  cpu_seconds{cpu="1",mode="idle"}    0 1 2 3 4 5 6 7 8 9
+  cpu_seconds{cpu="1",mode="iowait"}  0 1 2 3 4 5 6 7 8 9
+`
+
+// TestGridPushdownChargesResultNotIntermediate is the regression guard for the node-exporter
+// dashboard: `count by (cpu)` was billed for the (series x step) grid it folded from rather than
+// the (group x step) counts it keeps, so a panel over 256 series burned 737k of a 1M budget and
+// the dashboard started failing with "too many samples". The pushdown exists to avoid that scan;
+// charging for it defeated the purpose.
+func TestGridPushdownChargesResultNotIntermediate(t *testing.T) {
+	t.Parallel()
+
+	// 8 series x 10 steps = 80 for the old charge; 2 groups x 10 steps = 20 for the new one.
+	const maxSamples = 40
+
+	for _, tt := range []struct {
+		name    string
+		query   string
+		wantErr bool
+	}{
+		{"count by keeps one value per group", `count(cpu_seconds) by (cpu)`, false},
+		{"count keeps one value per step", `count(cpu_seconds)`, false},
+		// A range aggregation's grid *is* its result, so it is still charged per (series, step)
+		// and must still trip. Without this the fix would just be a hole in the budget.
+		{"over_time is still charged per series", `max_over_time(cpu_seconds[1m])`, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := promqltest.LoadedStorage(t, groupedCorpus)
+			defer func() { require.NoError(t, store.Close()) }()
+
+			e := scarecrow.NewEngine(scarecrow.Opts{
+				MaxSamples: maxSamples,
+				NewScanner: func(q storage.Queryable) scarecrow.Scanner {
+					return &pushdownScanner{Scanner: scarecrow.NewQueryableScanner(q)}
+				},
+			})
+
+			q, err := e.NewRangeQuery(
+				context.Background(), store, nil, tt.query,
+				time.Unix(0, 0), time.Unix(90, 0), 10*time.Second,
+			)
+			require.NoError(t, err)
+
+			defer q.Close()
+
+			res := q.Exec(context.Background())
+
+			if tt.wantErr {
+				require.Error(t, res.Err)
+				assert.ErrorAs(t, res.Err, new(promql.ErrTooManySamples))
+
+				return
+			}
+
+			require.NoError(t, res.Err, "a folded count must not be billed for the grid it folded")
+		})
+	}
+}

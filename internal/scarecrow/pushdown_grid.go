@@ -63,13 +63,13 @@ func aggregateGrid(
 
 	span.SetAttributes(attribute.Int("promql.series", len(out)))
 
-	// A pushdown reads no raw [Samples], so the selector leaves never charge it. Charge the grid
-	// it materialized instead — one folded value per (series, step) — or a pushed-down query
-	// would be the one shape that escapes the budget entirely, which is exactly backwards: the
-	// pushdown exists because those queries are the large ones.
-	if err := ec.charge(len(out) * grid.NumSteps); err != nil {
-		return nil, err
-	}
+	// The charge belongs to the caller, not here. A pushdown reads no raw [Samples], so something
+	// must charge it or the large queries would be the ones escaping the budget — but the grid is
+	// an *intermediate*, and what survives it differs per caller: a `count by` keeps one value per
+	// (group, step), where the grid it folded from is per (series, step). Charging the grid here
+	// billed a cardinality question for the whole scan it was pushed down to avoid, which is what
+	// broke the node-exporter dashboard at 6h. Bounding the intermediate itself is the decode
+	// budget's job (oteldb/storage#263), not the sample limit's.
 
 	for i := range out {
 		if len(out[i].Windows) != grid.NumSteps {

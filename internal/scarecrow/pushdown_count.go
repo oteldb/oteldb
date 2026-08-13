@@ -147,6 +147,11 @@ func (o *countSeries) countGrid(ctx context.Context, grid WindowGrid) error {
 		}
 	}
 
+	// `count` without grouping keeps one number per step, whatever the folded cardinality was.
+	if err := o.ec.charge(grid.NumSteps); err != nil {
+		return err
+	}
+
 	for step, n := range counts {
 		if n > 0 {
 			o.out.Set(step, n)
@@ -270,15 +275,24 @@ func (o *countSeriesBy) collectGrid(ctx context.Context, grid WindowGrid) ([]map
 		perStep[i] = map[string]uint64{}
 	}
 
+	groups := map[string]struct{}{}
+
 	for i := range series {
 		// A series without the label groups under "", matching PromQL's absent-label group.
 		v := series[i].Labels.Get(o.by)
+		groups[v] = struct{}{}
 
 		for step, w := range series[i].Windows {
 			if w.Count > 0 {
 				perStep[step][v]++
 			}
 		}
+	}
+
+	// What survives the fold is one count per (group, step) — for `by (cpu)` that is the core
+	// count, not the 256 series it was folded from.
+	if err := o.ec.charge(len(groups) * grid.NumSteps); err != nil {
+		return nil, err
 	}
 
 	return perStep, nil
