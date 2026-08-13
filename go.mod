@@ -36,7 +36,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/grafana/loki/pkg/push v0.0.0-20241223090937-bf7301470453
-	github.com/grafana/pyroscope-go v1.4.1
+	github.com/grafana/pyroscope-go v1.4.2
 	github.com/grafana/pyroscope/api v1.5.0
 	github.com/klauspost/compress v1.19.2
 	github.com/kr/logfmt v0.0.0-20210122060352-19f9bcb100e6
