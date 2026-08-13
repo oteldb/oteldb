@@ -146,6 +146,7 @@ func TestTenancyOption(t *testing.T) {
 				MaxSeries:            1_000_000,
 				MaxSeriesSoft:        800_000,
 				MaxPartSize:          32 << 20,
+				MaxMergePartSize:     512 << 20,
 			},
 		})
 		require.NoError(t, err)
@@ -176,6 +177,9 @@ func TestTenancyOption(t *testing.T) {
 		require.Equal(t, int64(1_000_000), p.Limits.MaxSeries)
 		require.Equal(t, int64(800_000), p.Limits.MaxSeriesSoft)
 		require.Equal(t, int64(32<<20), p.Limits.MaxPartSize)
+		// Merged parts are capped separately, on disk rather than uncompressed; leaving it zero
+		// derives the cap from free space instead.
+		require.Equal(t, int64(512<<20), p.Limits.MaxMergePartSize)
 	})
 
 	t.Run("RetentionOnlyInstallsResolver", func(t *testing.T) {

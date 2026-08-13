@@ -94,9 +94,19 @@ type LimitsConfig struct {
 	// new series' samples go to a synthetic per-metric overflow series instead of being shed, until
 	// MaxSeries is reached. Metrics only.
 	MaxSeriesSoft int64 `json:"max_series_soft" yaml:"max_series_soft"`
-	// MaxPartSize caps an immutable part's approximate uncompressed size; flush and merge split
-	// their output to respect it. It is structural: fixed when the tenant's engine is created.
+	// MaxPartSize caps a flushed part's approximate uncompressed size, so the head's rows land
+	// promptly. It is structural: fixed when the tenant's engine is created. It does not bound
+	// merged parts — see MaxMergePartSize.
 	MaxPartSize xbytes.Bytes `json:"max_part_size" yaml:"max_part_size"`
+	// MaxMergePartSize caps a merged part's size on disk, in compressed bytes rather than
+	// MaxPartSize's uncompressed estimate. Zero derives it from the backend's free space, which is
+	// the default and lets part size track the deployment; negative never seals.
+	//
+	// Merges are sized separately from flushes because they answer a different question: a flush is
+	// bounded so rows land promptly, a merge so part *count* stays low. Under a byte constant the
+	// span a part covers shrinks as active series grow, so a fixed-range query opens proportionally
+	// more parts the larger the tenant gets.
+	MaxMergePartSize xbytes.Bytes `json:"max_merge_part_size" yaml:"max_merge_part_size"`
 }
 
 // retentionMaxAge reports the configured retention window, or zero when retention is disabled.
@@ -187,6 +197,7 @@ func (cfg *StoragePolicyConfig) policy() (tenant.Policy, error) {
 			MaxSeries:            l.MaxSeries,
 			MaxSeriesSoft:        l.MaxSeriesSoft,
 			MaxPartSize:          int64(l.MaxPartSize),
+			MaxMergePartSize:     int64(l.MaxMergePartSize),
 		}
 	}
 

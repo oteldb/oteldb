@@ -93,7 +93,10 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
   **Implemented** in `cmd/oteldb/storage_policy.go` (`tenancyOption` → `storage.WithTenancy`):
   the `storage.policy` config block exposes `precision[]{after,bits}`,
   `downsample[]{after,interval,agg}`, `recompress{after,level}`, `retention{max_age,max_bytes}`
-  and `limits{ingest_bytes_per_second,max_in_flight_bytes,max_series,max_series_soft,max_part_size}`.
+  and `limits{ingest_bytes_per_second,max_in_flight_bytes,max_series,max_series_soft,max_part_size,
+  max_merge_part_size}`. `max_part_size` bounds a *flushed* part's uncompressed estimate;
+  `max_merge_part_size` bounds a *merged* part's compressed size on disk, and left at zero is
+  derived from the backend's free space.
   oteldb runs the embedded engine single-tenant, so a static `tenant.ResolverFunc` returns one
   policy for every tenant — retention is therefore one global window, not per-tenant.
   Both `retention.max_age` and `retention.max_bytes` are enforced by the library.
