@@ -153,6 +153,11 @@ func (o *aggregateOverTime) collectGrid(
 		return err
 	}
 
+	// Here the grid *is* the result: one folded value per (series, step) reaches the engine.
+	if err := o.ec.charge(len(series) * grid.NumSteps); err != nil {
+		return err
+	}
+
 	for i := range series {
 		for step, w := range series[i].Windows {
 			if w.Count == 0 {

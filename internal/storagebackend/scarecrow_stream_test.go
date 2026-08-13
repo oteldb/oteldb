@@ -142,3 +142,23 @@ func TestBatchIteratorExhausts(t *testing.T) {
 
 	require.NoError(t, it.Close())
 }
+
+// TestScarecrowScannerScopePerQuery pins the session boundary. The engine builds one scanner per
+// query execution and closes it with the query, so the scanner is what identifies a query to
+// storage's admission control. Hoisting the scope onto the Backend would make every query one
+// session and quietly delete the decode ceiling; leaving it nil brings back the deadlock, where a
+// query holding several reads open blocks against its own reservation.
+func TestScarecrowScannerScopePerQuery(t *testing.T) {
+	t.Parallel()
+
+	b := &Backend{}
+
+	first, ok := b.ScarecrowScanner().(*scarecrowScanner)
+	require.True(t, ok)
+
+	second, ok := b.ScarecrowScanner().(*scarecrowScanner)
+	require.True(t, ok)
+
+	require.NotNil(t, first.scope, "a scanner without a scope deadlocks on its second read")
+	assert.NotSame(t, first.scope, second.scope, "two queries must not share one session")
+}
