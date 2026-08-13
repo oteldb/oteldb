@@ -125,7 +125,7 @@ func TestWindowResolve(t *testing.T) {
 }
 
 func TestDays(t *testing.T) {
-	t.Run("clamps the lower bound but not the upper", func(t *testing.T) {
+	t.Run("clamps both edges", func(t *testing.T) {
 		days := Days(ts("2026-08-05 04:00:00"), ts("2026-08-07 20:00:00"))
 		require.Len(t, days, 3)
 
@@ -138,9 +138,18 @@ func TestDays(t *testing.T) {
 		assert.Equal(t, day("2026-08-06"), days[1].From)
 		assert.Equal(t, day("2026-08-07"), days[1].To)
 
-		// Last bucket runs to the day's end, past maxt, because maxt is floored to whole seconds
-		// upstream and clamping would drop sub-second data.
-		assert.Equal(t, day("2026-08-08"), days[2].To)
+		// Last bucket stops at maxt, not at the day's end. Leaving it at the day's end made an
+		// explicit upper bound a no-op above day granularity, so a migration asked for half a day
+		// silently scanned — and ingested — the whole one.
+		assert.Equal(t, day("2026-08-07"), days[2].From)
+		assert.Equal(t, ts("2026-08-07 20:00:00"), days[2].To)
+	})
+
+	t.Run("a sub-day window scans only itself", func(t *testing.T) {
+		days := Days(ts("2026-08-05 04:00:00"), ts("2026-08-05 06:00:00"))
+		require.Len(t, days, 1)
+		assert.Equal(t, ts("2026-08-05 04:00:00"), days[0].From)
+		assert.Equal(t, ts("2026-08-05 06:00:00"), days[0].To)
 	})
 
 	t.Run("day identity is midnight even when the scan is partial", func(t *testing.T) {
@@ -163,6 +172,39 @@ func TestDays(t *testing.T) {
 		for i := 1; i < len(days); i++ {
 			assert.Equal(t, days[i-1].To, days[i].From, "gap before %s", days[i].Day)
 		}
+	})
+}
+
+func TestEndOfSecond(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		in   time.Time
+		want time.Time
+	}{
+		{"zero stays zero", time.Time{}, time.Time{}},
+		{
+			"whole second covers its own sub-second data",
+			ts("2026-08-05 04:00:00"),
+			ts("2026-08-05 04:00:00").Add(time.Second - time.Nanosecond),
+		},
+		{
+			"already sub-second rounds up to the same instant",
+			ts("2026-08-05 04:00:00").Add(250 * time.Millisecond),
+			ts("2026-08-05 04:00:00").Add(time.Second - time.Nanosecond),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, EndOfSecond(tt.in))
+		})
+	}
+
+	// The point of the helper: a maxt floored by toDateTime still bounds a bucket that contains
+	// the rows it was floored from.
+	t.Run("keeps a floored maxt's own second in range", func(t *testing.T) {
+		newest := ts("2026-08-05 04:00:00").Add(900 * time.Millisecond)
+		days := Days(ts("2026-08-05 00:00:00"), EndOfSecond(newest.Truncate(time.Second)))
+		require.Len(t, days, 1)
+		assert.False(t, days[0].To.Before(newest), "%s must cover %s", days[0].To, newest)
 	})
 }
 

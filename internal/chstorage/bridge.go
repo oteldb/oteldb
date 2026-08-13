@@ -55,13 +55,12 @@ type DayRange struct {
 }
 
 // Days returns the UTC-day-aligned buckets covering [mint, maxt]. Day-aligning keeps each scan
-// inside a single daily table partition; the first bucket's lower bound is clamped to mint so a
-// windowed scan skips the early part of its first day instead of scanning the whole calendar day.
+// inside a single daily table partition; the edge buckets are clamped to mint/maxt so a windowed
+// scan reads only the requested range instead of the whole calendar day at either end.
 //
-// Only the lower bound is clamped. The upper bound stays at the day's end because mint/maxt come
-// from queryMinMaxTimestamp, which floors to whole seconds (toDateTime): clamping the top to a
-// floored maxt would drop any sub-second data in maxt's final second. Since no data exists past the
-// true max, a full-day upper bound reads the same rows without that risk.
+// Callers deriving maxt from queryMinMaxTimestamp must widen it to the end of its second first:
+// that helper floors to whole seconds (toDateTime), and clamping to a floored maxt would drop
+// sub-second data in the final second. See [EndOfSecond].
 func Days(mint, maxt time.Time) []DayRange {
 	const step = 24 * time.Hour
 
@@ -75,9 +74,21 @@ func Days(mint, maxt time.Time) []DayRange {
 		if from.Before(mint) {
 			from = mint
 		}
+		if to.After(maxt) {
+			to = maxt
+		}
 		out = append(out, DayRange{Day: ts, From: from, To: to})
 	}
 	return out
+}
+
+// EndOfSecond rounds t up to the last instant of its second, turning a timestamp floored by
+// toDateTime back into an upper bound that still covers the sub-second data it was floored from.
+func EndOfSecond(t time.Time) time.Time {
+	if t.IsZero() {
+		return t
+	}
+	return t.Truncate(time.Second).Add(time.Second - time.Nanosecond)
 }
 
 // DayCount is the row count of one UTC day of a source table.

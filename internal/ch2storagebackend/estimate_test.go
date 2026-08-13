@@ -185,7 +185,23 @@ func TestPlan(t *testing.T) {
 		days, from, to, ok := plan(chstorage.Window{From: day("2026-08-08")}, mint, maxt)
 		require.True(t, ok)
 		assert.Equal(t, day("2026-08-08"), from)
-		assert.Equal(t, maxt, to)
+		// The source's maxt is floored to whole seconds, so plan widens it to that second's end
+		// rather than clamping the last bucket short of the rows it was floored from.
+		assert.Equal(t, chstorage.EndOfSecond(maxt), to)
 		assert.Len(t, days, 4)
+	})
+
+	// An explicit upper bound is exact and must survive to the last bucket. It used to be dropped
+	// at day granularity, so `-to 14:00` scanned and ingested the whole calendar day.
+	t.Run("honors an explicit upper bound", func(t *testing.T) {
+		to := ts("2026-08-08 14:00:00")
+		days, _, gotTo, ok := plan(chstorage.Window{From: day("2026-08-07"), To: to}, mint, maxt)
+		require.True(t, ok)
+		assert.Equal(t, to, gotTo)
+		require.Len(t, days, 2)
+		assert.Equal(t, day("2026-08-07"), days[0].From)
+		assert.Equal(t, day("2026-08-08"), days[0].To)
+		assert.Equal(t, day("2026-08-08"), days[1].From)
+		assert.Equal(t, to, days[1].To)
 	})
 }
