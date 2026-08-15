@@ -336,6 +336,72 @@ func (s *ClusterStats) SetEc(val OptECStats) {
 	s.Ec = val
 }
 
+// One column's share of a stream cost.
+// Ref: #/components/schemas/ColumnCost
+type ColumnCost struct {
+	Name     string `json:"name"`
+	RawBytes int64  `json:"raw_bytes"`
+	// Approximate, apportioned as StreamCost.disk_bytes.
+	DiskBytes int64 `json:"disk_bytes"`
+	// Estimated distinct values in this column (HyperLogLog, ~1.6% standard error). 0 for an int column
+	// and for a group outside the sketch budget.
+	Distinct int64 `json:"distinct"`
+	// Distinct over values with every run of ASCII digits collapsed to '#'. A large distinct with a tiny
+	// distinct_normalized means the source is emitting one templated line with an embedded timestamp or id
+	// instead of structured fields — a fixable diagnosis.
+	DistinctNormalized int64 `json:"distinct_normalized"`
+}
+
+// GetName returns the value of Name.
+func (s *ColumnCost) GetName() string {
+	return s.Name
+}
+
+// GetRawBytes returns the value of RawBytes.
+func (s *ColumnCost) GetRawBytes() int64 {
+	return s.RawBytes
+}
+
+// GetDiskBytes returns the value of DiskBytes.
+func (s *ColumnCost) GetDiskBytes() int64 {
+	return s.DiskBytes
+}
+
+// GetDistinct returns the value of Distinct.
+func (s *ColumnCost) GetDistinct() int64 {
+	return s.Distinct
+}
+
+// GetDistinctNormalized returns the value of DistinctNormalized.
+func (s *ColumnCost) GetDistinctNormalized() int64 {
+	return s.DistinctNormalized
+}
+
+// SetName sets the value of Name.
+func (s *ColumnCost) SetName(val string) {
+	s.Name = val
+}
+
+// SetRawBytes sets the value of RawBytes.
+func (s *ColumnCost) SetRawBytes(val int64) {
+	s.RawBytes = val
+}
+
+// SetDiskBytes sets the value of DiskBytes.
+func (s *ColumnCost) SetDiskBytes(val int64) {
+	s.DiskBytes = val
+}
+
+// SetDistinct sets the value of Distinct.
+func (s *ColumnCost) SetDistinct(val int64) {
+	s.Distinct = val
+}
+
+// SetDistinctNormalized sets the value of DistinctNormalized.
+func (s *ColumnCost) SetDistinctNormalized(val int64) {
+	s.DistinctNormalized = val
+}
+
 // Ref: #/components/schemas/ComponentHealth
 type ComponentHealth struct {
 	// Component/service name.
@@ -1392,6 +1458,52 @@ func (o OptFloat64) Or(d float64) float64 {
 	return d
 }
 
+// NewOptInt returns new OptInt with value set to v.
+func NewOptInt(v int) OptInt {
+	return OptInt{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptInt is optional int.
+type OptInt struct {
+	Value int
+	Set   bool
+}
+
+// IsSet returns true if OptInt was set.
+func (o OptInt) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptInt) Reset() {
+	var v int
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptInt) SetTo(v int) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptInt) Get() (v int, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptInt) Or(d int) int {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptInt64 returns new OptInt64 with value set to v.
 func NewOptInt64(v int64) OptInt64 {
 	return OptInt64{
@@ -1710,6 +1822,57 @@ func (s *PartSyncStats) SetErrors(val int64) {
 // SetLastSync sets the value of LastSync.
 func (s *PartSyncStats) SetLastSync(val OptDateTime) {
 	s.LastSync = val
+}
+
+// Signal stored as records, and so attributable per stream. Metrics are excluded: their samples carry
+// no per-record columns to attribute (use label cardinality there instead).
+// Ref: #/components/schemas/RecordSignal
+type RecordSignal string
+
+const (
+	RecordSignalTraces   RecordSignal = "traces"
+	RecordSignalLogs     RecordSignal = "logs"
+	RecordSignalProfiles RecordSignal = "profiles"
+)
+
+// AllValues returns all RecordSignal values.
+func (RecordSignal) AllValues() []RecordSignal {
+	return []RecordSignal{
+		RecordSignalTraces,
+		RecordSignalLogs,
+		RecordSignalProfiles,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s RecordSignal) MarshalText() ([]byte, error) {
+	switch s {
+	case RecordSignalTraces:
+		return []byte(s), nil
+	case RecordSignalLogs:
+		return []byte(s), nil
+	case RecordSignalProfiles:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *RecordSignal) UnmarshalText(data []byte) error {
+	switch RecordSignal(data) {
+	case RecordSignalTraces:
+		*s = RecordSignalTraces
+		return nil
+	case RecordSignalLogs:
+		*s = RecordSignalLogs
+		return nil
+	case RecordSignalProfiles:
+		*s = RecordSignalProfiles
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
 }
 
 // Ref: #/components/schemas/RuntimeStats
@@ -2093,6 +2256,159 @@ func (s *StorageStats) SetEngine(val OptEngineStats) {
 // SetClickhouse sets the value of Clickhouse.
 func (s *StorageStats) SetClickhouse(val OptClickHouseStats) {
 	s.Clickhouse = val
+}
+
+// One group's share of a signal's storage.
+// Ref: #/components/schemas/StreamCost
+type StreamCost struct {
+	// The group_by label's value, or the stream id. Empty means the label is absent.
+	Key string `json:"key"`
+	// Distinct streams folded into this group.
+	Streams int64 `json:"streams"`
+	Rows    int64 `json:"rows"`
+	// Decoded footprint of the group's rows over the accounted columns.
+	RawBytes int64 `json:"raw_bytes"`
+	// Approximate compressed share. Compression is per column per frame and a frame spans whatever streams
+	// its rows fall in, so each frame's size is apportioned across the groups holding its rows by their
+	// raw-byte share.
+	DiskBytes int64 `json:"disk_bytes"`
+	// Whether per-column distinct counts were measured for this group. False means they are 0 because the
+	// group fell outside the sketch budget, not because the values are unique.
+	DistinctEstimated bool         `json:"distinct_estimated"`
+	Columns           []ColumnCost `json:"columns"`
+}
+
+// GetKey returns the value of Key.
+func (s *StreamCost) GetKey() string {
+	return s.Key
+}
+
+// GetStreams returns the value of Streams.
+func (s *StreamCost) GetStreams() int64 {
+	return s.Streams
+}
+
+// GetRows returns the value of Rows.
+func (s *StreamCost) GetRows() int64 {
+	return s.Rows
+}
+
+// GetRawBytes returns the value of RawBytes.
+func (s *StreamCost) GetRawBytes() int64 {
+	return s.RawBytes
+}
+
+// GetDiskBytes returns the value of DiskBytes.
+func (s *StreamCost) GetDiskBytes() int64 {
+	return s.DiskBytes
+}
+
+// GetDistinctEstimated returns the value of DistinctEstimated.
+func (s *StreamCost) GetDistinctEstimated() bool {
+	return s.DistinctEstimated
+}
+
+// GetColumns returns the value of Columns.
+func (s *StreamCost) GetColumns() []ColumnCost {
+	return s.Columns
+}
+
+// SetKey sets the value of Key.
+func (s *StreamCost) SetKey(val string) {
+	s.Key = val
+}
+
+// SetStreams sets the value of Streams.
+func (s *StreamCost) SetStreams(val int64) {
+	s.Streams = val
+}
+
+// SetRows sets the value of Rows.
+func (s *StreamCost) SetRows(val int64) {
+	s.Rows = val
+}
+
+// SetRawBytes sets the value of RawBytes.
+func (s *StreamCost) SetRawBytes(val int64) {
+	s.RawBytes = val
+}
+
+// SetDiskBytes sets the value of DiskBytes.
+func (s *StreamCost) SetDiskBytes(val int64) {
+	s.DiskBytes = val
+}
+
+// SetDistinctEstimated sets the value of DistinctEstimated.
+func (s *StreamCost) SetDistinctEstimated(val bool) {
+	s.DistinctEstimated = val
+}
+
+// SetColumns sets the value of Columns.
+func (s *StreamCost) SetColumns(val []ColumnCost) {
+	s.Columns = val
+}
+
+// Per-stream (or per-label-value) storage cost attribution for one signal.
+// Ref: #/components/schemas/StreamCosts
+type StreamCosts struct {
+	// False when no embedded engine is active, in which case groups is empty.
+	StorageEnabled bool         `json:"storage_enabled"`
+	Signal         RecordSignal `json:"signal"`
+	Tenant         string       `json:"tenant"`
+	// Label whose values key the report. Empty means the report is keyed by stream id.
+	GroupBy OptString `json:"group_by"`
+	// Costliest groups first. Empty when the tenant has no engine for the signal.
+	Groups []StreamCost `json:"groups"`
+}
+
+// GetStorageEnabled returns the value of StorageEnabled.
+func (s *StreamCosts) GetStorageEnabled() bool {
+	return s.StorageEnabled
+}
+
+// GetSignal returns the value of Signal.
+func (s *StreamCosts) GetSignal() RecordSignal {
+	return s.Signal
+}
+
+// GetTenant returns the value of Tenant.
+func (s *StreamCosts) GetTenant() string {
+	return s.Tenant
+}
+
+// GetGroupBy returns the value of GroupBy.
+func (s *StreamCosts) GetGroupBy() OptString {
+	return s.GroupBy
+}
+
+// GetGroups returns the value of Groups.
+func (s *StreamCosts) GetGroups() []StreamCost {
+	return s.Groups
+}
+
+// SetStorageEnabled sets the value of StorageEnabled.
+func (s *StreamCosts) SetStorageEnabled(val bool) {
+	s.StorageEnabled = val
+}
+
+// SetSignal sets the value of Signal.
+func (s *StreamCosts) SetSignal(val RecordSignal) {
+	s.Signal = val
+}
+
+// SetTenant sets the value of Tenant.
+func (s *StreamCosts) SetTenant(val string) {
+	s.Tenant = val
+}
+
+// SetGroupBy sets the value of GroupBy.
+func (s *StreamCosts) SetGroupBy(val OptString) {
+	s.GroupBy = val
+}
+
+// SetGroups sets the value of Groups.
+func (s *StreamCosts) SetGroups(val []StreamCost) {
+	s.Groups = val
 }
 
 // Ref: #/components/schemas/TableStats

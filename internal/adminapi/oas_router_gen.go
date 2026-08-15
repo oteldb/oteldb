@@ -196,29 +196,68 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				switch elem[0] {
-				case '/': // Prefix: "/efficiency"
+				case '/': // Prefix: "/"
 
-					if l := len("/efficiency"); len(elem) >= l && elem[0:l] == "/efficiency" {
+					if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
 						elem = elem[l:]
 					} else {
 						break
 					}
 
 					if len(elem) == 0 {
-						// Leaf node.
-						switch r.Method {
-						case "GET":
-							s.handleGetEfficiencyRequest([0]string{}, elemIsEscaped, w, r)
-						default:
-							s.notAllowed(w, r, notAllowedParams{
-								allowedMethods: "GET",
-								allowedHeaders: nil,
-								acceptPost:     "",
-								acceptPatch:    "",
-							})
+						break
+					}
+					switch elem[0] {
+					case 'e': // Prefix: "efficiency"
+
+						if l := len("efficiency"); len(elem) >= l && elem[0:l] == "efficiency" {
+							elem = elem[l:]
+						} else {
+							break
 						}
 
-						return
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "GET":
+								s.handleGetEfficiencyRequest([0]string{}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "GET",
+									allowedHeaders: nil,
+									acceptPost:     "",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
+					case 's': // Prefix: "stream-costs"
+
+						if l := len("stream-costs"); len(elem) >= l && elem[0:l] == "stream-costs" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "GET":
+								s.handleGetStreamCostsRequest([0]string{}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "GET",
+									allowedHeaders: nil,
+									acceptPost:     "",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
 					}
 
 				}
@@ -456,29 +495,68 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					}
 				}
 				switch elem[0] {
-				case '/': // Prefix: "/efficiency"
+				case '/': // Prefix: "/"
 
-					if l := len("/efficiency"); len(elem) >= l && elem[0:l] == "/efficiency" {
+					if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
 						elem = elem[l:]
 					} else {
 						break
 					}
 
 					if len(elem) == 0 {
-						// Leaf node.
-						switch method {
-						case "GET":
-							r.name = GetEfficiencyOperation
-							r.summary = "Embedded storage efficiency statistics"
-							r.operationID = "getEfficiency"
-							r.operationGroup = ""
-							r.pathPattern = "/api/v1/storage/efficiency"
-							r.args = args
-							r.count = 0
-							return r, true
-						default:
-							return
+						break
+					}
+					switch elem[0] {
+					case 'e': // Prefix: "efficiency"
+
+						if l := len("efficiency"); len(elem) >= l && elem[0:l] == "efficiency" {
+							elem = elem[l:]
+						} else {
+							break
 						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "GET":
+								r.name = GetEfficiencyOperation
+								r.summary = "Embedded storage efficiency statistics"
+								r.operationID = "getEfficiency"
+								r.operationGroup = ""
+								r.pathPattern = "/api/v1/storage/efficiency"
+								r.args = args
+								r.count = 0
+								return r, true
+							default:
+								return
+							}
+						}
+
+					case 's': // Prefix: "stream-costs"
+
+						if l := len("stream-costs"); len(elem) >= l && elem[0:l] == "stream-costs" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "GET":
+								r.name = GetStreamCostsOperation
+								r.summary = "Attribute a signal's stored bytes to streams"
+								r.operationID = "getStreamCosts"
+								r.operationGroup = ""
+								r.pathPattern = "/api/v1/storage/stream-costs"
+								r.args = args
+								r.count = 0
+								return r, true
+							default:
+								return
+							}
+						}
+
 					}
 
 				}
