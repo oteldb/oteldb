@@ -28,7 +28,7 @@ func NewConfigWithID(operatorID string) *Config {
 	return &Config{
 		ParserConfig:  helper.NewParserConfig(operatorID, Type),
 		Detect:        true,
-		DetectFormats: []string{"generic-json"},
+		DetectFormats: logparser.DefaultFormatNames(),
 	}
 }
 
@@ -64,7 +64,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 	} else if c.Detect {
 		detectFormats := c.DetectFormats
 		if detectFormats == nil {
-			detectFormats = []string{"generic-json"}
+			detectFormats = logparser.DefaultFormatNames()
 		}
 		detect = make([]logparser.Parser, 0, len(detectFormats))
 		for _, format := range detectFormats {

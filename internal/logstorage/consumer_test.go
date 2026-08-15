@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -181,6 +182,48 @@ func TestConsumeLogs(t *testing.T) {
 		},
 	}
 	require.Equal(t, expected, i.records)
+}
+
+func TestConsumeLogsDefaultFormats(t *testing.T) {
+	ctx := t.Context()
+
+	i := &mockInserter{}
+	c, err := NewConsumer(i, ConsumerOptions{})
+	require.NoError(t, err)
+
+	recordTime := time.Date(2024, time.June, 21, 0, 0, 0, 0, time.UTC)
+
+	logs := plog.NewLogs()
+	resLogs := logs.ResourceLogs().AppendEmpty()
+	scopeLogs := resLogs.ScopeLogs().AppendEmpty()
+	records := scopeLogs.LogRecords()
+	{
+		record := records.AppendEmpty()
+		record.SetTimestamp(pcommon.NewTimestampFromTime(recordTime))
+		record.Body().SetStr(`I0621 16:26:15.372343       1 leaderelection.go:250] Starting Provisioner`)
+		record.Attributes().PutStr("log", "klog-line")
+	}
+
+	err = c.ConsumeLogs(ctx, logs)
+	require.NoError(t, err)
+	require.Len(t, i.records, 1)
+
+	got := i.records[0]
+	require.Equal(t, "Starting Provisioner", got.Body)
+	require.Equal(t, plog.SeverityNumberInfo, got.SeverityNumber)
+	require.Equal(t,
+		otelstorage.NewTimestampFromTime(time.Date(2024, time.June, 21, 16, 26, 15, 372343000, time.UTC)),
+		got.Timestamp,
+	)
+
+	attrs := got.Attrs.AsMap()
+	typ, ok := attrs.Get("logparser.type")
+	require.True(t, ok)
+	require.Equal(t, "klog", typ.AsString())
+
+	file, ok := attrs.Get("code.file.path")
+	require.True(t, ok)
+	require.Equal(t, "leaderelection.go", file.AsString())
 }
 
 func attrMap(kv ...string) otelstorage.Attrs {

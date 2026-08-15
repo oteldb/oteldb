@@ -118,7 +118,7 @@ func (LogFmtParser) Detect(line string) bool {
 	noop := logfmt.HandlerFunc(func(k, _ []byte) error {
 		ftyp, ok := deduceFieldType(k)
 		if ok {
-			detectedFields |= uint64(ftyp)
+			detectedFields |= 1 << uint64(ftyp)
 		}
 		return nil
 	})
@@ -127,6 +127,6 @@ func (LogFmtParser) Detect(line string) bool {
 	}
 
 	// A bit of bit magic: ensure we met at least two of useful fields.
-	detectedFields &= uint64(levelField | timestampField | messageField)
+	detectedFields &= 1<<levelField | 1<<timestampField | 1<<messageField
 	return bits.OnesCount64(detectedFields) >= 2
 }

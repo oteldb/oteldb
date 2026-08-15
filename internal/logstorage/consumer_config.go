@@ -41,7 +41,7 @@ func (o *ConsumerOptions) setDefaults() {
 		}
 	}
 	if o.DetectFormats == nil {
-		o.DetectFormats = []logparser.Parser{new(logparser.GenericJSONParser)}
+		o.DetectFormats = logparser.DefaultFormats()
 	}
 	if o.MeterProvider == nil {
 		o.MeterProvider = otel.GetMeterProvider()
