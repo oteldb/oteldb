@@ -168,6 +168,15 @@ type StorageConfig struct {
 	// concurrency cannot drive the live heap past the process memory limit. Enabled by default,
 	// fitted to the detected memory limit minus the caches and headroom; set to 0 to disable.
 	DecodeMemoryBytes *xbytes.Bytes `json:"decode_memory_bytes" yaml:"decode_memory_bytes"`
+	// MergeMemoryBytes caps the memory all concurrent merges together may hold, and through that the
+	// size a merged part reaches before it is sealed. It is the write-side counterpart of
+	// DecodeMemoryBytes: on a backend that takes objects whole a merge holds its output part encoded
+	// in RAM, so free space alone cannot bound it. Unset ⇒ the library default (a share of the Go
+	// memory limit); negative ⇒ unbounded.
+	//
+	// Unlike the caches this is a pass-through: oteldb adds no default of its own, because the
+	// library already derives one from the same memory limit oteldb would read.
+	MergeMemoryBytes *xbytes.Bytes `json:"merge_memory_bytes" yaml:"merge_memory_bytes"`
 	// AggregateStats writes a per-series aggregate sidecar (count/sum/min/max) alongside each
 	// metric part so range-covering aggregates — and the *_over_time pushdown — can be answered
 	// without decoding. Enabled by default; set to false to disable.

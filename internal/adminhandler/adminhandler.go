@@ -39,6 +39,10 @@ type Options struct {
 	StorageBackend string
 	// Maintain triggers an on-demand embedded-storage maintenance cycle. Nil when unavailable.
 	Maintain func(ctx context.Context) error
+	// Compact forces a compaction pass that ignores the merge selector's heuristic, for the stuck
+	// state a maintenance cycle cannot break (merge backlog with no candidates). Nil when
+	// unavailable.
+	Compact func(ctx context.Context) error
 	// ClickHouseEnabled reports whether the deprecated ClickHouse storage is active.
 	ClickHouseEnabled bool
 	// Signals describes per-signal backend configuration.
@@ -225,6 +229,18 @@ func (a *AdminAPI) RunAction(ctx context.Context, params adminapi.RunActionParam
 			Action:  params.Action,
 			Ok:      true,
 			Message: "storage maintenance cycle completed",
+		}, nil
+	case adminapi.ActionNameStorageCompact:
+		if a.opts.Compact == nil {
+			return nil, errors.New("embedded storage is not enabled")
+		}
+		if err := a.opts.Compact(ctx); err != nil {
+			return nil, errors.Wrap(err, "run forced compaction")
+		}
+		return &adminapi.ActionResult{
+			Action:  params.Action,
+			Ok:      true,
+			Message: "forced compaction pass completed",
 		}, nil
 	default:
 		return nil, errors.Errorf("unknown action %q", params.Action)

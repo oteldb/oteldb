@@ -44,6 +44,8 @@ var (
 // the first N candidates happen to match", which for a selective query is usually fewer than N and
 // often zero. The engine applies the limit once the matchers have run.
 func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.SelectSpansetsParams) (iterators.Iterator[traceqlengine.Trace], error) {
+	ctx = queryScope(ctx)
+
 	traceIDs, pushed, err := q.candidateTraces(ctx, params)
 	if err != nil {
 		return nil, err

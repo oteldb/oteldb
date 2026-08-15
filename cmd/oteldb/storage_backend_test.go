@@ -146,6 +146,7 @@ func TestTenancyOption(t *testing.T) {
 				MaxSeries:            1_000_000,
 				MaxSeriesSoft:        800_000,
 				MaxPartSize:          32 << 20,
+				MaxMergePartSize:     512 << 20,
 			},
 		})
 		require.NoError(t, err)
@@ -176,6 +177,9 @@ func TestTenancyOption(t *testing.T) {
 		require.Equal(t, int64(1_000_000), p.Limits.MaxSeries)
 		require.Equal(t, int64(800_000), p.Limits.MaxSeriesSoft)
 		require.Equal(t, int64(32<<20), p.Limits.MaxPartSize)
+		// Merged parts are capped separately, on disk rather than uncompressed; leaving it zero
+		// derives the cap from free space instead.
+		require.Equal(t, int64(512<<20), p.Limits.MaxMergePartSize)
 	})
 
 	t.Run("RetentionOnlyInstallsResolver", func(t *testing.T) {
@@ -366,6 +370,18 @@ func TestResolveCacheSettings(t *testing.T) {
 		require.Greater(t, s.ReadCache, int64(0))
 		require.Greater(t, s.DecodeCache, int64(0))
 		require.Greater(t, s.DecodeMemory, int64(0))
+		// Merge memory is the exception: unset stays 0 so the library derives it.
+		require.Equal(t, int64(0), s.MergeMemory)
+	})
+
+	t.Run("MergeMemoryPassesThrough", func(t *testing.T) {
+		mm := xbytes.Bytes(4 << 20)
+		s := resolveCacheSettings(StorageConfig{MergeMemoryBytes: &mm})
+		require.Equal(t, int64(4<<20), s.MergeMemory)
+
+		unbounded := xbytes.Bytes(-1)
+		s = resolveCacheSettings(StorageConfig{MergeMemoryBytes: &unbounded})
+		require.Equal(t, int64(-1), s.MergeMemory, "negative means unbounded, not unset")
 	})
 
 	t.Run("ExplicitSizesHonored", func(t *testing.T) {
@@ -472,11 +488,19 @@ func TestCacheOptions(t *testing.T) {
 	}
 
 	t.Run("Enabled", func(t *testing.T) {
-		o := apply(t, cacheOptions(cacheSettings{ReadCache: 100, DecodeCache: 200, DecodeMemory: 300, AggregateStats: true}))
+		o := apply(t, cacheOptions(cacheSettings{
+			ReadCache: 100, DecodeCache: 200, DecodeMemory: 300, MergeMemory: 400, AggregateStats: true,
+		}))
 		require.Equal(t, int64(100), o.ReadCacheBytes)
 		require.Equal(t, int64(200), o.DecodeCacheBytes)
 		require.Equal(t, int64(300), o.DecodeMemoryBytes)
+		require.Equal(t, int64(400), o.MergeMemoryBytes)
 		require.True(t, o.AggregateStats)
+	})
+
+	t.Run("MergeMemoryUnsetLeavesLibraryDefault", func(t *testing.T) {
+		o := apply(t, cacheOptions(cacheSettings{DecodeMemory: 300}))
+		require.Equal(t, int64(0), o.MergeMemoryBytes, "0 lets storage size merge memory from GOMEMLIMIT")
 	})
 
 	t.Run("AggregateStatsOffOmitsSidecar", func(t *testing.T) {

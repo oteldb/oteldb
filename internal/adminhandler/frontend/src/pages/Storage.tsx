@@ -149,6 +149,31 @@ const SIGNAL_COLUMNS: TableColumnConfig<EngineSignalStats>[] = [
       </Flex>
     ),
   },
+  { id: "sealed_parts", name: head("sealed"), align: "end", template: (s) => fmtNum(s.sealed_parts) },
+  {
+    id: "merge",
+    name: head("merge backlog"),
+    align: "end",
+    // Backlog with no candidates is the stuck state: parts a merge may still take, none of which
+    // any run qualifies to select, so every cycle is a no-op and the part count never falls.
+    // storage-compact on the Maintenance page is what breaks it.
+    template: (s) => (
+      <Flex alignItems="center" gap={2} justifyContent="flex-end">
+        <Mono>
+          {fmtNum(s.merge_backlog)} / {fmtNum(s.merge_candidates)}
+        </Mono>
+        {s.merge_backlog > 0 && s.merge_candidates === 0 && !s.merge_running ? (
+          <Chip theme="warning">stuck</Chip>
+        ) : null}
+      </Flex>
+    ),
+  },
+  {
+    id: "merge_cap_bytes",
+    name: head("merge cap"),
+    align: "end",
+    template: (s) => (s.merge_cap_bytes > 0 ? fmtBytes(s.merge_cap_bytes) : "—"),
+  },
   {
     id: "wal",
     name: head("WAL"),

@@ -115,6 +115,7 @@ func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger,
 		zap.Int64("read_cache_bytes", caches.ReadCache),
 		zap.Int64("decode_cache_bytes", caches.DecodeCache),
 		zap.Int64("decode_memory_bytes", caches.DecodeMemory),
+		zap.Int64("merge_memory_bytes", caches.MergeMemory),
 		zap.Bool("aggregate_stats", caches.AggregateStats),
 	)
 	b := storagebackend.New(store,
@@ -218,6 +219,7 @@ type cacheSettings struct {
 	ReadCache      int64
 	DecodeCache    int64
 	DecodeMemory   int64
+	MergeMemory    int64
 	AggregateStats bool
 }
 
@@ -236,6 +238,9 @@ func resolveCacheSettings(cfg StorageConfig) cacheSettings {
 	s.DecodeMemory = resolveCacheBytes(cfg.DecodeMemoryBytes, func() int64 {
 		return defaultDecodeMemoryBytes(s.ReadCache, s.DecodeCache)
 	})
+	// Merge memory has no oteldb-side default: unset stays 0, which the library resolves from the
+	// same memory limit this file's defaults are derived from.
+	s.MergeMemory = resolveCacheBytes(cfg.MergeMemoryBytes, func() int64 { return 0 })
 	return s
 }
 
@@ -245,6 +250,9 @@ func cacheOptions(s cacheSettings) []storage.Option {
 		storage.WithReadCache(s.ReadCache),
 		storage.WithDecodeCache(s.DecodeCache),
 		storage.WithDecodeMemory(s.DecodeMemory),
+	}
+	if s.MergeMemory != 0 {
+		opts = append(opts, storage.WithMergeMemory(s.MergeMemory))
 	}
 	if s.AggregateStats {
 		opts = append(opts, storage.WithAggregateStats())

@@ -35,6 +35,8 @@ func (s *ActionName) Decode(d *jx.Decoder) error {
 		*s = ActionNameFreeOsMemory
 	case ActionNameStorageMaintain:
 		*s = ActionNameStorageMaintain
+	case ActionNameStorageCompact:
+		*s = ActionNameStorageCompact
 	default:
 		*s = ActionName(v)
 	}
@@ -1557,6 +1559,10 @@ func (s *EngineSignalStats) encodeFields(e *jx.Encoder) {
 		e.Int64(s.Parts)
 	}
 	{
+		e.FieldStart("sealed_parts")
+		e.Int64(s.SealedParts)
+	}
+	{
 		if s.MinTime.Set {
 			e.FieldStart("min_time")
 			s.MinTime.Encode(e, json.EncodeDateTime)
@@ -1577,6 +1583,14 @@ func (s *EngineSignalStats) encodeFields(e *jx.Encoder) {
 		e.Int64(s.MergeBacklog)
 	}
 	{
+		e.FieldStart("merge_candidates")
+		e.Int64(s.MergeCandidates)
+	}
+	{
+		e.FieldStart("merge_cap_bytes")
+		e.Int64(s.MergeCapBytes)
+	}
+	{
 		e.FieldStart("wal")
 		e.Bool(s.Wal)
 	}
@@ -1590,19 +1604,22 @@ func (s *EngineSignalStats) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfEngineSignalStats = [12]string{
+var jsonFieldsNameOfEngineSignalStats = [15]string{
 	0:  "signal",
 	1:  "series",
 	2:  "head_items",
 	3:  "head_bytes",
 	4:  "parts",
-	5:  "min_time",
-	6:  "max_time",
-	7:  "merge_running",
-	8:  "merge_backlog",
-	9:  "wal",
-	10: "wal_segments",
-	11: "wal_bytes",
+	5:  "sealed_parts",
+	6:  "min_time",
+	7:  "max_time",
+	8:  "merge_running",
+	9:  "merge_backlog",
+	10: "merge_candidates",
+	11: "merge_cap_bytes",
+	12: "wal",
+	13: "wal_segments",
+	14: "wal_bytes",
 }
 
 // Decode decodes EngineSignalStats from json.
@@ -1672,6 +1689,18 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"parts\"")
 			}
+		case "sealed_parts":
+			requiredBitSet[0] |= 1 << 5
+			if err := func() error {
+				v, err := d.Int64()
+				s.SealedParts = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"sealed_parts\"")
+			}
 		case "min_time":
 			if err := func() error {
 				s.MinTime.Reset()
@@ -1693,7 +1722,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"max_time\"")
 			}
 		case "merge_running":
-			requiredBitSet[0] |= 1 << 7
+			requiredBitSet[1] |= 1 << 0
 			if err := func() error {
 				v, err := d.Bool()
 				s.MergeRunning = bool(v)
@@ -1705,7 +1734,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"merge_running\"")
 			}
 		case "merge_backlog":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[1] |= 1 << 1
 			if err := func() error {
 				v, err := d.Int64()
 				s.MergeBacklog = int64(v)
@@ -1716,8 +1745,32 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"merge_backlog\"")
 			}
+		case "merge_candidates":
+			requiredBitSet[1] |= 1 << 2
+			if err := func() error {
+				v, err := d.Int64()
+				s.MergeCandidates = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"merge_candidates\"")
+			}
+		case "merge_cap_bytes":
+			requiredBitSet[1] |= 1 << 3
+			if err := func() error {
+				v, err := d.Int64()
+				s.MergeCapBytes = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"merge_cap_bytes\"")
+			}
 		case "wal":
-			requiredBitSet[1] |= 1 << 1
+			requiredBitSet[1] |= 1 << 4
 			if err := func() error {
 				v, err := d.Bool()
 				s.Wal = bool(v)
@@ -1729,7 +1782,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"wal\"")
 			}
 		case "wal_segments":
-			requiredBitSet[1] |= 1 << 2
+			requiredBitSet[1] |= 1 << 5
 			if err := func() error {
 				v, err := d.Int64()
 				s.WalSegments = int64(v)
@@ -1741,7 +1794,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"wal_segments\"")
 			}
 		case "wal_bytes":
-			requiredBitSet[1] |= 1 << 3
+			requiredBitSet[1] |= 1 << 6
 			if err := func() error {
 				v, err := d.Int64()
 				s.WalBytes = int64(v)
@@ -1762,8 +1815,8 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [2]uint8{
-		0b10011111,
-		0b00001111,
+		0b00111111,
+		0b01111111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

@@ -374,8 +374,11 @@ components:
         - head_items
         - head_bytes
         - parts
+        - sealed_parts
         - merge_running
         - merge_backlog
+        - merge_candidates
+        - merge_cap_bytes
         - wal
         - wal_segments
         - wal_bytes
@@ -398,6 +401,10 @@ components:
           type: integer
           format: int64
           description: "Flushed immutable parts."
+        sealed_parts:
+          type: integer
+          format: int64
+          description: "Parts already at the merge cap, which no merge reconsiders."
         min_time:
           type: string
           format: date-time
@@ -409,6 +416,19 @@ components:
         merge_backlog:
           type: integer
           format: int64
+          description: "Unsealed parts a merge may still take (parts - sealed_parts)."
+        merge_candidates:
+          type: integer
+          format: int64
+          description: >
+            Parts the next merge would select. Zero with a non-zero merge_backlog is the stuck
+            state: parts remain mergeable but none qualify, which storage-compact overrides.
+        merge_cap_bytes:
+          type: integer
+          format: int64
+          description: >
+            Seal threshold in effect for a merged part. Derived per merge for metrics, so it reads
+            0 until the engine's first merge.
         wal:
           type: boolean
           description: "Whether a write-ahead log is active for this signal."
@@ -737,6 +757,7 @@ components:
         - gc
         - free-os-memory
         - storage-maintain
+        - storage-compact
     ActionResult:
       type: object
       required:

@@ -17,6 +17,8 @@ func (s ActionName) Validate() error {
 		return nil
 	case "storage-maintain":
 		return nil
+	case "storage-compact":
+		return nil
 	default:
 		return errors.Errorf("invalid value: %v", s)
 	}
