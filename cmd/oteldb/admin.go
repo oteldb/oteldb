@@ -33,6 +33,7 @@ func (app *App) setupAdmin() error {
 		opts.Engine = b
 		opts.StorageBackend = app.cfg.Storage.Backend
 		opts.Maintain = b.MaintainNow
+		opts.Compact = b.CompactNow
 	}
 	if app.chClient != nil {
 		opts.CHStorage = adminhandler.NewCHStorageStats(app.chClient)

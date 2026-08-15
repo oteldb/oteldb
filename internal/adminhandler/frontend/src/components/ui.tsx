@@ -114,9 +114,18 @@ export function StatusLabel({ status }: { status: HealthStatus }) {
   return <Label theme={HEALTH_THEMES[status] ?? "unknown"}>{status}</Label>;
 }
 
-export function Chip({ on, children }: { on?: boolean; children: ReactNode }) {
+export function Chip({
+  on,
+  theme,
+  children,
+}: {
+  on?: boolean;
+  /** Overrides the on/off theme, for a chip that reports a condition rather than a toggle. */
+  theme?: LabelProps["theme"];
+  children: ReactNode;
+}) {
   return (
-    <Label theme={on ? "info" : "unknown"} size="xs">
+    <Label theme={theme ?? (on ? "info" : "unknown")} size="xs">
       {children}
     </Label>
   );

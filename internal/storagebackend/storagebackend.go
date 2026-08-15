@@ -121,6 +121,30 @@ func (b *Backend) MaintainNow(ctx context.Context) error {
 	return b.store.Admin().MaintainNow(ctx)
 }
 
+// CompactNow forces one compaction of every (tenant, signal) this node holds, overriding the merge
+// selector's heuristic. It is the escape from the fixed point a maintenance cycle cannot break by
+// itself: parts remain mergeable (MergeBacklog > 0) but no run of them qualifies
+// (MergeCandidates == 0), so every cycle selects nothing and the part count never falls.
+//
+// Only the selection is overridden — the seal threshold and the merge memory bound still apply, so
+// this reads and holds no more than a background merge. One pass compacts one group per signal;
+// call it again to make further progress. Shards this node is not the compaction owner of are
+// skipped rather than failing the whole pass.
+func (b *Backend) CompactNow(ctx context.Context) error {
+	admin := b.store.Admin()
+	for _, t := range b.store.Inspect().Tenants {
+		for _, s := range t.Signals {
+			if err := admin.CompactNow(ctx, t.Tenant, s.Signal); err != nil {
+				if errors.Is(err, storage.ErrNotOwner) {
+					continue
+				}
+				return errors.Wrapf(err, "compact %s/%s", t.Tenant, s.Signal)
+			}
+		}
+	}
+	return nil
+}
+
 // queryable builds a fresh Prometheus queryable over the engine's current data. A new
 // fetcher is taken per query so reads observe the latest head and flushed parts, but the
 // Backend-lifetime label cache (b.labels) is shared across queries so series label projections are

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Flex, Icon, Text, useToaster } from "@gravity-ui/uikit";
-import { BroomMotion, TrashBin, Wrench } from "@gravity-ui/icons";
+import { BroomMotion, Layers3Diagonal, TrashBin, Wrench } from "@gravity-ui/icons";
 import type { IconData } from "@gravity-ui/uikit";
 import { useGetInfo, useRunAction } from "../api/admin";
 import { Panel } from "../components/ui";
@@ -20,6 +20,13 @@ const ACTIONS: {
     label: "Run storage maintenance",
     icon: Wrench,
     hint: "Forces a merge and flush pass on the embedded engine.",
+    needsStorage: true,
+  },
+  {
+    action: "storage-compact",
+    label: "Force compaction",
+    icon: Layers3Diagonal,
+    hint: "Merges parts the selector declines to pick. Use when a signal shows a merge backlog with no candidates.",
     needsStorage: true,
   },
   {

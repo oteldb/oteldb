@@ -108,6 +108,23 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
   differently for `count` vs `sum` vs `rate`), so the correct home is either a weight-aware fold
   in the library `query/promql` queryable or a dedicated pushdown — a design decision deferred
   with sampling itself.
+- **Merge memory:** `storage.merge_memory_bytes` (→ `storage.WithMergeMemory`) caps what all
+  concurrent merges together hold, and with it the size a merged part reaches before it is sealed.
+  It is the write-side counterpart of `decode_memory_bytes`: on a backend that takes objects whole
+  a merge buffers its output part encoded in RAM, so free space alone cannot bound it. Unlike the
+  caches oteldb adds no default — unset passes 0 through and the library derives a share of
+  `GOMEMLIMIT`; negative is unbounded.
+- **Decode scope:** the record queriers install a `fetch.Scope` on the context
+  (`internal/storagebackend/scope.go`) so the reads of one engine call are admitted against the
+  decode budget once. The metrics path threads a `Scope` through `fetch.Request` directly. The
+  boundary is one engine call, not one HTTP request: the LogQL/TraceQL engines own the per-request
+  boundary above the querier, so a query evaluating several pipeline nodes still opens a scope per
+  node.
+- **Merge visibility:** `SignalStats` reports `SealedParts`, `MergeBacklog` (now parts − sealed,
+  not the part count), `MergeCandidates` and `MergeCapBytes`; the admin API surfaces all four and
+  the Storage page flags backlog-with-no-candidates as *stuck*. The `storage-compact` action calls
+  `Admin.CompactNow`, which overrides only the selection heuristic — the seal threshold and merge
+  memory bound still apply — and is the escape from that fixed point.
 - **Cluster:** aggregate fan-out is automatic — just call the facade per tenant.
 - **Metadata:** querier `LabelValues` / `LabelNames` are implemented in the promql `Queryable`
   adapter. Since oteldb/storage#262 they answer from the postings index rather than draining

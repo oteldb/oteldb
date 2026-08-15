@@ -23,6 +23,7 @@ type fakeEngine struct {
 	stats      storage.StoreStats
 	efficiency []storage.TenantEfficiency
 	maintains  int
+	compacts   int
 }
 
 func (f *fakeEngine) Inspect() storage.StoreStats { return f.stats }
@@ -92,6 +93,10 @@ func TestAdmin_EngineStorage(t *testing.T) {
 				HeadItems:       5,
 				HeadBytes:       2048,
 				Parts:           3,
+				SealedParts:     2,
+				MergeBacklog:    1,
+				MergeCandidates: 0,
+				MergeCapBytes:   128 << 20,
 				MinTimeUnixNano: time.Unix(1700000000, 0).UnixNano(),
 				MaxTimeUnixNano: time.Unix(1700003600, 0).UnixNano(),
 				WAL:             true,
@@ -134,6 +139,10 @@ func TestAdmin_EngineStorage(t *testing.T) {
 	require.Len(t, tn.Signals, 1)
 	assert.Equal(t, adminapi.SignalMetrics, tn.Signals[0].Signal)
 	assert.True(t, tn.Signals[0].MinTime.Set)
+	assert.Equal(t, int64(2), tn.Signals[0].SealedParts)
+	assert.Equal(t, int64(1), tn.Signals[0].MergeBacklog)
+	assert.Equal(t, int64(0), tn.Signals[0].MergeCandidates, "backlog with no candidates is the stuck state")
+	assert.Equal(t, int64(128<<20), tn.Signals[0].MergeCapBytes)
 	assert.Equal(t, int64(80), e.Caches.DecodeCache.Hits)
 	assert.Equal(t, int64(12), e.Maintenance.Cycles)
 	assert.True(t, e.Maintenance.LastCycleStart.Set)
@@ -196,10 +205,11 @@ func TestAdmin_Actions(t *testing.T) {
 	ts := testServer(t, Options{
 		Engine:   eng,
 		Maintain: func(context.Context) error { eng.maintains++; return nil },
+		Compact:  func(context.Context) error { eng.compacts++; return nil },
 	})
 	defer ts.Close()
 
-	for _, action := range []string{"gc", "free-os-memory", "storage-maintain"} {
+	for _, action := range []string{"gc", "free-os-memory", "storage-maintain", "storage-compact"} {
 		resp, err := http.Post(ts.URL+"/api/v1/actions/"+action, "", nil)
 		require.NoError(t, err)
 		var res adminapi.ActionResult
@@ -209,4 +219,17 @@ func TestAdmin_Actions(t *testing.T) {
 		assert.True(t, res.Ok, action)
 	}
 	assert.Equal(t, 1, eng.maintains)
+	assert.Equal(t, 1, eng.compacts)
+}
+
+// TestAdmin_CompactWithoutEngine checks storage-compact fails rather than silently reporting success
+// when no embedded engine is wired.
+func TestAdmin_CompactWithoutEngine(t *testing.T) {
+	ts := testServer(t, Options{})
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/v1/actions/storage-compact", "", nil)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 }

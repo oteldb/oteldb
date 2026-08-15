@@ -68,16 +68,19 @@ func mapTenantStats(t storage.TenantStats) adminapi.TenantStats {
 
 func mapSignalStats(s storage.SignalStats) adminapi.EngineSignalStats {
 	es := adminapi.EngineSignalStats{
-		Signal:       mapSignal(s.Signal),
-		Series:       s.Series,
-		HeadItems:    s.HeadItems,
-		HeadBytes:    s.HeadBytes,
-		Parts:        int64(s.Parts),
-		MergeRunning: s.MergeRunning,
-		MergeBacklog: int64(s.MergeBacklog),
-		Wal:          s.WAL,
-		WalSegments:  int64(s.WALSegments),
-		WalBytes:     s.WALBytes,
+		Signal:          mapSignal(s.Signal),
+		Series:          s.Series,
+		HeadItems:       s.HeadItems,
+		HeadBytes:       s.HeadBytes,
+		Parts:           int64(s.Parts),
+		SealedParts:     int64(s.SealedParts),
+		MergeRunning:    s.MergeRunning,
+		MergeBacklog:    int64(s.MergeBacklog),
+		MergeCandidates: int64(s.MergeCandidates),
+		MergeCapBytes:   s.MergeCapBytes,
+		Wal:             s.WAL,
+		WalSegments:     int64(s.WALSegments),
+		WalBytes:        s.WALBytes,
 	}
 	if s.MinTimeUnixNano > 0 {
 		es.MinTime = adminapi.NewOptDateTime(time.Unix(0, s.MinTimeUnixNano).UTC())
