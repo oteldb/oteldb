@@ -141,16 +141,30 @@ func (s *MetricsSource) loadSeries(ctx context.Context, mint, maxt time.Time) (m
 			chsql.Gte(chsql.Ident("last_seen"), chsql.DateTime64(mint, prec)),
 		)
 
-	out := map[[16]byte]seriesMeta{}
+	var (
+		out = map[[16]byte]seriesMeta{}
+		// The map is retained for the whole scan, so decoded resource/scope maps and metric name
+		// strings would otherwise be held once per series instead of once per distinct value.
+		attrs = newAttrInterner()
+		strs  = map[string]string{}
+	)
+	intern := func(s string) string {
+		if got, ok := strs[s]; ok {
+			return got
+		}
+		strs[s] = s
+		return s
+	}
 	chq, err := query.Prepare(func(ctx context.Context, block proto.Block) error {
+		defer c.Columns().Reset()
 		for i := 0; i < c.hash.Rows(); i++ {
 			out[c.hash.Row(i)] = seriesMeta{
-				name:        c.name.Row(i),
-				unit:        c.unit.Row(i),
-				description: c.description.Row(i),
+				name:        intern(c.name.Row(i)),
+				unit:        intern(c.unit.Row(i)),
+				description: intern(c.description.Row(i)),
 				attrs:       c.attributes.Row(i),
-				scope:       c.scope.Row(i),
-				resource:    c.resource.Row(i),
+				scope:       attrs.intern(c.scope.Row(i)),
+				resource:    attrs.intern(c.resource.Row(i)),
 			}
 		}
 		return nil
