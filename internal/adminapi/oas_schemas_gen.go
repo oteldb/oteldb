@@ -21,6 +21,7 @@ const (
 	ActionNameGc              ActionName = "gc"
 	ActionNameFreeOsMemory    ActionName = "free-os-memory"
 	ActionNameStorageMaintain ActionName = "storage-maintain"
+	ActionNameStorageCompact  ActionName = "storage-compact"
 )
 
 // AllValues returns all ActionName values.
@@ -29,6 +30,7 @@ func (ActionName) AllValues() []ActionName {
 		ActionNameGc,
 		ActionNameFreeOsMemory,
 		ActionNameStorageMaintain,
+		ActionNameStorageCompact,
 	}
 }
 
@@ -40,6 +42,8 @@ func (s ActionName) MarshalText() ([]byte, error) {
 	case ActionNameFreeOsMemory:
 		return []byte(s), nil
 	case ActionNameStorageMaintain:
+		return []byte(s), nil
+	case ActionNameStorageCompact:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -57,6 +61,9 @@ func (s *ActionName) UnmarshalText(data []byte) error {
 		return nil
 	case ActionNameStorageMaintain:
 		*s = ActionNameStorageMaintain
+		return nil
+	case ActionNameStorageCompact:
+		*s = ActionNameStorageCompact
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -560,11 +567,20 @@ type EngineSignalStats struct {
 	// Head buffered bytes.
 	HeadBytes int64 `json:"head_bytes"`
 	// Flushed immutable parts.
-	Parts        int64       `json:"parts"`
+	Parts int64 `json:"parts"`
+	// Parts already at the merge cap, which no merge reconsiders.
+	SealedParts  int64       `json:"sealed_parts"`
 	MinTime      OptDateTime `json:"min_time"`
 	MaxTime      OptDateTime `json:"max_time"`
 	MergeRunning bool        `json:"merge_running"`
-	MergeBacklog int64       `json:"merge_backlog"`
+	// Unsealed parts a merge may still take (parts - sealed_parts).
+	MergeBacklog int64 `json:"merge_backlog"`
+	// Parts the next merge would select. Zero with a non-zero merge_backlog is the stuck state: parts
+	// remain mergeable but none qualify, which storage-compact overrides.
+	MergeCandidates int64 `json:"merge_candidates"`
+	// Seal threshold in effect for a merged part. Derived per merge for metrics, so it reads 0 until the
+	// engine's first merge.
+	MergeCapBytes int64 `json:"merge_cap_bytes"`
 	// Whether a write-ahead log is active for this signal.
 	Wal         bool  `json:"wal"`
 	WalSegments int64 `json:"wal_segments"`
@@ -597,6 +613,11 @@ func (s *EngineSignalStats) GetParts() int64 {
 	return s.Parts
 }
 
+// GetSealedParts returns the value of SealedParts.
+func (s *EngineSignalStats) GetSealedParts() int64 {
+	return s.SealedParts
+}
+
 // GetMinTime returns the value of MinTime.
 func (s *EngineSignalStats) GetMinTime() OptDateTime {
 	return s.MinTime
@@ -615,6 +636,16 @@ func (s *EngineSignalStats) GetMergeRunning() bool {
 // GetMergeBacklog returns the value of MergeBacklog.
 func (s *EngineSignalStats) GetMergeBacklog() int64 {
 	return s.MergeBacklog
+}
+
+// GetMergeCandidates returns the value of MergeCandidates.
+func (s *EngineSignalStats) GetMergeCandidates() int64 {
+	return s.MergeCandidates
+}
+
+// GetMergeCapBytes returns the value of MergeCapBytes.
+func (s *EngineSignalStats) GetMergeCapBytes() int64 {
+	return s.MergeCapBytes
 }
 
 // GetWal returns the value of Wal.
@@ -657,6 +688,11 @@ func (s *EngineSignalStats) SetParts(val int64) {
 	s.Parts = val
 }
 
+// SetSealedParts sets the value of SealedParts.
+func (s *EngineSignalStats) SetSealedParts(val int64) {
+	s.SealedParts = val
+}
+
 // SetMinTime sets the value of MinTime.
 func (s *EngineSignalStats) SetMinTime(val OptDateTime) {
 	s.MinTime = val
@@ -675,6 +711,16 @@ func (s *EngineSignalStats) SetMergeRunning(val bool) {
 // SetMergeBacklog sets the value of MergeBacklog.
 func (s *EngineSignalStats) SetMergeBacklog(val int64) {
 	s.MergeBacklog = val
+}
+
+// SetMergeCandidates sets the value of MergeCandidates.
+func (s *EngineSignalStats) SetMergeCandidates(val int64) {
+	s.MergeCandidates = val
+}
+
+// SetMergeCapBytes sets the value of MergeCapBytes.
+func (s *EngineSignalStats) SetMergeCapBytes(val int64) {
+	s.MergeCapBytes = val
 }
 
 // SetWal sets the value of Wal.

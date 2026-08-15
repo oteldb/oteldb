@@ -18,4 +18,5 @@ export const ActionName = {
   gc: 'gc',
   'free-os-memory': 'free-os-memory',
   'storage-maintain': 'storage-maintain',
+  'storage-compact': 'storage-compact',
 } as const;

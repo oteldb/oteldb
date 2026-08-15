@@ -21,10 +21,19 @@ export interface EngineSignalStats {
   head_bytes: number;
   /** Flushed immutable parts. */
   parts: number;
+  /** Parts already at the merge cap, which no merge reconsiders. */
+  sealed_parts: number;
   min_time?: string;
   max_time?: string;
   merge_running: boolean;
+  /** Unsealed parts a merge may still take (parts - sealed_parts). */
   merge_backlog: number;
+  /** Parts the next merge would select. Zero with a non-zero merge_backlog is the stuck state: parts remain mergeable but none qualify, which storage-compact overrides.
+ */
+  merge_candidates: number;
+  /** Seal threshold in effect for a merged part. Derived per merge for metrics, so it reads 0 until the engine's first merge.
+ */
+  merge_cap_bytes: number;
   /** Whether a write-ahead log is active for this signal. */
   wal: boolean;
   wal_segments: number;
