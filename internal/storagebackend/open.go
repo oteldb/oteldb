@@ -1,4 +1,4 @@
-package main
+package storagebackend
 
 import (
 	"cmp"
@@ -27,14 +27,13 @@ import (
 	"github.com/oteldb/storage/cluster/etcd"
 	"github.com/oteldb/storage/reliability"
 
-	"github.com/oteldb/oteldb/internal/storagebackend"
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
-// setupStorageBackend constructs the embedded storage engine and an adapter implementing
+// Open constructs the embedded storage engine and an adapter implementing
 // oteldb's metric query and ingestion interfaces. The returned close func stops and flushes
 // the engine. It is used when [Config.MetricsBackend] is [MetricsBackendStorage].
-func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger, m *app.Telemetry) (*storagebackend.Backend, func(context.Context) error, error) {
+func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*Backend, func(context.Context) error, error) {
 	// The engine logs, traces, and meters through the injected providers (no-op if absent).
 	opts := []storage.Option{
 		storage.WithLogger(lg),
@@ -118,8 +117,8 @@ func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger,
 		zap.Int64("merge_memory_bytes", caches.MergeMemory),
 		zap.Bool("aggregate_stats", caches.AggregateStats),
 	)
-	b := storagebackend.New(store,
-		storagebackend.WithLogParallelism(cfg.LogQueryParallelism),
+	b := New(store,
+		WithLogParallelism(cfg.LogQueryParallelism),
 	)
 	return b, store.Close, nil
 }
@@ -127,7 +126,7 @@ func setupStorageBackend(ctx context.Context, cfg StorageConfig, lg *zap.Logger,
 // clusterOption builds the storage cluster option from the config, or returns (nil, nil) when
 // clustering is not configured (no etcd endpoints). The node identity and replication address
 // default to the OS hostname, so every node in a deployment can share one config file.
-func clusterOption(cfg *StorageClusterConfig, lg *zap.Logger) (storage.Option, error) {
+func clusterOption(cfg *ClusterConfig, lg *zap.Logger) (storage.Option, error) {
 	if cfg == nil || len(cfg.Etcd) == 0 {
 		return nil, nil
 	}
@@ -170,7 +169,7 @@ func clusterOption(cfg *StorageClusterConfig, lg *zap.Logger) (storage.Option, e
 // s3Backend builds the embedded storage engine's S3 object-store backend from the config. It uses
 // static credentials when both keys are set, otherwise the default AWS credential chain
 // (environment, shared config, IAM role), and applies the requested resilience profile.
-func s3Backend(ctx context.Context, cfg *StorageS3Config) (backend.Backend, error) {
+func s3Backend(ctx context.Context, cfg *S3Config) (backend.Backend, error) {
 	if cfg == nil || cfg.Bucket == "" {
 		return nil, errors.New("storage.s3.bucket is required for the s3 backend")
 	}
@@ -227,7 +226,7 @@ type cacheSettings struct {
 // from the Go memory limit (e.g. a cgroup limit applied by automemlimit), falling back to
 // conservative absolute defaults when no limit is detectable. An explicit zero byte size disables
 // that cache, and an explicit AggregateStats=false disables the sidecar.
-func resolveCacheSettings(cfg StorageConfig) cacheSettings {
+func resolveCacheSettings(cfg Config) cacheSettings {
 	s := cacheSettings{
 		ReadCache:      resolveCacheBytes(cfg.ReadCacheBytes, defaultReadCacheBytes),
 		DecodeCache:    resolveCacheBytes(cfg.DecodeCacheBytes, defaultDecodeCacheBytes),
