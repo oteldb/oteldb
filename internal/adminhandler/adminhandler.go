@@ -12,6 +12,7 @@ import (
 	"github.com/go-faster/errors"
 
 	"github.com/oteldb/storage"
+	"github.com/oteldb/storage/signal"
 
 	"github.com/oteldb/oteldb/internal/adminapi"
 )
@@ -54,11 +55,14 @@ type Options struct {
 	CHStorage StorageStatsCollector
 }
 
-// EngineStatsProvider exposes embedded-storage engine statistics: the in-memory Inspect snapshot
-// and the I/O-bound efficiency breakdown.
+// EngineStatsProvider exposes embedded-storage engine statistics: the in-memory Inspect snapshot,
+// the I/O-bound efficiency breakdown, and the decode-bound per-stream cost attribution.
 type EngineStatsProvider interface {
 	Inspect() storage.StoreStats
 	EfficiencyStats(ctx context.Context) ([]storage.TenantEfficiency, error)
+	StreamCosts(
+		ctx context.Context, tenant signal.TenantID, sig signal.Signal, opts storage.StreamCostOptions,
+	) ([]storage.StreamCost, error)
 }
 
 // BuildInfo is static build information about the running binary.

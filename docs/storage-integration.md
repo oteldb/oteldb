@@ -125,6 +125,13 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
   the Storage page flags backlog-with-no-candidates as *stuck*. The `storage-compact` action calls
   `Admin.CompactNow`, which overrides only the selection heuristic — the seal threshold and merge
   memory bound still apply — and is the escape from that fixed point.
+- **Stream costs:** `Storage.StreamCosts` attributes a record signal's parts to streams, or to a
+  stream label's values, with per-column distinct estimates. Exposed as
+  `GET /api/v1/storage/stream-costs` and the admin UI's Stream costs page. It is the heaviest call
+  the library exposes — every accounted byte column of every live part is decoded once — so the
+  page runs it only on an explicit Analyze, never on mount, focus or interval, and the endpoint
+  bounds an unset `top_n` to 20. The signal parameter is a `RecordSignal` (traces/logs/profiles):
+  metrics carry no per-record columns, so the library's rejection of them is unrepresentable here.
 - **Cluster:** aggregate fan-out is automatic — just call the facade per tenant.
 - **Metadata:** querier `LabelValues` / `LabelNames` are implemented in the promql `Queryable`
   adapter. Since oteldb/storage#262 they answer from the postings index rather than draining

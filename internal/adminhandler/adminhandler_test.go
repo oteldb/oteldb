@@ -24,12 +24,27 @@ type fakeEngine struct {
 	efficiency []storage.TenantEfficiency
 	maintains  int
 	compacts   int
+
+	costs    []storage.StreamCost
+	costsErr error
+	// costOpts records the options of the last StreamCosts call, so a test can assert what the
+	// handler resolved query parameters to.
+	costOpts storage.StreamCostOptions
+	costSig  signal.Signal
+	costTid  signal.TenantID
 }
 
 func (f *fakeEngine) Inspect() storage.StoreStats { return f.stats }
 
 func (f *fakeEngine) EfficiencyStats(context.Context) ([]storage.TenantEfficiency, error) {
 	return f.efficiency, nil
+}
+
+func (f *fakeEngine) StreamCosts(
+	_ context.Context, tenant signal.TenantID, sig signal.Signal, opts storage.StreamCostOptions,
+) ([]storage.StreamCost, error) {
+	f.costTid, f.costSig, f.costOpts = tenant, sig, opts
+	return f.costs, f.costsErr
 }
 
 func testServer(t *testing.T, opts Options) *httptest.Server {
@@ -232,4 +247,74 @@ func TestAdmin_CompactWithoutEngine(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+}
+
+func TestAdmin_StreamCosts(t *testing.T) {
+	eng := &fakeEngine{costs: []storage.StreamCost{{
+		Key: "checkout", Streams: 3, Rows: 1000, RawBytes: 4096, DiskBytes: 512,
+		DistinctEstimated: true,
+		Columns: []storage.ColumnCost{{
+			Name: "body", RawBytes: 4000, DiskBytes: 500, Distinct: 998, DistinctNormalized: 2,
+		}},
+	}}}
+	ts := testServer(t, Options{Engine: eng})
+	defer ts.Close()
+
+	var sc adminapi.StreamCosts
+	get(t, ts.URL, "/api/v1/storage/stream-costs?signal=logs&group_by=service.name", &sc)
+	require.True(t, sc.StorageEnabled)
+	assert.Equal(t, adminapi.RecordSignalLogs, sc.Signal)
+	require.Len(t, sc.Groups, 1)
+	g := sc.Groups[0]
+	assert.Equal(t, "checkout", g.Key)
+	assert.Equal(t, int64(3), g.Streams)
+	assert.Equal(t, int64(4096), g.RawBytes)
+	assert.True(t, g.DistinctEstimated)
+	require.Len(t, g.Columns, 1)
+	// A large distinct with a tiny normalized distinct is the mis-parsed-source diagnosis.
+	assert.Equal(t, int64(998), g.Columns[0].Distinct)
+	assert.Equal(t, int64(2), g.Columns[0].DistinctNormalized)
+
+	assert.Equal(t, signal.Log, eng.costSig)
+	assert.Equal(t, "service.name", eng.costOpts.GroupBy)
+	assert.Equal(t, defaultStreamCostTopN, eng.costOpts.TopN, "an unset top_n is bounded, not unbounded")
+	assert.Empty(t, eng.costOpts.Columns)
+}
+
+func TestAdmin_StreamCostsParams(t *testing.T) {
+	eng := &fakeEngine{}
+	ts := testServer(t, Options{Engine: eng})
+	defer ts.Close()
+
+	var sc adminapi.StreamCosts
+	get(t, ts.URL, "/api/v1/storage/stream-costs?signal=traces&tenant=other&columns=body&columns=name&top_n=0", &sc)
+	assert.Equal(t, signal.Trace, eng.costSig)
+	assert.Equal(t, signal.TenantID("other"), eng.costTid)
+	assert.Equal(t, []string{"body", "name"}, eng.costOpts.Columns)
+	assert.Equal(t, 0, eng.costOpts.TopN, "an explicit 0 returns every group")
+	assert.Empty(t, sc.Groups)
+}
+
+// TestAdmin_StreamCostsRejectsMetrics checks metrics are unrepresentable in the signal enum, so the
+// storage library's rejection of them is never reached through this API.
+func TestAdmin_StreamCostsRejectsMetrics(t *testing.T) {
+	ts := testServer(t, Options{Engine: &fakeEngine{}})
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/v1/storage/stream-costs?signal=metrics")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.NotEqual(t, http.StatusOK, resp.StatusCode)
+}
+
+// TestAdmin_StreamCostsWithoutEngine checks the endpoint reports storage as disabled rather than
+// failing when no embedded engine is wired.
+func TestAdmin_StreamCostsWithoutEngine(t *testing.T) {
+	ts := testServer(t, Options{})
+	defer ts.Close()
+
+	var sc adminapi.StreamCosts
+	get(t, ts.URL, "/api/v1/storage/stream-costs?signal=logs", &sc)
+	assert.False(t, sc.StorageEnabled)
+	assert.Empty(t, sc.Groups)
 }

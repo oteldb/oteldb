@@ -10,6 +10,7 @@ import {
   Database,
   Display,
   HeartPulse,
+  Layers3Diagonal,
   Moon,
   Sun,
   Wrench,
@@ -30,12 +31,16 @@ const Storage = lazy(() => import("./pages/Storage").then((m) => ({ default: m.S
 const Maintenance = lazy(() =>
   import("./pages/Maintenance").then((m) => ({ default: m.Maintenance })),
 );
+const StreamCosts = lazy(() =>
+  import("./pages/StreamCosts").then((m) => ({ default: m.StreamCosts })),
+);
 
 const NAV = [
   { id: "/", title: "Overview", icon: ChartMixed },
   { id: "/runtime", title: "Runtime", icon: Cpu },
   { id: "/health", title: "Health", icon: HeartPulse },
   { id: "/storage", title: "Storage", icon: Database },
+  { id: "/stream-costs", title: "Stream costs", icon: Layers3Diagonal },
   { id: "/maintenance", title: "Maintenance", icon: Wrench },
 ];
 
@@ -111,6 +116,7 @@ export default function App() {
               <Route path="/runtime" element={<Runtime />} />
               <Route path="/health" element={<Health />} />
               <Route path="/storage" element={<Storage />} />
+              <Route path="/stream-costs" element={<StreamCosts />} />
               <Route path="/maintenance" element={<Maintenance />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
