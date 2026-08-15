@@ -81,6 +81,8 @@ func (n *logStreamNode) Traverse(cb logqlengine.NodeVisitor) error { return cb(n
 // The fetch answers with a superset (it keeps every row tying at the boundary timestamp), so the
 // sort+truncate below still decides the exact result.
 func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.EvalParams) (logqlengine.EntryIterator, error) {
+	ctx = queryScope(ctx)
+
 	lo, hi := fetchWindow(params.Start, params.End)
 	batches, _, err := n.fetchBatches(ctx, lo, hi, fetchOptions{
 		limit:   params.Limit,

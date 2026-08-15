@@ -97,6 +97,8 @@ func (q *ProfileQuerier) LabelValues(ctx context.Context, label string, opts pro
 // each sample's content-addressed stack to function frames, and merges them into a single
 // flamegraph tree.
 func (q *ProfileQuerier) SelectMergeProfile(ctx context.Context, params profilestorage.SelectProfileParams) (*profilestorage.FlameTree, error) {
+	ctx = queryScope(ctx)
+
 	matchers, err := profileFetchMatchers(&params.Type, params.Matchers)
 	if err != nil {
 		return nil, err
