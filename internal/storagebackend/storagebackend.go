@@ -121,6 +121,22 @@ func (b *Backend) MaintainNow(ctx context.Context) error {
 	return b.store.Admin().MaintainNow(ctx)
 }
 
+// StreamCosts attributes a record signal's flushed parts to streams — or, with opts.GroupBy, to a
+// stream label's values. An empty tenant selects the backend's own.
+//
+// It is the heaviest call the storage library exposes: every accounted byte column of every live
+// part is read and decoded once. Serve it on operator demand, never on a poll, and narrow it with
+// opts.Columns when only one column is in question. Metrics are rejected by the library — their
+// samples carry no per-record columns to attribute.
+func (b *Backend) StreamCosts(
+	ctx context.Context, tenant signal.TenantID, sig signal.Signal, opts storage.StreamCostOptions,
+) ([]storage.StreamCost, error) {
+	if tenant == "" {
+		tenant = b.tenant
+	}
+	return b.store.StreamCosts(ctx, tenant, sig, opts)
+}
+
 // CompactNow forces one compaction of every (tenant, signal) this node holds, overriding the merge
 // selector's heuristic. It is the escape from the fixed point a maintenance cycle cannot break by
 // itself: parts remain mergeable (MergeBacklog > 0) but no run of them qualifies

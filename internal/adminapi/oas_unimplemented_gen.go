@@ -62,6 +62,19 @@ func (UnimplementedHandler) GetStorage(ctx context.Context) (r *StorageStats, _ 
 	return r, ht.ErrNotImplemented
 }
 
+// GetStreamCosts implements getStreamCosts operation.
+//
+// Breaks a record signal's flushed parts down by stream, or by a stream label's values: rows, decoded
+// bytes, an approximate compressed share, and per-column distinct estimates. This is the heaviest call
+// the storage engine exposes — every accounted byte column of every live part is read and decoded
+// once — so it is an on-demand drill-down, not something to poll. Narrow it with `columns` when only
+// one column is in question.
+//
+// GET /api/v1/storage/stream-costs
+func (UnimplementedHandler) GetStreamCosts(ctx context.Context, params GetStreamCostsParams) (r *StreamCosts, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // RunAction implements runAction operation.
 //
 // Execute a maintenance action against the running process.

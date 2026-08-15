@@ -62,6 +62,16 @@ type Invoker interface {
 	//
 	// GET /api/v1/storage
 	GetStorage(ctx context.Context) (*StorageStats, error)
+	// GetStreamCosts invokes getStreamCosts operation.
+	//
+	// Breaks a record signal's flushed parts down by stream, or by a stream label's values: rows, decoded
+	// bytes, an approximate compressed share, and per-column distinct estimates. This is the heaviest call
+	// the storage engine exposes — every accounted byte column of every live part is read and decoded
+	// once — so it is an on-demand drill-down, not something to poll. Narrow it with `columns` when only
+	// one column is in question.
+	//
+	// GET /api/v1/storage/stream-costs
+	GetStreamCosts(ctx context.Context, params GetStreamCostsParams) (*StreamCosts, error)
 	// RunAction invokes runAction operation.
 	//
 	// Execute a maintenance action against the running process.
@@ -506,6 +516,185 @@ func (c *Client) sendGetStorage(ctx context.Context) (res *StorageStats, err err
 
 	stage = "DecodeResponse"
 	result, err := decodeGetStorageResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetStreamCosts invokes getStreamCosts operation.
+//
+// Breaks a record signal's flushed parts down by stream, or by a stream label's values: rows, decoded
+// bytes, an approximate compressed share, and per-column distinct estimates. This is the heaviest call
+// the storage engine exposes — every accounted byte column of every live part is read and decoded
+// once — so it is an on-demand drill-down, not something to poll. Narrow it with `columns` when only
+// one column is in question.
+//
+// GET /api/v1/storage/stream-costs
+func (c *Client) GetStreamCosts(ctx context.Context, params GetStreamCostsParams) (*StreamCosts, error) {
+	res, err := c.sendGetStreamCosts(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetStreamCosts(ctx context.Context, params GetStreamCostsParams) (res *StreamCosts, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getStreamCosts"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/api/v1/storage/stream-costs"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetStreamCostsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/api/v1/storage/stream-costs"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "signal" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "signal",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(string(params.Signal)))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "tenant" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "tenant",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Tenant.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "group_by" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "group_by",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.GroupBy.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "columns" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "columns",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if params.Columns != nil {
+				return e.EncodeArray(func(e uri.Encoder) error {
+					for i, item := range params.Columns {
+						if err := func() error {
+							return e.EncodeValue(conv.StringToString(item))
+						}(); err != nil {
+							return errors.Wrapf(err, "[%d]", i)
+						}
+					}
+					return nil
+				})
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "top_n" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "top_n",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.TopN.Get(); ok {
+				return e.EncodeValue(conv.IntToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetStreamCostsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

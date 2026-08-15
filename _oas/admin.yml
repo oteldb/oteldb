@@ -88,6 +88,61 @@ paths:
                 $ref: "#/components/schemas/EfficiencyStats"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/storage/stream-costs:
+    get:
+      operationId: "getStreamCosts"
+      summary: "Attribute a signal's stored bytes to streams"
+      description: >
+        Breaks a record signal's flushed parts down by stream, or by a stream label's values:
+        rows, decoded bytes, an approximate compressed share, and per-column distinct estimates.
+        This is the heaviest call the storage engine exposes — every accounted byte column of every
+        live part is read and decoded once — so it is an on-demand drill-down, not something to
+        poll. Narrow it with `columns` when only one column is in question.
+      parameters:
+        - name: signal
+          in: query
+          required: true
+          description: "Signal to attribute. Metrics carry no per-record columns, so they are not attributable."
+          schema:
+            $ref: "#/components/schemas/RecordSignal"
+        - name: tenant
+          in: query
+          required: false
+          description: "Tenant to inspect. Empty selects the instance's default tenant."
+          schema:
+            type: string
+        - name: group_by
+          in: query
+          required: false
+          description: >
+            Stream label (a resource or scope attribute name, e.g. "service.name") whose value keys
+            the report. Empty groups by raw stream id.
+          schema:
+            type: string
+        - name: columns
+          in: query
+          required: false
+          description: "Restricts the byte columns decoded and attributed. Empty accounts every byte column."
+          schema:
+            type: array
+            items:
+              type: string
+        - name: top_n
+          in: query
+          required: false
+          description: "Keeps only the N costliest groups by raw bytes. 0 returns every group."
+          schema:
+            type: integer
+            default: 20
+      responses:
+        200:
+          description: Per-group storage cost attribution.
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/StreamCosts"
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/actions/{action}:
     post:
       operationId: "runAction"
@@ -192,6 +247,15 @@ components:
       description: "Telemetry signal."
       enum:
         - metrics
+        - traces
+        - logs
+        - profiles
+    RecordSignal:
+      type: string
+      description: >
+        Signal stored as records, and so attributable per stream. Metrics are excluded: their
+        samples carry no per-record columns to attribute (use label cardinality there instead).
+      enum:
         - traces
         - logs
         - profiles
@@ -750,6 +814,104 @@ components:
           type: number
           format: double
           description: "Logical/stored ratio (e.g. 8.0 = stored at 1/8th of logical); present only when logical size is known."
+    StreamCosts:
+      type: object
+      description: "Per-stream (or per-label-value) storage cost attribution for one signal."
+      required:
+        - storage_enabled
+        - signal
+        - tenant
+        - groups
+      properties:
+        storage_enabled:
+          type: boolean
+          description: "False when no embedded engine is active, in which case groups is empty."
+        signal:
+          $ref: "#/components/schemas/RecordSignal"
+        tenant:
+          type: string
+        group_by:
+          type: string
+          description: "Label whose values key the report. Empty means the report is keyed by stream id."
+        groups:
+          type: array
+          description: "Costliest groups first. Empty when the tenant has no engine for the signal."
+          items:
+            $ref: "#/components/schemas/StreamCost"
+    StreamCost:
+      type: object
+      description: "One group's share of a signal's storage."
+      required:
+        - key
+        - streams
+        - rows
+        - raw_bytes
+        - disk_bytes
+        - distinct_estimated
+        - columns
+      properties:
+        key:
+          type: string
+          description: "The group_by label's value, or the stream id. Empty means the label is absent."
+        streams:
+          type: integer
+          format: int64
+          description: "Distinct streams folded into this group."
+        rows:
+          type: integer
+          format: int64
+        raw_bytes:
+          type: integer
+          format: int64
+          description: "Decoded footprint of the group's rows over the accounted columns."
+        disk_bytes:
+          type: integer
+          format: int64
+          description: >
+            Approximate compressed share. Compression is per column per frame and a frame spans
+            whatever streams its rows fall in, so each frame's size is apportioned across the
+            groups holding its rows by their raw-byte share.
+        distinct_estimated:
+          type: boolean
+          description: >
+            Whether per-column distinct counts were measured for this group. False means they are
+            0 because the group fell outside the sketch budget, not because the values are unique.
+        columns:
+          type: array
+          items:
+            $ref: "#/components/schemas/ColumnCost"
+    ColumnCost:
+      type: object
+      description: "One column's share of a stream cost."
+      required:
+        - name
+        - raw_bytes
+        - disk_bytes
+        - distinct
+        - distinct_normalized
+      properties:
+        name:
+          type: string
+        raw_bytes:
+          type: integer
+          format: int64
+        disk_bytes:
+          type: integer
+          format: int64
+          description: "Approximate, apportioned as StreamCost.disk_bytes."
+        distinct:
+          type: integer
+          format: int64
+          description: >
+            Estimated distinct values in this column (HyperLogLog, ~1.6% standard error). 0 for an
+            int column and for a group outside the sketch budget.
+        distinct_normalized:
+          type: integer
+          format: int64
+          description: >
+            Distinct over values with every run of ASCII digits collapsed to '#'. A large distinct
+            with a tiny distinct_normalized means the source is emitting one templated line with an
+            embedded timestamp or id instead of structured fields — a fixable diagnosis.
     ActionName:
       type: string
       description: "Supported runtime control actions."

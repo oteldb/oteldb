@@ -14,6 +14,289 @@ import (
 	"github.com/ogen-go/ogen/validate"
 )
 
+// GetStreamCostsParams is parameters of getStreamCosts operation.
+type GetStreamCostsParams struct {
+	// Signal to attribute. Metrics carry no per-record columns, so they are not attributable.
+	Signal RecordSignal
+	// Tenant to inspect. Empty selects the instance's default tenant.
+	Tenant OptString `json:",omitempty,omitzero"`
+	// Stream label (a resource or scope attribute name, e.g. "service.name") whose value keys the report.
+	// Empty groups by raw stream id.
+	GroupBy OptString `json:",omitempty,omitzero"`
+	// Restricts the byte columns decoded and attributed. Empty accounts every byte column.
+	Columns []string `json:",omitempty"`
+	// Keeps only the N costliest groups by raw bytes. 0 returns every group.
+	TopN OptInt `json:",omitempty,omitzero"`
+}
+
+func unpackGetStreamCostsParams(packed middleware.Parameters) (params GetStreamCostsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "signal",
+			In:   "query",
+		}
+		params.Signal = packed[key].(RecordSignal)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "tenant",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Tenant = v.(OptString)
+		}
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "group_by",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.GroupBy = v.(OptString)
+		}
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "columns",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Columns = v.([]string)
+		}
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "top_n",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.TopN = v.(OptInt)
+		}
+	}
+	return params
+}
+
+func decodeGetStreamCostsParams(args [0]string, argsEscaped bool, r *http.Request) (params GetStreamCostsParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode query: signal.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "signal",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Signal = RecordSignal(c)
+				return nil
+			}); err != nil {
+				return err
+			}
+			if err := func() error {
+				if err := params.Signal.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "signal",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	// Decode query: tenant.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "tenant",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotTenantVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotTenantVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Tenant.SetTo(paramsDotTenantVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "tenant",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	// Decode query: group_by.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "group_by",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotGroupByVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotGroupByVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.GroupBy.SetTo(paramsDotGroupByVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "group_by",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	// Decode query: columns.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "columns",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				params.Columns = nil
+				return d.DecodeArray(func(d uri.Decoder) error {
+					var paramsDotColumnsVal string
+					if err := func() error {
+						val, err := d.DecodeValue()
+						if err != nil {
+							return err
+						}
+
+						c, err := conv.ToString(val)
+						if err != nil {
+							return err
+						}
+
+						paramsDotColumnsVal = c
+						return nil
+					}(); err != nil {
+						return err
+					}
+					params.Columns = append(params.Columns, paramsDotColumnsVal)
+					return nil
+				})
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "columns",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	// Set default value for query: top_n.
+	{
+		val := int(20)
+		params.TopN.SetTo(val)
+	}
+	// Decode query: top_n.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "top_n",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotTopNVal int
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToInt(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotTopNVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.TopN.SetTo(paramsDotTopNVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "top_n",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // RunActionParams is parameters of runAction operation.
 type RunActionParams struct {
 	// Action to run.

@@ -30,10 +30,12 @@ import type {
   ActionResult,
   EfficiencyStats,
   ErrorResponse,
+  GetStreamCostsParams,
   HealthReport,
   InstanceInfo,
   RuntimeStats,
-  StorageStats
+  StorageStats,
+  StreamCosts
 } from './model';
 
 import { customFetch } from '../lib/fetcher';
@@ -501,6 +503,102 @@ export function useGetEfficiency<TData = Awaited<ReturnType<typeof getEfficiency
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetEfficiencyQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+
+
+/**
+ * Breaks a record signal's flushed parts down by stream, or by a stream label's values: rows, decoded bytes, an approximate compressed share, and per-column distinct estimates. This is the heaviest call the storage engine exposes — every accounted byte column of every live part is read and decoded once — so it is an on-demand drill-down, not something to poll. Narrow it with `columns` when only one column is in question.
+
+ * @summary Attribute a signal's stored bytes to streams
+ */
+export const getStreamCosts = (
+    params: GetStreamCostsParams,
+ signal?: AbortSignal
+) => {
+      
+      
+      return customFetch<StreamCosts>(
+      {url: `/api/v1/storage/stream-costs`, method: 'GET',
+        params, signal
+    },
+      );
+    }
+  
+
+
+
+export const getGetStreamCostsQueryKey = (params?: GetStreamCostsParams,) => {
+    return [
+    `/api/v1/storage/stream-costs`, ...(params ? [params]: [])
+    ] as const;
+    }
+
+    
+export const getGetStreamCostsQueryOptions = <TData = Awaited<ReturnType<typeof getStreamCosts>>, TError = ErrorResponse>(params: GetStreamCostsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStreamCosts>>, TError, TData>>, }
+) => {
+
+const {query: queryOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStreamCostsQueryKey(params);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStreamCosts>>> = ({ signal }) => getStreamCosts(params, signal);
+
+      
+
+      
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStreamCosts>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetStreamCostsQueryResult = NonNullable<Awaited<ReturnType<typeof getStreamCosts>>>
+export type GetStreamCostsQueryError = ErrorResponse
+
+
+export function useGetStreamCosts<TData = Awaited<ReturnType<typeof getStreamCosts>>, TError = ErrorResponse>(
+ params: GetStreamCostsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStreamCosts>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getStreamCosts>>,
+          TError,
+          Awaited<ReturnType<typeof getStreamCosts>>
+        > , 'initialData'
+      >, }
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetStreamCosts<TData = Awaited<ReturnType<typeof getStreamCosts>>, TError = ErrorResponse>(
+ params: GetStreamCostsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStreamCosts>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getStreamCosts>>,
+          TError,
+          Awaited<ReturnType<typeof getStreamCosts>>
+        > , 'initialData'
+      >, }
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetStreamCosts<TData = Awaited<ReturnType<typeof getStreamCosts>>, TError = ErrorResponse>(
+ params: GetStreamCostsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStreamCosts>>, TError, TData>>, }
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Attribute a signal's stored bytes to streams
+ */
+
+export function useGetStreamCosts<TData = Awaited<ReturnType<typeof getStreamCosts>>, TError = ErrorResponse>(
+ params: GetStreamCostsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStreamCosts>>, TError, TData>>, }
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetStreamCostsQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

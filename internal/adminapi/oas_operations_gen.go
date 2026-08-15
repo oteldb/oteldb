@@ -6,10 +6,11 @@ package adminapi
 type OperationName = string
 
 const (
-	GetEfficiencyOperation OperationName = "GetEfficiency"
-	GetHealthOperation     OperationName = "GetHealth"
-	GetInfoOperation       OperationName = "GetInfo"
-	GetRuntimeOperation    OperationName = "GetRuntime"
-	GetStorageOperation    OperationName = "GetStorage"
-	RunActionOperation     OperationName = "RunAction"
+	GetEfficiencyOperation  OperationName = "GetEfficiency"
+	GetHealthOperation      OperationName = "GetHealth"
+	GetInfoOperation        OperationName = "GetInfo"
+	GetRuntimeOperation     OperationName = "GetRuntime"
+	GetStorageOperation     OperationName = "GetStorage"
+	GetStreamCostsOperation OperationName = "GetStreamCosts"
+	RunActionOperation      OperationName = "RunAction"
 )
