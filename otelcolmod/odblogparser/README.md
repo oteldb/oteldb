@@ -37,7 +37,7 @@ receivers:
         parse_from: body
         parse_to: attributes
         detect: true
-        detect_formats: [generic-json, logfmt, zap-development, klog]
+        detect_formats: [generic-json, klog, zap-development, logfmt]
 ```
 
 ### Config fields
@@ -48,7 +48,7 @@ receivers:
 | `parse_to`       | string   | inherited from helper  | Target attribute field                               |
 | `format`         | string   | `""`                   | Force a single parser (`generic-json`, `logfmt`, …)  |
 | `detect`         | bool     | `true`                 | Auto-detect format when `format` is unset            |
-| `detect_formats` | []string | `["generic-json"]`     | Ordered list of formats to try during detection      |
+| `detect_formats` | []string | `["generic-json", "klog", "zap-development", "logfmt"]` | Ordered list of formats to try during detection |
 
 ### Supported formats
 

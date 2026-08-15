@@ -225,15 +225,7 @@ func (f *factory) createLogsExporter(
 	procCfg := ecfg.Logs.Processing
 	triggerAttrs := parseAttributeRefs(procCfg.TriggerAttributes, "trigger_attributes", lg)
 	formatAttrs := parseAttributeRefs(procCfg.FormatAttributes, "format_attributes", lg)
-	formats := make([]logparser.Parser, 0, len(procCfg.DetectFormats))
-	for _, raw := range procCfg.DetectFormats {
-		p, ok := logparser.LookupFormat(raw)
-		if !ok {
-			lg.Warn("Unknown format", zap.String("format", raw))
-			continue
-		}
-		formats = append(formats, p)
-	}
+	formats := parseDetectFormats(procCfg.DetectFormats, lg)
 	lg.Info("Creating logs consumer",
 		zap.Int("trigger_attributes", len(triggerAttrs)),
 		zap.Int("format_attributes", len(triggerAttrs)),
@@ -268,6 +260,24 @@ func (f *factory) createLogsExporter(
 		}
 	}
 	return exporterhelper.NewLogs(ctx, settings, cfg, consume)
+}
+
+// parseDetectFormats returns nil if formats are unset, so [logstorage.ConsumerOptions] installs
+// its own defaults.
+func parseDetectFormats(formats []string, lg *zap.Logger) []logparser.Parser {
+	if len(formats) == 0 {
+		return nil
+	}
+	result := make([]logparser.Parser, 0, len(formats))
+	for _, raw := range formats {
+		p, ok := logparser.LookupFormat(raw)
+		if !ok {
+			lg.Warn("Unknown format", zap.String("format", raw))
+			continue
+		}
+		result = append(result, p)
+	}
+	return result
 }
 
 func parseAttributeRefs(refs []string, field string, lg *zap.Logger) []logstorage.AttributeRef {
