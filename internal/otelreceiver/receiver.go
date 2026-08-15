@@ -21,6 +21,10 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/connector"
 	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/exporter/debugexporter"
+	"go.opentelemetry.io/collector/exporter/nopexporter"
+	"go.opentelemetry.io/collector/exporter/otlpexporter"
+	"go.opentelemetry.io/collector/exporter/otlphttpexporter"
 	"go.opentelemetry.io/collector/extension"
 	"go.opentelemetry.io/collector/otelcol"
 	"go.opentelemetry.io/collector/processor"
@@ -63,9 +67,19 @@ func processorFactoryMap() (map[component.Type]processor.Factory, error) {
 	)
 }
 
+// exporterFactoryMap returns exporters available to the embedded collector.
+//
+// Pipeline exporters fan out independently and sending_queue.blocking defaults to false, so a dead
+// mirror target drops its own queue without back-pressuring oteldbexporter. Setting it to true
+// couples the primary write path to the mirror's availability. Use filterprocessor to drop a mirror
+// target's own self-telemetry and break echo loops.
 func exporterFactoryMap(opts ...oteldbexporter.Option) (map[component.Type]exporter.Factory, error) {
 	return otelcol.MakeFactoryMap(
 		oteldbexporter.NewFactory(opts...),
+		otlpexporter.NewFactory(),
+		otlphttpexporter.NewFactory(),
+		debugexporter.NewFactory(),
+		nopexporter.NewFactory(),
 	)
 }
 
