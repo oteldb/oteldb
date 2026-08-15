@@ -18,8 +18,8 @@
   --g-font-family-sans:
     system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --g-font-family-monospace:
-    ui-monospace, "JetBrains Mono", "SF Mono", "SFMono-Regular", Menlo, Consolas,
-    "Liberation Mono", monospace;
+    ui-monospace, "JetBrains Mono", "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono",
+    monospace;
   --g-text-caption-font-family: var(--g-font-family-monospace);
 
   /* Live values must not jitter as digits change width. */

@@ -34,10 +34,9 @@ export function Runtime() {
   useEffect(() => {
     if (!data) return;
     setSeries((prev) =>
-      [
-        ...prev,
-        { t: Date.now(), heap: data.heap_alloc_bytes, next: data.next_gc_bytes },
-      ].slice(-KEEP_POINTS),
+      [...prev, { t: Date.now(), heap: data.heap_alloc_bytes, next: data.next_gc_bytes }].slice(
+        -KEEP_POINTS,
+      ),
     );
   }, [data]);
 

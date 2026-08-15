@@ -15,7 +15,13 @@ const BARS = [
  */
 export function GoFasterMark(props: SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="0 0 539.38 219.79" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <svg
+      viewBox="0 0 539.38 219.79"
+      xmlns="http://www.w3.org/2000/svg"
+      role="presentation"
+      aria-hidden="true"
+      {...props}
+    >
       <defs>
         <linearGradient id="gofaster-mark" x1="0" y1="1" x2="1" y2="0">
           <stop offset="0" stopColor="#00808f" />

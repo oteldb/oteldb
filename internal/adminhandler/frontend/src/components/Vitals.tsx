@@ -28,9 +28,7 @@ function Spark({ points }: { points: number[] }) {
   const d = points
     .map((v, i) => {
       const x = i * step;
-      const y = flat
-        ? SPARK_H / 2
-        : SPARK_H - 1 - ((v - min) / span) * (SPARK_H - 2);
+      const y = flat ? SPARK_H / 2 : SPARK_H - 1 - ((v - min) / span) * (SPARK_H - 2);
       return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");
@@ -109,32 +107,22 @@ export function Vitals() {
   const series = read("series");
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: the semantic equivalent is <fieldset>, which is for form controls, not a labelled tape of readouts.
     <div className="vitals" role="group" aria-label="Instance vitals">
-      <Cell
-        label="uptime"
-        value={info.data ? fmtDur(info.data.uptime_seconds) : DASH}
-      />
+      <Cell label="uptime" value={info.data ? fmtDur(info.data.uptime_seconds) : DASH} />
       <Cell
         label="ingest"
         value={ingest == null ? DASH : fmtNum(Math.round(ingest))}
         unit={ingest == null ? undefined : "/s"}
         points={history.ingest}
       />
-      <Cell
-        label="heap"
-        value={heap == null ? DASH : fmtBytes(heap)}
-        points={history.heap}
-      />
+      <Cell label="heap" value={heap == null ? DASH : fmtBytes(heap)} points={history.heap} />
       <Cell
         label="goroutines"
         value={goroutines == null ? DASH : fmtNum(goroutines)}
         points={history.goroutines}
       />
-      <Cell
-        label="series"
-        value={series == null ? DASH : fmtNum(series)}
-        points={history.series}
-      />
+      <Cell label="series" value={series == null ? DASH : fmtNum(series)} points={history.series} />
     </div>
   );
 }
