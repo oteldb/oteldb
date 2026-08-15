@@ -11,7 +11,7 @@ export function fmtBytes(n: number | null | undefined): string {
     v /= 1024;
     i++;
   }
-  return (neg ? "-" : "") + v.toFixed(i ? 1 : 0) + " " + u[i];
+  return `${(neg ? "-" : "") + v.toFixed(i ? 1 : 0)} ${u[i]}`;
 }
 
 export function fmtNum(n: number | null | undefined): string {
@@ -28,7 +28,7 @@ export function fmtDur(secondsInput: number): string {
   const h = Math.floor((sec % 86400) / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
-  const parts = [d && d + "d", h && h + "h", m && m + "m", s + "s"].filter(Boolean) as string[];
+  const parts = [d && `${d}d`, h && `${h}h`, m && `${m}m`, `${s}s`].filter(Boolean) as string[];
   return parts.slice(0, 2).join(" ") || "0s";
 }
 

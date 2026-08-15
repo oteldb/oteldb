@@ -37,11 +37,7 @@ function Caches({ caches }: { caches: CacheStats }) {
   return (
     <Panel title="Caches" sub="decode">
       <Flex direction="column" gap={4}>
-        <UsageBar
-          label="decode hit rate"
-          value={`${(rate * 100).toFixed(1)}%`}
-          ratio={rate}
-        />
+        <UsageBar label="decode hit rate" value={`${(rate * 100).toFixed(1)}%`} ratio={rate} />
         <KV
           rows={[
             ["cached bytes", <Mono>{fmtBytes(dc.bytes)}</Mono>],
@@ -135,8 +131,18 @@ function Cluster({ cluster }: { cluster: ClusterStats }) {
 
 const SIGNAL_COLUMNS: TableColumnConfig<EngineSignalStats>[] = [
   { id: "signal", name: head("signal"), primary: true },
-  { id: "head_items", name: head("head items"), align: "end", template: (s) => fmtNum(s.head_items) },
-  { id: "head_bytes", name: head("head bytes"), align: "end", template: (s) => fmtBytes(s.head_bytes) },
+  {
+    id: "head_items",
+    name: head("head items"),
+    align: "end",
+    template: (s) => fmtNum(s.head_items),
+  },
+  {
+    id: "head_bytes",
+    name: head("head bytes"),
+    align: "end",
+    template: (s) => fmtBytes(s.head_bytes),
+  },
   { id: "series", name: head("series"), align: "end", template: (s) => fmtNum(s.series) },
   {
     id: "parts",
@@ -149,7 +155,12 @@ const SIGNAL_COLUMNS: TableColumnConfig<EngineSignalStats>[] = [
       </Flex>
     ),
   },
-  { id: "sealed_parts", name: head("sealed"), align: "end", template: (s) => fmtNum(s.sealed_parts) },
+  {
+    id: "sealed_parts",
+    name: head("sealed"),
+    align: "end",
+    template: (s) => fmtNum(s.sealed_parts),
+  },
   {
     id: "merge",
     name: head("merge backlog"),
@@ -192,8 +203,7 @@ const SIGNAL_COLUMNS: TableColumnConfig<EngineSignalStats>[] = [
 
 function Tenant({ t }: { t: TenantStats }) {
   const a = t.admission;
-  const rejected =
-    a.rejected_ooo + a.rejected_rate + a.rejected_cardinality + a.rejected_in_flight;
+  const rejected = a.rejected_ooo + a.rejected_rate + a.rejected_cardinality + a.rejected_in_flight;
   return (
     <Panel
       title={t.tenant}
@@ -203,9 +213,7 @@ function Tenant({ t }: { t: TenantStats }) {
           <Text variant="body-1" color="secondary">
             accepted <Mono>{fmtNum(a.accepted)}</Mono>
           </Text>
-          {rejected ? (
-            <ErrCount bad>{`rejected ${fmtNum(rejected)}`}</ErrCount>
-          ) : null}
+          {rejected ? <ErrCount bad>{`rejected ${fmtNum(rejected)}`}</ErrCount> : null}
         </Flex>
       }
       scroll
@@ -223,7 +231,12 @@ const EFFICIENCY_COLUMNS: TableColumnConfig<EfficiencyRow>[] = [
   { id: "series", name: head("series"), align: "end", template: (s) => fmtNum(s.series) },
   { id: "parts", name: head("parts"), align: "end", template: (s) => fmtNum(s.parts) },
   { id: "points", name: head("points"), align: "end", template: (s) => fmtNum(s.points) },
-  { id: "stored_bytes", name: head("stored"), align: "end", template: (s) => fmtBytes(s.stored_bytes) },
+  {
+    id: "stored_bytes",
+    name: head("stored"),
+    align: "end",
+    template: (s) => fmtBytes(s.stored_bytes),
+  },
   {
     id: "bytes_per_point",
     name: head("bytes / point"),
@@ -254,7 +267,7 @@ function Efficiency() {
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorAlert error={error} what="efficiency stats" />;
-  if (!data || !data.tenants.length) return null;
+  if (!data?.tenants.length) return null;
 
   const rows = flattenEfficiency(data.tenants);
 
@@ -272,7 +285,12 @@ function Efficiency() {
 const CH_COLUMNS: TableColumnConfig<TableStats>[] = [
   { id: "table", name: head("table"), primary: true },
   { id: "rows", name: head("rows"), align: "end", template: (t) => fmtNum(t.rows) },
-  { id: "bytes_on_disk", name: head("on disk"), align: "end", template: (t) => fmtBytes(t.bytes_on_disk) },
+  {
+    id: "bytes_on_disk",
+    name: head("on disk"),
+    align: "end",
+    template: (t) => fmtBytes(t.bytes_on_disk),
+  },
   {
     id: "data_uncompressed_bytes",
     name: head("uncompressed"),

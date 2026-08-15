@@ -25,6 +25,7 @@ const queryClient = new QueryClient({
 
 const toaster = new Toaster();
 
+// biome-ignore lint/style/noNonNullAssertion: index.html always ships the #root container.
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <AppThemeProvider>

@@ -10,7 +10,9 @@
     "build": "orval --config ./orval.config.ts && tsc -b && vite build",
     "build:only": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "fmt": "biome format --write .",
+    "lint": "biome check ."
   },
   "dependencies": {
     "@gravity-ui/charts": "^1.57.1",
@@ -23,6 +25,7 @@
     "react-router-dom": "^7.1.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.8",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^4.3.4",

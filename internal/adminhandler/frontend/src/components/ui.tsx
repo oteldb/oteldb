@@ -135,6 +135,7 @@ export function KV({ rows }: { rows: [ReactNode, ReactNode][] }) {
   return (
     <DefinitionList responsive>
       {rows.map(([name, value], i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: rows are a static, order-stable tuple list, never reordered or spliced.
         <DefinitionList.Item key={i} name={name}>
           {value}
         </DefinitionList.Item>
