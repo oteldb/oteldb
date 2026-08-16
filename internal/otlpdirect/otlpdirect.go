@@ -298,11 +298,18 @@ func (d *decoder) scope(src []byte) (signal.Scope, error) {
 //
 //nolint:unparam // see above
 func collect(src []byte, fieldNum uint32, what string) ([][]byte, error) {
+	return collectInto(nil, src, fieldNum, what)
+}
+
+// collectInto is [collect] appending into a caller-owned buffer, so a walk repeated per element
+// can reuse one allocation instead of taking a fresh one each time.
+func collectInto(dst [][]byte, src []byte, fieldNum uint32, what string) ([][]byte, error) {
 	var (
 		fc  easyproto.FieldContext
-		out [][]byte
 		err error
 	)
+
+	out := dst
 
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
