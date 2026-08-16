@@ -17,6 +17,17 @@ type Config struct {
 	Cluster ClusterConfig `json:"cluster" yaml:"cluster"`
 	// RemoteWrite configures the Prometheus remote write endpoint.
 	RemoteWrite RemoteWriteConfig `json:"prometheus_remote_write" yaml:"prometheus_remote_write"`
+	// OTLP configures the OTLP/HTTP endpoints, which share the remote write listener.
+	OTLP OTLPConfig `json:"otlp" yaml:"otlp"`
+}
+
+// OTLPConfig configures the OTLP/HTTP ingest endpoints. They are always served, at the paths the
+// OTLP spec fixes (/v1/logs, /v1/traces, /v1/metrics, /v1/profiles).
+type OTLPConfig struct {
+	// MaxBodyBytes limits the request body. Zero ⇒ 64 MiB.
+	MaxBodyBytes xbytes.Bytes `json:"max_body_bytes" yaml:"max_body_bytes"`
+	// MaxDecodedBytes limits what a gzip body may expand to. Zero ⇒ 256 MiB.
+	MaxDecodedBytes xbytes.Bytes `json:"max_decoded_bytes" yaml:"max_decoded_bytes"`
 }
 
 // ClusterConfig points odbingest at the ring. odbingest joins nothing and stores nothing: it

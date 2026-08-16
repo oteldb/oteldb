@@ -7,11 +7,16 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/oteldb/oteldb/internal/otlpdirect"
 	"github.com/oteldb/oteldb/internal/promrw"
 )
 
-// reasonKey labels a rejected point with why the shard primary refused it.
-const reasonKey = attribute.Key("reason")
+// reasonKey labels a rejected record with why the shard primary refused it, and signalKey with
+// which signal it belonged to.
+const (
+	reasonKey = attribute.Key("reason")
+	signalKey = attribute.Key("signal")
+)
 
 // observer records what the remote write endpoint ingested. Its counters are the ones an operator
 // alerts on: a sender that stopped, and points refused as too old.
@@ -21,6 +26,11 @@ type observer struct {
 	points    metric.Int64Counter
 	dropped   metric.Int64Counter
 	byteCount metric.Int64Counter
+
+	otlpRequests metric.Int64Counter
+	otlpItems    metric.Int64Counter
+	otlpRejected metric.Int64Counter
+	otlpBytes    metric.Int64Counter
 }
 
 func newObserver(mp metric.MeterProvider) (*observer, error) {
@@ -56,7 +66,42 @@ func newObserver(mp metric.MeterProvider) (*observer, error) {
 	); err != nil {
 		return nil, errors.Wrap(err, "create bytes counter")
 	}
+	if o.otlpRequests, err = meter.Int64Counter("odbingest.otlp.requests",
+		metric.WithDescription("Accepted OTLP export requests, by signal."),
+	); err != nil {
+		return nil, errors.Wrap(err, "create otlp requests counter")
+	}
+	if o.otlpItems, err = meter.Int64Counter("odbingest.otlp.items",
+		metric.WithDescription("Records, spans, points or samples received over OTLP, by signal."),
+	); err != nil {
+		return nil, errors.Wrap(err, "create otlp items counter")
+	}
+	if o.otlpRejected, err = meter.Int64Counter("odbingest.otlp.rejected_items",
+		metric.WithDescription("Items an OTLP request carried that could not be represented, by signal."),
+	); err != nil {
+		return nil, errors.Wrap(err, "create otlp rejected counter")
+	}
+	if o.otlpBytes, err = meter.Int64Counter("odbingest.otlp.decoded_bytes",
+		metric.WithDescription("Decompressed OTLP request bytes, by signal."),
+		metric.WithUnit("By"),
+	); err != nil {
+		return nil, errors.Wrap(err, "create otlp bytes counter")
+	}
+
 	return &o, nil
+}
+
+func (o *observer) observeOTLP(s otlpdirect.Stats) {
+	ctx := context.Background()
+	attr := metric.WithAttributes(signalKey.String(s.Signal.String()))
+
+	o.otlpRequests.Add(ctx, 1, attr)
+	o.otlpItems.Add(ctx, int64(s.Items), attr)
+	o.otlpBytes.Add(ctx, int64(s.Bytes), attr)
+
+	if s.Rejected > 0 {
+		o.otlpRejected.Add(ctx, int64(s.Rejected), attr)
+	}
 }
 
 func (o *observer) observe(s promrw.Stats) {

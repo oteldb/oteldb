@@ -11,6 +11,7 @@ import (
 
 	"github.com/oteldb/storage/cluster/router"
 
+	"github.com/oteldb/oteldb/internal/otlpdirect"
 	"github.com/oteldb/oteldb/internal/promrw"
 )
 
@@ -51,6 +52,13 @@ func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (
 		return nil, errors.Wrap(err, "create metrics")
 	}
 
+	otlp := otlpdirect.NewHandler(sink, otlpdirect.HandlerConfig{
+		MaxBodyBytes:    int64(cfg.OTLP.MaxBodyBytes),
+		MaxDecodedBytes: int64(cfg.OTLP.MaxDecodedBytes),
+		Logger:          lg.Named("otlp"),
+		Observer:        obs.observeOTLP,
+	})
+
 	rw := cfg.RemoteWrite
 	handler := promrw.NewHandler(sink, promrw.HandlerConfig{
 		Options: promrw.Options{
@@ -63,6 +71,7 @@ func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (
 	})
 
 	mux := http.NewServeMux()
+	otlp.Register(mux)
 	mux.Handle(rw.Path, handler)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.Handle("GET /readyz", readyHandler(rt))
@@ -96,9 +105,12 @@ func readyHandler(rt *router.Router) http.Handler {
 
 // Run serves until ctx is canceled, then drains in-flight writes.
 func (a *App) Run(ctx context.Context) error {
-	a.lg.Info("Serving Prometheus remote write",
+	a.lg.Info("Serving ingest",
 		zap.String("bind", a.cfg.RemoteWrite.Bind),
-		zap.String("path", a.cfg.RemoteWrite.Path),
+		zap.String("remote_write_path", a.cfg.RemoteWrite.Path),
+		zap.Strings("otlp_paths", []string{
+			otlpdirect.LogsPath, otlpdirect.TracesPath, otlpdirect.MetricsPath, otlpdirect.ProfilesPath,
+		}),
 		zap.Strings("etcd", a.cfg.Cluster.Etcd),
 	)
 

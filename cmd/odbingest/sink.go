@@ -8,7 +8,10 @@ import (
 
 	"github.com/oteldb/storage/cluster"
 	"github.com/oteldb/storage/cluster/router"
+	"github.com/oteldb/storage/signal/log"
 	sigmetric "github.com/oteldb/storage/signal/metric"
+	"github.com/oteldb/storage/signal/profile"
+	"github.com/oteldb/storage/signal/trace"
 )
 
 // clusterSink writes a batch into the cluster by routing each shard to its ring primary. odbingest
@@ -41,16 +44,41 @@ func newClusterSink(r *router.Router, tenantOf cluster.TenantFunc, mp metric.Met
 	return &clusterSink{router: r, tenantOf: tenantOf, accepted: accepted, rejected: rejected}, nil
 }
 
-// WriteMetrics implements promrw.Sink.
+// WriteMetrics implements promrw.Sink and otlpdirect.Sink.
 //
 // A rejection is not an error: the primaries admitted what they could and said why they refused
-// the rest, which is a 202 with the counters moving. Only a routing or transport failure fails the
-// request, so the sender retries a write that may not have landed and leaves one that did.
+// the rest, which is a success with the counters moving. Only a routing or transport failure fails
+// the request, so the sender retries a write that may not have landed and leaves one that did.
 func (s *clusterSink) WriteMetrics(ctx context.Context, batch sigmetric.Metrics) error {
 	res, err := s.router.WriteMetrics(ctx, batch, s.tenantOf)
 
-	s.accepted.Add(ctx, int64(res.Accepted))
-	s.observeRejects(ctx, res.Rejected)
+	return s.record(ctx, "metrics", res, err)
+}
+
+func (s *clusterSink) WriteLogs(ctx context.Context, batch log.Logs) error {
+	res, err := s.router.WriteLogs(ctx, batch, s.tenantOf)
+
+	return s.record(ctx, "logs", res, err)
+}
+
+func (s *clusterSink) WriteTraces(ctx context.Context, batch trace.Traces) error {
+	res, err := s.router.WriteTraces(ctx, batch, s.tenantOf)
+
+	return s.record(ctx, "traces", res, err)
+}
+
+func (s *clusterSink) WriteProfiles(ctx context.Context, batch *profile.Profiles) error {
+	res, err := s.router.WriteProfiles(ctx, batch, s.tenantOf)
+
+	return s.record(ctx, "profiles", res, err)
+}
+
+// record meters what the primaries said and turns a routing failure into the caller's error.
+func (s *clusterSink) record(ctx context.Context, sig string, res router.Written, err error) error {
+	attr := metric.WithAttributes(signalKey.String(sig))
+
+	s.accepted.Add(ctx, int64(res.Accepted), attr)
+	s.observeRejects(ctx, sig, res.Rejected)
 
 	if err != nil {
 		return errors.Wrap(err, "write to cluster")
@@ -59,14 +87,15 @@ func (s *clusterSink) WriteMetrics(ctx context.Context, batch sigmetric.Metrics)
 	return nil
 }
 
-func (s *clusterSink) observeRejects(ctx context.Context, rej cluster.Reject) {
+func (s *clusterSink) observeRejects(ctx context.Context, sig string, rej cluster.Reject) {
 	for reason, n := range map[string]int{
 		"out_of_order":  rej.OOO,
 		"max_series":    rej.Cardinality,
 		"max_in_flight": rej.InFlight,
 	} {
 		if n > 0 {
-			s.rejected.Add(ctx, int64(n), metric.WithAttributes(reasonKey.String(reason)))
+			s.rejected.Add(ctx, int64(n),
+				metric.WithAttributes(signalKey.String(sig), reasonKey.String(reason)))
 		}
 	}
 }

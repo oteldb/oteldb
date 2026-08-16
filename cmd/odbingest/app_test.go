@@ -26,8 +26,14 @@ import (
 	"github.com/oteldb/storage/signal"
 	"github.com/oteldb/storage/wal"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/ptrace"
+
 	"github.com/prometheus/prometheus/prompb"
 
+	"github.com/oteldb/oteldb/internal/otlpdirect"
 	"github.com/oteldb/oteldb/internal/promrw"
 )
 
@@ -80,6 +86,7 @@ type fakeNode struct {
 	mu      sync.Mutex
 	shards  map[string]int // shard key → samples applied
 	series  map[signal.SeriesID]signal.Series
+	records int
 	batches int
 }
 
@@ -136,7 +143,25 @@ func (n *fakeNode) apply(_ context.Context, _ signal.Signal, shardKey string, wa
 
 			return nil
 		},
+		OnRecords: func(signal.SeriesID, []byte) error {
+			n.records++
+
+			return nil
+		},
 	})
+}
+
+// applied is how many records and samples the node was asked to apply, across every signal.
+func (n *fakeNode) applied() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	total := n.records
+	for _, c := range n.shards {
+		total += c
+	}
+
+	return total
 }
 
 func (n *fakeNode) samples() int {
@@ -334,4 +359,84 @@ func TestValidateRequiresCluster(t *testing.T) {
 	cfg.setDefaults()
 
 	require.Error(t, cfg.validate())
+}
+
+// otlpPost sends a serialized OTLP export request at path.
+func otlpPost(t *testing.T, h http.Handler, path string, raw []byte) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/x-protobuf")
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	return rec
+}
+
+// TestOTLPRoutesEverySignalToPrimary is the end-to-end check for the OTLP pack: each signal's
+// export must arrive at the ring primary as a WAL frame the node can replay, with odbingest
+// holding nothing.
+func TestOTLPRoutesEverySignalToPrimary(t *testing.T) {
+	t.Parallel()
+
+	const root = "/test"
+
+	endpoint := startEtcd(t)
+	node := startNode(t, endpoint, root, "node-a")
+
+	mux := http.NewServeMux()
+	otlpdirect.NewHandler(newTestSink(t, endpoint, root, 1), otlpdirect.HandlerConfig{}).Register(mux)
+
+	at := time.Now().Truncate(time.Second)
+
+	ld := plog.NewLogs()
+	lr := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+	lr.SetTimestamp(pcommon.NewTimestampFromTime(at))
+	lr.SetSeverityNumber(plog.SeverityNumberInfo)
+	lr.Body().SetStr("request completed")
+
+	logsRaw, err := (&plog.ProtoMarshaler{}).MarshalLogs(ld)
+	require.NoError(t, err)
+
+	td := ptrace.NewTraces()
+	sp := td.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+	sp.SetName("GET /things")
+	sp.SetTraceID([16]byte{1})
+	sp.SetSpanID([8]byte{2})
+	sp.SetStartTimestamp(pcommon.NewTimestampFromTime(at))
+	sp.SetEndTimestamp(pcommon.NewTimestampFromTime(at.Add(time.Millisecond)))
+
+	tracesRaw, err := (&ptrace.ProtoMarshaler{}).MarshalTraces(td)
+	require.NoError(t, err)
+
+	md := pmetric.NewMetrics()
+	mt := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+	mt.SetName("http_requests_total")
+
+	gp := mt.SetEmptyGauge().DataPoints().AppendEmpty()
+	gp.SetTimestamp(pcommon.NewTimestampFromTime(at))
+	gp.SetDoubleValue(42)
+
+	metricsRaw, err := (&pmetric.ProtoMarshaler{}).MarshalMetrics(md)
+	require.NoError(t, err)
+
+	for _, tt := range []struct {
+		path string
+		raw  []byte
+	}{
+		{otlpdirect.LogsPath, logsRaw},
+		{otlpdirect.TracesPath, tracesRaw},
+		{otlpdirect.MetricsPath, metricsRaw},
+	} {
+		// Twice, so the pooled buffers the batch aliased are overwritten before the assertion.
+		for range 2 {
+			rec := otlpPost(t, mux, tt.path, tt.raw)
+			require.Equal(t, http.StatusOK, rec.Code, "%s: %s", tt.path, rec.Body)
+		}
+	}
+
+	// Two of each signal: the logs and traces frames carry records, the metric frame carries a
+	// sample, and all three had to reach a primary to be counted.
+	assert.Equal(t, 6, node.applied(), "every signal's export reached the primary")
 }
