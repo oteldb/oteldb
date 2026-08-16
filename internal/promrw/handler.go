@@ -42,6 +42,22 @@ type HandlerConfig struct {
 	MaxDecodedBytes int
 	// Logger receives rejected-request diagnostics. Zero means no logging.
 	Logger *zap.Logger
+	// Observer, when set, is called once per accepted request with what it ingested. It runs on
+	// the ingest path, so it must be cheap and must not block.
+	Observer func(Stats)
+}
+
+// Stats is what one accepted request ingested.
+type Stats struct {
+	// Bytes is the decompressed request size.
+	Bytes int
+	// Series is the number of timeseries the request carried.
+	Series int
+	// Points is the number of points written, counting the series a native histogram decomposed
+	// into.
+	Points int
+	// Dropped is the number of points rejected as older than the time threshold.
+	Dropped int
 }
 
 // Handler serves the Prometheus remote write API, writing into sink without going through the
@@ -52,6 +68,7 @@ type Handler struct {
 	maxBody    int64
 	maxDecoded int
 	lg         *zap.Logger
+	observe    func(Stats)
 	pool       sync.Pool
 }
 
@@ -63,6 +80,7 @@ func NewHandler(sink Sink, cfg HandlerConfig) *Handler {
 		maxBody:    cfg.MaxBodyBytes,
 		maxDecoded: cfg.MaxDecodedBytes,
 		lg:         cfg.Logger,
+		observe:    cfg.Observer,
 	}
 	if h.maxBody == 0 {
 		h.maxBody = defaultMaxBodyBytes
@@ -143,7 +161,7 @@ func (h *Handler) handle(r *http.Request) error {
 		return errors.Wrap(err, "unmarshal write request")
 	}
 
-	batch, _, err := s.conv.Convert(s.req.Timeseries, h.opts)
+	batch, dropped, err := s.conv.Convert(s.req.Timeseries, h.opts)
 	if err != nil {
 		return errors.Wrap(err, "convert")
 	}
@@ -151,7 +169,29 @@ func (h *Handler) handle(r *http.Request) error {
 	if err := h.sink.WriteMetrics(r.Context(), *batch); err != nil {
 		return writeError{err: errors.Wrap(err, "write metrics")}
 	}
+
+	if h.observe != nil {
+		h.observe(Stats{
+			Bytes:   len(s.raw),
+			Series:  len(s.req.Timeseries),
+			Points:  countPoints(batch),
+			Dropped: dropped,
+		})
+	}
 	return nil
+}
+
+// countPoints sums the points of a converted batch. It walks metric headers, not points, so it
+// costs one pass over memory the conversion just wrote.
+func countPoints(batch *metric.Metrics) (n int) {
+	for i := range batch.Resources {
+		for j := range batch.Resources[i].Scopes {
+			for _, mt := range batch.Resources[i].Scopes[j].Metrics {
+				n += len(mt.Points)
+			}
+		}
+	}
+	return n
 }
 
 // readAll reads r into dst, reusing its capacity.
