@@ -5,19 +5,38 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/go-faster/errors"
 	"github.com/go-faster/yaml"
 
-	"github.com/oteldb/oteldb/internal/storagebackend"
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
 // Config is the odbingest configuration.
 type Config struct {
-	// Storage configures the embedded storage engine data is written into. It is the same block
-	// oteldb takes under `storage:`, so an ingester and a querier can share one config file.
-	Storage storagebackend.Config `json:"storage" yaml:"storage"`
+	// Cluster locates the storage cluster writes are routed into.
+	Cluster ClusterConfig `json:"cluster" yaml:"cluster"`
 	// RemoteWrite configures the Prometheus remote write endpoint.
 	RemoteWrite RemoteWriteConfig `json:"prometheus_remote_write" yaml:"prometheus_remote_write"`
+}
+
+// ClusterConfig points odbingest at the ring. odbingest joins nothing and stores nothing: it
+// follows membership read-only and routes each shard's write to that shard's primary.
+//
+// Every field here must match what the storage nodes are configured with. A mismatched
+// ShardsPerTenant or RF does not fail — it resolves a different owner set than the nodes do, and
+// writes land where no read will look for them.
+type ClusterConfig struct {
+	// Etcd is the endpoint list the cluster coordinates membership through. Required.
+	Etcd []string `json:"etcd" yaml:"etcd"`
+	// Root is the etcd key prefix for the cluster's state. Empty ⇒ "/oteldb".
+	Root string `json:"root" yaml:"root"`
+	// RF is the replication factor. Zero ⇒ 3.
+	RF int `json:"rf" yaml:"rf"`
+	// ShardsPerTenant is how many shards each tenant's metric series are split into. Zero or one
+	// ⇒ the tenant is the shard.
+	ShardsPerTenant int `json:"shards_per_tenant" yaml:"shards_per_tenant"`
+	// DialTimeout bounds the initial etcd connection. Zero ⇒ 5s.
+	DialTimeout time.Duration `json:"dial_timeout" yaml:"dial_timeout"`
 }
 
 // RemoteWriteConfig configures the Prometheus remote write ingest endpoint.
@@ -36,14 +55,11 @@ type RemoteWriteConfig struct {
 	MaxDecodedBytes xbytes.Bytes `json:"max_decoded_bytes" yaml:"max_decoded_bytes"`
 	// ReadHeaderTimeout bounds how long a client may take to send its headers. Zero ⇒ 5s.
 	ReadHeaderTimeout time.Duration `json:"read_header_timeout" yaml:"read_header_timeout"`
-	// ShutdownTimeout bounds how long in-flight writes are given to finish on shutdown, before the
-	// engine is flushed and closed. Zero ⇒ 15s.
+	// ShutdownTimeout bounds how long in-flight writes are given to finish on shutdown. Zero ⇒ 15s.
 	ShutdownTimeout time.Duration `json:"shutdown_timeout" yaml:"shutdown_timeout"`
 }
 
 func (cfg *Config) setDefaults() {
-	cfg.Storage.SetDefaults()
-
 	rw := &cfg.RemoteWrite
 	if rw.Bind == "" {
 		rw.Bind = ":19291"
@@ -59,16 +75,21 @@ func (cfg *Config) setDefaults() {
 	}
 }
 
-// loadConfig reads the config file, falling back to odbingest.yml and, when that is absent too, to
-// the defaults (an ephemeral in-memory engine, useful for a smoke test).
+// validate refuses a config that would start but never work.
+func (cfg *Config) validate() error {
+	if len(cfg.Cluster.Etcd) == 0 {
+		return errors.New("cluster.etcd is required: odbingest routes to a cluster, it stores nothing itself")
+	}
+
+	return nil
+}
+
+// loadConfig reads the config file, falling back to odbingest.yml.
 func loadConfig(name string) (cfg Config, _ error) {
 	defer cfg.setDefaults()
 
 	if name == "" {
 		name = "odbingest.yml"
-		if _, err := os.Stat(name); err != nil {
-			return cfg, nil
-		}
 	}
 
 	data, err := os.ReadFile(filepath.Clean(name))
@@ -78,5 +99,6 @@ func loadConfig(name string) (cfg Config, _ error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return cfg, err
 	}
+
 	return cfg, nil
 }

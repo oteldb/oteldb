@@ -4,10 +4,14 @@ import (
 	"context"
 
 	"github.com/go-faster/errors"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/oteldb/oteldb/internal/promrw"
 )
+
+// reasonKey labels a rejected point with why the shard primary refused it.
+const reasonKey = attribute.Key("reason")
 
 // observer records what the remote write endpoint ingested. Its counters are the ones an operator
 // alerts on: a sender that stopped, and points refused as too old.

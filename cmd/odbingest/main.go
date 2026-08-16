@@ -1,8 +1,12 @@
-// Program odbingest ingests telemetry into the oteldb storage engine.
+// Program odbingest ingests telemetry into an oteldb storage cluster.
 //
 // It is the write half of oteldb split into its own process: it accepts Prometheus remote write
 // (with the OTLP signals to follow), converts it straight into the engine's ingest model, and
-// writes it — no collector pipeline and no pdata in between.
+// routes each shard to its ring primary — no collector pipeline and no pdata in between.
+//
+// It is stateless. It follows cluster membership read-only, never joins the ring, and holds no
+// data: a request is answered only once the shards it touched have taken it, so scaling odbingest
+// is independent of scaling storage.
 package main
 
 import (
@@ -41,9 +45,9 @@ func main() {
 		lg.Info("Starting odbingest")
 
 		// The sdk's shutdown context covers SIGINT only, and a container runtime stops a pod with
-		// SIGTERM — which the Go runtime's default disposition turns into an immediate exit, with
-		// the engine's unflushed head still in memory. Canceling on it too is what makes a rolling
-		// restart flush instead of drop.
+		// SIGTERM — which the Go runtime's default disposition turns into an immediate exit,
+		// cutting off in-flight writes the cluster may already have taken. Canceling on it too is
+		// what lets a rolling restart drain instead of leaving senders to retry.
 		runCtx, stop := signal.NotifyContext(m.ShutdownContext(), syscall.SIGTERM)
 		defer stop()
 

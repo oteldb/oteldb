@@ -9,33 +9,50 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/oteldb/storage/cluster/router"
+
 	"github.com/oteldb/oteldb/internal/promrw"
-	"github.com/oteldb/oteldb/internal/storagebackend"
 )
 
-// App is the odbingest process: an embedded storage engine and the ingest endpoints writing into
-// it. It owns the engine, so shutting it down flushes what has not reached a part yet.
+// App is the odbingest process: the ingest endpoints and a routing view of the cluster they write
+// into. It holds no data — everything it accepts is durable in the cluster before the request is
+// answered, so shutting it down only has to let in-flight writes finish.
 type App struct {
-	cfg        Config
-	lg         *zap.Logger
-	closeStore func(context.Context) error
-	srv        *http.Server
+	cfg    Config
+	lg     *zap.Logger
+	router *router.Router
+	srv    *http.Server
 }
 
 func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*App, error) {
-	backend, closeStore, err := storagebackend.Open(ctx, cfg.Storage, lg.Named("storage"), m)
+	rt, err := router.Open(ctx, router.Config{
+		Etcd:            cfg.Cluster.Etcd,
+		Root:            cfg.Cluster.Root,
+		RF:              cfg.Cluster.RF,
+		ShardsPerTenant: cfg.Cluster.ShardsPerTenant,
+		DialTimeout:     cfg.Cluster.DialTimeout,
+		Logger:          lg.Named("cluster"),
+	})
 	if err != nil {
-		return nil, errors.Wrap(err, "open storage")
+		return nil, errors.Wrap(err, "open cluster router")
+	}
+
+	sink, err := newClusterSink(rt, nil, m.MeterProvider())
+	if err != nil {
+		_ = rt.Close(ctx)
+
+		return nil, errors.Wrap(err, "create sink")
 	}
 
 	obs, err := newObserver(m.MeterProvider())
 	if err != nil {
-		_ = closeStore(ctx)
+		_ = rt.Close(ctx)
+
 		return nil, errors.Wrap(err, "create metrics")
 	}
 
 	rw := cfg.RemoteWrite
-	handler := promrw.NewHandler(backend, promrw.HandlerConfig{
+	handler := promrw.NewHandler(sink, promrw.HandlerConfig{
 		Options: promrw.Options{
 			TimeThreshold: rw.TimeThreshold,
 		},
@@ -48,12 +65,12 @@ func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (
 	mux := http.NewServeMux()
 	mux.Handle(rw.Path, handler)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	mux.Handle("GET /readyz", readyHandler(rt))
 
 	return &App{
-		cfg:        cfg,
-		lg:         lg,
-		closeStore: closeStore,
+		cfg:    cfg,
+		lg:     lg,
+		router: rt,
 		srv: &http.Server{
 			Addr:              rw.Bind,
 			Handler:           mux,
@@ -62,11 +79,27 @@ func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (
 	}, nil
 }
 
-// Run serves until ctx is canceled, then drains in-flight writes and flushes the engine.
+// readyHandler reports ready once the ring has a member to route to. Accepting a write against an
+// empty ring can only fail it, and answering 503 instead keeps a starting pod out of the load
+// balancer until the cluster is actually reachable.
+func readyHandler(rt *router.Router) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if len(rt.Members()) == 0 {
+			http.Error(w, "no cluster members", http.StatusServiceUnavailable)
+
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
+}
+
+// Run serves until ctx is canceled, then drains in-flight writes.
 func (a *App) Run(ctx context.Context) error {
 	a.lg.Info("Serving Prometheus remote write",
 		zap.String("bind", a.cfg.RemoteWrite.Bind),
 		zap.String("path", a.cfg.RemoteWrite.Path),
+		zap.Strings("etcd", a.cfg.Cluster.Etcd),
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -74,13 +107,14 @@ func (a *App) Run(ctx context.Context) error {
 		if err := a.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return errors.Wrap(err, "serve remote write")
 		}
+
 		return nil
 	})
 	g.Go(func() error {
 		<-gctx.Done()
 
-		// Stop accepting, let in-flight writes finish: they hold the engine's ingest path, and a
-		// write cut off mid-flight is a write the sender must retry.
+		// Stop accepting, let in-flight writes finish: a write cut off mid-flight is one the
+		// sender must retry, and the cluster may already have taken it.
 		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.cfg.RemoteWrite.ShutdownTimeout)
 		defer cancel()
 
@@ -89,14 +123,13 @@ func (a *App) Run(ctx context.Context) error {
 
 	err := g.Wait()
 
-	// The engine closes after the server, so nothing writes into a closing engine. Its own context
-	// must outlive the canceled one: closing is what flushes the head to a part.
+	// The router closes after the server, so nothing routes through a closing membership watch.
 	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.cfg.RemoteWrite.ShutdownTimeout)
 	defer cancel()
 
-	a.lg.Info("Flushing storage engine")
-	if closeErr := a.closeStore(closeCtx); closeErr != nil {
-		return errors.Join(err, errors.Wrap(closeErr, "close storage"))
+	if closeErr := a.router.Close(closeCtx); closeErr != nil {
+		return errors.Join(err, errors.Wrap(closeErr, "close router"))
 	}
+
 	return err
 }
