@@ -17,6 +17,7 @@ import (
 	"github.com/oteldb/storage/signal/metric"
 
 	"github.com/oteldb/oteldb/internal/prompb"
+	"github.com/oteldb/oteldb/internal/xarena"
 )
 
 // nameLabel is the Prometheus metric name label. It is the metric's name, not one of its
@@ -52,8 +53,8 @@ func (o *Options) setDefaults() {
 // state. It is not safe for concurrent use; pool one per in-flight request.
 type Converter struct {
 	batch metric.Metrics
-	attrs arena[signal.KeyValue]
-	names arena[byte]
+	attrs xarena.Arena[signal.KeyValue]
+	names xarena.Arena[byte]
 }
 
 // Convert builds a metrics batch from the request's timeseries.
@@ -66,8 +67,8 @@ func (c *Converter) Convert(tss []prompb.TimeSeries, o Options) (_ *metric.Metri
 	cutoff := o.Now.Add(-o.TimeThreshold).UnixNano()
 
 	c.batch.Reset()
-	c.attrs.reset()
-	c.names.reset()
+	c.attrs.Reset()
+	c.names.Reset()
 
 	rm := c.batch.AddResource()
 	rm.Resource = o.Resource
@@ -147,7 +148,7 @@ func (c *Converter) addMetric(sm *metric.ScopeMetrics, name []byte) *metric.Metr
 // labelAttrs converts the series' labels (all but __name__) into one sorted attribute set shared
 // by every point of the series.
 func (c *Converter) labelAttrs(labels []prompb.Label) signal.Attributes {
-	kvs := c.attrs.alloc(len(labels))
+	kvs := c.attrs.Alloc(len(labels))
 	for _, l := range labels {
 		if bytes.Equal(l.Name, nameLabel) {
 			continue
@@ -159,7 +160,7 @@ func (c *Converter) labelAttrs(labels []prompb.Label) signal.Attributes {
 
 // withLabel returns attrs plus one string label, re-sorted.
 func (c *Converter) withLabel(attrs signal.Attributes, key, value []byte) signal.Attributes {
-	kvs := c.attrs.alloc(len(attrs) + 1)
+	kvs := c.attrs.Alloc(len(attrs) + 1)
 	kvs = append(kvs, attrs...)
 	kvs = append(kvs, signal.KeyValue{Key: key, Value: signal.StringValue(value)})
 	return signal.NewAttributes(kvs...)
@@ -167,7 +168,7 @@ func (c *Converter) withLabel(attrs signal.Attributes, key, value []byte) signal
 
 // suffixed returns name+suffix, carved from the converter's name arena.
 func (c *Converter) suffixed(name []byte, suffix string) []byte {
-	return c.names.concat(name, []byte(suffix))
+	return c.names.Concat(name, []byte(suffix))
 }
 
 func metricName(labels []prompb.Label) ([]byte, bool) {

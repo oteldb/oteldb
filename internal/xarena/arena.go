@@ -1,19 +1,20 @@
-package promrw
+// Package xarena provides a chunked, resettable allocator for the zero-copy ingest converters.
+package xarena
 
-// arenaChunk is the element count a fresh arena chunk is sized to.
-const arenaChunk = 512
+// Chunk is the element count a fresh arena chunk is sized to.
+const Chunk = 512
 
-// arena hands out slices carved from chunks it retains across [arena.reset], so a steady-state
+// Arena hands out slices carved from chunks it retains across [Arena.Reset], so a steady-state
 // converter allocates nothing. Chunks are never reallocated in place, so a slice handed out stays
 // valid until the reset that recycles it — unlike appending to one growing slice, which would
 // invalidate every slice handed out before a growth.
-type arena[T any] struct {
+type Arena[T any] struct {
 	chunks [][]T
 	cur    int
 }
 
-// alloc returns a zero-length slice with capacity n carved from the current chunk.
-func (a *arena[T]) alloc(n int) []T {
+// Alloc returns a zero-length slice with capacity n carved from the current chunk.
+func (a *Arena[T]) Alloc(n int) []T {
 	if n == 0 {
 		return nil
 	}
@@ -28,28 +29,28 @@ func (a *arena[T]) alloc(n int) []T {
 		a.cur++
 	}
 
-	c := make([]T, n, max(n, arenaChunk))
+	c := make([]T, n, max(n, Chunk))
 	a.chunks = append(a.chunks, c)
 	a.cur = len(a.chunks) - 1
 	return c[:0:n]
 }
 
-// reset makes every chunk available again. Slices handed out before it must not be used after.
-func (a *arena[T]) reset() {
+// Reset makes every chunk available again. Slices handed out before it must not be used after.
+func (a *Arena[T]) Reset() {
 	for i := range a.chunks {
 		a.chunks[i] = a.chunks[i][:0]
 	}
 	a.cur = 0
 }
 
-// concat returns the concatenation of parts, carved from the arena.
-func (a *arena[T]) concat(parts ...[]T) []T {
+// Concat returns the concatenation of parts, carved from the arena.
+func (a *Arena[T]) Concat(parts ...[]T) []T {
 	var n int
 	for _, p := range parts {
 		n += len(p)
 	}
 
-	out := a.alloc(n)
+	out := a.Alloc(n)
 	for _, p := range parts {
 		out = append(out, p...)
 	}

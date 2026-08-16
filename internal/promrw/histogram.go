@@ -190,7 +190,7 @@ func bound(index, schema int32) float64 {
 
 // formatBound formats a bucket bound as its `le` label value, carved from the name arena.
 func (c *Converter) formatBound(f float64) []byte {
-	return strconv.AppendFloat(c.names.alloc(32), f, 'g', -1, 64)
+	return strconv.AppendFloat(c.names.Alloc(32), f, 'g', -1, 64)
 }
 
 func histogramCount(h *prompb.Histogram) float64 {
