@@ -130,76 +130,76 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST "+ProfilesPath, h.Profiles())
 }
 
-func (h *Handler) Logs() http.Handler {
-	return h.serve(signal.Log, func(ctx context.Context, src []byte) (int, int, error) {
-		c, _ := h.logs.Get().(*LogsConverter)
-		defer h.logs.Put(c)
+func (h *Handler) Logs() http.Handler { return h.serve(signal.Log, h.ingestLogs) }
 
-		batch, err := c.Convert(src)
-		if err != nil {
-			return 0, 0, err
-		}
+func (h *Handler) ingestLogs(ctx context.Context, src []byte) (items, rejected int, _ error) {
+	c, _ := h.logs.Get().(*LogsConverter)
+	defer h.logs.Put(c)
 
-		if err := h.sink.WriteLogs(ctx, *batch); err != nil {
-			return 0, 0, writeError{err: err}
-		}
+	batch, err := c.Convert(src)
+	if err != nil {
+		return 0, 0, err
+	}
 
-		return countRecords(batch), 0, nil
-	})
+	if err := h.sink.WriteLogs(ctx, *batch); err != nil {
+		return 0, 0, writeError{err: err}
+	}
+
+	return countRecords(batch), 0, nil
 }
 
-func (h *Handler) Traces() http.Handler {
-	return h.serve(signal.Trace, func(ctx context.Context, src []byte) (int, int, error) {
-		c, _ := h.traces.Get().(*TracesConverter)
-		defer h.traces.Put(c)
+func (h *Handler) Traces() http.Handler { return h.serve(signal.Trace, h.ingestTraces) }
 
-		batch, err := c.Convert(src)
-		if err != nil {
-			return 0, 0, err
-		}
+func (h *Handler) ingestTraces(ctx context.Context, src []byte) (items, rejected int, _ error) {
+	c, _ := h.traces.Get().(*TracesConverter)
+	defer h.traces.Put(c)
 
-		if err := h.sink.WriteTraces(ctx, *batch); err != nil {
-			return 0, 0, writeError{err: err}
-		}
+	batch, err := c.Convert(src)
+	if err != nil {
+		return 0, 0, err
+	}
 
-		return countSpans(batch), 0, nil
-	})
+	if err := h.sink.WriteTraces(ctx, *batch); err != nil {
+		return 0, 0, writeError{err: err}
+	}
+
+	return countSpans(batch), 0, nil
 }
 
-func (h *Handler) Metrics() http.Handler {
-	return h.serve(signal.Metric, func(ctx context.Context, src []byte) (int, int, error) {
-		c, _ := h.metrics.Get().(*MetricsConverter)
-		defer h.metrics.Put(c)
+func (h *Handler) Metrics() http.Handler { return h.serve(signal.Metric, h.ingestMetrics) }
 
-		batch, dropped, err := c.Convert(src)
-		if err != nil {
-			return 0, 0, err
-		}
+func (h *Handler) ingestMetrics(ctx context.Context, src []byte) (items, rejected int, _ error) {
+	c, _ := h.metrics.Get().(*MetricsConverter)
+	defer h.metrics.Put(c)
 
-		if err := h.sink.WriteMetrics(ctx, *batch); err != nil {
-			return 0, 0, writeError{err: err}
-		}
+	batch, dropped, err := c.Convert(src)
+	if err != nil {
+		return 0, 0, err
+	}
 
-		return countPoints(batch), dropped, nil
-	})
+	if err := h.sink.WriteMetrics(ctx, *batch); err != nil {
+		return 0, 0, writeError{err: err}
+	}
+
+	return countPoints(batch), dropped, nil
 }
 
-func (h *Handler) Profiles() http.Handler {
-	return h.serve(signal.Profile, func(ctx context.Context, src []byte) (int, int, error) {
-		c, _ := h.profiles.Get().(*ProfilesConverter)
-		defer h.profiles.Put(c)
+func (h *Handler) Profiles() http.Handler { return h.serve(signal.Profile, h.ingestProfiles) }
 
-		batch, err := c.Convert(src)
-		if err != nil {
-			return 0, 0, err
-		}
+func (h *Handler) ingestProfiles(ctx context.Context, src []byte) (items, rejected int, _ error) {
+	c, _ := h.profiles.Get().(*ProfilesConverter)
+	defer h.profiles.Put(c)
 
-		if err := h.sink.WriteProfiles(ctx, batch); err != nil {
-			return 0, 0, writeError{err: err}
-		}
+	batch, err := c.Convert(src)
+	if err != nil {
+		return 0, 0, err
+	}
 
-		return countSamples(batch), 0, nil
-	})
+	if err := h.sink.WriteProfiles(ctx, batch); err != nil {
+		return 0, 0, writeError{err: err}
+	}
+
+	return countSamples(batch), 0, nil
 }
 
 // ingestFunc decodes one request body and writes it, returning what it ingested and what it could

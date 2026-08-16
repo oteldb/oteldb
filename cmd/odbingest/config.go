@@ -24,6 +24,9 @@ type Config struct {
 // OTLPConfig configures the OTLP/HTTP ingest endpoints. They are always served, at the paths the
 // OTLP spec fixes (/v1/logs, /v1/traces, /v1/metrics, /v1/profiles).
 type OTLPConfig struct {
+	// GRPCBind is the OTLP/gRPC listen address. Empty ⇒ ":4317", the port every OTLP exporter
+	// targets by default. "-" disables gRPC.
+	GRPCBind string `json:"grpc_bind" yaml:"grpc_bind"`
 	// MaxBodyBytes limits the request body. Zero ⇒ 64 MiB.
 	MaxBodyBytes xbytes.Bytes `json:"max_body_bytes" yaml:"max_body_bytes"`
 	// MaxDecodedBytes limits what a gzip body may expand to. Zero ⇒ 256 MiB.
@@ -83,6 +86,10 @@ func (cfg *Config) setDefaults() {
 	}
 	if rw.ShutdownTimeout == 0 {
 		rw.ShutdownTimeout = 15 * time.Second
+	}
+
+	if cfg.OTLP.GRPCBind == "" {
+		cfg.OTLP.GRPCBind = ":4317"
 	}
 }
 

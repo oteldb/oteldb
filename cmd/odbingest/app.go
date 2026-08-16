@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"net"
 	"net/http"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+
+	"google.golang.org/grpc"
 
 	"github.com/oteldb/storage/cluster/router"
 
@@ -23,6 +26,7 @@ type App struct {
 	lg     *zap.Logger
 	router *router.Router
 	srv    *http.Server
+	grpc   *grpc.Server
 }
 
 func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*App, error) {
@@ -76,10 +80,17 @@ func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.Handle("GET /readyz", readyHandler(rt))
 
+	var grpcSrv *grpc.Server
+	if cfg.OTLP.GRPCBind != "-" {
+		grpcSrv = grpc.NewServer(otlp.GRPCServerOptions()...)
+		otlp.RegisterGRPC(grpcSrv)
+	}
+
 	return &App{
 		cfg:    cfg,
 		lg:     lg,
 		router: rt,
+		grpc:   grpcSrv,
 		srv: &http.Server{
 			Addr:              rw.Bind,
 			Handler:           mux,
@@ -111,17 +122,44 @@ func (a *App) Run(ctx context.Context) error {
 		zap.Strings("otlp_paths", []string{
 			otlpdirect.LogsPath, otlpdirect.TracesPath, otlpdirect.MetricsPath, otlpdirect.ProfilesPath,
 		}),
+		zap.String("otlp_grpc_bind", a.cfg.OTLP.GRPCBind),
 		zap.Strings("etcd", a.cfg.Cluster.Etcd),
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		if err := a.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return errors.Wrap(err, "serve remote write")
+			return errors.Wrap(err, "serve http")
 		}
 
 		return nil
 	})
+
+	if a.grpc != nil {
+		var lc net.ListenConfig
+
+		ln, err := lc.Listen(ctx, "tcp", a.cfg.OTLP.GRPCBind)
+		if err != nil {
+			return errors.Wrap(err, "listen for otlp grpc")
+		}
+
+		g.Go(func() error {
+			if err := a.grpc.Serve(ln); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+				return errors.Wrap(err, "serve otlp grpc")
+			}
+
+			return nil
+		})
+		g.Go(func() error {
+			<-gctx.Done()
+
+			// GracefulStop lets in-flight exports finish; a write cut off mid-flight is one the
+			// exporter must retry, and the cluster may already have taken it.
+			a.grpc.GracefulStop()
+
+			return nil
+		})
+	}
 	g.Go(func() error {
 		<-gctx.Done()
 

@@ -347,6 +347,7 @@ func TestLoadConfig(t *testing.T) {
 	assert.Equal(t, []string{"127.0.0.1:2379"}, cfg.Cluster.Etcd)
 	assert.Equal(t, ":19291", cfg.RemoteWrite.Bind)
 	assert.Equal(t, "/", cfg.RemoteWrite.Path)
+	assert.Equal(t, ":4317", cfg.OTLP.GRPCBind)
 	assert.Equal(t, 15*time.Second, cfg.RemoteWrite.ShutdownTimeout)
 }
 
