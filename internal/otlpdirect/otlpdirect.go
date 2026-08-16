@@ -27,17 +27,19 @@ import (
 // Field numbers of the messages shared by every signal (common.proto, resource.proto).
 const (
 	// opentelemetry.proto.common.v1.AnyValue
-	fieldAnyString = 1
-	fieldAnyBool   = 2
-	fieldAnyInt    = 3
-	fieldAnyDouble = 4
-	fieldAnyArray  = 5
-	fieldAnyKvlist = 6
-	fieldAnyBytes  = 7
+	fieldAnyString   = 1
+	fieldAnyBool     = 2
+	fieldAnyInt      = 3
+	fieldAnyDouble   = 4
+	fieldAnyArray    = 5
+	fieldAnyKvlist   = 6
+	fieldAnyBytes    = 7
+	fieldAnyStrindex = 8
 
 	// opentelemetry.proto.common.v1.KeyValue
-	fieldKVKey   = 1
-	fieldKVValue = 2
+	fieldKVKey      = 1
+	fieldKVValue    = 2
+	fieldKVStrindex = 3
 
 	// opentelemetry.proto.common.v1.ArrayValue / KeyValueList
 	fieldListValues = 1
@@ -57,12 +59,28 @@ type decoder struct {
 	attrs   xarena.Arena[signal.KeyValue]
 	values  xarena.Arena[signal.Value]
 	scratch xarena.Arena[byte]
+
+	// strings is the profiles signal's shared string table: there, an attribute key and a string
+	// value may arrive as an index into it instead of inline. It is nil for the other signals,
+	// whose wire format has no such indirection.
+	strings [][]byte
 }
 
 func (d *decoder) reset() {
 	d.attrs.Reset()
 	d.values.Reset()
 	d.scratch.Reset()
+	d.strings = nil
+}
+
+// lookup resolves a string-table index, reporting whether it is in range. An out-of-range index is
+// dropped rather than rejected, matching what pdata does with a reference it cannot resolve.
+func (d *decoder) lookup(idx int32) ([]byte, bool) {
+	if idx < 0 || int(idx) >= len(d.strings) {
+		return nil, false
+	}
+
+	return d.strings[idx], true
 }
 
 // attributes decodes a repeated KeyValue field into a sorted [signal.Attributes].
@@ -93,9 +111,11 @@ func (d *decoder) attributes(kvs [][]byte) (signal.Attributes, error) {
 
 func (d *decoder) keyValue(src []byte) (signal.KeyValue, error) {
 	var (
-		fc  easyproto.FieldContext
-		kv  signal.KeyValue
-		err error
+		fc       easyproto.FieldContext
+		kv       signal.KeyValue
+		keyIdx   int32
+		hasKeyID bool
+		err      error
 	)
 
 	for len(src) > 0 {
@@ -104,6 +124,13 @@ func (d *decoder) keyValue(src []byte) (signal.KeyValue, error) {
 		}
 
 		switch fc.FieldNum {
+		case fieldKVStrindex:
+			v, ok := fc.Int32()
+			if !ok {
+				return kv, errors.New("read attribute key index")
+			}
+
+			keyIdx, hasKeyID = v, true
 		case fieldKVKey:
 			key, ok := fc.Bytes()
 			if !ok {
@@ -120,6 +147,12 @@ func (d *decoder) keyValue(src []byte) (signal.KeyValue, error) {
 			if kv.Value, err = d.anyValue(data); err != nil {
 				return kv, err
 			}
+		}
+	}
+
+	if hasKeyID {
+		if key, ok := d.lookup(keyIdx); ok {
+			kv.Key = key
 		}
 	}
 
@@ -176,6 +209,21 @@ func (d *decoder) anyValue(src []byte) (signal.Value, error) {
 			}
 
 			out = signal.BytesValue(v)
+		case fieldAnyStrindex:
+			v, ok := fc.Int32()
+			if !ok {
+				return out, errors.New("read string value index")
+			}
+
+			// Index 0 is the "" sentinel, which pdata declines to resolve — it treats a zero
+			// reference as unset and leaves the value empty, so this does too.
+			out = signal.EmptyValue()
+
+			if v != 0 {
+				if s, ok := d.lookup(v); ok {
+					out = signal.StringValue(s)
+				}
+			}
 		case fieldAnyArray:
 			data, ok := fc.MessageData()
 			if !ok {
