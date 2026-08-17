@@ -1,5 +1,3 @@
-//go:build !prometheusremotewrite_prometheus_prompb
-
 package prometheusremotewrite
 
 import (

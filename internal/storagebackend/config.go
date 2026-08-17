@@ -86,6 +86,13 @@ type ClusterConfig struct {
 	ShardsPerTenant int `json:"shards_per_tenant" yaml:"shards_per_tenant"`
 	// Root is the etcd key prefix for this cluster's state. Empty ⇒ "/oteldb".
 	Root string `json:"root" yaml:"root"`
+	// PrivateBackend declares this node's backend private to it (a local disk, not a shared object
+	// store), so peers cannot read the parts it flushes. The cluster then replicates flushed parts
+	// node-to-node: replicas mirror their owner's objects over the parts endpoints instead of
+	// loading them from a shared store, and an owner backfills from its peers before compacting.
+	// False (the default) keeps the shared-store model. Not inferable from the backend type — an
+	// S3 bucket shared by every node and a per-node local disk are both legal backends.
+	PrivateBackend bool `json:"private_backend" yaml:"private_backend"`
 }
 
 // S3Config configures the embedded storage engine's "s3" backend: an S3-compatible object

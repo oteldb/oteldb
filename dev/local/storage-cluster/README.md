@@ -64,7 +64,17 @@ storage:
     port: 7946   # replication server port; address is <hostname>:<port>
     rf: 2        # replicas per write
     root: /oteldb
+    private_backend: true   # each node's disk is its own; parts replicate node-to-node
 ```
+
+`private_backend` picks the storage model, and it is not inferable from the backend type — an S3
+bucket shared by every node and a per-node local disk are both legal backends. Here each node has
+its own `/data` volume that peers cannot read, so it must be `true`: flushed parts are mirrored over
+the cluster's parts endpoints (`partsync`) instead of being exchanged through a shared store. Left
+at the default `false` writes still reach the replicas, but anything that reads another node's
+flushed parts breaks — rebalance handoffs, a newly-promoted owner, and backfill before compaction
+would all have no source. A deployment where every node points at the same object store wants
+`false`.
 
 To scale out, add another `oteldb-N` service (with its own `hostname` and data volume) pointing at
 the same etcd — it joins the ring and takes ownership of a share of the data automatically.

@@ -95,9 +95,11 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 			zap.Int("precision_tiers", len(cfg.Policy.Precision)),
 			zap.Int("downsample_tiers", len(cfg.Policy.Downsample)),
 			zap.Bool("recompress", cfg.Policy.Recompress != nil),
+			zap.Bool("ec", cfg.Policy.EC != nil),
 			zap.Duration("retention_max_age", retentionMaxAge(cfg.Policy.Retention)),
 			zap.Bool("limits", cfg.Policy.Limits != nil),
 		)
+		warnECInert(cfg.Cluster, cfg.Policy, lg)
 	}
 
 	caches := resolveCacheSettings(cfg)
@@ -156,6 +158,7 @@ func clusterOption(cfg *ClusterConfig, lg *zap.Logger) (storage.Option, error) {
 		zap.String("addr", addr),
 		zap.Int("rf", cfg.RF),
 		zap.Int("shards_per_tenant", cfg.ShardsPerTenant),
+		zap.Bool("private_backend", cfg.PrivateBackend),
 	)
 	return storage.WithCluster(&cluster.Config{
 		Etcd:            cfg.Etcd,
@@ -163,6 +166,7 @@ func clusterOption(cfg *ClusterConfig, lg *zap.Logger) (storage.Option, error) {
 		RF:              cfg.RF,
 		ShardsPerTenant: cfg.ShardsPerTenant,
 		Root:            cfg.Root,
+		PrivateBackend:  cfg.PrivateBackend,
 	}), nil
 }
 
