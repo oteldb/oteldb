@@ -16,23 +16,36 @@ import (
 // same shape a Prometheus classic histogram is scraped as, so histogram_quantile works over it
 // unchanged.
 //
-// Bounds come from the sparse bucket indices: for schema s the base is 2^(2^-s) and bucket index
-// i covers (base^(i-1), base^i], so its `le` is base^i. Negative buckets mirror that around zero
-// and the zero bucket's `le` is the zero threshold.
+// Where the bounds come from depends on the schema. A custom-bucket histogram
+// ([prompb.SchemaCustomBuckets], what Prometheus converts a classic histogram into) states them
+// outright in CustomValues, and they are already `le` values. An exponential histogram derives
+// them: for schema s the base is 2^(2^-s) and bucket index i covers (base^(i-1), base^i], so its
+// `le` is base^i. Negative buckets mirror that around zero and the zero bucket's `le` is the zero
+// threshold.
 //
-// The bound is computed as 2^(i·2^-s) rather than from Prometheus' per-schema table of exact
-// fractional bounds, so a bound can land one ulp off the value Prometheus prints (√2 renders as
-// 1.414213562373095, not 1.4142135623730951). Since `le` is a label, that is a different series
-// than the same bucket scraped classically — it is consistent within this ingest path, but a
-// histogram fed in both ways would not merge.
+// The exponential bound is computed as 2^(i·2^-s) rather than from Prometheus' per-schema table
+// of exact fractional bounds, so a bound can land one ulp off the value Prometheus prints (√2
+// renders as 1.414213562373095, not 1.4142135623730951). Since `le` is a label, that is a
+// different series than the same bucket scraped classically — it is consistent within this ingest
+// path, but a histogram fed in both ways would not merge. Custom bounds have no such caveat: they
+// are formatted from the values the sender supplied.
 
 var leLabel = []byte("le")
 
 // posInf is the `le` value of the catch-all overflow bucket, which carries the total count.
 const posInf = "+Inf"
 
+// Bounds of the exponential schema range. Senders may only use -4…8, but -9…52 are reserved for
+// finer resolutions and the bound arithmetic is exact across all of them, so the wider range is
+// accepted rather than dropped: Prometheus itself down-samples such a histogram instead of
+// refusing it, and here there is no resolution to down-sample to.
+const (
+	schemaMin int32 = -9
+	schemaMax int32 = 52
+)
+
 // appendHistograms decomposes the series' in-window native histograms, returning how many were
-// dropped as out of window.
+// not ingested — either out of window or unrepresentable.
 func (c *Converter) appendHistograms(
 	sm *metric.ScopeMetrics,
 	ts *prompb.TimeSeries,
@@ -48,51 +61,80 @@ func (c *Converter) appendHistograms(
 			dropped++
 			continue
 		}
-		c.appendHistogram(sm, h, name, attrs, tsNano)
+		if !c.appendHistogram(sm, h, name, attrs, tsNano) {
+			dropped++
+		}
 	}
 	return dropped
 }
 
+// appendHistogram decomposes one histogram, reporting whether it was representable.
 func (c *Converter) appendHistogram(
 	sm *metric.ScopeMetrics,
 	h *prompb.Histogram,
 	name []byte,
 	attrs signal.Attributes,
 	tsNano int64,
-) {
+) bool {
+	if !h.IsCustomBuckets() && (h.Schema < schemaMin || h.Schema > schemaMax) {
+		return false
+	}
+
+	// A gauge histogram is one whose counts may go down, so the decomposed series are cumulative
+	// but not monotonic — telling the engine otherwise would make rate() read every decrease as a
+	// counter reset.
+	monotonic := h.ResetHint != prompb.HistogramResetHintGauge
 	count := histogramCount(h)
 
-	c.addCounter(sm, c.suffixed(name, "_count"), attrs, tsNano, count, true)
+	c.addCounter(sm, c.suffixed(name, "_count"), attrs, tsNano, count, monotonic)
 	c.addCounter(sm, c.suffixed(name, "_sum"), attrs, tsNano, h.Sum, false)
 
 	bucketName := c.suffixed(name, "_bucket")
 
 	var cum float64
-	emit := func(le float64) {
-		c.addCounter(sm, bucketName, c.withLabel(attrs, leLabel, c.formatBound(le)), tsNano, cum, true)
+	emit := func(le []byte) {
+		c.addCounter(sm, bucketName, c.withLabel(attrs, leLabel, le), tsNano, cum, monotonic)
 	}
+	emitBound := func(le float64) { emit(c.formatBound(le)) }
 
-	// Negative buckets hold observations below zero: index i covers [-base^i, -base^(i-1)), so its
-	// upper bound is -base^(i-1) and descending indices give ascending bounds.
-	neg := collectBuckets(h.NegativeSpans, h.NegativeDeltas, h.NegativeCounts)
-	for _, b := range slices.Backward(neg) {
-		cum += b.count
-		emit(-bound(b.index-1, h.Schema))
-	}
+	if h.IsCustomBuckets() {
+		// Custom bounds place even negative observations in the positive buckets, so the negative
+		// side and the zero bucket carry nothing.
+		for _, b := range collectBuckets(h.PositiveSpans, h.PositiveDeltas, h.PositiveCounts) {
+			// An index equal to the number of bounds is the overflow bucket, which is emitted
+			// below from the reported total; anything outside the array is malformed.
+			if b.index < 0 || int(b.index) >= len(h.CustomValues) {
+				continue
+			}
+			cum += b.count
+			emitBound(h.CustomValues[b.index])
+		}
+	} else {
+		// Negative buckets hold observations below zero: index i covers [-base^i, -base^(i-1)), so
+		// its upper bound is -base^(i-1) and descending indices give ascending bounds.
+		neg := collectBuckets(h.NegativeSpans, h.NegativeDeltas, h.NegativeCounts)
+		for _, b := range slices.Backward(neg) {
+			cum += b.count
+			emitBound(-bound(b.index-1, h.Schema))
+		}
 
-	if zero := zeroCount(h); zero > 0 {
-		cum += zero
-		emit(h.ZeroThreshold)
-	}
+		if zero := zeroCount(h); zero > 0 {
+			cum += zero
+			emitBound(h.ZeroThreshold)
+		}
 
-	for _, b := range collectBuckets(h.PositiveSpans, h.PositiveDeltas, h.PositiveCounts) {
-		cum += b.count
-		emit(bound(b.index, h.Schema))
+		for _, b := range collectBuckets(h.PositiveSpans, h.PositiveDeltas, h.PositiveCounts) {
+			cum += b.count
+			emitBound(bound(b.index, h.Schema))
+		}
 	}
 
 	// The overflow bucket carries the reported total, which also covers observations no bucket
 	// counted (NaN, and anything lost to a truncated bucket set).
-	c.addCounter(sm, bucketName, c.withLabel(attrs, leLabel, []byte(posInf)), tsNano, count, true)
+	cum = count
+	emit([]byte(posInf))
+
+	return true
 }
 
 // addCounter appends a one-point cumulative sum series.

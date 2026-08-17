@@ -131,6 +131,91 @@ func TestHistogramSchemaBounds(t *testing.T) {
 	require.Zero(t, dropped)
 }
 
+// customBucketHistogram is what Prometheus sends for a classic histogram converted to a native
+// one with custom buckets: the bounds are stated outright and only the positive side is used.
+func customBucketHistogram() prompb.Histogram {
+	h := prompb.Histogram{
+		Schema:         prompb.SchemaCustomBuckets,
+		Sum:            12.5,
+		Timestamp:      1000,
+		PositiveSpans:  []prompb.BucketSpan{{Offset: 0, Length: 3}},
+		PositiveDeltas: []int64{2, 1, 3},
+		CustomValues:   []float64{0.5, 1, 2.5},
+	}
+	// Deltas 2,1,3 are bucket counts 2,3,6, so the total is 11.
+	h.Count.SetInt(11)
+	return h
+}
+
+// TestCustomBucketHistogram asserts the bounds of a custom-bucket histogram come from
+// CustomValues rather than from the schema. Deriving them from schema -53 as if it were
+// exponential yields 2^(i·2^53), i.e. +Inf for every bucket, collapsing the whole histogram onto
+// one series.
+func TestCustomBucketHistogram(t *testing.T) {
+	got, dropped := convertOne(t, prompb.TimeSeries{
+		Labels:     []prompb.Label{{Name: []byte("__name__"), Value: []byte("h")}},
+		Histograms: []prompb.Histogram{customBucketHistogram()},
+	})
+
+	// Bucket counts 2,3,6 over bounds 0.5,1,2.5 accumulate to 2,5,11.
+	require.Contains(t, got, "value=2 {le=0.5}")
+	require.Contains(t, got, "value=5 {le=1}")
+	require.Contains(t, got, "value=11 {le=2.5}")
+	require.Contains(t, got, "value=11 {le=+Inf}")
+	require.NotContains(t, got, "le=+Inf}\n  metric h_bucket", "only one +Inf bucket")
+	require.Zero(t, dropped)
+}
+
+// TestCustomBucketHistogramOutOfRangeIndex asserts a bucket index the bounds array does not cover
+// is skipped rather than read past the end. An index equal to the length is the overflow bucket,
+// which the total already accounts for.
+func TestCustomBucketHistogramOutOfRangeIndex(t *testing.T) {
+	h := customBucketHistogram()
+	h.PositiveSpans = []prompb.BucketSpan{{Offset: 0, Length: 5}}
+	h.PositiveDeltas = []int64{2, 1, 3, 1, 1}
+
+	got, dropped := convertOne(t, prompb.TimeSeries{
+		Labels:     []prompb.Label{{Name: []byte("__name__"), Value: []byte("h")}},
+		Histograms: []prompb.Histogram{h},
+	})
+
+	// Indices 3 and 4 have no bound, so the last bucket with one is still the 2.5 bound.
+	require.Contains(t, got, "value=11 {le=2.5}")
+	require.Contains(t, got, "value=11 {le=+Inf}")
+	require.NotContains(t, got, "le=3}")
+	require.Zero(t, dropped)
+}
+
+// TestGaugeHistogram asserts a gauge histogram decomposes into cumulative but non-monotonic
+// series: its counts may go down, and calling that monotonic would make rate() read every
+// decrease as a counter reset.
+func TestGaugeHistogram(t *testing.T) {
+	h := intHistogram(0)
+	h.ResetHint = prompb.HistogramResetHintGauge
+
+	got, dropped := convertOne(t, prompb.TimeSeries{
+		Labels:     []prompb.Label{{Name: []byte("__name__"), Value: []byte("h")}},
+		Histograms: []prompb.Histogram{h},
+	})
+
+	require.NotContains(t, got, "monotonic=true")
+	require.Zero(t, dropped)
+}
+
+// TestHistogramInvalidSchema asserts a schema outside the exponential range is dropped instead of
+// producing bounds from nonsense arithmetic.
+func TestHistogramInvalidSchema(t *testing.T) {
+	for _, schema := range []int32{-54, -10, 53, 127} {
+		got, dropped := convertOne(t, prompb.TimeSeries{
+			Labels:     []prompb.Label{{Name: []byte("__name__"), Value: []byte("h")}},
+			Histograms: []prompb.Histogram{intHistogram(schema)},
+		})
+
+		require.NotContains(t, got, "_bucket", "schema %d", schema)
+		require.Equal(t, 1, dropped, "schema %d", schema)
+	}
+}
+
 // TestHistogramSkippedWhenSamplesPresent asserts a series carrying both is stored as its samples,
 // matching what the pdata translator did.
 func TestHistogramSkippedWhenSamplesPresent(t *testing.T) {
