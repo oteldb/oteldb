@@ -31,6 +31,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/chembed"
 	"github.com/oteldb/oteldb/internal/chstorage"
+	"github.com/oteldb/oteldb/internal/config"
 	"github.com/oteldb/oteldb/internal/httpmiddleware"
 	"github.com/oteldb/oteldb/internal/logql"
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
@@ -224,7 +225,7 @@ func addOgen[
 			}
 		)
 
-		auth, err := makeAuthMiddlewares(authCfg)
+		auth, err := config.AuthMiddleware(authCfg)
 		if err != nil {
 			return errors.Wrap(err, "create auth middlewares")
 		}
@@ -264,44 +265,13 @@ func addOgen[
 	}
 }
 
-func makeAuthMiddlewares(auth []AuthConfig) (httpmiddleware.Middleware, error) {
-	if len(auth) == 0 {
-		return nil, nil
-	}
-
-	r := make([]httpmiddleware.Authenticator, 0, len(auth))
-	for _, a := range auth {
-		if !a.Type.IsValid() {
-			return nil, errors.Errorf("invalid auth type %q", a.Type)
-		}
-
-		a.setDefaults()
-		switch a.Type {
-		case AuthTypeBasic:
-			m, err := httpmiddleware.BasicAuth(a.Users)
-			if err != nil {
-				return nil, errors.Wrap(err, "setup basic auth")
-			}
-			r = append(r, m)
-		case AuthTypeBearerToken:
-			m, err := httpmiddleware.BearerToken(a.Tokens)
-			if err != nil {
-				return nil, errors.Wrap(err, "setup bearer token auth")
-			}
-			r = append(r, m)
-		}
-	}
-
-	return httpmiddleware.Auth(r, nil), nil
-}
-
 func (app *App) trySetupTempo() error {
 	q := app.traceQuerier
 	if q == nil {
 		return nil
 	}
 	cfg := app.cfg.Tempo
-	cfg.setDefaults()
+	cfg.SetDefaults()
 
 	engine := traceqlengine.NewEngine(app.traceQuerier, traceqlengine.Options{
 		TracerProvider: app.telemetry.TracerProvider(),
@@ -329,7 +299,7 @@ func (app *App) trySetupPyroscope() error {
 		return nil
 	}
 	cfg := app.cfg.Pyroscope
-	cfg.setDefaults()
+	cfg.SetDefaults()
 
 	engine := profileqlengine.NewEngine(q, profileqlengine.Options{
 		TracerProvider: app.telemetry.TracerProvider(),
@@ -382,7 +352,7 @@ func (app *App) trySetupLoki() error {
 		return nil
 	}
 	cfg := app.cfg.Loki
-	cfg.setDefaults()
+	cfg.SetDefaults()
 
 	var optimizers []logqlengine.Optimizer
 	optimizers = append(optimizers, logqlengine.DefaultOptimizers()...)
@@ -446,7 +416,7 @@ func (app *App) trySetupProm() error {
 		return nil
 	}
 	cfg := app.cfg.Prometheus
-	cfg.setDefaults()
+	cfg.SetDefaults()
 
 	var engine promhandler.Engine
 	if cfg.EnableScarecrowEngine {
@@ -522,9 +492,9 @@ func (app *App) setupHealthCheck() error {
 	var handler http.Handler = mux
 
 	cfg := app.cfg.HealthCheck
-	cfg.setDefaults()
+	cfg.SetDefaults()
 
-	auth, err := makeAuthMiddlewares(cfg.Auth)
+	auth, err := config.AuthMiddleware(cfg.Auth)
 	if err != nil {
 		return errors.Wrap(err, "create auth middlewares")
 	}

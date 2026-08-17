@@ -1,20 +1,18 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/go-faster/errors"
-	"github.com/go-faster/yaml"
 
+	"github.com/oteldb/oteldb/internal/config"
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
 // Config is the odbingest configuration.
 type Config struct {
 	// Cluster locates the storage cluster writes are routed into.
-	Cluster ClusterConfig `json:"cluster" yaml:"cluster"`
+	Cluster config.Cluster `json:"cluster" yaml:"cluster"`
 	// RemoteWrite configures the Prometheus remote write endpoint.
 	RemoteWrite RemoteWriteConfig `json:"prometheus_remote_write" yaml:"prometheus_remote_write"`
 	// OTLP configures the OTLP/HTTP endpoints, which share the remote write listener.
@@ -31,26 +29,6 @@ type OTLPConfig struct {
 	MaxBodyBytes xbytes.Bytes `json:"max_body_bytes" yaml:"max_body_bytes"`
 	// MaxDecodedBytes limits what a gzip body may expand to. Zero ⇒ 256 MiB.
 	MaxDecodedBytes xbytes.Bytes `json:"max_decoded_bytes" yaml:"max_decoded_bytes"`
-}
-
-// ClusterConfig points odbingest at the ring. odbingest joins nothing and stores nothing: it
-// follows membership read-only and routes each shard's write to that shard's primary.
-//
-// Every field here must match what the storage nodes are configured with. A mismatched
-// ShardsPerTenant or RF does not fail — it resolves a different owner set than the nodes do, and
-// writes land where no read will look for them.
-type ClusterConfig struct {
-	// Etcd is the endpoint list the cluster coordinates membership through. Required.
-	Etcd []string `json:"etcd" yaml:"etcd"`
-	// Root is the etcd key prefix for the cluster's state. Empty ⇒ "/oteldb".
-	Root string `json:"root" yaml:"root"`
-	// RF is the replication factor. Zero ⇒ 3.
-	RF int `json:"rf" yaml:"rf"`
-	// ShardsPerTenant is how many shards each tenant's metric series are split into. Zero or one
-	// ⇒ the tenant is the shard.
-	ShardsPerTenant int `json:"shards_per_tenant" yaml:"shards_per_tenant"`
-	// DialTimeout bounds the initial etcd connection. Zero ⇒ 5s.
-	DialTimeout time.Duration `json:"dial_timeout" yaml:"dial_timeout"`
 }
 
 // RemoteWriteConfig configures the Prometheus remote write ingest endpoint.
@@ -106,17 +84,5 @@ func (cfg *Config) validate() error {
 func loadConfig(name string) (cfg Config, _ error) {
 	defer cfg.setDefaults()
 
-	if name == "" {
-		name = "odbingest.yml"
-	}
-
-	data, err := os.ReadFile(filepath.Clean(name))
-	if err != nil {
-		return cfg, err
-	}
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return cfg, err
-	}
-
-	return cfg, nil
+	return config.Load[Config](name, config.LoadOptions{Fallback: "odbingest.yml"})
 }

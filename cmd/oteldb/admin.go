@@ -14,7 +14,7 @@ import (
 // setupAdmin wires the admin panel API and its embedded web UI. It is always registered.
 func (app *App) setupAdmin() error {
 	cfg := app.cfg.Admin
-	cfg.setDefaults()
+	cfg.SetDefaults()
 
 	build, _ := cliversion.GetInfo("github.com/oteldb/oteldb")
 
@@ -56,13 +56,13 @@ func (app *App) setupAdmin() error {
 // adminSignals reports per-signal backend configuration for the admin API.
 func (app *App) adminSignals() []adminapi.SignalInfo {
 	tempo := app.cfg.Tempo
-	tempo.setDefaults()
+	tempo.SetDefaults()
 	prom := app.cfg.Prometheus
-	prom.setDefaults()
+	prom.SetDefaults()
 	loki := app.cfg.Loki
-	loki.setDefaults()
+	loki.SetDefaults()
 	pyro := app.cfg.Pyroscope
-	pyro.setDefaults()
+	pyro.SetDefaults()
 
 	backend := func(v string) string {
 		if v == "" {
@@ -101,13 +101,13 @@ func (app *App) adminComponents() []adminhandler.Component {
 	components = append(components, adminhandler.Component{Name: "otelcol"})
 
 	tempo := app.cfg.Tempo
-	tempo.setDefaults()
+	tempo.SetDefaults()
 	prom := app.cfg.Prometheus
-	prom.setDefaults()
+	prom.SetDefaults()
 	loki := app.cfg.Loki
-	loki.setDefaults()
+	loki.SetDefaults()
 	pyro := app.cfg.Pyroscope
-	pyro.setDefaults()
+	pyro.SetDefaults()
 
 	if app.metricsQuerier != nil {
 		components = append(components, adminhandler.Component{Name: "prom", Addr: prom.Bind})
