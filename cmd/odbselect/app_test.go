@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/oteldb/oteldb/internal/config"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -28,7 +30,7 @@ func TestLoadConfig(t *testing.T) {
 	assert.Equal(t, 8, cfg.Cluster.ShardsPerTenant)
 	assert.Equal(t, ":9090", cfg.Prometheus.Bind)
 	assert.Equal(t, ":3200", cfg.Tempo.Bind)
-	assert.False(t, cfg.Loki.enabled())
+	assert.False(t, enabled(cfg.Loki.Bind))
 	assert.Equal(t, 30*time.Second, cfg.ShutdownTimeout)
 }
 
@@ -47,9 +49,11 @@ func TestValidateRequiresCluster(t *testing.T) {
 func TestValidateRequiresAnAPI(t *testing.T) {
 	t.Parallel()
 
-	cfg := Config{Cluster: ClusterConfig{Etcd: []string{"127.0.0.1:2379"}}}
-	for _, api := range []*APIConfig{&cfg.Prometheus.APIConfig, &cfg.Loki, &cfg.Tempo, &cfg.Pyroscope} {
-		api.Bind = "-"
+	cfg := Config{Cluster: config.Cluster{Etcd: []string{"127.0.0.1:2379"}}}
+	for _, bind := range []*string{
+		&cfg.Prometheus.Bind, &cfg.Loki.Bind, &cfg.Tempo.Bind, &cfg.Pyroscope.Bind,
+	} {
+		*bind = "-"
 	}
 
 	require.Error(t, cfg.validate())
