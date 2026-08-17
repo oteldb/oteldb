@@ -50,10 +50,10 @@ func TestValidateRequiresAnAPI(t *testing.T) {
 	t.Parallel()
 
 	cfg := Config{Cluster: config.Cluster{Etcd: []string{"127.0.0.1:2379"}}}
-	for _, bind := range []*string{
-		&cfg.Prometheus.Bind, &cfg.Loki.Bind, &cfg.Tempo.Bind, &cfg.Pyroscope.Bind,
+	for _, api := range []*config.Listener{
+		&cfg.Prometheus.Listener, &cfg.Loki.Listener, &cfg.Tempo.Listener, &cfg.Pyroscope.Listener,
 	} {
-		*bind = "-"
+		api.Bind = "-"
 	}
 
 	require.Error(t, cfg.validate())
