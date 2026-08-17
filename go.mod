@@ -86,7 +86,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.158.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/webhookeventreceiver v0.158.0
 	github.com/oteldb/promql-engine v0.10.0
-	github.com/oteldb/storage v0.37.1
+	github.com/oteldb/storage v0.37.3-0.20260816211206-b7b99536087b
 	github.com/pierrec/lz4/v4 v4.1.28
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.70.1
@@ -99,6 +99,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/zeebo/xxh3 v1.1.0
+	go.etcd.io/etcd/server/v3 v3.7.1
 	go.opentelemetry.io/collector/component v1.64.0
 	go.opentelemetry.io/collector/component/componentstatus v0.158.0
 	go.opentelemetry.io/collector/component/componenttest v0.158.0
@@ -163,9 +164,17 @@ require (
 
 require (
 	github.com/cenkalti/backoff/v7 v7.0.0 // indirect
+	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0 // indirect
+	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3 // indirect
 	github.com/klauspost/reedsolomon v1.14.1 // indirect
 	github.com/maypok86/otter/v2 v2.3.0 // indirect
+	github.com/soheilhy/cmux v0.1.5 // indirect
+	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
 	github.com/valyala/gozstd v1.26.0 // indirect
+	github.com/xiang90/probing v0.0.0-20221125231312-a49e3df8f510 // indirect
+	go.etcd.io/etcd/pkg/v3 v3.7.1 // indirect
+	go.etcd.io/raft/v3 v3.7.0 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )
 
 require (
@@ -530,7 +539,7 @@ require (
 	go.etcd.io/bbolt v1.5.0 // indirect
 	go.etcd.io/etcd/api/v3 v3.7.1 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.7.1 // indirect
-	go.etcd.io/etcd/client/v3 v3.7.1 // indirect
+	go.etcd.io/etcd/client/v3 v3.7.1
 	go.lsp.dev/jsonrpc2 v0.10.0 // indirect
 	go.lsp.dev/pkg v0.0.0-20210717090340-384b27a52fb2 // indirect
 	go.lsp.dev/protocol v0.12.0 // indirect

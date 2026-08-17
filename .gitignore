@@ -25,6 +25,7 @@ secret.yaml
 /odbrestore
 /odbmigrate
 /odbagent
+/odbingest
 /bin
 
 vmagent-remotewrite-data

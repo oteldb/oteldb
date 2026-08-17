@@ -2,6 +2,7 @@ package prompb_test
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
 	nativeprompb "github.com/prometheus/prometheus/prompb"
@@ -36,7 +37,7 @@ func equalLabels(t *testing.T, a nativeprompb.Label, b prompb.Label) {
 func equalSamples(t *testing.T, a nativeprompb.Sample, b prompb.Sample) {
 	t.Helper()
 
-	assert.Equal(t, a.Value, b.Value)
+	equalFloat(t, a.Value, b.Value, "value")
 	assert.Equal(t, a.Timestamp, b.Timestamp)
 }
 
@@ -44,13 +45,15 @@ func equalExemplars(t *testing.T, a nativeprompb.Exemplar, b prompb.Exemplar) {
 	t.Helper()
 
 	equalSlices(t, a.Labels, b.Labels, equalLabels)
-	assert.Equal(t, a.Value, b.Value)
+	equalFloat(t, a.Value, b.Value, "value")
 	assert.Equal(t, a.Timestamp, b.Timestamp)
 }
 
 func equalHistograms(t *testing.T, a nativeprompb.Histogram, b prompb.Histogram) {
 	t.Helper()
 
+	// Both counts are proto3 oneofs, so an unset arm is legal: a custom-bucket histogram
+	// carries no zero count at all.
 	switch c := a.Count.(type) {
 	case *nativeprompb.Histogram_CountInt:
 		bval, ok := b.Count.AsUint64()
@@ -59,36 +62,63 @@ func equalHistograms(t *testing.T, a nativeprompb.Histogram, b prompb.Histogram)
 	case *nativeprompb.Histogram_CountFloat:
 		bval, ok := b.Count.AsFloat64()
 		assert.True(t, ok)
-		assert.Equal(t, c.CountFloat, bval)
+		equalFloat(t, c.CountFloat, bval, "count_float")
+	case nil:
+		bval, ok := b.Count.AsFloat64()
+		assert.True(t, ok, "an unset count decodes as the float arm's zero value")
+		assert.Zero(t, bval)
 	default:
 		t.Fatalf("unexpected type %T", c)
 	}
-	assert.Equal(t, a.Sum, b.Sum)
+	equalFloat(t, a.Sum, b.Sum, "sum")
 	assert.Equal(t, a.Schema, b.Schema)
-	assert.Equal(t, a.ZeroThreshold, b.ZeroThreshold)
+	equalFloat(t, a.ZeroThreshold, b.ZeroThreshold, "zero_threshold")
 	switch zc := a.ZeroCount.(type) {
 	case *nativeprompb.Histogram_ZeroCountInt:
-		bval, ok := b.Count.AsUint64()
+		bval, ok := b.ZeroCount.AsUint64()
 		assert.True(t, ok)
 		assert.Equal(t, zc.ZeroCountInt, bval)
 	case *nativeprompb.Histogram_ZeroCountFloat:
-		bval, ok := b.Count.AsFloat64()
+		bval, ok := b.ZeroCount.AsFloat64()
 		assert.True(t, ok)
-		assert.Equal(t, zc.ZeroCountFloat, bval)
+		equalFloat(t, zc.ZeroCountFloat, bval, "zero_count_float")
+	case nil:
+		bval, ok := b.ZeroCount.AsFloat64()
+		assert.True(t, ok)
+		assert.Zero(t, bval)
 	default:
 		t.Fatalf("unexpected type %T", zc)
 	}
 
 	equalSlices(t, a.NegativeSpans, b.NegativeSpans, equalBucketSpans)
 	assert.Equal(t, a.NegativeDeltas, b.NegativeDeltas)
-	assert.Equal(t, a.NegativeCounts, b.NegativeCounts)
+	equalFloats(t, a.NegativeCounts, b.NegativeCounts, "negative_counts")
 
 	equalSlices(t, a.PositiveSpans, b.PositiveSpans, equalBucketSpans)
 	assert.Equal(t, a.PositiveDeltas, b.PositiveDeltas)
-	assert.Equal(t, a.PositiveCounts, b.PositiveCounts)
+	equalFloats(t, a.PositiveCounts, b.PositiveCounts, "positive_counts")
 
 	assert.Equal(t, int32(a.ResetHint), int32(b.ResetHint))
 	assert.Equal(t, a.Timestamp, b.Timestamp)
+	equalFloats(t, a.CustomValues, b.CustomValues, "custom_values")
+}
+
+// equalFloat compares two floats by bit pattern. Remote write carries NaN payloads with meaning
+// — a staleness marker is the specific NaN 0x7ff0000000000002 — so a decoder must preserve the
+// bits, and NaN != NaN makes the ordinary comparison useless here.
+func equalFloat(t *testing.T, a, b float64, msg string) {
+	t.Helper()
+
+	assert.Equal(t, math.Float64bits(a), math.Float64bits(b), msg)
+}
+
+func equalFloats(t *testing.T, a, b []float64, msg string) {
+	t.Helper()
+
+	require.Len(t, b, len(a), msg)
+	for i := range a {
+		equalFloat(t, a[i], b[i], fmt.Sprintf("%s[%d]", msg, i))
+	}
 }
 
 func equalBucketSpans(t *testing.T, a nativeprompb.BucketSpan, b prompb.BucketSpan) {
@@ -165,6 +195,17 @@ var writeRequestTests = []nativeprompb.WriteRequest{
 						ResetHint:      nativeprompb.Histogram_GAUGE,
 						Timestamp:      10,
 					},
+					// A custom-bucket histogram: bounds are explicit and only the positive side
+					// is populated.
+					{
+						Count:          &nativeprompb.Histogram_CountInt{CountInt: 6},
+						Sum:            21,
+						Schema:         -53,
+						PositiveSpans:  []nativeprompb.BucketSpan{{Offset: 0, Length: 3}},
+						PositiveDeltas: []int64{1, 1, 1},
+						CustomValues:   []float64{0.5, 1, 2.5},
+						Timestamp:      12,
+					},
 				},
 			},
 		},
@@ -212,8 +253,15 @@ func FuzzWriteRequest(f *testing.F) {
 			return
 		}
 
+		// This decoder is stricter than gogo's, which skips wire types it does not know (the
+		// deprecated proto2 groups) instead of refusing them. Refusing is the safer of the two,
+		// so a rejected input is not a finding — only decoding it into something other than what
+		// gogo decoded it into is.
 		var target prompb.WriteRequest
-		require.NoError(t, target.Unmarshal(data))
+		if err := target.Unmarshal(data); err != nil {
+			t.Skipf("Rejected input: %+v", err)
+			return
+		}
 		equalWriteRequest(t, native, target)
 
 		// Ensure that Reset works properly and request could be re-used.

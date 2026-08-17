@@ -1,4 +1,4 @@
-package main
+package storagebackend
 
 import (
 	"time"
@@ -12,13 +12,13 @@ import (
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
-// StoragePolicyConfig configures the per-tenant storage policy applied to the embedded engine's
+// PolicyConfig configures the per-tenant storage policy applied to the embedded engine's
 // background merges: age-tiered lossy float precision, downsampling, and cold-data recompression.
 // The storage library resolves these per-tenant via a [tenant.Resolver] callback; oteldb runs the
 // embedded engine single-tenant (every signal routes to the "default" tenant), so this one policy
 // is resolved for every tenant. Empty ⇒ no tenancy resolver is installed (the library default:
 // lossless, no rollup, no recompression).
-type StoragePolicyConfig struct {
+type PolicyConfig struct {
 	// Precision is the age-tiered lossy float-compression policy: each tier re-encodes, at merge,
 	// the value column of parts older than After to retain only Bits significant mantissa bits, so
 	// recent data stays lossless and only old data trades accuracy for size. Empty ⇒ lossless.
@@ -118,7 +118,7 @@ func retentionMaxAge(cfg *RetentionConfig) time.Duration {
 }
 
 // empty reports whether the policy configures nothing, in which case no resolver is installed.
-func (cfg *StoragePolicyConfig) empty() bool {
+func (cfg *PolicyConfig) empty() bool {
 	return cfg == nil || (len(cfg.Precision) == 0 &&
 		len(cfg.Downsample) == 0 &&
 		cfg.Recompress == nil &&
@@ -129,7 +129,7 @@ func (cfg *StoragePolicyConfig) empty() bool {
 // tenancyOption builds the storage tenancy option from the policy config, or returns (nil, nil)
 // when no policy is configured. The resolved policy is applied to every tenant — oteldb runs the
 // embedded engine single-tenant, so a static resolver suffices.
-func tenancyOption(cfg *StoragePolicyConfig) (storage.Option, error) {
+func tenancyOption(cfg *PolicyConfig) (storage.Option, error) {
 	if cfg.empty() {
 		return nil, nil
 	}
@@ -146,7 +146,7 @@ func tenancyOption(cfg *StoragePolicyConfig) (storage.Option, error) {
 
 // policy translates the config into a [tenant.Policy]. It validates the downsample aggregation
 // names so a typo is a startup error rather than a silently-ignored tier.
-func (cfg *StoragePolicyConfig) policy() (tenant.Policy, error) {
+func (cfg *PolicyConfig) policy() (tenant.Policy, error) {
 	var p tenant.Policy
 
 	for _, t := range cfg.Precision {

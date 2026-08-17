@@ -235,21 +235,71 @@ type promHistorgram struct {
 	spans  []prompb.BucketSpan
 }
 
+// mapExpBuckets fills one side of an OTLP exponential histogram from Prometheus' span-encoded
+// buckets. The two encodings differ in three ways.
+//
+// Prometheus is sparse: spans name runs of populated buckets separated by gaps. OTLP is one dense
+// array from an offset, so the buckets a gap skips have to be written out as zero, or every bucket
+// after the first gap lands on the wrong bound.
+//
+// An integer histogram delta-encodes its counts in deltas, while a float histogram states them
+// absolutely in counts. A histogram carries one or the other, so only the former accumulates.
+//
+// An OTLP offset indexes a bucket's lower bound, where a Prometheus index is its upper bound, so
+// the offset is one lower.
 func mapExpBuckets(hist promHistorgram, buckets pmetric.ExponentialHistogramDataPointBuckets) {
 	if len(hist.spans) == 0 {
 		return
 	}
-	buckets.SetOffset(hist.spans[0].Offset)
 
-	if counts := buckets.BucketCounts(); len(hist.counts) > 0 {
-		for _, c := range hist.counts {
-			counts.Append(uint64(c))
+	// A malformed histogram may carry both arrays, or fewer counts than its spans claim; the spans
+	// are followed only as far as the counts actually go.
+	n := len(hist.counts)
+	delta := len(hist.deltas) > 0
+	if delta {
+		n = len(hist.deltas)
+	}
+	if n == 0 {
+		return
+	}
+
+	buckets.SetOffset(hist.spans[0].Offset - 1)
+
+	var (
+		out     = buckets.BucketCounts()
+		cur     int64
+		emitted int
+	)
+	for i, span := range hist.spans {
+		// A span's offset is the gap from the previous span's last bucket, so it is exactly how many
+		// empty buckets Prometheus left out. A negative offset is malformed and fills nothing.
+		if i > 0 {
+			for range int(span.Offset) {
+				out.Append(0)
+			}
 		}
-	} else {
-		var cur float64
-		for _, c := range hist.counts {
-			cur += c
-			counts.Append(uint64(cur))
+
+		for range int(span.Length) {
+			if emitted == n {
+				return
+			}
+
+			var count float64
+			if delta {
+				cur += hist.deltas[emitted]
+				count = float64(cur)
+			} else {
+				count = hist.counts[emitted]
+			}
+			emitted++
+
+			// A count that is negative or NaN is malformed. It is stored as empty rather than
+			// converted to a uint64, which for either would be a meaninglessly huge bucket.
+			if count > 0 {
+				out.Append(uint64(count))
+			} else {
+				out.Append(0)
+			}
 		}
 	}
 }
