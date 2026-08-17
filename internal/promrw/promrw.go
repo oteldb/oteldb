@@ -228,8 +228,8 @@ func (c *Converter) withLabel(attrs signal.Attributes, key, value []byte) signal
 }
 
 // suffixed returns name+suffix, carved from the converter's name arena.
-func (c *Converter) suffixed(name []byte, suffix string) []byte {
-	return c.names.Concat(name, []byte(suffix))
+func (c *Converter) suffixed(name, suffix []byte) []byte {
+	return c.names.Concat(name, suffix)
 }
 
 func metricName(labels []prompb.Label) ([]byte, bool) {

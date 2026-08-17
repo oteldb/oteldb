@@ -30,10 +30,17 @@ import (
 // path, but a histogram fed in both ways would not merge. Custom bounds have no such caveat: they
 // are formatted from the values the sender supplied.
 
-var leLabel = []byte("le")
+var (
+	leLabel = []byte("le")
+	// posInf is the `le` value of the catch-all overflow bucket, which carries the total count.
+	posInf = []byte("+Inf")
 
-// posInf is the `le` value of the catch-all overflow bucket, which carries the total count.
-const posInf = "+Inf"
+	// The suffixes a histogram decomposes into. They are package-level so the conversion does not
+	// allocate one per histogram just to hand it to Concat.
+	countSuffix  = []byte("_count")
+	sumSuffix    = []byte("_sum")
+	bucketSuffix = []byte("_bucket")
+)
 
 // Bounds of the exponential schema range. Senders may only use -4…8, but -9…52 are reserved for
 // finer resolutions and the bound arithmetic is exact across all of them, so the wider range is
@@ -86,10 +93,10 @@ func (c *Converter) appendHistogram(
 	monotonic := h.ResetHint != prompb.HistogramResetHintGauge
 	count := histogramCount(h)
 
-	c.addCounter(sm, c.suffixed(name, "_count"), attrs, startTS, tsNano, count, monotonic)
-	c.addCounter(sm, c.suffixed(name, "_sum"), attrs, startTS, tsNano, h.Sum, false)
+	c.addCounter(sm, c.suffixed(name, countSuffix), attrs, startTS, tsNano, count, monotonic)
+	c.addCounter(sm, c.suffixed(name, sumSuffix), attrs, startTS, tsNano, h.Sum, false)
 
-	bucketName := c.suffixed(name, "_bucket")
+	bucketName := c.suffixed(name, bucketSuffix)
 
 	var cum float64
 	emit := func(le []byte) {
@@ -132,7 +139,7 @@ func (c *Converter) appendHistogram(
 	// The overflow bucket carries the reported total, which also covers observations no bucket
 	// counted (NaN, and anything lost to a truncated bucket set).
 	cum = count
-	emit([]byte(posInf))
+	emit(posInf)
 
 	return true
 }
