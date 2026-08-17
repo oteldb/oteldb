@@ -1,3 +1,20 @@
+{{- $memLimit := dig "limits" "memory" "" (.Values.resources | default dict) }}
+{{- range .Values.env }}
+{{- if eq .name "GOMEMLIMIT" }}
+{{- $memLimit = .value }}
+{{- end }}
+{{- end }}
+{{- if not $memLimit }}
+
+WARNING: no resources.limits.memory is set.
+
+  The embedded storage engine sizes its read cache, decode cache and decode-admission
+  budget from the Go memory limit, which is derived from the cgroup memory limit at
+  startup. Without one the caches collapse to their floors and the admission budget is
+  sized against whole-host memory this pod may not get. Set resources.limits.memory (or
+  an explicit GOMEMLIMIT in `env`).
+{{- end }}
+
 Set up datasources:
 {{- if .Values.ingress.enabled }}
 {{- range $host := .Values.ingress.hosts }}

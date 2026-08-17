@@ -1,3 +1,8 @@
+{{- $dataDir := include "oteldb.dataDir" . }}
+{{- if and (eq (default "memory" .Values.config.storage.backend) "file") (not $dataDir) }}
+{{- fail "config.storage.dir is required for the file backend" }}
+{{- end }}
+{{- $persistent := and .Values.persistence.enabled $dataDir }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -5,7 +10,8 @@ metadata:
   labels:
     {{- include "oteldb.labels" . | nindent 4 }}
 spec:
-  # Single node only: the embedded storage engine here is not clustered.
+  # Single node only: the embedded storage engine here is not clustered. Clustered,
+  # multi-replica oteldb is deployed by the operator (github.com/oteldb/operator).
   replicas: 1
   serviceName: {{ include "oteldb.fullname" . }}
   selector:
@@ -26,15 +32,19 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "oteldb.serviceAccountName" . }}
+      # Flushing the head and the WAL on shutdown scales with the data directory.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       volumes:
         - name: config
           configMap:
             name: {{ include "oteldb.fullname" . }}-cfg
-        {{- if not .Values.persistence.enabled }}
+        {{- if not $persistent }}
+        {{- if $dataDir }}
         - name: data
           emptyDir: {}
+        {{- end }}
         {{- else if .Values.persistence.existingClaim }}
         - name: data
           persistentVolumeClaim:
@@ -50,28 +60,33 @@ spec:
             httpGet:
               path: /liveness
               port: health-check
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /readiness
               port: health-check
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          # Replaying the WAL of a large data directory can take minutes; give startup its
+          # own budget instead of the (much tighter) liveness one.
           startupProbe:
             httpGet:
               path: /startup
               port: health-check
+            {{- toYaml .Values.startupProbe | nindent 12 }}
           volumeMounts:
             - mountPath: /etc/otel/
               name: config
-            - mountPath: {{ .Values.config.storage.dir }}
+            {{- if $dataDir }}
+            - mountPath: {{ $dataDir }}
               name: data
+            {{- end }}
           args:
             - --config=/etc/otel/config.yml
           {{- with .Values.envFrom }}
           envFrom: {{ toYaml . | nindent 12 }}
           {{- end }}
           env:
-            {{- if .Values.env }}
-            {{- toYaml .Values.env | nindent 12 }}
-            {{- end }}
+            {{- include "oteldb.env" . | nindent 12 }}
           ports:
             - containerPort: 19291
               protocol: TCP
@@ -94,6 +109,14 @@ spec:
             - containerPort: 4318
               protocol: TCP
               name: otlp-http
+            - containerPort: 8090
+              protocol: TCP
+              name: admin
+            {{- if include "oteldb.metricsEnabled" . }}
+            - containerPort: {{ .Values.telemetry.metrics.port }}
+              protocol: TCP
+              name: metrics
+            {{- end }}
             - containerPort: 13133
               protocol: TCP
               name: health-check
@@ -111,7 +134,7 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-  {{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+  {{- if and $persistent (not .Values.persistence.existingClaim) }}
   volumeClaimTemplates:
     - metadata:
         name: data
