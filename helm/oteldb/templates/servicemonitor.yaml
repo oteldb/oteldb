@@ -1,0 +1,43 @@
+{{- if .Values.telemetry.serviceMonitor.enabled }}
+{{- if not (include "oteldb.metricsEnabled" .) }}
+{{- fail "telemetry.serviceMonitor.enabled requires the prometheus exporter (telemetry.metrics)" }}
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "oteldb.fullname" . }}
+  labels:
+    {{- include "oteldb.labels" . | nindent 4 }}
+    {{- with .Values.telemetry.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.telemetry.serviceMonitor.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "oteldb.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: metrics
+      path: {{ .Values.telemetry.serviceMonitor.path }}
+      honorLabels: {{ .Values.telemetry.serviceMonitor.honorLabels }}
+      {{- with .Values.telemetry.serviceMonitor.interval }}
+      interval: {{ . }}
+      {{- end }}
+      {{- with .Values.telemetry.serviceMonitor.scrapeTimeout }}
+      scrapeTimeout: {{ . }}
+      {{- end }}
+      {{- with .Values.telemetry.serviceMonitor.relabelings }}
+      relabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.telemetry.serviceMonitor.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

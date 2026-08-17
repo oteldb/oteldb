@@ -1,11 +1,10 @@
 # Default values for oteldb.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
-
-# oteldb runs as a single node backed by the embedded github.com/oteldb/storage
-# engine with on-disk persistence. Scaling beyond a single replica requires the
-# clustered storage backend and is intentionally not supported by this chart yet.
-replicaCount: 1
+#
+# oteldb runs here as a single node backed by the embedded github.com/oteldb/storage
+# engine with on-disk persistence. Clustered, multi-replica deployments are handled by
+# the oteldb operator (https://github.com/oteldb/operator), not by this chart.
 
 image:
   repository: ghcr.io/oteldb/oteldb
@@ -28,22 +27,32 @@ serviceAccount:
 
 podAnnotations: {}
 
-podSecurityContext: {}
-  # fsGroup: 2000
+# Runs as the distroless "nonroot" user (65532). fsGroup makes the data volume
+# group-writable for it, which a non-root process needs to write parts and the WAL.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  # Only relabel the volume when its root does not already match fsGroup, so a large
+  # data directory does not stall pod startup on every restart.
+  fsGroupChangePolicy: OnRootMismatch
 
-securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
   # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
 
 service:
   type: ClusterIP
 
-# Persistence for the embedded storage engine's data directory (config.storage.dir).
-# A PersistentVolumeClaim is created from a volumeClaimTemplate on the StatefulSet.
+# Persistence for the embedded storage engine's local state. For the "file" backend this
+# is the data directory (config.storage.dir: parts and WAL). For the "s3" backend the
+# durable tier lives in the object store and only the write-ahead log is local, so the
+# volume is mounted at config.storage.wal_dir instead; with no wal_dir set, the s3 backend
+# is stateless and no volume is mounted at all.
 persistence:
   enabled: true
   # Use an existing PersistentVolumeClaim instead of creating one. When set, size,
@@ -73,18 +82,62 @@ ingress:
   #    hosts:
   #      - chart-example.local
 
-resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
+# A memory limit is not optional here: the embedded storage engine sizes its read cache,
+# decode cache and decode-admission budget from the Go memory limit, which automemlimit
+# derives from the cgroup limit at startup. Without limits.memory the caches collapse to
+# their floors while the admission budget is sized against whole-host RAM the pod may not
+# get. Raise these together with the expected ingest/query volume.
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    # No CPU limit on purpose: throttling a query engine costs more than it saves.
+    memory: 4Gi
 
+# Flushing the head and the WAL on shutdown, and replaying the WAL on startup, both scale
+# with the data directory, so both budgets are generous by default.
+terminationGracePeriodSeconds: 120
+
+# Startup gets failureThreshold * periodSeconds (5m by default) to replay the WAL before
+# the pod is restarted.
+startupProbe:
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 30
+livenessProbe:
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+readinessProbe:
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Self-observability: oteldb's own telemetry (engine part counts, merge duration, cache
+# hit rates, decode-admission waits, HTTP/gRPC metrics).
+telemetry:
+  metrics:
+    # Serve oteldb's own metrics in Prometheus format on `port`.
+    enabled: true
+    port: 9464
+    # OTEL_METRICS_EXPORTER value. Comma-separated; e.g. "prometheus,otlp" to also push
+    # to a collector (configure the endpoint through `env`).
+    exporters: prometheus
+  # Prometheus Operator ServiceMonitor scraping the port above.
+  serviceMonitor:
+    enabled: false
+    # Extra labels, e.g. the `release` label your Prometheus selects on.
+    labels: {}
+    annotations: {}
+    interval: ""
+    scrapeTimeout: ""
+    path: /metrics
+    honorLabels: false
+    relabelings: []
+    metricRelabelings: []
+
+# Extra environment variables. Anything set here wins over the telemetry defaults above.
 env:
   - name: OTEL_LOG_LEVEL
     value: "DEBUG"
@@ -99,6 +152,20 @@ config:
   profiles_backend: storage
   # Embedded storage engine configuration. The "file" backend persists parts and the
   # write-ahead log under dir, which is backed by the persistent volume above.
+  #
+  # For the "s3" backend, set backend: s3, an s3 block, and a wal_dir (the local WAL is
+  # the only thing keeping unflushed head data across a restart):
+  #
+  #   storage:
+  #     backend: s3
+  #     wal_dir: /var/lib/oteldb/wal
+  #     s3:
+  #       bucket: oteldb
+  #       endpoint: http://minio:9000
+  #       force_path_style: true
+  #
+  # Credentials are better left out of the config: the AWS default chain is used when
+  # access_key_id/secret_access_key are empty, so pass them through `envFrom` a Secret.
   storage:
     backend: file
     dir: /var/lib/oteldb
@@ -115,6 +182,9 @@ config:
     bind: 0.0.0.0:4040
   health_check:
     bind: 0.0.0.0:13133
+  # Admin API and UI.
+  admin:
+    bind: 0.0.0.0:8090
 
 nodeSelector: {}
 
