@@ -156,6 +156,7 @@ func clusterOption(cfg *ClusterConfig, lg *zap.Logger) (storage.Option, error) {
 		zap.String("addr", addr),
 		zap.Int("rf", cfg.RF),
 		zap.Int("shards_per_tenant", cfg.ShardsPerTenant),
+		zap.Bool("private_backend", cfg.PrivateBackend),
 	)
 	return storage.WithCluster(&cluster.Config{
 		Etcd:            cfg.Etcd,
@@ -163,6 +164,7 @@ func clusterOption(cfg *ClusterConfig, lg *zap.Logger) (storage.Option, error) {
 		RF:              cfg.RF,
 		ShardsPerTenant: cfg.ShardsPerTenant,
 		Root:            cfg.Root,
+		PrivateBackend:  cfg.PrivateBackend,
 	}), nil
 }
 
