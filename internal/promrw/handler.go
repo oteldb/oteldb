@@ -48,6 +48,8 @@ type HandlerConfig struct {
 
 // Stats is what one accepted request ingested.
 type Stats struct {
+	// Message is the schema the request was sent under.
+	Message Message
 	// Bytes is the decompressed request size.
 	Bytes int
 	// Series is the number of timeseries the request carried.
@@ -100,6 +102,7 @@ type requestState struct {
 	compressed []byte
 	raw        []byte
 	req        prompb.WriteRequest
+	reqV2      prompb.WriteRequestV2
 	conv       Converter
 }
 
@@ -120,13 +123,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			errors.Errorf("only %s encoding is accepted, got %q", encodingSnappy, enc))
 		return
 	}
-	if msg != MessageV1 {
-		h.reject(w, http.StatusUnsupportedMediaType,
-			errors.Errorf("%s is not accepted by this server", msg))
-		return
+	counts, err := h.handle(r, msg)
+
+	// The written counts are reported before the status, and on the failure path too: a request that
+	// stored most of its series and then failed has to say what landed.
+	if msg == MessageV2 {
+		counts.setWrittenHeaders(w)
 	}
 
-	if err := h.handle(r); err != nil {
+	if err != nil {
 		h.reject(w, statusOf(err), err)
 		return
 	}
@@ -169,7 +174,7 @@ type tooLargeError struct{ err error }
 func (e tooLargeError) Error() string { return e.err.Error() }
 func (e tooLargeError) Unwrap() error { return e.err }
 
-func (h *Handler) handle(r *http.Request) error {
+func (h *Handler) handle(r *http.Request, msg Message) (Counts, error) {
 	s, _ := h.pool.Get().(*requestState)
 	defer h.pool.Put(s)
 
@@ -177,49 +182,77 @@ func (h *Handler) handle(r *http.Request) error {
 	if s.compressed, err = readAll(s.compressed[:0], http.MaxBytesReader(nil, r.Body, h.maxBody)); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			return tooLargeError{err: errors.Errorf("body is over the %d byte limit", h.maxBody)}
+			return Counts{}, tooLargeError{err: errors.Errorf("body is over the %d byte limit", h.maxBody)}
 		}
 
-		return errors.Wrap(err, "read body")
+		return Counts{}, errors.Wrap(err, "read body")
 	}
 
 	decoded, err := snappy.DecodedLen(s.compressed)
 	if err != nil {
-		return errors.Wrap(err, "read decompressed length")
+		return Counts{}, errors.Wrap(err, "read decompressed length")
 	}
 	if decoded > h.maxDecoded {
-		return errors.Errorf("body decompresses to %d bytes, over the %d limit", decoded, h.maxDecoded)
+		return Counts{}, errors.Errorf("body decompresses to %d bytes, over the %d limit",
+			decoded, h.maxDecoded)
 	}
 
 	if s.raw, err = snappy.Decode(s.raw[:cap(s.raw)], s.compressed); err != nil {
-		return errors.Wrap(err, "decompress body")
+		return Counts{}, errors.Wrap(err, "decompress body")
 	}
 
-	s.req.Reset()
-	if err := s.req.Unmarshal(s.raw); err != nil {
-		return errors.Wrap(err, "unmarshal write request")
+	batch, series, counts, err := s.convert(s.raw, msg, h.opts)
+	if err != nil {
+		return Counts{}, err
 	}
-
-	batch, rejected := s.conv.Convert(s.req.Timeseries, h.opts)
 
 	if err := h.sink.WriteMetrics(r.Context(), *batch); err != nil {
-		return writeError{err: errors.Wrap(err, "write metrics")}
+		// Nothing landed, so nothing is reported as written: the sender must resend all of it.
+		return Counts{}, writeError{err: errors.Wrap(err, "write metrics")}
 	}
 
-	if rejected.Invalid > 0 {
+	if counts.Rejected.Invalid > 0 {
 		h.lg.Warn("Skipped remote write series with unstorable labels",
-			zap.Int("points", rejected.Invalid))
+			zap.Stringer("message", msg), zap.Int("points", counts.Rejected.Invalid))
 	}
 
 	if h.observe != nil {
 		h.observe(Stats{
+			Message:  msg,
 			Bytes:    len(s.raw),
-			Series:   len(s.req.Timeseries),
+			Series:   series,
 			Points:   countPoints(batch),
-			Rejected: rejected,
+			Rejected: counts.Rejected,
 		})
 	}
-	return nil
+
+	return counts, nil
+}
+
+// convert decodes raw under the given schema and converts it, returning the batch, how many series
+// the request carried, and what became of its points.
+func (s *requestState) convert(
+	raw []byte, msg Message, o Options,
+) (_ *metric.Metrics, series int, _ Counts, _ error) {
+	if msg == MessageV2 {
+		s.reqV2.Reset()
+		if err := s.reqV2.Unmarshal(raw); err != nil {
+			return nil, 0, Counts{}, errors.Wrap(err, "unmarshal write request 2.0")
+		}
+
+		batch, counts := s.conv.ConvertV2(&s.reqV2, o)
+
+		return batch, len(s.reqV2.Timeseries), counts, nil
+	}
+
+	s.req.Reset()
+	if err := s.req.Unmarshal(raw); err != nil {
+		return nil, 0, Counts{}, errors.Wrap(err, "unmarshal write request")
+	}
+
+	batch, counts := s.conv.Convert(s.req.Timeseries, o)
+
+	return batch, len(s.req.Timeseries), counts, nil
 }
 
 // countPoints sums the points of a converted batch. It walks metric headers, not points, so it

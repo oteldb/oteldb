@@ -48,9 +48,10 @@ func (o *Options) setDefaults() {
 // scratch it is built from, so a converter reused across requests allocates nothing in steady
 // state. It is not safe for concurrent use; pool one per in-flight request.
 type Converter struct {
-	batch metric.Metrics
-	attrs xarena.Arena[signal.KeyValue]
-	names xarena.Arena[byte]
+	batch  metric.Metrics
+	attrs  xarena.Arena[signal.KeyValue]
+	names  xarena.Arena[byte]
+	labels xarena.Arena[prompb.Label]
 }
 
 // Convert builds a metrics batch from the request's timeseries, reporting what it did not ingest.
@@ -60,94 +61,149 @@ type Converter struct {
 // to.
 //
 // A series it cannot store is skipped rather than failing the batch — see [Rejected].
-func (c *Converter) Convert(tss []prompb.TimeSeries, o Options) (*metric.Metrics, Rejected) {
+func (c *Converter) Convert(tss []prompb.TimeSeries, o Options) (*metric.Metrics, Counts) {
 	o.setDefaults()
 	cutoff := o.Now.Add(-o.TimeThreshold).UnixNano()
+	sm := c.reset(o)
 
+	var counts Counts
+	for i := range tss {
+		ts := &tss[i]
+
+		series, ok := c.series(ts.Labels)
+		if !ok {
+			counts.Rejected.Invalid += len(ts.Samples) + len(ts.Histograms)
+			continue
+		}
+		// Remote write 1.0 carries no type information, so the name suffix is all there is to go on.
+		series.kind = kindOf(series.name)
+
+		c.appendSeries(sm, series, ts.Samples, ts.Histograms, cutoff, &counts)
+	}
+
+	return &c.batch, counts
+}
+
+// reset readies the converter for one request and returns the single scope every series is ingested
+// under.
+func (c *Converter) reset(o Options) *metric.ScopeMetrics {
 	c.batch.Reset()
 	c.attrs.Reset()
 	c.names.Reset()
+	c.labels.Reset()
 
 	rm := c.batch.AddResource()
 	rm.Resource = o.Resource
 	sm := rm.AddScope()
 	sm.Scope = o.Scope
 
-	var rej Rejected
-	for i := range tss {
-		ts := &tss[i]
+	return sm
+}
 
-		if !validLabels(ts.Labels) {
-			rej.Invalid += len(ts.Samples) + len(ts.Histograms)
-			continue
-		}
+// series is one timeseries' resolved identity: its metric name, the attributes shared by every
+// point, and the metric header those points are stored under.
+type series struct {
+	name  []byte
+	attrs signal.Attributes
+	kind  kind
+}
 
-		name, _ := metricName(ts.Labels)
-		attrs := c.labelAttrs(ts.Labels)
-		if hasDuplicateKey(attrs) {
-			rej.Invalid += len(ts.Samples) + len(ts.Histograms)
-			continue
-		}
-
-		samples := c.appendSamples(sm, ts, name, attrs, cutoff)
-		rej.Old += len(ts.Samples) - samples
-
-		// Prometheus sends a series as either float samples or native histograms, never both;
-		// histograms are decomposed only when the series carries no in-window sample.
-		if samples == 0 {
-			rej.add(c.appendHistograms(sm, ts, name, attrs, cutoff))
-		} else {
-			rej.Old += len(ts.Histograms)
-		}
+// series validates and resolves a timeseries' labels. It reports false for a label set that cannot
+// be stored.
+func (c *Converter) series(labels []prompb.Label) (series, bool) {
+	if !validLabels(labels) {
+		return series{}, false
 	}
 
-	return &c.batch, rej
+	name, _ := metricName(labels)
+	attrs := c.labelAttrs(labels)
+	if hasDuplicateKey(attrs) {
+		return series{}, false
+	}
+
+	return series{name: name, attrs: attrs}, true
+}
+
+// appendSeries stores one series' samples, or its histograms when it has no in-window sample.
+func (c *Converter) appendSeries(
+	sm *metric.ScopeMetrics,
+	s series,
+	samples []prompb.Sample,
+	histograms []prompb.Histogram,
+	cutoff int64,
+	counts *Counts,
+) {
+	appended := c.appendSamples(sm, s, samples, cutoff)
+	counts.Samples += appended
+	counts.Rejected.Old += len(samples) - appended
+
+	// Prometheus sends a series as either float samples or native histograms, never both;
+	// histograms are decomposed only when the series carries no in-window sample.
+	if appended > 0 {
+		counts.Rejected.Old += len(histograms)
+		return
+	}
+
+	rej := c.appendHistograms(sm, s, histograms, cutoff)
+	counts.Histograms += len(histograms) - rej.Total()
+	counts.Rejected.add(rej)
 }
 
 // appendSamples appends the series' in-window float samples as one gauge or sum metric, returning
 // how many were appended. Nothing is appended when every sample is out of window.
 func (c *Converter) appendSamples(
 	sm *metric.ScopeMetrics,
-	ts *prompb.TimeSeries,
-	name []byte,
-	attrs signal.Attributes,
+	s series,
+	samples []prompb.Sample,
 	cutoff int64,
 ) (appended int) {
 	var mt *metric.Metric
-	for _, s := range ts.Samples {
-		tsNano := msToNano(s.Timestamp)
+	for _, sample := range samples {
+		tsNano := msToNano(sample.Timestamp)
 		if tsNano < cutoff {
 			continue
 		}
 
 		if mt == nil {
-			mt = c.addMetric(sm, name)
+			mt = c.addMetric(sm, s)
 		}
 		p := mt.AddPoint()
-		p.Attributes = attrs
+		p.Attributes = s.attrs
 		p.Ts = tsNano
-		p.Value = s.Value
+		p.Value = sample.Value
 		appended++
 	}
 	return appended
 }
 
-// addMetric appends the metric a remote write series maps to: its unit and kind are inferred from
-// the name suffix, the only type information remote write carries.
-func (c *Converter) addMetric(sm *metric.ScopeMetrics, name []byte) *metric.Metric {
+// addMetric appends the metric header a series' points are stored under.
+func (c *Converter) addMetric(sm *metric.ScopeMetrics, s series) *metric.Metric {
 	mt := sm.AddMetric()
-	mt.Name = name
-
-	unit, cumulative := classify(name)
-	mt.Unit = unit
-	if cumulative {
+	mt.Name = s.name
+	mt.Unit = s.kind.unit
+	if s.kind.cumulative {
 		mt.Kind = metric.KindSum
 		mt.Temporality = metric.TemporalityCumulative
-		mt.Monotonic = true
+		mt.Monotonic = s.kind.monotonic
 	} else {
 		mt.Kind = metric.KindGauge
 	}
+
 	return mt
+}
+
+// kind is the metric-header shape a series is stored under, which contributes to its identity.
+type kind struct {
+	unit       []byte
+	cumulative bool
+	monotonic  bool
+}
+
+// kindOf infers a series' kind from its name suffixes, which is all remote write 1.0 carries.
+func kindOf(name []byte) kind {
+	unit, cumulative := classify(name)
+
+	return kind{unit: unit, cumulative: cumulative, monotonic: cumulative}
 }
 
 // labelAttrs converts the series' labels (all but __name__) into one sorted attribute set shared

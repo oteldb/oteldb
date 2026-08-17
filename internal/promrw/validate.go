@@ -20,6 +20,21 @@ import (
 // attribute set to derive a series id, and a duplicated key would make that id depend on the order
 // the sender happened to write two labels in.
 
+// Counts is what a conversion did with a request's points, in the sender's terms: one native
+// histogram counts once however many classic series it decomposed into, because one is what the
+// sender sent and one is what it will resend if told this did not land.
+type Counts struct {
+	// Samples is the number of float samples ingested.
+	Samples int
+	// Histograms is the number of native histograms ingested.
+	Histograms int
+	// Exemplars is the number of exemplars ingested, which is always zero: the engine has nowhere
+	// to put them. It is reported rather than omitted so a sender is not left guessing.
+	Exemplars int
+	// Rejected is what the request carried but the conversion did not ingest.
+	Rejected Rejected
+}
+
 // Rejected counts what a conversion did not ingest, by reason.
 type Rejected struct {
 	// Old is the number of points and histograms older than [Options.TimeThreshold].

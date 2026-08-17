@@ -31,11 +31,11 @@ func convertOne(t *testing.T, ts prompb.TimeSeries) (_ string, dropped int) {
 	t.Helper()
 
 	var conv promrw.Converter
-	got, rej := conv.Convert([]prompb.TimeSeries{ts}, promrw.Options{
+	got, counts := conv.Convert([]prompb.TimeSeries{ts}, promrw.Options{
 		TimeThreshold: wideThreshold,
 		Now:           time.Unix(0, 0).Add(wideThreshold / 2),
 	})
-	return dump(got), rej.Total()
+	return dump(got), counts.Rejected.Total()
 }
 
 // TestHistogramDecomposition asserts a native histogram is stored as the classic

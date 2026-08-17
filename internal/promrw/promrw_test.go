@@ -54,7 +54,7 @@ func TestDropsOldPoints(t *testing.T) {
 	now := time.Unix(3600, 0)
 
 	var conv promrw.Converter
-	got, rej := conv.Convert([]prompb.TimeSeries{
+	got, counts := conv.Convert([]prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{label("__name__", "old")},
 			Samples: []prompb.Sample{
@@ -69,8 +69,8 @@ func TestDropsOldPoints(t *testing.T) {
 			},
 		},
 	}, promrw.Options{TimeThreshold: time.Minute, Now: now})
-	require.Equal(t, 2, rej.Old)
-	require.Equal(t, 2, rej.Total())
+	require.Equal(t, 2, counts.Rejected.Old)
+	require.Equal(t, 2, counts.Rejected.Total())
 
 	dumped := dump(got)
 	require.NotContains(t, dumped, "metric old ")
@@ -104,13 +104,13 @@ func TestSkipsInvalidSeries(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var conv promrw.Converter
-			got, rej := conv.Convert([]prompb.TimeSeries{
+			got, counts := conv.Convert([]prompb.TimeSeries{
 				{Labels: tt.labels, Samples: sample},
 				{Labels: []prompb.Label{label("__name__", "good")}, Samples: sample},
 			}, promrw.Options{TimeThreshold: wideThreshold})
 
-			require.Equal(t, 1, rej.Invalid)
-			require.Equal(t, 1, rej.Total(), "nothing else was rejected")
+			require.Equal(t, 1, counts.Rejected.Invalid)
+			require.Equal(t, 1, counts.Rejected.Total(), "nothing else was rejected")
 
 			dumped := dump(got)
 			require.Contains(t, dumped, "metric good ", "the valid series is still ingested")

@@ -60,8 +60,13 @@ func postRaw(t *testing.T, h http.Handler, body []byte, contentType string) *htt
 func post(t *testing.T, h http.Handler, raw []byte) *httptest.ResponseRecorder {
 	t.Helper()
 
-	return postRaw(t, h, snappy.Encode(nil, raw), "application/x-protobuf")
+	return postRaw(t, h, snappyEncode(raw), "application/x-protobuf")
 }
+
+func snappyEncode(raw []byte) []byte { return snappy.Encode(nil, raw) }
+
+// errStorageDown stands in for a sink that cannot accept the write right now.
+var errStorageDown = errors.New("storage is down")
 
 func TestHandler(t *testing.T) {
 	raw := readCorpus(t)
@@ -93,9 +98,10 @@ func TestHandlerRejects(t *testing.T) {
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/write", http.NoBody))
 		require.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 	})
-	t.Run("RemoteWriteV2", func(t *testing.T) {
-		rec := postRaw(t, h, nil, "application/x-protobuf;proto=io.prometheus.write.v2.Request")
-		require.Equal(t, http.StatusUnsupportedMediaType, rec.Code)
+	t.Run("NotProtobufV2", func(t *testing.T) {
+		rec := postRaw(t, h, snappy.Encode(nil, []byte{0xff, 0xff, 0xff}),
+			"application/x-protobuf;proto=io.prometheus.write.v2.Request")
+		require.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 	t.Run("NotSnappy", func(t *testing.T) {
 		rec := postRaw(t, h, []byte("plain"), "application/x-protobuf")
@@ -128,7 +134,7 @@ func TestHandlerRejects(t *testing.T) {
 // TestHandlerWriteFailure asserts a sink failure is a 5xx, so the client retries instead of
 // dropping the batch as malformed.
 func TestHandlerWriteFailure(t *testing.T) {
-	s := &sink{failWr: errors.New("storage is down")}
+	s := &sink{failWr: errStorageDown}
 	h := promrw.NewHandler(s, promrw.HandlerConfig{
 		Options: promrw.Options{TimeThreshold: wideThreshold},
 	})

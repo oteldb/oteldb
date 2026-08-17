@@ -48,20 +48,19 @@ const (
 // not ingest.
 func (c *Converter) appendHistograms(
 	sm *metric.ScopeMetrics,
-	ts *prompb.TimeSeries,
-	name []byte,
-	attrs signal.Attributes,
+	s series,
+	histograms []prompb.Histogram,
 	cutoff int64,
 ) (rej Rejected) {
-	for i := range ts.Histograms {
-		h := &ts.Histograms[i]
+	for i := range histograms {
+		h := &histograms[i]
 
 		tsNano := msToNano(h.Timestamp)
 		if tsNano < cutoff {
 			rej.Old++
 			continue
 		}
-		if !c.appendHistogram(sm, h, name, attrs, tsNano) {
+		if !c.appendHistogram(sm, s, h, tsNano) {
 			rej.Unsupported++
 		}
 	}
@@ -71,11 +70,12 @@ func (c *Converter) appendHistograms(
 // appendHistogram decomposes one histogram, reporting whether it was representable.
 func (c *Converter) appendHistogram(
 	sm *metric.ScopeMetrics,
+	s series,
 	h *prompb.Histogram,
-	name []byte,
-	attrs signal.Attributes,
 	tsNano int64,
 ) bool {
+	name, attrs := s.name, s.attrs
+	startTS := msToNano(h.StartTimestamp)
 	if !h.IsCustomBuckets() && (h.Schema < schemaMin || h.Schema > schemaMax) {
 		return false
 	}
@@ -86,14 +86,14 @@ func (c *Converter) appendHistogram(
 	monotonic := h.ResetHint != prompb.HistogramResetHintGauge
 	count := histogramCount(h)
 
-	c.addCounter(sm, c.suffixed(name, "_count"), attrs, tsNano, count, monotonic)
-	c.addCounter(sm, c.suffixed(name, "_sum"), attrs, tsNano, h.Sum, false)
+	c.addCounter(sm, c.suffixed(name, "_count"), attrs, startTS, tsNano, count, monotonic)
+	c.addCounter(sm, c.suffixed(name, "_sum"), attrs, startTS, tsNano, h.Sum, false)
 
 	bucketName := c.suffixed(name, "_bucket")
 
 	var cum float64
 	emit := func(le []byte) {
-		c.addCounter(sm, bucketName, c.withLabel(attrs, leLabel, le), tsNano, cum, monotonic)
+		c.addCounter(sm, bucketName, c.withLabel(attrs, leLabel, le), startTS, tsNano, cum, monotonic)
 	}
 	emitBound := func(le float64) { emit(c.formatBound(le)) }
 
@@ -142,7 +142,7 @@ func (c *Converter) addCounter(
 	sm *metric.ScopeMetrics,
 	name []byte,
 	attrs signal.Attributes,
-	tsNano int64,
+	startTS, tsNano int64,
 	value float64,
 	monotonic bool,
 ) {
@@ -154,6 +154,7 @@ func (c *Converter) addCounter(
 
 	p := mt.AddPoint()
 	p.Attributes = attrs
+	p.StartTs = startTS
 	p.Ts = tsNano
 	p.Value = value
 }

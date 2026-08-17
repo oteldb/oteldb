@@ -1,6 +1,8 @@
 package promrw
 
 import (
+	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-faster/errors"
@@ -92,4 +94,25 @@ func validEncoding(encoding string) bool {
 	encoding = strings.TrimSpace(encoding)
 
 	return encoding == "" || encoding == encodingSnappy
+}
+
+// A 2.0 receiver reports what it wrote in these headers, and a sender reads them to decide whether
+// a partial write needs resending. They are set on the failure path too, for exactly that reason:
+// a request that stored most of its series and then answered 400 has to say so, or the sender
+// resends what already landed.
+//
+// A 1.0 response must not carry them. Their absence is how a sender tells a 1.0 receiver from a 2.0
+// one, so setting them on a 1.0 response would claim a guarantee 1.0 does not make.
+const (
+	writtenSamplesHeader    = "X-Prometheus-Remote-Write-Samples-Written"
+	writtenHistogramsHeader = "X-Prometheus-Remote-Write-Histograms-Written"
+	writtenExemplarsHeader  = "X-Prometheus-Remote-Write-Exemplars-Written"
+)
+
+// setWrittenHeaders reports the counts on w. It must be called before the status is written.
+func (c Counts) setWrittenHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set(writtenSamplesHeader, strconv.Itoa(c.Samples))
+	h.Set(writtenHistogramsHeader, strconv.Itoa(c.Histograms))
+	h.Set(writtenExemplarsHeader, strconv.Itoa(c.Exemplars))
 }
