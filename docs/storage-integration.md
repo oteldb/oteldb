@@ -90,9 +90,10 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
 
 - **Lossy precision:** expose `tenant.Precision{Tiers: []{After, Bits}}` (age-tiered lossy float
   compression) through oteldb's per-tenant resolver, alongside Downsample/Recompress.
-  **Implemented** in `cmd/oteldb/storage_policy.go` (`tenancyOption` → `storage.WithTenancy`):
+  **Implemented** in `internal/storagebackend/policy.go` (`tenancyOption` → `storage.WithTenancy`):
   the `storage.policy` config block exposes `precision[]{after,bits}`,
-  `downsample[]{after,interval,agg}`, `recompress{after,level}`, `retention{max_age,max_bytes}`
+  `downsample[]{after,interval,agg}`, `recompress{after,level}`, `ec{data,parity,after}`,
+  `retention{max_age,max_bytes}`
   and `limits{ingest_bytes_per_second,max_in_flight_bytes,max_series,max_series_soft,max_part_size,
   max_merge_part_size}`. `max_part_size` bounds a *flushed* part's uncompressed estimate;
   `max_merge_part_size` bounds a *merged* part's compressed size on disk, and left at zero is
@@ -100,6 +101,11 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
   oteldb runs the embedded engine single-tenant, so a static `tenant.ResolverFunc` returns one
   policy for every tenant — retention is therefore one global window, not per-tenant.
   Both `retention.max_age` and `retention.max_bytes` are enforced by the library.
+  `ec` is an age tier like `recompress`, but for durability: cold parts are stored as `data`+`parity`
+  Reed-Solomon shards, one per cluster node, instead of RF full copies. It applies only under
+  `storage.cluster` with `private_backend` — on a shared object store the store owns durability and
+  the policy is inert (logged as a warning at startup). Owner count is exactly `data+parity`; the
+  replication factor is ignored under EC.
 - **Sampling weights:** honour `fetch.Batch.ScaleFactors` in PromQL `sum`/`rate`/`count` for
   sampled tenants. The aggregate sidecar is skipped for sampled parts, so those fall back to a
   weighted raw fold. **Not implemented.** oteldb does not yet expose a `tenant.Sampling` policy,

@@ -6,4 +6,4 @@ metadata:
     {{- include "oteldb.labels" . | nindent 4 }}
 data:
   config.yml: |-
-    {{ .Values.config | toYaml | nindent 4 }}
+    {{- .Values.config | toYaml | nindent 4 }}

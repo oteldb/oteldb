@@ -84,6 +84,21 @@ builds:
     flags:
       - -trimpath
 
+  - id: odbingest
+    binary: "odbingest{{ .Ext }}"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - riscv64
+    main: ./cmd/odbingest
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+
   - id: odbagent
     binary: "odbagent{{ .Ext }}"
     env:
@@ -352,6 +367,7 @@ nfpms:
       - odbbackup
       - odbrestore
       - odbmigrate
+      - odbingest
       - odbagent
     homepage: https://github.com/oteldb/oteldb
     maintainer: Aleksandr Razumov <ernado@go-faster.org>

@@ -14,7 +14,13 @@ spec:
     - port: 8090
       protocol: TCP
       targetPort: 8090
+      name: admin
+    {{- if include "oteldb.metricsEnabled" . }}
+    - port: {{ .Values.telemetry.metrics.port }}
+      protocol: TCP
+      targetPort: metrics
       name: metrics
+    {{- end }}
     - port: 3200
       protocol: TCP
       targetPort: 3200
