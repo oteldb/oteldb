@@ -8,8 +8,7 @@ import (
 
 // Prometheus is Prometheus API config.
 type Prometheus struct {
-	Bind string `json:"bind" yaml:"bind"`
-	Auth []Auth `json:"auth" yaml:"auth"`
+	Listener `json:",inline" yaml:",inline"`
 
 	// MaxSamples caps the samples one query may load, defaulting to Prometheus' own
 	// --query.max-samples. The two engines count it differently: the fork tracks samples resident
@@ -53,9 +52,7 @@ type MetricsCache struct {
 
 // SetDefaults implements [Defaulter].
 func (cfg *Prometheus) SetDefaults() {
-	if cfg.Bind == "" {
-		cfg.Bind = ":9090"
-	}
+	cfg.Listener.setDefaults(":9090")
 	if cfg.MaxSamples == 0 {
 		// Prometheus' own default. The previous 1M was 50x below it, which a single node-exporter
 		// CPU panel exceeds: 256 series over 6h at a 5s scrape is 1.1M samples.
