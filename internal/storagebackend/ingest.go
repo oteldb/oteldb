@@ -21,6 +21,9 @@ func (b *Backend) ConsumeTraces(ctx context.Context, td ptrace.Traces) error {
 	var batch sigtrace.Traces
 	pdataconv.AppendTraces(&batch, td)
 
+	if b.store == nil {
+		return ErrNoEngine
+	}
 	if _, err := b.store.WriteTraces(ctx, batch); err != nil {
 		return errors.Wrap(err, "write traces")
 	}
@@ -33,6 +36,9 @@ func (b *Backend) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 	var batch siglog.Logs
 	pdataconv.AppendLogs(&batch, ld)
 
+	if b.store == nil {
+		return ErrNoEngine
+	}
 	if _, err := b.store.WriteLogs(ctx, batch); err != nil {
 		return errors.Wrap(err, "write logs")
 	}
@@ -45,6 +51,9 @@ func (b *Backend) ConsumeProfiles(ctx context.Context, pd pprofile.Profiles) err
 	var batch sigprofile.Profiles
 	pdataconv.AppendProfiles(&batch, pd)
 
+	if b.store == nil {
+		return ErrNoEngine
+	}
 	if _, err := b.store.WriteProfiles(ctx, batch); err != nil {
 		return errors.Wrap(err, "write profiles")
 	}
@@ -57,6 +66,9 @@ func (b *Backend) ConsumeProfiles(ctx context.Context, pd pprofile.Profiles) err
 
 // WriteMetrics ingests a native metrics batch into the storage engine.
 func (b *Backend) WriteMetrics(ctx context.Context, batch sigmetric.Metrics) error {
+	if b.store == nil {
+		return ErrNoEngine
+	}
 	if _, err := b.store.WriteMetrics(ctx, batch); err != nil {
 		return errors.Wrap(err, "write metrics")
 	}
@@ -65,6 +77,9 @@ func (b *Backend) WriteMetrics(ctx context.Context, batch sigmetric.Metrics) err
 
 // WriteLogs ingests a native logs batch into the storage engine.
 func (b *Backend) WriteLogs(ctx context.Context, batch siglog.Logs) error {
+	if b.store == nil {
+		return ErrNoEngine
+	}
 	if _, err := b.store.WriteLogs(ctx, batch); err != nil {
 		return errors.Wrap(err, "write logs")
 	}
@@ -73,6 +88,9 @@ func (b *Backend) WriteLogs(ctx context.Context, batch siglog.Logs) error {
 
 // WriteTraces ingests a native traces batch into the storage engine.
 func (b *Backend) WriteTraces(ctx context.Context, batch sigtrace.Traces) error {
+	if b.store == nil {
+		return ErrNoEngine
+	}
 	if _, err := b.store.WriteTraces(ctx, batch); err != nil {
 		return errors.Wrap(err, "write traces")
 	}

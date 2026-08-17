@@ -77,7 +77,7 @@ func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.
 
 // TraceByID implements [tracestorage.Querier]. It fetches every span of one trace by id.
 func (q *TraceQuerier) TraceByID(ctx context.Context, id otelstorage.TraceID, _ tracestorage.TraceByIDOptions) (iterators.Iterator[tracestorage.Span], error) {
-	batches, err := q.b.store.Trace(ctx, q.b.tenant, id[:])
+	batches, err := q.b.src.Trace(ctx, q.b.tenant, id[:])
 	if err != nil {
 		return nil, errors.Wrap(err, "trace by id")
 	}
@@ -224,7 +224,7 @@ func (q *TraceQuerier) collectTraceIDs(
 		req.AllConditions = true
 	}
 
-	it, err := q.b.store.TraceFetcher(q.b.tenant).Fetch(ctx, req)
+	it, err := q.b.src.TraceFetcher(q.b.tenant).Fetch(ctx, req)
 	if err != nil {
 		return errors.Wrap(err, "fetch candidate traces")
 	}
@@ -261,7 +261,7 @@ func (q *TraceQuerier) scanSpans(
 		req.AllConditions = true
 	}
 
-	it, err := q.b.store.TraceFetcher(q.b.tenant).Fetch(ctx, req)
+	it, err := q.b.src.TraceFetcher(q.b.tenant).Fetch(ctx, req)
 	if err != nil {
 		return nil, errors.Wrap(err, "fetch spans")
 	}
