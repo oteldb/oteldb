@@ -70,8 +70,7 @@ func TestParityWithPdataPath(t *testing.T) {
 	require.NotEmpty(t, req.Timeseries)
 
 	var conv promrw.Converter
-	got, _, err := conv.Convert(req.Timeseries, promrw.Options{TimeThreshold: wideThreshold})
-	require.NoError(t, err)
+	got, _ := conv.Convert(req.Timeseries, promrw.Options{TimeThreshold: wideThreshold})
 
 	require.Equal(t, dump(viaPdata(t, req.Timeseries, wideThreshold)), dump(got))
 }
@@ -89,8 +88,7 @@ func TestConvertReuse(t *testing.T) {
 		want string
 	)
 	for i := range 3 {
-		got, _, err := conv.Convert(req.Timeseries, promrw.Options{TimeThreshold: wideThreshold})
-		require.NoError(t, err)
+		got, _ := conv.Convert(req.Timeseries, promrw.Options{TimeThreshold: wideThreshold})
 
 		if i == 0 {
 			want = dump(got)
@@ -114,9 +112,7 @@ func BenchmarkConvert(b *testing.B) {
 		b.ResetTimer()
 
 		for b.Loop() {
-			if _, _, err := conv.Convert(req.Timeseries, opts); err != nil {
-				b.Fatal(err)
-			}
+			conv.Convert(req.Timeseries, opts)
 		}
 	})
 	b.Run("Pdata", func(b *testing.B) {

@@ -19,12 +19,12 @@ const (
 )
 
 // observer records what the remote write endpoint ingested. Its counters are the ones an operator
-// alerts on: a sender that stopped, and points refused as too old.
+// alerts on: a sender that stopped, and the points refused along with why.
 type observer struct {
 	requests  metric.Int64Counter
 	series    metric.Int64Counter
 	points    metric.Int64Counter
-	dropped   metric.Int64Counter
+	rejected  metric.Int64Counter
 	byteCount metric.Int64Counter
 
 	otlpRequests metric.Int64Counter
@@ -55,10 +55,10 @@ func newObserver(mp metric.MeterProvider) (*observer, error) {
 	); err != nil {
 		return nil, errors.Wrap(err, "create points counter")
 	}
-	if o.dropped, err = meter.Int64Counter("odbingest.remote_write.dropped_points",
-		metric.WithDescription("Points dropped as older than the time threshold."),
+	if o.rejected, err = meter.Int64Counter("odbingest.remote_write.rejected_points",
+		metric.WithDescription("Points the conversion did not ingest, by reason."),
 	); err != nil {
-		return nil, errors.Wrap(err, "create dropped counter")
+		return nil, errors.Wrap(err, "create rejected counter")
 	}
 	if o.byteCount, err = meter.Int64Counter("odbingest.remote_write.decoded_bytes",
 		metric.WithDescription("Decompressed request bytes."),
@@ -110,7 +110,16 @@ func (o *observer) observe(s promrw.Stats) {
 	o.series.Add(ctx, int64(s.Series))
 	o.points.Add(ctx, int64(s.Points))
 	o.byteCount.Add(ctx, int64(s.Bytes))
-	if s.Dropped > 0 {
-		o.dropped.Add(ctx, int64(s.Dropped))
+	for _, r := range []struct {
+		reason string
+		count  int
+	}{
+		{"too_old", s.Rejected.Old},
+		{"invalid_labels", s.Rejected.Invalid},
+		{"unsupported_histogram", s.Rejected.Unsupported},
+	} {
+		if r.count > 0 {
+			o.rejected.Add(ctx, int64(r.count), metric.WithAttributes(reasonKey.String(r.reason)))
+		}
 	}
 }

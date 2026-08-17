@@ -56,8 +56,8 @@ type Stats struct {
 	// Points is the number of points written, counting the series a native histogram decomposed
 	// into.
 	Points int
-	// Dropped is the number of points rejected as older than the time threshold.
-	Dropped int
+	// Rejected is what the request carried but the conversion did not ingest.
+	Rejected Rejected
 }
 
 // Handler serves the Prometheus remote write API, writing into sink without going through the
@@ -161,21 +161,23 @@ func (h *Handler) handle(r *http.Request) error {
 		return errors.Wrap(err, "unmarshal write request")
 	}
 
-	batch, dropped, err := s.conv.Convert(s.req.Timeseries, h.opts)
-	if err != nil {
-		return errors.Wrap(err, "convert")
-	}
+	batch, rejected := s.conv.Convert(s.req.Timeseries, h.opts)
 
 	if err := h.sink.WriteMetrics(r.Context(), *batch); err != nil {
 		return writeError{err: errors.Wrap(err, "write metrics")}
 	}
 
+	if rejected.Invalid > 0 {
+		h.lg.Warn("Skipped remote write series with unstorable labels",
+			zap.Int("points", rejected.Invalid))
+	}
+
 	if h.observe != nil {
 		h.observe(Stats{
-			Bytes:   len(s.raw),
-			Series:  len(s.req.Timeseries),
-			Points:  countPoints(batch),
-			Dropped: dropped,
+			Bytes:    len(s.raw),
+			Series:   len(s.req.Timeseries),
+			Points:   countPoints(batch),
+			Rejected: rejected,
 		})
 	}
 	return nil

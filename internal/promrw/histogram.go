@@ -44,28 +44,28 @@ const (
 	schemaMax int32 = 52
 )
 
-// appendHistograms decomposes the series' in-window native histograms, returning how many were
-// not ingested — either out of window or unrepresentable.
+// appendHistograms decomposes the series' in-window native histograms, reporting the ones it did
+// not ingest.
 func (c *Converter) appendHistograms(
 	sm *metric.ScopeMetrics,
 	ts *prompb.TimeSeries,
 	name []byte,
 	attrs signal.Attributes,
 	cutoff int64,
-) (dropped int) {
+) (rej Rejected) {
 	for i := range ts.Histograms {
 		h := &ts.Histograms[i]
 
 		tsNano := msToNano(h.Timestamp)
 		if tsNano < cutoff {
-			dropped++
+			rej.Old++
 			continue
 		}
 		if !c.appendHistogram(sm, h, name, attrs, tsNano) {
-			dropped++
+			rej.Unsupported++
 		}
 	}
-	return dropped
+	return rej
 }
 
 // appendHistogram decomposes one histogram, reporting whether it was representable.

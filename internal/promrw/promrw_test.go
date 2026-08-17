@@ -54,7 +54,7 @@ func TestDropsOldPoints(t *testing.T) {
 	now := time.Unix(3600, 0)
 
 	var conv promrw.Converter
-	got, dropped, err := conv.Convert([]prompb.TimeSeries{
+	got, rej := conv.Convert([]prompb.TimeSeries{
 		{
 			Labels: []prompb.Label{label("__name__", "old")},
 			Samples: []prompb.Sample{
@@ -69,8 +69,8 @@ func TestDropsOldPoints(t *testing.T) {
 			},
 		},
 	}, promrw.Options{TimeThreshold: time.Minute, Now: now})
-	require.NoError(t, err)
-	require.Equal(t, 2, dropped)
+	require.Equal(t, 2, rej.Old)
+	require.Equal(t, 2, rej.Total())
 
 	dumped := dump(got)
 	require.NotContains(t, dumped, "metric old ")
@@ -78,18 +78,44 @@ func TestDropsOldPoints(t *testing.T) {
 	require.Contains(t, dumped, "value=2 {}")
 }
 
-// TestMissingName asserts a nameless series fails the whole request, as the pdata translator did:
-// remote write has no way to store it.
-func TestMissingName(t *testing.T) {
-	var conv promrw.Converter
-	_, _, err := conv.Convert([]prompb.TimeSeries{
-		{
-			Labels:  []prompb.Label{label("job", "api")},
-			Samples: []prompb.Sample{{Timestamp: 1000, Value: 1}},
-		},
-	}, promrw.Options{TimeThreshold: wideThreshold})
+// TestSkipsInvalidSeries asserts a series whose labels cannot be stored is skipped and counted
+// while the rest of the batch is still ingested. Failing the request instead would cost a sender
+// every other series in it, and since it would retry the same bytes, wedge its queue for good.
+func TestSkipsInvalidSeries(t *testing.T) {
+	sample := []prompb.Sample{{Timestamp: 1000, Value: 1}}
 
-	require.ErrorIs(t, err, promrw.ErrNoName)
+	for _, tt := range []struct {
+		name   string
+		labels []prompb.Label
+	}{
+		{"NoName", []prompb.Label{label("job", "api")}},
+		{"EmptyName", []prompb.Label{label("__name__", "")}},
+		{"EmptyLabelName", []prompb.Label{label("__name__", "m"), label("", "v")}},
+		{"DuplicateName", []prompb.Label{label("__name__", "a"), label("__name__", "b")}},
+		{"DuplicateLabel", []prompb.Label{
+			label("__name__", "m"), label("job", "a"), label("job", "b"),
+		}},
+		{"InvalidUTF8Name", []prompb.Label{
+			label("__name__", "m"), {Name: []byte{0xff}, Value: []byte("v")},
+		}},
+		{"InvalidUTF8Value", []prompb.Label{
+			label("__name__", "m"), {Name: []byte("k"), Value: []byte{0xff}},
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var conv promrw.Converter
+			got, rej := conv.Convert([]prompb.TimeSeries{
+				{Labels: tt.labels, Samples: sample},
+				{Labels: []prompb.Label{label("__name__", "good")}, Samples: sample},
+			}, promrw.Options{TimeThreshold: wideThreshold})
+
+			require.Equal(t, 1, rej.Invalid)
+			require.Equal(t, 1, rej.Total(), "nothing else was rejected")
+
+			dumped := dump(got)
+			require.Contains(t, dumped, "metric good ", "the valid series is still ingested")
+		})
+	}
 }
 
 // TestAttributesAliasRequest asserts the batch references the request's bytes instead of copying
@@ -98,10 +124,9 @@ func TestAttributesAliasRequest(t *testing.T) {
 	labels := []prompb.Label{label("__name__", "m"), label("job", "api")}
 
 	var conv promrw.Converter
-	got, _, err := conv.Convert([]prompb.TimeSeries{
+	got, _ := conv.Convert([]prompb.TimeSeries{
 		{Labels: labels, Samples: []prompb.Sample{{Timestamp: 1000, Value: 1}}},
 	}, promrw.Options{TimeThreshold: wideThreshold})
-	require.NoError(t, err)
 
 	mt := got.Resources[0].Scopes[0].Metrics[0]
 	require.Same(t, unsafeFirst(labels[0].Value), unsafeFirst(mt.Name))

@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"time"
 
-	"github.com/go-faster/errors"
 	"github.com/oteldb/storage/signal"
 	"github.com/oteldb/storage/signal/metric"
 
@@ -23,9 +22,6 @@ import (
 // nameLabel is the Prometheus metric name label. It is the metric's name, not one of its
 // attributes.
 var nameLabel = []byte("__name__")
-
-// ErrNoName is returned for a timeseries carrying no __name__ label.
-var ErrNoName = errors.New("timeseries has no __name__ label")
 
 // Options configures a [Converter.Convert] call.
 type Options struct {
@@ -57,12 +53,14 @@ type Converter struct {
 	names xarena.Arena[byte]
 }
 
-// Convert builds a metrics batch from the request's timeseries.
+// Convert builds a metrics batch from the request's timeseries, reporting what it did not ingest.
 //
 // The returned batch aliases both tss and the buffer tss was decoded from: it is valid until the
 // next Convert call on this converter, and the decode buffer must outlive the write it is passed
-// to. Points older than [Options.TimeThreshold] are dropped and counted in dropped.
-func (c *Converter) Convert(tss []prompb.TimeSeries, o Options) (_ *metric.Metrics, dropped int, _ error) {
+// to.
+//
+// A series it cannot store is skipped rather than failing the batch — see [Rejected].
+func (c *Converter) Convert(tss []prompb.TimeSeries, o Options) (*metric.Metrics, Rejected) {
 	o.setDefaults()
 	cutoff := o.Now.Add(-o.TimeThreshold).UnixNano()
 
@@ -75,28 +73,35 @@ func (c *Converter) Convert(tss []prompb.TimeSeries, o Options) (_ *metric.Metri
 	sm := rm.AddScope()
 	sm.Scope = o.Scope
 
+	var rej Rejected
 	for i := range tss {
 		ts := &tss[i]
 
-		name, ok := metricName(ts.Labels)
-		if !ok {
-			return nil, dropped, errors.Wrapf(ErrNoName, "timeseries %d", i)
+		if !validLabels(ts.Labels) {
+			rej.Invalid += len(ts.Samples) + len(ts.Histograms)
+			continue
 		}
+
+		name, _ := metricName(ts.Labels)
 		attrs := c.labelAttrs(ts.Labels)
+		if hasDuplicateKey(attrs) {
+			rej.Invalid += len(ts.Samples) + len(ts.Histograms)
+			continue
+		}
 
 		samples := c.appendSamples(sm, ts, name, attrs, cutoff)
-		dropped += len(ts.Samples) - samples
+		rej.Old += len(ts.Samples) - samples
 
 		// Prometheus sends a series as either float samples or native histograms, never both;
 		// histograms are decomposed only when the series carries no in-window sample.
 		if samples == 0 {
-			dropped += c.appendHistograms(sm, ts, name, attrs, cutoff)
+			rej.add(c.appendHistograms(sm, ts, name, attrs, cutoff))
 		} else {
-			dropped += len(ts.Histograms)
+			rej.Old += len(ts.Histograms)
 		}
 	}
 
-	return &c.batch, dropped, nil
+	return &c.batch, rej
 }
 
 // appendSamples appends the series' in-window float samples as one gauge or sum metric, returning

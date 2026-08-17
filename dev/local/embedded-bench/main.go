@@ -896,6 +896,7 @@ func envInt(key string, def int) int {
 	}
 	return def
 }
+
 func envDur(key string, def time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
@@ -904,12 +905,14 @@ func envDur(key string, def time.Duration) time.Duration {
 	}
 	return def
 }
+
 func envStr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return def
 }
+
 func envBool(key string, def bool) bool {
 	if v := os.Getenv(key); v != "" {
 		switch strings.ToLower(v) {
