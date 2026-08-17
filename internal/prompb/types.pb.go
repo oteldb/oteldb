@@ -204,6 +204,9 @@ type Histogram struct {
 
 	ResetHint HistogramResetHint
 	Timestamp int64
+	// StartTimestamp is when the histogram started counting, in ms. It is remote write 2.0 only;
+	// zero means unset.
+	StartTimestamp int64
 
 	// CustomValues holds the upper inclusive bucket bounds of a custom-bucket histogram
 	// ([SchemaCustomBuckets]). It is unset for exponential schemas.
@@ -349,6 +352,11 @@ func (h *Histogram) Unmarshal(p *pools, src []byte) (err error) {
 			customValuesPool.pool, ok = fc.UnpackDoubles(customValuesPool.pool)
 			if !ok {
 				return errors.Errorf("read custom_values (field %d)", fc.FieldNum)
+			}
+		case 17:
+			h.StartTimestamp, ok = fc.Int64()
+			if !ok {
+				return errors.Errorf("read start_timestamp (field %d)", fc.FieldNum)
 			}
 		}
 	}
