@@ -2,6 +2,7 @@ package promrw_test
 
 import (
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -71,11 +72,10 @@ func convertV2(t *testing.T, sym *symbolizer, tss ...writev2.TimeSeries) (_ stri
 // those land on the identity a 1.0 sender would produce for the same series.
 func TestConvertV2MetadataType(t *testing.T) {
 	for _, tt := range []struct {
-		name    string
-		metric  string
-		typ     writev2.Metadata_MetricType
-		want    string
-		comment string
+		name   string
+		metric string
+		typ    writev2.Metadata_MetricType
+		want   string
 	}{
 		{
 			name: "Counter", metric: "requests",
@@ -371,4 +371,43 @@ func FuzzHandlerV2(f *testing.F) {
 			t.Fatalf("unexpected code %d", code)
 		}
 	})
+}
+
+func BenchmarkConvertV2(b *testing.B) {
+	// A batch shaped like a real scrape: many series of a few labels, one sample each.
+	sym := newSymbolizer()
+	tss := make([]writev2.TimeSeries, 0, 1000)
+	for i := range 1000 {
+		tss = append(tss, writev2.TimeSeries{
+			LabelsRefs: sym.refs(
+				"__name__", "http_requests_total",
+				"job", "api",
+				"instance", strconv.Itoa(i),
+				"code", "200",
+			),
+			Samples:  []writev2.Sample{{Value: float64(i), Timestamp: 1000}},
+			Metadata: writev2.Metadata{Type: writev2.Metadata_METRIC_TYPE_COUNTER},
+		})
+	}
+
+	native := writev2.Request{Symbols: sym.symbols, Timeseries: tss}
+	raw, err := native.Marshal()
+	require.NoError(b, err)
+
+	var (
+		req  prompb.WriteRequestV2
+		conv promrw.Converter
+	)
+	opts := promrw.Options{TimeThreshold: wideThreshold, Now: time.Now()}
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(raw)))
+
+	for b.Loop() {
+		req.Reset()
+		if err := req.Unmarshal(raw); err != nil {
+			b.Fatal(err)
+		}
+		conv.ConvertV2(&req, opts)
+	}
 }

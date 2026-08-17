@@ -16,6 +16,8 @@ import (
 const (
 	reasonKey = attribute.Key("reason")
 	signalKey = attribute.Key("signal")
+	// messageKey labels a remote write request with the protobuf schema it was sent under.
+	messageKey = attribute.Key("message")
 )
 
 // observer records what the remote write endpoint ingested. Its counters are the ones an operator
@@ -106,10 +108,14 @@ func (o *observer) observeOTLP(s otlpdirect.Stats) {
 
 func (o *observer) observe(s promrw.Stats) {
 	ctx := context.Background()
-	o.requests.Add(ctx, 1)
-	o.series.Add(ctx, int64(s.Series))
-	o.points.Add(ctx, int64(s.Points))
-	o.byteCount.Add(ctx, int64(s.Bytes))
+	// The protocol version is worth splitting on: it is how an operator sees a fleet finish
+	// migrating from 1.0 to 2.0, and which senders have not.
+	attr := metric.WithAttributes(messageKey.String(s.Message.String()))
+
+	o.requests.Add(ctx, 1, attr)
+	o.series.Add(ctx, int64(s.Series), attr)
+	o.points.Add(ctx, int64(s.Points), attr)
+	o.byteCount.Add(ctx, int64(s.Bytes), attr)
 	for _, r := range []struct {
 		reason string
 		count  int
@@ -119,7 +125,8 @@ func (o *observer) observe(s promrw.Stats) {
 		{"unsupported_histogram", s.Rejected.Unsupported},
 	} {
 		if r.count > 0 {
-			o.rejected.Add(ctx, int64(r.count), metric.WithAttributes(reasonKey.String(r.reason)))
+			o.rejected.Add(ctx, int64(r.count),
+				attr, metric.WithAttributes(reasonKey.String(r.reason)))
 		}
 	}
 }
