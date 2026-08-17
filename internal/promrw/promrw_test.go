@@ -28,6 +28,13 @@ func TestClassify(t *testing.T) {
 		{"http_duration_seconds_max", "unit=seconds kind=0 temporality=0 monotonic=false"},
 		{"process_heap_bytes", "unit=bytes kind=0 temporality=0 monotonic=false"},
 		{"one_two", "unit= kind=0 temporality=0 monotonic=false"},
+		// A single separator still carries a type: these used to be classified as gauges purely
+		// because the name had one component fewer than the same metric namespaced.
+		{"requests_total", "unit= kind=1 temporality=2 monotonic=true"},
+		{"latency_seconds", "unit=seconds kind=0 temporality=0 monotonic=false"},
+		{"seconds_total", "unit=seconds kind=1 temporality=2 monotonic=true"},
+		// No separator at all: `total` is the whole name, not a suffix.
+		{"total", "unit= kind=0 temporality=0 monotonic=false"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got, dropped := convertOne(t, prompb.TimeSeries{

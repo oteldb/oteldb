@@ -56,8 +56,12 @@ func viaPdata(tb testing.TB, tss []prompb.TimeSeries, threshold time.Duration) *
 	return &batch
 }
 
-// TestParityWithPdataPath asserts the direct converter produces exactly what the pdata path
-// produces for a recorded remote write corpus.
+// TestParityWithPdataPath asserts the direct converter agrees with the pdata path over a recorded
+// remote write corpus, which is float samples from a real Prometheus.
+//
+// It is a regression guard on real data, not a specification: the two deliberately disagree where
+// the pdata path is wrong — on single-separator counter names, and on native histograms, which the
+// corpus does not carry and whose bucket counts the pdata path never reads at all.
 func TestParityWithPdataPath(t *testing.T) {
 	raw := readCorpus(t)
 

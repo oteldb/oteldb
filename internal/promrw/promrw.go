@@ -199,24 +199,28 @@ func classify(name []byte) (unit []byte, cumulative bool) {
 	}
 }
 
-// suffixes returns the last two underscore-separated components of name, if it has at least two
-// separators.
+// suffixes returns the last two underscore-separated components of name: s2 is the last, s1 the
+// one before it, nil when the name has only one component.
+//
+// Both are needed because the unit sits before the type: in `http_duration_seconds_sum` the type
+// is `sum` and the unit `seconds`. A name with a single separator still has a type — `foo_total`
+// is a counter — so requiring two separators, as this used to, silently made every such series a
+// gauge while the same name with one more component became a sum.
 func suffixes(name []byte) (s1, s2 []byte) {
-	if bytes.Count(name, underscore) < 2 {
+	i := bytes.LastIndexByte(name, '_')
+	if i < 0 {
 		return nil, nil
 	}
-	head, s2 := lastCut(name)
-	_, s1 = lastCut(head)
-	return s1, s2
+	return lastComponent(name[:i]), name[i+1:]
 }
 
-var underscore = []byte("_")
-
-func lastCut(s []byte) (before, after []byte) {
+// lastComponent returns the last underscore-separated component of s, which is s itself when s has
+// no separator: in `seconds_total` the unit is the whole head.
+func lastComponent(s []byte) []byte {
 	if i := bytes.LastIndexByte(s, '_'); i >= 0 {
-		return s[:i], s[i+1:]
+		return s[i+1:]
 	}
-	return s, nil
+	return s
 }
 
 func isCounterSuffix(s []byte) bool {
