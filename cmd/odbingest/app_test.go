@@ -258,7 +258,7 @@ func TestIngestRoutesToPrimary(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/write", bytes.NewReader(body))
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
-		require.Equal(t, http.StatusAccepted, rec.Code, rec.Body)
+		require.Equal(t, http.StatusNoContent, rec.Code, rec.Body)
 	}
 
 	assert.Equal(t, 4, node.samples(), "both points, both times")
@@ -292,7 +292,7 @@ func TestIngestSpreadsAcrossShards(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/write", bytes.NewReader(writeRequest(t, tss...)))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusAccepted, rec.Code, rec.Body)
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body)
 
 	assert.Equal(t, 12, node.samples())
 

@@ -26,7 +26,9 @@ func FuzzHandler(f *testing.F) {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 
-		if code := rec.Code; code != http.StatusAccepted && code != http.StatusBadRequest {
+		switch code := rec.Code; code {
+		case http.StatusNoContent, http.StatusBadRequest, http.StatusRequestEntityTooLarge:
+		default:
 			t.Fatalf("unexpected code %d", code)
 		}
 	})

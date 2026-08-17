@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"strings"
 	"sync"
 
 	"github.com/go-faster/errors"
@@ -110,22 +109,50 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if isRemoteWriteV2(r.Header.Get("Content-Type")) {
-		http.Error(w, "remote write 2.0 is not supported", http.StatusUnsupportedMediaType)
+
+	msg, err := parseMessage(r.Header.Get("Content-Type"))
+	if err != nil {
+		h.reject(w, http.StatusUnsupportedMediaType, err)
+		return
+	}
+	if enc := r.Header.Get("Content-Encoding"); !validEncoding(enc) {
+		h.reject(w, http.StatusUnsupportedMediaType,
+			errors.Errorf("only %s encoding is accepted, got %q", encodingSnappy, enc))
+		return
+	}
+	if msg != MessageV1 {
+		h.reject(w, http.StatusUnsupportedMediaType,
+			errors.Errorf("%s is not accepted by this server", msg))
 		return
 	}
 
 	if err := h.handle(r); err != nil {
-		code := http.StatusBadRequest
-		if we := new(writeError); errors.As(err, we) {
-			code = http.StatusInternalServerError
-		}
-		h.lg.Debug("Reject remote write request", zap.Error(err), zap.Int("code", code))
-		http.Error(w, err.Error(), code)
+		h.reject(w, statusOf(err), err)
 		return
 	}
 
-	w.WriteHeader(http.StatusAccepted)
+	// 204, not 202: the spec says a successful write answers with no content, and a sender that
+	// treats 202 as "maybe" would keep the batch queued.
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) reject(w http.ResponseWriter, code int, err error) {
+	h.lg.Debug("Reject remote write request", zap.Error(err), zap.Int("code", code))
+	http.Error(w, err.Error(), code)
+}
+
+// statusOf maps a failure to the status that tells the sender what to do with it. Only a 5xx (and
+// 429) makes Prometheus retry; every other code is a permanent failure it drops the batch over, so
+// a request that might succeed later must never get a 4xx.
+func statusOf(err error) int {
+	switch {
+	case errors.As(err, new(writeError)):
+		return http.StatusInternalServerError
+	case errors.As(err, new(tooLargeError)):
+		return http.StatusRequestEntityTooLarge
+	default:
+		return http.StatusBadRequest
+	}
 }
 
 // writeError marks a sink failure, which is answered with 5xx so the client retries rather than
@@ -135,12 +162,24 @@ type writeError struct{ err error }
 func (e writeError) Error() string { return e.err.Error() }
 func (e writeError) Unwrap() error { return e.err }
 
+// tooLargeError marks a body over the size limit, which has its own status so a sender can tell it
+// apart from a body it encoded wrong and shrink its batches.
+type tooLargeError struct{ err error }
+
+func (e tooLargeError) Error() string { return e.err.Error() }
+func (e tooLargeError) Unwrap() error { return e.err }
+
 func (h *Handler) handle(r *http.Request) error {
 	s, _ := h.pool.Get().(*requestState)
 	defer h.pool.Put(s)
 
 	var err error
 	if s.compressed, err = readAll(s.compressed[:0], http.MaxBytesReader(nil, r.Body, h.maxBody)); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return tooLargeError{err: errors.Errorf("body is over the %d byte limit", h.maxBody)}
+		}
+
 		return errors.Wrap(err, "read body")
 	}
 
@@ -212,10 +251,4 @@ func readAll(dst []byte, r io.Reader) ([]byte, error) {
 			return dst, err
 		}
 	}
-}
-
-// isRemoteWriteV2 reports whether the content type advertises the remote write 2.0 message, which
-// has a different schema and is rejected rather than misparsed as 1.0.
-func isRemoteWriteV2(contentType string) bool {
-	return strings.Contains(contentType, "io.prometheus.write.v2.Request")
 }

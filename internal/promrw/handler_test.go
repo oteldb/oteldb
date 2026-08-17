@@ -74,7 +74,7 @@ func TestHandler(t *testing.T) {
 	// Twice, so the second request runs on recycled buffers.
 	for range 2 {
 		rec := post(t, h, raw)
-		require.Equal(t, http.StatusAccepted, rec.Code)
+		require.Equal(t, http.StatusNoContent, rec.Code)
 	}
 
 	var req prompb.WriteRequest
@@ -108,7 +108,19 @@ func TestHandlerRejects(t *testing.T) {
 	t.Run("BodyTooLarge", func(t *testing.T) {
 		small := promrw.NewHandler(s, promrw.HandlerConfig{MaxBodyBytes: 8})
 		rec := post(t, small, bytes.Repeat([]byte("x"), 1024))
-		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+	})
+	t.Run("WrongMediaType", func(t *testing.T) {
+		rec := postRaw(t, h, nil, "application/json")
+		require.Equal(t, http.StatusUnsupportedMediaType, rec.Code)
+	})
+	t.Run("UnknownProtoParameter", func(t *testing.T) {
+		rec := postRaw(t, h, nil, "application/x-protobuf;proto=some.other.Request")
+		require.Equal(t, http.StatusUnsupportedMediaType, rec.Code)
+	})
+	t.Run("MalformedContentTypeParameter", func(t *testing.T) {
+		rec := postRaw(t, h, nil, "application/x-protobuf;proto")
+		require.Equal(t, http.StatusUnsupportedMediaType, rec.Code)
 	})
 	require.Empty(t, s.dumps)
 }
