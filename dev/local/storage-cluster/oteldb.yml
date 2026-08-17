@@ -12,3 +12,6 @@ storage:
     # Replication factor: each write is stored on 2 of the 3 nodes (tolerates one node down).
     rf: 2
     root: /oteldb
+    # Each node's file backend is its own volume, not a store the peers can read, so flushed parts
+    # must be replicated node-to-node (partsync) instead of exchanged through the backend.
+    private_backend: true

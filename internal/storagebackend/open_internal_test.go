@@ -43,7 +43,7 @@ func TestClusterOption(t *testing.T) {
 	t.Run("Explicit", func(t *testing.T) {
 		opt, err := clusterOption(&ClusterConfig{
 			Etcd: []string{"http://etcd:2379"}, ID: "node-1", Zone: "z1",
-			Addr: "node-1:9000", RF: 2, ShardsPerTenant: 4, Root: "/x",
+			Addr: "node-1:9000", RF: 2, ShardsPerTenant: 4, Root: "/x", PrivateBackend: true,
 		}, lg)
 		require.NoError(t, err)
 		o := applyOption(t, opt)
@@ -55,6 +55,14 @@ func TestClusterOption(t *testing.T) {
 		require.Equal(t, 2, o.Cluster.RF)
 		require.Equal(t, 4, o.Cluster.ShardsPerTenant)
 		require.Equal(t, "/x", o.Cluster.Root)
+		require.True(t, o.Cluster.PrivateBackend)
+	})
+
+	t.Run("PrivateBackendDefaultsToShared", func(t *testing.T) {
+		opt, err := clusterOption(&ClusterConfig{Etcd: []string{"e"}, ID: "n1"}, lg)
+		require.NoError(t, err)
+		o := applyOption(t, opt)
+		require.False(t, o.Cluster.PrivateBackend, "unset keeps the shared-store model")
 	})
 
 	t.Run("AddrDerivedFromID", func(t *testing.T) {
