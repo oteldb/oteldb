@@ -12,6 +12,7 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/oteldb/storage/cluster"
 	"github.com/oteldb/storage/cluster/router"
 
 	"github.com/oteldb/oteldb/internal/otlpdirect"
@@ -42,7 +43,28 @@ func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (
 		return nil, errors.Wrap(err, "open cluster router")
 	}
 
-	sink, err := newClusterSink(rt, nil, m.MeterProvider())
+	tenants, err := newTenantResolver(cfg.Tenant)
+	if err != nil {
+		_ = rt.Close(ctx)
+
+		return nil, errors.Wrap(err, "configure tenancy")
+	}
+
+	// Which tenant a write lands in decides which shard, hence which node, holds it. An operator
+	// reading a startup log must be able to tell whether this process resolves tenants at all.
+	if tenants == nil {
+		lg.Info("Tenancy disabled, routing every write to the default tenant",
+			zap.String("tenant", string(cluster.DefaultTenant)))
+	} else {
+		lg.Info("Tenancy enabled",
+			zap.String("header", tenants.header),
+			zap.Strings("resource_attributes", cfg.Tenant.ResourceAttributes),
+			zap.String("default", string(tenants.defaultTenant())),
+			zap.Bool("require", tenants.required),
+		)
+	}
+
+	sink, err := newClusterSink(rt, tenants.tenantFunc, m.MeterProvider())
 	if err != nil {
 		_ = rt.Close(ctx)
 
@@ -74,15 +96,21 @@ func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (
 		Observer:        obs.observe,
 	})
 
+	// Only the ingest routes are wrapped: a health probe carries no tenant, and requiring one of it
+	// would fail readiness on a correctly configured deployment.
+	ingestMux := http.NewServeMux()
+	otlp.Register(ingestMux)
+	ingestMux.Handle(rw.Path, handler)
+
 	mux := http.NewServeMux()
-	otlp.Register(mux)
-	mux.Handle(rw.Path, handler)
+	mux.Handle("/", tenants.Middleware(ingestMux))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.Handle("GET /readyz", readyHandler(rt))
 
 	var grpcSrv *grpc.Server
 	if cfg.OTLP.GRPCBind != "-" {
-		grpcSrv = grpc.NewServer(otlp.GRPCServerOptions()...)
+		opts := append(otlp.GRPCServerOptions(), grpc.ChainUnaryInterceptor(tenants.UnaryInterceptor()))
+		grpcSrv = grpc.NewServer(opts...)
 		otlp.RegisterGRPC(grpcSrv)
 	}
 
