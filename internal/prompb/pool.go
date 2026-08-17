@@ -27,6 +27,8 @@ type pools struct {
 	HistogramPositiveSpans  *slicepool[BucketSpan]
 	HistogramPositiveDeltas *slicepool[int64]
 	HistogramPositiveCounts *slicepool[float64]
+	// Custom bucket bounds.
+	HistogramCustomValues *slicepool[float64]
 }
 
 func (p *pools) init() {
@@ -63,6 +65,9 @@ func (p *pools) init() {
 	if p.HistogramPositiveCounts == nil {
 		p.HistogramPositiveCounts = new(slicepool[float64])
 	}
+	if p.HistogramCustomValues == nil {
+		p.HistogramCustomValues = new(slicepool[float64])
+	}
 }
 
 func (p *pools) Reset() {
@@ -82,6 +87,7 @@ func (p *pools) Reset() {
 	p.HistogramPositiveSpans.Reset()
 	p.HistogramPositiveDeltas.Reset()
 	p.HistogramPositiveCounts.Reset()
+	p.HistogramCustomValues.Reset()
 }
 
 type slicepool[T any] struct {

@@ -204,6 +204,27 @@ type Histogram struct {
 
 	ResetHint HistogramResetHint
 	Timestamp int64
+
+	// CustomValues holds the upper inclusive bucket bounds of a custom-bucket histogram
+	// ([SchemaCustomBuckets]). It is unset for exponential schemas.
+	CustomValues []float64
+}
+
+// SchemaCustomBuckets is the schema of a histogram whose bounds are given explicitly in
+// [Histogram.CustomValues] rather than derived from the schema. Prometheus converts classic
+// histograms to this form (NHCB).
+const SchemaCustomBuckets int32 = -53
+
+// IsCustomBuckets reports whether the histogram carries explicit bounds.
+func (h *Histogram) IsCustomBuckets() bool { return h.Schema == SchemaCustomBuckets }
+
+// IsFloat reports whether the histogram carries float counts rather than integer ones. It is
+// the count oneof arm that discriminates, not the presence of bucket counts: a float histogram
+// with no populated bucket carries neither deltas nor counts.
+func (h *Histogram) IsFloat() bool {
+	_, isInt := h.Count.AsUint64()
+
+	return !isInt
 }
 
 // Unmarshal unmarshals BucketSpan from src.
@@ -215,6 +236,7 @@ func (h *Histogram) Unmarshal(p *pools, src []byte) (err error) {
 		positiveSpansPool  = p.HistogramPositiveSpans
 		positiveDeltasPool = p.HistogramPositiveDeltas
 		positiveCountsPool = p.HistogramPositiveCounts
+		customValuesPool   = p.HistogramCustomValues
 	)
 
 	var (
@@ -323,6 +345,11 @@ func (h *Histogram) Unmarshal(p *pools, src []byte) (err error) {
 			if !ok {
 				return errors.Errorf("read timestamp (field %d)", fc.FieldNum)
 			}
+		case 16:
+			customValuesPool.pool, ok = fc.UnpackDoubles(customValuesPool.pool)
+			if !ok {
+				return errors.Errorf("read custom_values (field %d)", fc.FieldNum)
+			}
 		}
 	}
 	h.NegativeSpans = negativeSpansPool.Cut()
@@ -331,6 +358,7 @@ func (h *Histogram) Unmarshal(p *pools, src []byte) (err error) {
 	h.PositiveSpans = positiveSpansPool.Cut()
 	h.PositiveDeltas = positiveDeltasPool.Cut()
 	h.PositiveCounts = positiveCountsPool.Cut()
+	h.CustomValues = customValuesPool.Cut()
 	return nil
 }
 
@@ -396,8 +424,13 @@ func (s *BucketSpan) Unmarshal(src []byte) (err error) {
 type HistogramResetHint int32
 
 const (
-	HistogramResentHintUNKNOWN HistogramResetHint = 0
-	HistogramResentHintYES     HistogramResetHint = 1
-	HistogramResentHintNO      HistogramResetHint = 2
-	HistogramResentHintGAUGE   HistogramResetHint = 3
+	// HistogramResetHintUnknown means a counter reset has to be detected by comparing points.
+	HistogramResetHintUnknown HistogramResetHint = 0
+	// HistogramResetHintYes marks the first histogram after a counter reset.
+	HistogramResetHintYes HistogramResetHint = 1
+	// HistogramResetHintNo means no counter reset happened since the previous histogram.
+	HistogramResetHintNo HistogramResetHint = 2
+	// HistogramResetHintGauge marks a gauge histogram, whose counts may go down without that
+	// being a counter reset.
+	HistogramResetHintGauge HistogramResetHint = 3
 )
