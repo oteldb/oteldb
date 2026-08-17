@@ -8,9 +8,8 @@ import (
 
 // Loki is Loki API config.
 type Loki struct {
-	Bind             string `json:"bind" yaml:"bind"`
-	Auth             []Auth `json:"auth" yaml:"auth"`
-	DrilldownEnabled bool   `json:"drilldown_enabled" yaml:"drilldown_enabled"`
+	Listener         `json:",inline" yaml:",inline"`
+	DrilldownEnabled bool `json:"drilldown_enabled" yaml:"drilldown_enabled"`
 
 	LookbackDelta time.Duration `json:"lookback_delta" yaml:"lookback_delta"`
 
@@ -24,9 +23,7 @@ type Loki struct {
 
 // SetDefaults implements [Defaulter].
 func (cfg *Loki) SetDefaults() {
-	if cfg.Bind == "" {
-		cfg.Bind = ":3100"
-	}
+	cfg.Listener.setDefaults(":3100")
 	if cfg.MaxSampleRows == 0 {
 		cfg.MaxSampleRows = 1_000_000
 	}
