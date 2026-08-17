@@ -8,47 +8,30 @@ import (
 	"sync"
 	"time"
 
-	"connectrpc.com/connect"
-	"connectrpc.com/otelconnect"
 	"github.com/go-faster/errors"
-	"github.com/go-faster/jx"
 	sdkapp "github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
-	"github.com/grafana/pyroscope/api/gen/proto/go/querier/v1/querierv1connect"
-	"github.com/ogen-go/ogen/ogenerrors"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/provider/envprovider"
 	"go.opentelemetry.io/collector/featuregate"
 	"go.opentelemetry.io/collector/otelcol"
-	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/prometheus/prometheus/storage"
-
 	"github.com/oteldb/oteldb/internal/chembed"
 	"github.com/oteldb/oteldb/internal/chstorage"
 	"github.com/oteldb/oteldb/internal/config"
 	"github.com/oteldb/oteldb/internal/httpmiddleware"
-	"github.com/oteldb/oteldb/internal/logql"
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
-	"github.com/oteldb/oteldb/internal/lokiapi"
-	"github.com/oteldb/oteldb/internal/lokihandler"
 	"github.com/oteldb/oteldb/internal/otelreceiver"
-	"github.com/oteldb/oteldb/internal/profilehandler"
-	"github.com/oteldb/oteldb/internal/profileql/profileqlengine"
-	"github.com/oteldb/oteldb/internal/promapi"
 	"github.com/oteldb/oteldb/internal/promhandler"
-	"github.com/oteldb/oteldb/internal/promql"
-	"github.com/oteldb/oteldb/internal/pyroscopeapi"
+	"github.com/oteldb/oteldb/internal/queryapi"
 	"github.com/oteldb/oteldb/internal/scarecrow"
 	"github.com/oteldb/oteldb/internal/storagebackend"
-	"github.com/oteldb/oteldb/internal/tempoapi"
-	"github.com/oteldb/oteldb/internal/tempohandler"
-	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
 )
 
 // App contains application dependencies and services.
@@ -215,31 +198,22 @@ func addOgen[
 		lg := lg.With(zap.String("addr", addr))
 		lg.Info("Starting HTTP server")
 
-		var (
-			routeFinder = httpmiddleware.MakeRouteFinder(server)
-			middlewares = []httpmiddleware.Middleware{
-				httpmiddleware.InjectLogger(zctx.From(ctx)),
-				httpmiddleware.Instrument(addr, name, routeFinder, app.telemetry),
-				httpmiddleware.LogRequests(routeFinder),
-				httpmiddleware.Explain(),
-			}
-		)
-
+		middlewares := additionalMiddlewares
 		auth, err := config.AuthMiddleware(authCfg)
 		if err != nil {
 			return errors.Wrap(err, "create auth middlewares")
 		}
 		if auth != nil {
 			lg.Info("Enabling authentication middleware", zap.Int("configs", len(authCfg)))
-			middlewares = append(middlewares, auth)
+			middlewares = append([]httpmiddleware.Middleware{auth}, middlewares...)
 		}
-		middlewares = append(middlewares, additionalMiddlewares...)
 
-		httpServer := &http.Server{
-			Addr:              addr,
-			Handler:           httpmiddleware.Wrap(server, middlewares...),
-			ReadHeaderTimeout: 15 * time.Second,
-		}
+		httpServer := queryapi.HTTPServer(queryapi.ServerOptions{
+			Name:    name,
+			Addr:    addr,
+			Logger:  zctx.From(ctx),
+			Metrics: app.telemetry,
+		}, server, middlewares...)
 
 		parentCtx := ctx
 		g, ctx := errgroup.WithContext(ctx)
@@ -273,16 +247,11 @@ func (app *App) trySetupTempo() error {
 	cfg := app.cfg.Tempo
 	cfg.SetDefaults()
 
-	engine := traceqlengine.NewEngine(app.traceQuerier, traceqlengine.Options{
+	s, err := queryapi.NewTempo(queryapi.TempoOptions{
+		Querier:        q,
 		TracerProvider: app.telemetry.TracerProvider(),
+		MeterProvider:  app.telemetry.MeterProvider(),
 	})
-	tempo := tempohandler.NewTempoAPI(q, engine, tempohandler.TempoAPIOptions{})
-
-	s, err := tempoapi.NewServer(tempo,
-		tempoapi.WithAttributes(attribute.String("oteldb.api", "tempo")),
-		tempoapi.WithTracerProvider(app.telemetry.TracerProvider()),
-		tempoapi.WithMeterProvider(app.telemetry.MeterProvider()),
-	)
 	if err != nil {
 		return err
 	}
@@ -301,49 +270,17 @@ func (app *App) trySetupPyroscope() error {
 	cfg := app.cfg.Pyroscope
 	cfg.SetDefaults()
 
-	engine := profileqlengine.NewEngine(q, profileqlengine.Options{
+	s, connectMount, err := queryapi.NewPyroscope(queryapi.PyroscopeOptions{
+		Querier:        q,
 		TracerProvider: app.telemetry.TracerProvider(),
+		MeterProvider:  app.telemetry.MeterProvider(),
 	})
-	pyro := profilehandler.NewPyroscopeAPI(q, engine, profilehandler.PyroscopeAPIOptions{})
-
-	s, err := pyroscopeapi.NewServer(pyro,
-		pyroscopeapi.WithAttributes(attribute.String("oteldb.api", "pyroscope")),
-		pyroscopeapi.WithTracerProvider(app.telemetry.TracerProvider()),
-		pyroscopeapi.WithMeterProvider(app.telemetry.MeterProvider()),
-	)
 	if err != nil {
 		return err
 	}
 
-	// Serve the connect QuerierService (used by Grafana's built-in Pyroscope datasource) on the same
-	// listener as the legacy Pyroscope HTTP API, routed by path prefix.
-	interceptor, err := otelconnect.NewInterceptor(
-		otelconnect.WithTracerProvider(app.telemetry.TracerProvider()),
-		otelconnect.WithMeterProvider(app.telemetry.MeterProvider()),
-	)
-	if err != nil {
-		return errors.Wrap(err, "create connect interceptor")
-	}
-	querier := profilehandler.NewQuerierService(q, engine)
-	connectPath, connectHandler := querierv1connect.NewQuerierServiceHandler(querier, connect.WithInterceptors(interceptor))
-
-	addOgen(app, "pyroscope", s, cfg.Bind, cfg.Auth, connectMount(connectPath, connectHandler))
+	addOgen(app, "pyroscope", s, cfg.Bind, cfg.Auth, connectMount)
 	return nil
-}
-
-// connectMount returns a middleware that serves the connect handler h for requests whose path is
-// under prefix, delegating everything else to the next handler. It lets the connect QuerierService
-// and the legacy Pyroscope ogen API share a single listener.
-func connectMount(prefix string, h http.Handler) httpmiddleware.Middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, prefix) {
-				h.ServeHTTP(w, r)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
 }
 
 func (app *App) trySetupLoki() error {
@@ -354,54 +291,22 @@ func (app *App) trySetupLoki() error {
 	cfg := app.cfg.Loki
 	cfg.SetDefaults()
 
-	var optimizers []logqlengine.Optimizer
-	optimizers = append(optimizers, logqlengine.DefaultOptimizers()...)
 	// The ClickHouse optimizer pushes filtering into chstorage's InputNode; it is a no-op for
 	// other backends, so only enable it when logs are actually served from ClickHouse. When logs
 	// are served from the embedded storage engine, the storage optimizer offloads line filters into
 	// the fetch instead.
+	var optimizer logqlengine.Optimizer = &chstorage.ClickhouseOptimizer{}
 	if app.cfg.LogsBackend == MetricsBackendStorage {
-		optimizers = append(optimizers, &storagebackend.LogQLOptimizer{})
-	} else {
-		optimizers = append(optimizers, &chstorage.ClickhouseOptimizer{})
+		optimizer = &storagebackend.LogQLOptimizer{}
 	}
-	engine, err := logqlengine.NewEngine(q, logqlengine.Options{
-		ParseOptions: logql.ParseOptions{
-			AllowDots: true,
-		},
-		LookbackDuration: cfg.LookbackDelta,
-		Optimizers:       optimizers,
-		MeterProvider:    app.telemetry.MeterProvider(),
-		TracerProvider:   app.telemetry.TracerProvider(),
+
+	s, err := queryapi.NewLoki(queryapi.LokiOptions{
+		Config:         cfg,
+		Querier:        q,
+		Optimizers:     []logqlengine.Optimizer{optimizer},
+		TracerProvider: app.telemetry.TracerProvider(),
+		MeterProvider:  app.telemetry.MeterProvider(),
 	})
-	if err != nil {
-		return errors.Wrap(err, "create LogQL engine")
-	}
-	loki := lokihandler.NewLokiAPI(q, engine, lokihandler.LokiAPIOptions{
-		DrilldownEnabled: cfg.DrilldownEnabled,
-	})
-
-	s, err := lokiapi.NewServer(loki,
-		lokiapi.WithAttributes(attribute.String("oteldb.api", "tempo")),
-		lokiapi.WithTracerProvider(app.telemetry.TracerProvider()),
-		lokiapi.WithMeterProvider(app.telemetry.MeterProvider()),
-		lokiapi.WithErrorHandler(func(ctx context.Context, w http.ResponseWriter, r *http.Request, err error) {
-			code := ogenerrors.ErrorCode(err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(code)
-
-			e := jx.GetEncoder()
-			defer jx.PutEncoder(e)
-
-			if err != nil {
-				e.Str(err.Error())
-			} else {
-				e.Str("<nil>")
-			}
-
-			_, _ = w.Write(e.Bytes())
-		}),
-	)
 	if err != nil {
 		return err
 	}
@@ -418,33 +323,13 @@ func (app *App) trySetupProm() error {
 	cfg := app.cfg.Prometheus
 	cfg.SetDefaults()
 
-	var engine promhandler.Engine
-	if cfg.EnableScarecrowEngine {
-		engine = app.newScarecrowEngine(q, cfg)
-	} else {
-		eng, err := promql.New(q, promql.EngineOpts{
-			// NOTE: zero-value MaxSamples and Timeout makes
-			// all queries to fail with error.
-			MaxSamples:           cfg.MaxSamples,
-			Timeout:              cfg.Timeout,
-			LookbackDelta:        cfg.LookbackDelta,
-			EnableAtModifier:     cfg.EnableAtModifier,
-			EnableNegativeOffset: *cfg.EnableNegativeOffset,
-			EnablePerStepStats:   cfg.EnablePerStepStats,
-		})
-		if err != nil {
-			return errors.Wrap(err, "create PromQL engine")
-		}
-		engine = eng
-	}
-	prom := promhandler.NewPromAPI(engine, q, q, q, promhandler.PromAPIOptions{})
-
-	s, err := promapi.NewServer(prom,
-		promapi.WithAttributes(attribute.String("oteldb.api", "prom")),
-		promapi.WithTracerProvider(app.telemetry.TracerProvider()),
-		promapi.WithMeterProvider(app.telemetry.MeterProvider()),
-		promapi.WithMiddleware(promhandler.TimeoutMiddleware()),
-	)
+	s, err := queryapi.NewPrometheus(queryapi.PrometheusOptions{
+		Config:         cfg,
+		Querier:        q,
+		Logger:         app.lg,
+		TracerProvider: app.telemetry.TracerProvider(),
+		MeterProvider:  app.telemetry.MeterProvider(),
+	})
 	if err != nil {
 		return err
 	}
@@ -453,35 +338,16 @@ func (app *App) trySetupProm() error {
 	return nil
 }
 
-// newScarecrowEngine builds the internal/scarecrow engine for [App.trySetupProm]. When q is the
-// embedded storage engine, it gets scarecrow's native columnar Scanner
-// (storagebackend.Backend.ScarecrowScanner); over any other querier (e.g. ClickHouse) it falls
-// back to scarecrow's generic storage.Queryable adapter, which is correct but pays the same
-// per-sample conversion cost the fork already does.
+// newScarecrowEngine builds the internal/scarecrow engine for [App.trySetupProm].
 func (app *App) newScarecrowEngine(q metricQuerier, cfg PrometheusConfig) *scarecrow.Engine {
-	opts := scarecrow.Opts{
-		LookbackDelta:        cfg.LookbackDelta,
-		EnableAtModifier:     cfg.EnableAtModifier,
-		EnableNegativeOffset: *cfg.EnableNegativeOffset,
-		MaxSamples:           cfg.MaxSamples,
-		Timeout:              cfg.Timeout,
-	}
-
+	var tracerProvider trace.TracerProvider
 	// Telemetry is absent in tests that build an App directly; scarecrow falls back to the global
 	// provider when this is unset.
 	if app.telemetry != nil {
-		opts.TracerProvider = app.telemetry.TracerProvider()
+		tracerProvider = app.telemetry.TracerProvider()
 	}
 
-	if backend, ok := q.(*storagebackend.Backend); ok {
-		opts.NewScanner = func(storage.Queryable) scarecrow.Scanner { return backend.ScarecrowScanner() }
-		app.lg.Info("Using scarecrow PromQL engine with the native storage Scanner")
-	} else {
-		app.lg.Warn("Using scarecrow PromQL engine over the generic storage.Queryable adapter; " +
-			"switch metrics.backend to storage for the native Scanner")
-	}
-
-	return scarecrow.NewEngine(opts)
+	return queryapi.NewScarecrowEngine(app.lg, q, cfg, tracerProvider)
 }
 
 func (app *App) setupHealthCheck() error {
