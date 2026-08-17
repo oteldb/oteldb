@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/signal"
@@ -43,7 +44,7 @@ func TestClusterOption(t *testing.T) {
 	t.Run("Explicit", func(t *testing.T) {
 		opt, err := clusterOption(&ClusterConfig{
 			Etcd: []string{"http://etcd:2379"}, ID: "node-1", Zone: "z1",
-			Addr: "node-1:9000", RF: 2, ShardsPerTenant: 4, Root: "/x",
+			Addr: "node-1:9000", RF: 2, ShardsPerTenant: 4, Root: "/x", PrivateBackend: true,
 		}, lg)
 		require.NoError(t, err)
 		o := applyOption(t, opt)
@@ -55,6 +56,14 @@ func TestClusterOption(t *testing.T) {
 		require.Equal(t, 2, o.Cluster.RF)
 		require.Equal(t, 4, o.Cluster.ShardsPerTenant)
 		require.Equal(t, "/x", o.Cluster.Root)
+		require.True(t, o.Cluster.PrivateBackend)
+	})
+
+	t.Run("PrivateBackendDefaultsToShared", func(t *testing.T) {
+		opt, err := clusterOption(&ClusterConfig{Etcd: []string{"e"}, ID: "n1"}, lg)
+		require.NoError(t, err)
+		o := applyOption(t, opt)
+		require.False(t, o.Cluster.PrivateBackend, "unset keeps the shared-store model")
 	})
 
 	t.Run("AddrDerivedFromID", func(t *testing.T) {
@@ -102,6 +111,7 @@ func TestTenancyOption(t *testing.T) {
 				{After: 7 * 24 * time.Hour, Interval: time.Hour}, // Agg defaults to last.
 			},
 			Recompress: &RecompressConfig{After: 14 * 24 * time.Hour, Level: 9},
+			EC:         &ECConfig{Data: 4, Parity: 2, After: 30 * 24 * time.Hour},
 			Retention:  &RetentionConfig{MaxAge: 90 * 24 * time.Hour, MaxBytes: 1 << 30},
 			Limits: &LimitsConfig{
 				IngestBytesPerSecond: 10 << 20,
@@ -131,6 +141,13 @@ func TestTenancyOption(t *testing.T) {
 
 		require.Equal(t, 14*24*time.Hour, p.Recompress.After)
 		require.Equal(t, 9, p.Recompress.Level)
+
+		require.NotNil(t, p.Durability.EC)
+		require.Equal(t, 4, p.Durability.EC.Data)
+		require.Equal(t, 2, p.Durability.EC.Parity)
+		require.Equal(t, 30*24*time.Hour, p.Durability.EC.After)
+		// EC fixes the owner count at Data+Parity, so the tenant RF is left alone.
+		require.Zero(t, p.Durability.RF)
 
 		require.Equal(t, 90*24*time.Hour, p.Retention.MaxAge)
 		require.Equal(t, int64(1<<30), p.Retention.MaxBytes)
@@ -165,6 +182,36 @@ func TestTenancyOption(t *testing.T) {
 		require.Equal(t, int64(1000), o.Tenancy.Resolve("default").Limits.MaxSeries)
 	})
 
+	t.Run("ECOnlyInstallsResolver", func(t *testing.T) {
+		opt, err := tenancyOption(&PolicyConfig{
+			EC: &ECConfig{Data: 6, Parity: 3},
+		})
+		require.NoError(t, err)
+		o := applyOption(t, opt)
+		require.NotNil(t, o.Tenancy, "an EC-only policy must still install a resolver")
+
+		p := o.Tenancy.Resolve("default")
+		require.NotNil(t, p.Durability.EC)
+		require.Equal(t, 6, p.Durability.EC.Data)
+		require.Equal(t, 3, p.Durability.EC.Parity)
+		require.Zero(t, p.Durability.EC.After, "zero After erasure-codes every part")
+	})
+
+	t.Run("InvalidECSchemeIsAnError", func(t *testing.T) {
+		for name, cfg := range map[string]*ECConfig{
+			"NoParity":      {Data: 4, Parity: 0},
+			"NoData":        {Data: 0, Parity: 2},
+			"Negative":      {Data: -1, Parity: 2},
+			"TooManyShards": {Data: 200, Parity: 100},
+			"NegativeAfter": {Data: 4, Parity: 2, After: -time.Hour},
+		} {
+			t.Run(name, func(t *testing.T) {
+				_, err := tenancyOption(&PolicyConfig{EC: cfg})
+				require.Error(t, err)
+			})
+		}
+	})
+
 	t.Run("UnknownAggIsAnError", func(t *testing.T) {
 		_, err := tenancyOption(&PolicyConfig{
 			Downsample: []DownsampleTierConfig{{Interval: time.Minute, Agg: "median"}},
@@ -185,6 +232,36 @@ func TestTenancyOption(t *testing.T) {
 		})
 		require.Error(t, err)
 	})
+}
+
+func TestWarnECInert(t *testing.T) {
+	sharedNothing := &ClusterConfig{Etcd: []string{"http://etcd:2379"}, PrivateBackend: true}
+	sharedStore := &ClusterConfig{Etcd: []string{"http://etcd:2379"}}
+	ecPolicy := &PolicyConfig{EC: &ECConfig{Data: 4, Parity: 2}}
+
+	for name, tt := range map[string]struct {
+		cluster *ClusterConfig
+		policy  *PolicyConfig
+		warns   bool
+	}{
+		"SharedNothing":      {sharedNothing, ecPolicy, false},
+		"SharedStore":        {sharedStore, ecPolicy, true},
+		"SingleNode":         {nil, ecPolicy, true},
+		"ClusterWithoutEtcd": {&ClusterConfig{ID: "n1"}, ecPolicy, true},
+		"NoECPolicy":         {sharedStore, &PolicyConfig{Retention: &RetentionConfig{}}, false},
+		"NoPolicy":           {sharedStore, nil, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			core, logs := observer.New(zap.WarnLevel)
+			warnECInert(tt.cluster, tt.policy, zap.New(core))
+			if !tt.warns {
+				require.Zero(t, logs.Len())
+				return
+			}
+			require.Equal(t, 1, logs.Len())
+			require.Contains(t, logs.All()[0].Message, "erasure coding")
+		})
+	}
 }
 
 func TestS3Backend(t *testing.T) {

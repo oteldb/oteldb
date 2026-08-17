@@ -26,6 +26,7 @@ storage:
     rf: 3
     shards_per_tenant: 8
     root: /oteldb
+    private_backend: true
 `
 	f, err := os.CreateTemp("", "oteldb.yml")
 	require.NoError(t, err)
@@ -46,6 +47,7 @@ storage:
 	require.Equal(t, 3, cfg.Storage.Cluster.RF)
 	require.Equal(t, 8, cfg.Storage.Cluster.ShardsPerTenant)
 	require.Equal(t, "/oteldb", cfg.Storage.Cluster.Root)
+	require.True(t, cfg.Storage.Cluster.PrivateBackend)
 }
 
 // TestStoragePolicyConfigYAML checks the policy block parses from the documented YAML shape. What

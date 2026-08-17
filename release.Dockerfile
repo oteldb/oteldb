@@ -6,6 +6,7 @@ COPY $TARGETPLATFORM/oteldb     /usr/local/bin/oteldb
 COPY $TARGETPLATFORM/odbbackup  /usr/local/bin/odbbackup
 COPY $TARGETPLATFORM/odbrestore /usr/local/bin/odbrestore
 COPY $TARGETPLATFORM/odbmigrate /usr/local/bin/odbmigrate
+COPY $TARGETPLATFORM/odbingest  /usr/local/bin/odbingest
 COPY $TARGETPLATFORM/odbselect  /usr/local/bin/odbselect
 
 ENTRYPOINT ["/usr/local/bin/oteldb"]
