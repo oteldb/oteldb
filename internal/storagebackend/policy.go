@@ -4,8 +4,10 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"go.uber.org/zap"
 
 	"github.com/oteldb/storage"
+	"github.com/oteldb/storage/cluster/ec"
 	"github.com/oteldb/storage/signal"
 	"github.com/oteldb/storage/tenant"
 
@@ -13,7 +15,8 @@ import (
 )
 
 // PolicyConfig configures the per-tenant storage policy applied to the embedded engine's
-// background merges: age-tiered lossy float precision, downsampling, and cold-data recompression.
+// background merges: age-tiered lossy float precision, downsampling, cold-data recompression, and
+// cold-data erasure coding.
 // The storage library resolves these per-tenant via a [tenant.Resolver] callback; oteldb runs the
 // embedded engine single-tenant (every signal routes to the "default" tenant), so this one policy
 // is resolved for every tenant. Empty ⇒ no tenancy resolver is installed (the library default:
@@ -31,6 +34,10 @@ type PolicyConfig struct {
 	// tier, which does not mean uncompressed: a merge always compresses at a level its part's size
 	// earns.
 	Recompress *RecompressConfig `json:"recompress" yaml:"recompress"`
+	// EC erasure-codes fully-cold parts (older than After) across Data+Parity cluster nodes instead
+	// of storing RF full copies. Like Recompress it is an age tier, so recent data stays full-copy
+	// for fast local reads. Nil ⇒ full-copy replication.
+	EC *ECConfig `json:"ec" yaml:"ec"`
 	// Retention bounds how long data is kept: parts older than MaxAge are dropped whole at merge.
 	// Nil ⇒ retain forever.
 	Retention *RetentionConfig `json:"retention" yaml:"retention"`
@@ -68,6 +75,33 @@ type RecompressConfig struct {
 	// [tenant.DefaultRecompressLevel]. Levels past ~9 buy single-digit percent for roughly an order
 	// of magnitude more CPU, which competes with merge and retention.
 	Level int `json:"level" yaml:"level"`
+}
+
+// ECConfig configures the cold-data erasure-coding tier: a flushed part older than After is
+// re-encoded, at merge, into Data + Parity Reed-Solomon shards spread one per cluster node, in
+// place of RF full copies. It stores (Data+Parity)/Data of the logical bytes and survives Parity
+// node losses — {4,2} is 1.5x for two tolerated losses, against 3x for RF=3 — paying a
+// reconstruct-on-read cost only for parts that have converted.
+//
+// It applies to shared-nothing deployments only (cluster mode with private_backend): on a shared
+// object store the store owns durability, and an EC policy there does nothing. Objects below
+// [ec.FullCopyFloor] stay full-copy on every owner, since k+m shards of a tiny object cost more
+// than they save.
+type ECConfig struct {
+	// Data is the number of data shards (k); any Data shards reconstruct the object. Must be ≥ 1.
+	Data int `json:"data" yaml:"data"`
+	// Parity is the number of parity shards (m); the scheme tolerates Parity node losses. Must be
+	// ≥ 1, and Data+Parity at most 256.
+	//
+	// Data+Parity is also the tenant's owner count under EC — the replication factor, cluster-wide
+	// or per-tenant, is ignored. Placement spreads the shards over the rack/server/disk hierarchy,
+	// and is rack-safe (one rack failure costs at most Parity shards) only with at least
+	// ceil((Data+Parity)/Parity) racks; below that the engine converts anyway and warns.
+	Parity int `json:"parity" yaml:"parity"`
+	// After is the age past which a fully-cold part is erasure-coded, mirroring
+	// [RecompressConfig.After] and riding the same background-merge engine. Zero ⇒ erasure-code
+	// every part, accepting the reconstruct-on-read cost everywhere for the cheapest storage.
+	After time.Duration `json:"after" yaml:"after"`
 }
 
 // RetentionConfig configures age-based retention. Enforcement drops whole partitions at merge, so
@@ -117,11 +151,40 @@ func retentionMaxAge(cfg *RetentionConfig) time.Duration {
 	return cfg.MaxAge
 }
 
+// warnECInert warns when an EC policy is configured but cannot take effect, because the engine
+// gates erasure coding on shared-nothing cluster mode as well: without it every part stays
+// full-copy and nothing reports why.
+//
+// It warns rather than refuses, matching the shared-nothing diagnostic in storage#373: EC on a
+// shared store is a redundant setting, not a broken one — the store owns durability there, so the
+// deployment is still correct, only paying for a policy it does not get. Refusing would also turn
+// a config that is valid on its own into a startup failure decided by an unrelated section.
+func warnECInert(cluster *ClusterConfig, policy *PolicyConfig, lg *zap.Logger) {
+	if policy == nil || policy.EC == nil {
+		return
+	}
+
+	clustered := cluster != nil && len(cluster.Etcd) > 0
+	if clustered && cluster.PrivateBackend {
+		return
+	}
+
+	lg.Warn("storage policy sets erasure coding, but it cannot apply",
+		zap.Bool("clustered", clustered),
+		zap.Bool("private_backend", clustered && cluster.PrivateBackend),
+		zap.String("effect", "every part stays full-copy; the policy costs and saves nothing"),
+		zap.String("action", "erasure coding needs cluster mode with private_backend set, i.e. a "+
+			"shared-nothing deployment; on a shared object store the store owns durability and the "+
+			"policy should be dropped"),
+	)
+}
+
 // empty reports whether the policy configures nothing, in which case no resolver is installed.
 func (cfg *PolicyConfig) empty() bool {
 	return cfg == nil || (len(cfg.Precision) == 0 &&
 		len(cfg.Downsample) == 0 &&
 		cfg.Recompress == nil &&
+		cfg.EC == nil &&
 		cfg.Retention == nil &&
 		cfg.Limits == nil)
 }
@@ -174,6 +237,22 @@ func (cfg *PolicyConfig) policy() (tenant.Policy, error) {
 
 	if r := cfg.Recompress; r != nil {
 		p.Recompress = tenant.Recompress{After: r.After, Level: r.Level}
+	}
+
+	if e := cfg.EC; e != nil {
+		// An invalid scheme is silently swallowed downstream (Storage.ecSchemeFor drops to
+		// full-copy when Validate fails), so validate here to make it a startup error instead.
+		if err := (ec.Scheme{Data: e.Data, Parity: e.Parity}).Validate(); err != nil {
+			return tenant.Policy{}, errors.Wrap(err, "ec")
+		}
+		if e.After < 0 {
+			return tenant.Policy{}, errors.New("ec: after must not be negative")
+		}
+		p.Durability.EC = &tenant.ECScheme{
+			Data:   e.Data,
+			Parity: e.Parity,
+			After:  e.After,
+		}
 	}
 
 	if r := cfg.Retention; r != nil {
