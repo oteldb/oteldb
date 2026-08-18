@@ -45,8 +45,13 @@ type Backend struct {
 	// store is the local engine, set only when this Backend was built over one. Ingestion,
 	// maintenance and the statistics views need engine-local state, so they are the only methods
 	// that reach for it — and they refuse with [ErrNoEngine] when it is nil.
-	store  *storage.Storage
+	store *storage.Storage
+	// tenant is the tenant every read is scoped to when the backend is not per-request tenant-aware
+	// (the default). The empty id normalizes to "default" in the engine.
 	tenant signal.TenantID
+	// requireTenant makes reads resolve their tenant from the request context and refuse a request
+	// that carries none. See [WithTenancy].
+	requireTenant bool
 	// logParallelism is the max number of workers used to materialize log query results across the
 	// fetched record set. <= 1 keeps the sequential path (the default). See [WithLogParallelism].
 	logParallelism int
@@ -197,17 +202,23 @@ func (b *Backend) CompactNow(ctx context.Context) error {
 // Backend-lifetime label cache (b.labels) is shared across queries so series label projections are
 // interned once instead of rebuilt and GC-rescanned every query.
 //
-// The fetcher is scoped to b.tenant (a named tenant, "" ⇒ "default") rather than the no-arg
-// cross-tenant form: in cluster mode a named tenant is served owner-aware (fanned out to the ring
-// owners), whereas the no-arg form reads only tenants local to this node — so a query node that does
-// not own the tenant would see nothing. The record signals already scope by b.tenant the same way.
-func (b *Backend) queryable() *storagepromql.Queryable {
-	return storagepromql.NewQueryableWithCache(b.src.Fetcher(b.tenant), b.tenant, b.labels)
+// The fetcher is scoped to one named tenant ("" ⇒ "default") rather than the no-arg cross-tenant
+// form: in cluster mode a named tenant is served owner-aware (fanned out to the ring owners),
+// whereas the no-arg form reads only tenants local to this node — so a query node that does not own
+// the tenant would see nothing. The record signals scope by the same tenant.
+func (b *Backend) queryable(tenant signal.TenantID) *storagepromql.Queryable {
+	return storagepromql.NewQueryableWithCache(b.src.Fetcher(tenant), tenant, b.labels)
 }
 
-// Querier implements storage.Queryable.
+// Querier implements storage.Queryable. Prometheus resolves a querier without a context, so under
+// [WithTenancy] the tenant-scoped querier is built lazily on the first call that carries one.
 func (b *Backend) Querier(mint, maxt int64) (promstorage.Querier, error) {
-	return b.queryable().Querier(clampQueryMs(mint), clampQueryMs(maxt))
+	mint, maxt = clampQueryMs(mint), clampQueryMs(maxt)
+	if b.requireTenant {
+		return &lazyQuerier{b: b, mint: mint, maxt: maxt}, nil
+	}
+
+	return b.queryable(b.tenant).Querier(mint, maxt)
 }
 
 // clampQueryMs clamps a Prometheus millisecond bound to the open-ended sentinels the storage
@@ -301,7 +312,12 @@ func (s scanners) GroupedSeriesCounter() enginestorage.GroupedSeriesCounter {
 type backendCounter struct{ b *Backend }
 
 func (c backendCounter) CountSeries(ctx context.Context, startMs, endMs int64, matchers ...*labels.Matcher) (uint64, error) {
-	q, err := c.b.queryable().Querier(startMs, endMs)
+	tenant, err := c.b.tenantFor(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	q, err := c.b.queryable(tenant).Querier(startMs, endMs)
 	if err != nil {
 		return 0, errors.Wrap(err, "count pushdown: create querier")
 	}
@@ -325,7 +341,12 @@ type backendGroupCounter struct{ b *Backend }
 func (c backendGroupCounter) CountSeriesBy(
 	ctx context.Context, startMs, endMs int64, label string, matchers ...*labels.Matcher,
 ) (map[string]uint64, error) {
-	q, err := c.b.queryable().Querier(startMs, endMs)
+	tenant, err := c.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := c.b.queryable(tenant).Querier(startMs, endMs)
 	if err != nil {
 		return nil, errors.Wrap(err, "count-by pushdown: create querier")
 	}
@@ -345,7 +366,7 @@ func (s scanners) NewVectorSelector(
 	hints promstorage.SelectHints,
 	node logicalplan.VectorSelector,
 ) (model.VectorOperator, error) {
-	inner, err := s.windowed(opts, hints)
+	inner, err := s.windowed(ctx, opts, hints)
 	if err != nil {
 		return nil, err
 	}
@@ -365,13 +386,18 @@ func (s scanners) NewMatrixSelector(
 	// folds the sidecar cannot answer (rate/increase/quantile/…).
 	if s.b.overTimePushdown && node.Range > 0 {
 		if fold, ok := overTimeFold[call.Func.Name]; ok {
+			tenant, err := s.b.tenantFor(ctx)
+			if err != nil {
+				return nil, err
+			}
+
 			vs := node.VectorSelector
 			plainInstant := vs.Projection == nil && len(vs.Filters) == 0
 			switch {
 			case opts.IsInstantQuery():
 				if plainInstant {
 					return newAggregateOverTimeOp(
-						s.b.src, s.b.tenant, vs.LabelMatchers, call.Func.Name, fold,
+						s.b.src, tenant, vs.LabelMatchers, call.Func.Name, fold,
 						opts.Start.UnixMilli(), node.Range.Milliseconds(), vs.Offset.Milliseconds(),
 					), nil
 				}
@@ -381,7 +407,7 @@ func (s scanners) NewMatrixSelector(
 			// only push down its absence.
 			case opts.Step > 0 && plainInstant && vs.Timestamp == nil && !vs.SelectTimestamp:
 				return newAggregateOverTimeRangeOp(
-					s.b.src, s.b.tenant, vs.LabelMatchers, call.Func.Name, fold,
+					s.b.src, tenant, vs.LabelMatchers, call.Func.Name, fold,
 					opts.Start.UnixMilli(), opts.End.UnixMilli(), opts.Step.Milliseconds(),
 					node.Range.Milliseconds(), vs.Offset.Milliseconds(), opts.NumStepsPerBatch(),
 				), nil
@@ -389,7 +415,7 @@ func (s scanners) NewMatrixSelector(
 		}
 	}
 
-	inner, err := s.windowed(opts, hints)
+	inner, err := s.windowed(ctx, opts, hints)
 	if err != nil {
 		return nil, err
 	}
@@ -399,12 +425,19 @@ func (s scanners) NewMatrixSelector(
 // windowed builds a Prometheus scanner set whose querier covers the selector window. opts is
 // shallow-copied (the library's own idiom, see query.Options.WithEndTime) with the window
 // overridden to the selector's hints so the storage querier reads the right range.
-func (s scanners) windowed(opts *query.Options, hints promstorage.SelectHints) (*promscanners.Scanners, error) {
+func (s scanners) windowed(
+	ctx context.Context, opts *query.Options, hints promstorage.SelectHints,
+) (*promscanners.Scanners, error) {
+	tenant, err := s.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	o := *opts
 	o.Start = time.UnixMilli(hints.Start)
 	o.End = time.UnixMilli(hints.End)
 
-	sc, err := promscanners.NewPrometheusScanners(s.b.queryable(), &o, nil)
+	sc, err := promscanners.NewPrometheusScanners(s.b.queryable(tenant), &o, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "create prometheus scanners")
 	}
