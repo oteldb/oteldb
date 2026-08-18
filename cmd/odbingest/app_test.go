@@ -216,6 +216,12 @@ func series(name string, at time.Time, v float64) prompb.TimeSeries {
 func newTestSink(t *testing.T, endpoint, root string, shards int) *clusterSink {
 	t.Helper()
 
+	return newTestSinkWith(t, endpoint, root, shards, nil)
+}
+
+func newTestSinkWith(t *testing.T, endpoint, root string, shards int, tenantOf tenantFuncOf) *clusterSink {
+	t.Helper()
+
 	rt, err := router.Open(t.Context(), router.Config{
 		Etcd: []string{endpoint}, Root: root, RF: 1, ShardsPerTenant: shards,
 	})
@@ -225,10 +231,50 @@ func newTestSink(t *testing.T, endpoint, root string, shards int) *clusterSink {
 	require.Eventually(t, func() bool { return len(rt.Members()) > 0 },
 		10*time.Second, 10*time.Millisecond, "router sees the cluster")
 
-	sink, err := newClusterSink(rt, nil, noop.NewMeterProvider())
+	sink, err := newClusterSink(rt, tenantOf, noop.NewMeterProvider())
 	require.NoError(t, err)
 
 	return sink
+}
+
+// TestIngestRoutesHeaderTenant is the end-to-end check that a tenant named per request reaches
+// framing: the write must land under that tenant's shard key at the primary, and a request that
+// names none must still land under the default tenant.
+func TestIngestRoutesHeaderTenant(t *testing.T) {
+	t.Parallel()
+
+	const root = "/tenants"
+
+	endpoint := startEtcd(t)
+	node := startNode(t, endpoint, root, "node-tenant")
+
+	tenants, err := newTenantResolver(TenantConfig{Header: HeaderScopeOrgID})
+	require.NoError(t, err)
+
+	h := tenants.Middleware(promrw.NewHandler(
+		newTestSinkWith(t, endpoint, root, 1, tenants.tenantFunc),
+		promrw.HandlerConfig{Options: promrw.Options{TimeThreshold: time.Hour}},
+	))
+
+	at := time.Now().Truncate(time.Second)
+
+	for _, tenant := range []string{"acme", ""} {
+		body := writeRequest(t, series("http_requests_total", at, 1))
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/write", bytes.NewReader(body))
+		if tenant != "" {
+			req.Header.Set(HeaderScopeOrgID, tenant)
+		}
+
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusNoContent, rec.Code, rec.Body)
+	}
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
+
+	assert.Equal(t, map[string]int{"acme": 1, string(cluster.DefaultTenant): 1}, node.shards)
 }
 
 // TestIngestRoutesToPrimary is the end-to-end check that odbingest is a routing tier: a remote

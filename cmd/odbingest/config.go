@@ -17,6 +17,33 @@ type Config struct {
 	RemoteWrite RemoteWriteConfig `json:"prometheus_remote_write" yaml:"prometheus_remote_write"`
 	// OTLP configures the OTLP/HTTP endpoints, which share the remote write listener.
 	OTLP OTLPConfig `json:"otlp" yaml:"otlp"`
+	// Tenant configures which tenant a write routes to. Empty ⇒ everything routes to the
+	// "default" tenant, as it does with no tenancy configured at all.
+	Tenant TenantConfig `json:"tenant" yaml:"tenant"`
+}
+
+// TenantConfig configures tenant resolution on the ingest path.
+//
+// The zero value routes every write to [cluster.DefaultTenant]. That is deliberate and must stay
+// that way: a tenant picks the shard key, which picks the ring owner, so a deployment that starts
+// resolving tenants differently writes where its existing reads do not look. Enabling a source
+// here is a migration, not a config tweak.
+//
+// Sources compose narrowest-first — Header (a whole request) beats ResourceAttributes (one
+// resource within it), which beats Default.
+type TenantConfig struct {
+	// Default is the tenant a write routes to when no source names one. Empty ⇒ "default".
+	Default string `json:"default" yaml:"default"`
+	// Header is the request header (and OTLP/gRPC metadata key) carrying the tenant. Empty ⇒ the
+	// header is not read. "X-Scope-OrgID" is what Grafana-stack senders put it in.
+	Header string `json:"header" yaml:"header"`
+	// ResourceAttributes are the OTLP resource attribute keys read, in order, until one holds a
+	// usable tenant. Empty ⇒ resource attributes are not read. "service.namespace" is the
+	// OTel-native candidate.
+	ResourceAttributes []string `json:"resource_attributes" yaml:"resource_attributes"`
+	// Require refuses a request that does not carry Header, instead of routing it to Default.
+	// Requires Header.
+	Require bool `json:"require" yaml:"require"`
 }
 
 // OTLPConfig configures the OTLP/HTTP ingest endpoints. They are always served, at the paths the

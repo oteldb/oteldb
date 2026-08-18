@@ -18,13 +18,18 @@ import (
 // holds no data of its own: it frames, routes, and reports what the primaries said.
 type clusterSink struct {
 	router   *router.Router
-	tenantOf cluster.TenantFunc
+	tenantOf tenantFuncOf
 
 	accepted metric.Int64Counter
 	rejected metric.Int64Counter
 }
 
-func newClusterSink(r *router.Router, tenantOf cluster.TenantFunc, mp metric.MeterProvider) (*clusterSink, error) {
+// tenantFuncOf derives the routing callback for one write from its request context, so a tenant
+// named per request (a header) and one named per resource (an attribute) reach framing the same
+// way. A nil tenantFuncOf, or one returning nil, routes to [cluster.DefaultTenant].
+type tenantFuncOf func(context.Context) cluster.TenantFunc
+
+func newClusterSink(r *router.Router, tenantOf tenantFuncOf, mp metric.MeterProvider) (*clusterSink, error) {
 	meter := mp.Meter("github.com/oteldb/oteldb/cmd/odbingest")
 
 	accepted, err := meter.Int64Counter("odbingest.cluster.accepted_points",
@@ -50,27 +55,35 @@ func newClusterSink(r *router.Router, tenantOf cluster.TenantFunc, mp metric.Met
 // the rest, which is a success with the counters moving. Only a routing or transport failure fails
 // the request, so the sender retries a write that may not have landed and leaves one that did.
 func (s *clusterSink) WriteMetrics(ctx context.Context, batch sigmetric.Metrics) error {
-	res, err := s.router.WriteMetrics(ctx, batch, s.tenantOf)
+	res, err := s.router.WriteMetrics(ctx, batch, s.routing(ctx))
 
 	return s.record(ctx, "metrics", res, err)
 }
 
 func (s *clusterSink) WriteLogs(ctx context.Context, batch log.Logs) error {
-	res, err := s.router.WriteLogs(ctx, batch, s.tenantOf)
+	res, err := s.router.WriteLogs(ctx, batch, s.routing(ctx))
 
 	return s.record(ctx, "logs", res, err)
 }
 
 func (s *clusterSink) WriteTraces(ctx context.Context, batch trace.Traces) error {
-	res, err := s.router.WriteTraces(ctx, batch, s.tenantOf)
+	res, err := s.router.WriteTraces(ctx, batch, s.routing(ctx))
 
 	return s.record(ctx, "traces", res, err)
 }
 
 func (s *clusterSink) WriteProfiles(ctx context.Context, batch *profile.Profiles) error {
-	res, err := s.router.WriteProfiles(ctx, batch, s.tenantOf)
+	res, err := s.router.WriteProfiles(ctx, batch, s.routing(ctx))
 
 	return s.record(ctx, "profiles", res, err)
+}
+
+func (s *clusterSink) routing(ctx context.Context) cluster.TenantFunc {
+	if s.tenantOf == nil {
+		return nil
+	}
+
+	return s.tenantOf(ctx)
 }
 
 // record meters what the primaries said and turns a routing failure into the caller's error.
