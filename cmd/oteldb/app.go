@@ -53,6 +53,10 @@ type App struct {
 	// the admin panel's first-class storage view. Nil when every signal is on ClickHouse.
 	storageBackend *storagebackend.Backend
 
+	// tenancy resolves each query request's tenant from its credential. Nil when read-path tenancy
+	// is not configured, in which case every read serves the default tenant.
+	tenancy httpmiddleware.Middleware
+
 	lg        *zap.Logger
 	telemetry *sdkapp.Telemetry
 	startTime time.Time
@@ -68,6 +72,16 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 		telemetry: m,
 		startTime: time.Now(),
 	}
+
+	if err := cfg.validateTenancy(); err != nil {
+		return nil, err
+	}
+
+	tenancy, err := config.TenancyMiddleware(cfg.Tenancy)
+	if err != nil {
+		return nil, errors.Wrap(err, "setup tenancy")
+	}
+	app.tenancy = tenancy
 
 	// ClickHouse is started only when a queryable signal is still served by it. Under --embedded
 	// (every signal on the embedded storage engine) ClickHouse is skipped entirely, including the
@@ -112,7 +126,14 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 	// ClickHouse. For each swapped signal both the query side (the API handler's querier) and
 	// the ingestion side (the collector exporter's sink) are replaced.
 	if cfg.usesStorageBackend() {
-		b, closeStore, err := storagebackend.Open(ctx, cfg.Storage, app.lg.Named("storage"), app.telemetry)
+		var storageOpts []storagebackend.Option
+		if cfg.Tenancy.Enabled {
+			storageOpts = append(storageOpts, storagebackend.WithTenancy())
+		}
+
+		b, closeStore, err := storagebackend.Open(
+			ctx, cfg.Storage, app.lg.Named("storage"), app.telemetry, storageOpts...,
+		)
 		if err != nil {
 			return nil, errors.Wrap(err, "setup storage backend")
 		}
@@ -198,15 +219,21 @@ func addOgen[
 		lg := lg.With(zap.String("addr", addr))
 		lg.Info("Starting HTTP server")
 
-		middlewares := additionalMiddlewares
+		var middlewares []httpmiddleware.Middleware
 		auth, err := config.AuthMiddleware(authCfg)
 		if err != nil {
 			return errors.Wrap(err, "create auth middlewares")
 		}
 		if auth != nil {
 			lg.Info("Enabling authentication middleware", zap.Int("configs", len(authCfg)))
-			middlewares = append([]httpmiddleware.Middleware{auth}, middlewares...)
+			middlewares = append(middlewares, auth)
 		}
+		// Tenancy sits inside authentication: it resolves which tenants a credential reads, while an
+		// outer authenticator only decides whether the request gets that far.
+		if app.tenancy != nil {
+			middlewares = append(middlewares, app.tenancy)
+		}
+		middlewares = append(middlewares, additionalMiddlewares...)
 
 		httpServer := queryapi.HTTPServer(queryapi.ServerOptions{
 			Name:    name,

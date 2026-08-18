@@ -28,6 +28,9 @@ type Config struct {
 	// bound: it holds every shard owner's answer at once to merge them, so the owners' limits do not
 	// add up to one here. Unset ⇒ a share of the detected process budget; 0 ⇒ unbounded.
 	MaxQueryBytes *xbytes.Bytes `json:"max_query_bytes" yaml:"max_query_bytes"`
+	// Tenancy configures read-path multi-tenancy. Disabled by default, in which case every read is
+	// served from the single default tenant, exactly as before.
+	Tenancy config.Tenancy `json:"tenancy" yaml:"tenancy"`
 	// ShutdownTimeout bounds how long in-flight queries are given to finish. Zero ⇒ 30s.
 	ShutdownTimeout time.Duration `json:"shutdown_timeout" yaml:"shutdown_timeout"`
 }
