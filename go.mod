@@ -26,6 +26,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.19.0
 	github.com/go-faster/errors v0.8.0
+	github.com/go-faster/figureout v0.6.3-0.20260818095346-057b8e07edc4
 	github.com/go-faster/jx v1.2.0
 	github.com/go-faster/sdk v0.39.0
 	github.com/go-faster/tetragon v1.3.2
@@ -164,7 +165,6 @@ require (
 
 require (
 	github.com/cenkalti/backoff/v7 v7.0.0 // indirect
-	github.com/go-faster/figureout v0.6.3-0.20260818090207-c4fb81975ca7 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3 // indirect
 	github.com/klauspost/reedsolomon v1.14.1 // indirect

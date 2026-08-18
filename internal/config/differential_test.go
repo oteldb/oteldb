@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/oteldb/oteldb/internal/config"
+	"github.com/oteldb/oteldb/internal/storagebackend"
 )
 
 // diffConfig composes every block the package ships, so one fixture exercises all of them.
@@ -25,11 +26,18 @@ type diffConfig struct {
 	HealthCheck config.HealthCheck `json:"health_check" yaml:"health_check"`
 	Cluster     config.Cluster     `json:"cluster" yaml:"cluster"`
 	Auth        []config.Auth      `json:"auth" yaml:"auth"`
+
+	// Storage and Collector belong to cmd/oteldb rather than to this package, and they are here
+	// because they are the two blocks the descriptor treats specially: the engine block is
+	// pointer-heavy, so nil has to survive, and the collector block is carried verbatim.
+	Storage   storagebackend.Config `json:"storage" yaml:"storage"`
+	Collector map[string]any        `json:"otelcol" yaml:"otelcol"`
 }
 
 // diffBlocks are the top-level keys diffConfig claims.
 var diffBlocks = []string{
 	"prometheus", "loki", "tempo", "pyroscope", "admin", "health_check", "cluster", "auth",
+	"storage", "otelcol",
 }
 
 func describeDiff(c *diffConfig, s *figureout.Schema[diffConfig]) {
@@ -55,6 +63,11 @@ func describeDiff(c *diffConfig, s *figureout.Schema[diffConfig]) {
 		config.DescribeCluster(s, &c.Cluster)
 	})
 	figureout.ListOf(s, &c.Auth, "auth", config.DescribeAuth)
+	figureout.Group(s, "storage", func(s *figureout.Schema[diffConfig]) {
+		storagebackend.DescribeConfig(s, &c.Storage)
+	})
+	figureout.Opaque(s, &c.Collector, "otelcol",
+		figureout.Reason("handed to the OpenTelemetry Collector verbatim"))
 }
 
 func diffDescriptor(tb testing.TB) *figureout.Descriptor[diffConfig] {

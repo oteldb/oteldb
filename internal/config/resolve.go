@@ -29,6 +29,10 @@ func Resolve[C any](d *figureout.Descriptor[C], name string, opts LoadOptions) (
 
 // Descriptor compiles describe once, reporting a broken description as an error on the path that
 // can print it rather than as a panic in package initialization.
+//
+// There is no type registry: figureout defers to a named scalar's own UnmarshalText, so
+// [xbytes.Bytes] and [zapcore.Level] read the spellings every config file already uses without a
+// registration of their own.
 func Descriptor[C any](describe func(*C, *figureout.Schema[C])) (*figureout.Descriptor[C], error) {
-	return figureout.Derive(describe, figureout.WithTypeRegistry(Registry()))
+	return figureout.Derive(describe)
 }

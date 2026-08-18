@@ -146,4 +146,98 @@ prometheus:
 		"NegativeAndZero",
 		"prometheus:\n  max_samples: 0\n  max_timeseries: -1\ncluster:\n  rf: 0\n",
 	},
+	{
+		// The engine block is pointer-heavy on purpose: an unset cache size means "fit it to the
+		// machine", which is not zero, so nil has to survive the descriptor.
+		"StoragePointers",
+		`storage:
+  backend: s3
+  read_cache_bytes: 2GiB
+  decode_cache_bytes: 0
+  aggregate_stats: false
+  s3:
+    bucket: telemetry
+    prefix: oteldb/
+    force_path_style: true
+`,
+	},
+	{"StorageAbsentSections", "storage:\n  backend: file\n  dir: /var/lib/oteldb\n"},
+	{
+		// An empty section is a section: "s3: {}" allocates, and no s3 key at all does not.
+		"StorageEmptySections",
+		"storage:\n  s3: {}\n  cluster: {}\n  policy: {}\n",
+	},
+	{
+		"StorageNullSections",
+		"storage:\n  s3: null\n  policy: ~\n  aggregate_stats: null\n",
+	},
+	{
+		"StoragePolicy",
+		`storage:
+  policy:
+    precision:
+      - after: 168h
+        bits: 12
+    downsample:
+      - after: 720h
+        interval: 5m
+        agg: avg
+    recompress:
+      after: 2160h
+      level: 12
+    retention:
+      max_age: 8760h
+      max_bytes: 10TiB
+    limits:
+      ingest_bytes_per_second: 50MiB
+      max_series: 1000000
+`,
+	},
+	{
+		"StorageCluster",
+		`storage:
+  cluster:
+    etcd: ["http://etcd:2379"]
+    id: oteldb-0
+    zone: eu-central-1a
+    port: 7946
+    rf: 3
+    private_backend: true
+`,
+	},
+	{
+		// The collector block is carried verbatim, so the spelling of every scalar in it has to
+		// come out the way the plain decoder read it.
+		"Collector",
+		`otelcol:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+          max_recv_msg_size_mib: 512
+        http:
+          endpoint: "0.0.0.0:4318"
+    prometheusremotewrite: {}
+  exporters:
+    oteldbexporter:
+      dsn: clickhouse://localhost:9000
+  service:
+    pipelines:
+      metrics:
+        receivers: [otlp, prometheusremotewrite]
+        exporters: [oteldbexporter]
+    telemetry: null
+`,
+	},
+	{"CollectorEmpty", "otelcol: {}\n"},
+	{"CollectorNull", "otelcol: null\n"},
+	{
+		"CollectorScalarSpellings",
+		"otelcol:\n  a: 512\n  b: \"512\"\n  c: true\n  d: \"true\"\n  e: 1.5\n  f: 0x10\n  g: 010\n  h: 1_000\n",
+	},
+	{
+		"LogLevelAndBytes",
+		"storage:\n  merge_memory_bytes: 1GiB\n  decode_memory_bytes: 512MiB\n",
+	},
 }

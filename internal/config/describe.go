@@ -50,7 +50,7 @@ func DescribePrometheus[R any](s *figureout.Schema[R], cfg *Prometheus) {
 	figureout.Value(s, &cfg.Timeout, "timeout")
 	figureout.Value(s, &cfg.LookbackDelta, "lookback_delta")
 	figureout.Value(s, &cfg.EnableAtModifier, "enable_at_modifier")
-	figureout.Value(s, &cfg.EnableNegativeOffset, "enable_negative_offset")
+	figureout.OptionalPtr(s, &cfg.EnableNegativeOffset, "enable_negative_offset")
 	figureout.Value(s, &cfg.EnablePerStepStats, "enable_per_step_stats")
 	figureout.Value(s, &cfg.EnableScarecrowEngine, "enable_scarecrow_engine")
 	figureout.Value(s, &cfg.DisableRateOffloading, "disable_rate_offloading")
