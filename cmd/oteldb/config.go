@@ -4,8 +4,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/go-faster/errors"
+	"github.com/go-faster/figureout"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/oteldb/oteldb/internal/config"
@@ -60,11 +63,72 @@ func loadConfig(name string) (cfg Config, _ error) {
 		}
 	}()
 
-	return config.Load[Config](name, config.LoadOptions{
+	d, err := descriptor()
+	if err != nil {
+		return Config{}, errors.Wrap(err, "describe config")
+	}
+
+	cfg, _, err = config.Resolve(d, name, config.LoadOptions{
 		Fallback: "oteldb.yml",
 		Optional: true,
 	})
+
+	return cfg, err
 }
+
+// describeConfig registers every field of [Config], which is what makes a key no field claims a
+// startup error rather than a setting that looks applied and is not.
+func describeConfig(c *Config, s *figureout.Schema[Config]) {
+	figureout.Value(s, &c.DSN, "dsn")
+	figureout.Value(s, &c.TTL, "ttl")
+	figureout.Value(s, &c.Cluster, "cluster")
+	figureout.Value(s, &c.Replicated, "replicated")
+	figureout.Value(s, &c.CHLogLevel, "ch_log_level")
+
+	figureout.Value(s, &c.MaxResultRows, "max_result_rows")
+	figureout.Value(s, &c.MaxResultBytes, "max_result_bytes")
+	figureout.Value(s, &c.MaxExecutionTime, "max_execution_time")
+
+	figureout.Value(s, &c.MetricsBackend, "metrics_backend")
+	figureout.Value(s, &c.TracesBackend, "traces_backend")
+	figureout.Value(s, &c.LogsBackend, "logs_backend")
+	figureout.Value(s, &c.ProfilesBackend, "profiles_backend")
+	figureout.Group(s, "storage", func(s *figureout.Schema[Config]) {
+		storagebackend.DescribeConfig(s, &c.Storage)
+	})
+
+	figureout.Group(s, "tempo", func(s *figureout.Schema[Config]) {
+		config.DescribeTempo(s, &c.Tempo)
+	})
+	figureout.Group(s, "prometheus", func(s *figureout.Schema[Config]) {
+		config.DescribePrometheus(s, &c.Prometheus)
+	})
+	figureout.Group(s, "loki", func(s *figureout.Schema[Config]) {
+		config.DescribeLoki(s, &c.Loki)
+	})
+	figureout.Group(s, "pyroscope", func(s *figureout.Schema[Config]) {
+		config.DescribePyroscope(s, &c.Pyroscope)
+	})
+	figureout.Group(s, "health_check", func(s *figureout.Schema[Config]) {
+		config.DescribeHealthCheck(s, &c.HealthCheck)
+	})
+	figureout.Group(s, "admin", func(s *figureout.Schema[Config]) {
+		config.DescribeAdmin(s, &c.Admin)
+	})
+
+	figureout.ListOf(s, &c.Auth, "auth", config.DescribeAuth)
+	figureout.Value(s, &c.CollectorSignals, "collector_signals")
+
+	// The collector's configuration is the collector's: oteldb hands the block over as it was
+	// written, so a key this build of otelcol grew — or dropped — is not a startup failure here.
+	figureout.Opaque(s, &c.Collector, "otelcol",
+		figureout.Reason("handed to the OpenTelemetry Collector verbatim"))
+}
+
+// descriptor compiles the description once, on the path that can report a failure and exit.
+var descriptor = sync.OnceValues(func() (*figureout.Descriptor[Config], error) {
+	return config.Descriptor(describeConfig)
+})
 
 // Config is the oteldb config.
 type Config struct {
