@@ -23,6 +23,9 @@ type Config struct {
 	Pyroscope config.Pyroscope `json:"pyroscope" yaml:"pyroscope"`
 	// Health configures the health/readiness listener.
 	Health config.HealthCheck `json:"health" yaml:"health"`
+	// Tenancy configures read-path multi-tenancy. Disabled by default, in which case every read is
+	// served from the single default tenant, exactly as before.
+	Tenancy config.Tenancy `json:"tenancy" yaml:"tenancy"`
 	// ShutdownTimeout bounds how long in-flight queries are given to finish. Zero ⇒ 30s.
 	ShutdownTimeout time.Duration `json:"shutdown_timeout" yaml:"shutdown_timeout"`
 }

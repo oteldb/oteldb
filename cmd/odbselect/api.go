@@ -71,8 +71,9 @@ func (a *App) setupAPIs(b *storagebackend.Backend) error {
 	return nil
 }
 
-// serve registers an ogen server under name. odbselect has no auth and no <NAME>_ADDR override:
-// binds come from the config alone.
+// serve registers an ogen server under name. odbselect has no separate auth block and no
+// <NAME>_ADDR override: binds come from the config alone, and the only credential check is the
+// tenancy resolver's, when tenancy is configured.
 func serve[
 	R httpmiddleware.OgenRoute,
 	S interface {
@@ -80,10 +81,15 @@ func serve[
 		http.Handler
 	},
 ](a *App, name, bind string, server S, extra ...httpmiddleware.Middleware) {
+	middlewares := extra
+	if a.tenancy != nil {
+		middlewares = append([]httpmiddleware.Middleware{a.tenancy}, extra...)
+	}
+
 	a.servers[name] = queryapi.HTTPServer(queryapi.ServerOptions{
 		Name:    name,
 		Addr:    bind,
 		Logger:  a.lg.Named(name),
 		Metrics: a.tel,
-	}, server, extra...)
+	}, server, middlewares...)
 }
