@@ -164,6 +164,7 @@ require (
 
 require (
 	github.com/cenkalti/backoff/v7 v7.0.0 // indirect
+	github.com/go-faster/figureout v0.6.3-0.20260818090207-c4fb81975ca7 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3 // indirect
 	github.com/klauspost/reedsolomon v1.14.1 // indirect
