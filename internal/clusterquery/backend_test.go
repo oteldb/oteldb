@@ -28,7 +28,7 @@ func TestBackendServesFromCluster(t *testing.T) {
 		keys[1]: {"http_requests_total"},
 	})
 
-	b := storagebackend.NewQuery(clusterquery.New(openRouter(t, endpoint, 1, shards), nil))
+	b := storagebackend.NewQuery(clusterquery.New(openRouter(t, endpoint, 1, shards)))
 
 	q, err := b.Querier(0, 1000)
 	require.NoError(t, err)
@@ -47,7 +47,7 @@ func TestBackendServesFromCluster(t *testing.T) {
 func TestBackendRefusesIngest(t *testing.T) {
 	t.Parallel()
 
-	b := storagebackend.NewQuery(clusterquery.New(nil, nil))
+	b := storagebackend.NewQuery(clusterquery.New(nil))
 
 	require.ErrorIs(t, b.WriteMetrics(t.Context(), sigmetric.Metrics{}), storagebackend.ErrNoEngine)
 	require.ErrorIs(t, b.MaintainNow(t.Context()), storagebackend.ErrNoEngine)

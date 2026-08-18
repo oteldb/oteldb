@@ -145,7 +145,7 @@ func (n *fakeNode) streams(shardKey string) ([]signal.Series, error) {
 }
 
 // fetch answers a read RPC with one sample per held stream. Matchers are ignored on purpose: a real
-// peer only applies the equality subset, so its answer is a superset the caller must re-filter.
+// peer only applies the equality subset, so its answer is a superset that has to be narrowed above.
 func (n *fakeNode) fetch(
 	_ context.Context, shardKey string, start, _ int64, _ []fetch.Matcher,
 ) ([]*fetch.Batch, error) {
@@ -245,7 +245,7 @@ func TestFetcherGathersEveryShard(t *testing.T) {
 
 	startNode(t, endpoint, "node-a", held)
 
-	src := clusterquery.New(openRouter(t, endpoint, 1, shards), nil)
+	src := clusterquery.New(openRouter(t, endpoint, 1, shards))
 
 	assert.Equal(t, []string{"a", "b", "c", "d"}, drainNames(t, src.Fetcher(""), nil))
 
@@ -261,9 +261,10 @@ func TestFetcherGathersEveryShard(t *testing.T) {
 	assert.Equal(t, []string{"a", "b", "c", "d"}, names)
 }
 
-// TestFetcherReappliesMatchers pins that the owner's answer is narrowed here: only the equality
-// subset of a matcher set is serializable, so a peer legitimately returns a superset and a
-// non-equality matcher would otherwise not filter anything at all.
+// TestFetcherReappliesMatchers pins, from the consumer's side, that what a read yields is what the
+// matchers select: only the equality subset of a matcher set is serializable, so a peer legitimately
+// returns a superset and a non-equality matcher would otherwise not filter anything at all. The
+// router narrows it, so this is a contract test on the router rather than on code in this package.
 func TestFetcherReappliesMatchers(t *testing.T) {
 	t.Parallel()
 
@@ -272,7 +273,7 @@ func TestFetcherReappliesMatchers(t *testing.T) {
 		string(cluster.DefaultTenant): {"kept", "dropped"},
 	})
 
-	src := clusterquery.New(openRouter(t, endpoint, 1, 1), nil)
+	src := clusterquery.New(openRouter(t, endpoint, 1, 1))
 
 	// No Spec, so nothing about this matcher reaches the peer.
 	matchers := []fetch.Matcher{{
@@ -305,7 +306,7 @@ func TestSeriesFailsOverAbsentOwner(t *testing.T) {
 	require.Eventually(t, func() bool { return len(rt.Members()) == 2 },
 		10*time.Second, 10*time.Millisecond, "router sees both nodes")
 
-	src := clusterquery.New(rt, nil)
+	src := clusterquery.New(rt)
 
 	got, err := src.MetricSeries(t.Context(), "", nil, 1, 100)
 	require.NoError(t, err)
@@ -323,7 +324,7 @@ func TestSeriesEmptyWhenEveryOwnerDisclaims(t *testing.T) {
 	endpoint := startEtcd(t)
 	startNode(t, endpoint, "node-a", map[string][]string{})
 
-	src := clusterquery.New(openRouter(t, endpoint, 1, 1), nil)
+	src := clusterquery.New(openRouter(t, endpoint, 1, 1))
 
 	got, err := src.MetricSeries(t.Context(), "", nil, 1, 100)
 	require.NoError(t, err)
@@ -349,7 +350,7 @@ func TestLogKeysUnionsShards(t *testing.T) {
 	}
 	node.keys[keys[1]] = []cluster.KeyInfo{{Key: []byte("host"), Scope: uint8(4)}}
 
-	src := clusterquery.New(openRouter(t, endpoint, 1, shards), nil)
+	src := clusterquery.New(openRouter(t, endpoint, 1, shards))
 
 	got, err := src.LogKeys(t.Context(), "", 1, 100)
 	require.NoError(t, err)

@@ -8,7 +8,6 @@ import (
 	"github.com/go-faster/errors"
 
 	"github.com/oteldb/storage"
-	"github.com/oteldb/storage/cluster"
 	"github.com/oteldb/storage/query/fetch"
 	"github.com/oteldb/storage/signal"
 	sigprofile "github.com/oteldb/storage/signal/profile"
@@ -41,26 +40,10 @@ func (s *Source) ProfileSeries(
 func (s *Source) series(
 	ctx context.Context, sig signal.Signal, tenant signal.TenantID, matchers []fetch.Matcher, start, end int64,
 ) ([]signal.Series, error) {
-	eq := equalitySpecs(matchers)
-
 	var all []signal.Series
 
 	for _, sk := range s.shardKeys(tenant) {
-		got, err := tryOwners(ctx, s.rt.Owners(sk), func(ctx context.Context, addr string) ([]signal.Series, error) {
-			series, err := cluster.FetchSeries(ctx, s.httpc, addr, sig, string(sk), start, end, eq)
-			if err != nil {
-				return nil, err
-			}
-
-			kept := series[:0]
-			for i := range series {
-				if matchesAll(series[i], matchers) {
-					kept = append(kept, series[i])
-				}
-			}
-
-			return kept, nil
-		})
+		got, err := s.rt.Series(ctx, sig, sk, matchers, start, end)
 		if err != nil {
 			return nil, errors.Wrapf(err, "list %s series of shard %q", sig, sk)
 		}
@@ -79,9 +62,7 @@ func (s *Source) LogKeys(
 	scopes := map[string]uint8{}
 
 	for _, sk := range s.shardKeys(tenant) {
-		got, err := tryOwners(ctx, s.rt.Owners(sk), func(ctx context.Context, addr string) ([]cluster.KeyInfo, error) {
-			return cluster.FetchKeys(ctx, s.httpc, addr, signal.Log, string(sk), start, end)
-		})
+		got, err := s.rt.Keys(ctx, signal.Log, sk, start, end)
 		if err != nil {
 			return nil, errors.Wrapf(err, "list log keys of shard %q", sk)
 		}
@@ -137,9 +118,7 @@ func (s *Source) ProfileResolver(ctx context.Context, tenant signal.TenantID) (*
 	parts := make([]map[string][]byte, 0, len(keys))
 
 	for _, sk := range keys {
-		tables, err := tryOwners(ctx, s.rt.Owners(sk), func(ctx context.Context, addr string) (map[string][]byte, error) {
-			return cluster.FetchSide(ctx, s.httpc, addr, signal.Profile, string(sk))
-		})
+		tables, err := s.rt.Side(ctx, signal.Profile, sk)
 		if err != nil {
 			return nil, errors.Wrapf(err, "load profile symbols of shard %q", sk)
 		}

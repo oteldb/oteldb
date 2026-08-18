@@ -48,16 +48,13 @@ func (s *Source) ProfileFetcher(tenants ...signal.TenantID) fetch.Fetcher {
 }
 
 // shardFetchers builds one fetcher per shard of the tenant, each stamping its shard key onto the
-// request and re-filtering the owner's superset.
+// request.
 func (s *Source) shardFetchers(sig signal.Signal, tenants []signal.TenantID) []fetch.Fetcher {
 	keys := s.shardKeys(tenantOf(tenants))
 
 	out := make([]fetch.Fetcher, 0, len(keys))
 	for _, sk := range keys {
-		out = append(out, scopedFetcher{
-			scope: sk,
-			inner: filteringFetcher{inner: s.rt.Fetcher(sig, sk)},
-		})
+		out = append(out, scopedFetcher{scope: sk, inner: s.rt.Fetcher(sig, sk)})
 	}
 
 	return out
@@ -83,38 +80,6 @@ func (f scopedFetcher) Fetch(ctx context.Context, r fetch.Request) (fetch.Iterat
 	r.Tenant = f.scope
 
 	return f.inner.Fetch(ctx, r)
-}
-
-// filteringFetcher re-applies a request's matchers to the owner's answer, which is a superset: only
-// the equality subset of a matcher set is serializable, so a regex or negated matcher never reaches
-// the peer.
-type filteringFetcher struct {
-	inner fetch.Fetcher
-}
-
-func (f filteringFetcher) Fetch(ctx context.Context, r fetch.Request) (fetch.Iterator, error) {
-	it, err := f.inner.Fetch(ctx, r)
-	if err != nil {
-		return nil, err
-	}
-
-	batches, err := fetch.Drain(ctx, it)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(r.Matchers) == 0 {
-		return fetch.NewSliceIterator(batches), nil
-	}
-
-	kept := batches[:0]
-	for _, b := range batches {
-		if matchesAll(b.Series, r.Matchers) {
-			kept = append(kept, b)
-		}
-	}
-
-	return fetch.NewSliceIterator(kept), nil
 }
 
 // seriesListerFetcher adds the [fetch.SeriesLister] capability to a shard fan-out.
