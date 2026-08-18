@@ -1,9 +1,11 @@
 package main
 
 import (
+	"sync"
 	"time"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/figureout"
 
 	"github.com/oteldb/oteldb/internal/config"
 	"github.com/oteldb/oteldb/internal/xbytes"
@@ -107,9 +109,50 @@ func (cfg *Config) validate() error {
 	return nil
 }
 
+// describeConfig registers every field of [Config], which is what makes a key no field claims a
+// startup error rather than a setting that looks applied and is not.
+func describeConfig(c *Config, s *figureout.Schema[Config]) {
+	figureout.Group(s, "cluster", func(s *figureout.Schema[Config]) {
+		config.DescribeCluster(s, &c.Cluster)
+	})
+	figureout.Group(s, "prometheus_remote_write", func(s *figureout.Schema[Config]) {
+		rw := &c.RemoteWrite
+		figureout.Value(s, &rw.Bind, "bind")
+		figureout.Value(s, &rw.Path, "path")
+		figureout.Value(s, &rw.TimeThreshold, "time_threshold")
+		figureout.Value(s, &rw.MaxBodyBytes, "max_body_bytes")
+		figureout.Value(s, &rw.MaxDecodedBytes, "max_decoded_bytes")
+		figureout.Value(s, &rw.ReadHeaderTimeout, "read_header_timeout")
+		figureout.Value(s, &rw.ShutdownTimeout, "shutdown_timeout")
+	})
+	figureout.Group(s, "otlp", func(s *figureout.Schema[Config]) {
+		figureout.Value(s, &c.OTLP.GRPCBind, "grpc_bind")
+		figureout.Value(s, &c.OTLP.MaxBodyBytes, "max_body_bytes")
+		figureout.Value(s, &c.OTLP.MaxDecodedBytes, "max_decoded_bytes")
+	})
+	figureout.Group(s, "tenant", func(s *figureout.Schema[Config]) {
+		figureout.Value(s, &c.Tenant.Default, "default")
+		figureout.Value(s, &c.Tenant.Header, "header")
+		figureout.Value(s, &c.Tenant.ResourceAttributes, "resource_attributes")
+		figureout.Value(s, &c.Tenant.Require, "require")
+	})
+}
+
+// descriptor compiles the description once, on the path that can report a failure and exit.
+var descriptor = sync.OnceValues(func() (*figureout.Descriptor[Config], error) {
+	return config.Descriptor(describeConfig)
+})
+
 // loadConfig reads the config file, falling back to odbingest.yml.
 func loadConfig(name string) (cfg Config, _ error) {
 	defer cfg.setDefaults()
 
-	return config.Load[Config](name, config.LoadOptions{Fallback: "odbingest.yml"})
+	d, err := descriptor()
+	if err != nil {
+		return cfg, errors.Wrap(err, "describe config")
+	}
+
+	cfg, _, err = config.Resolve(d, name, config.LoadOptions{Fallback: "odbingest.yml"})
+
+	return cfg, err
 }
