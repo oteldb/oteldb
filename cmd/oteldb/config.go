@@ -6,10 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-faster/yaml"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/oteldb/oteldb/internal/httpmiddleware"
+	"github.com/oteldb/oteldb/internal/config"
 	"github.com/oteldb/oteldb/internal/storagebackend"
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
@@ -61,23 +60,10 @@ func loadConfig(name string) (cfg Config, _ error) {
 		}
 	}()
 
-	if name == "" {
-		name = "oteldb.yml"
-		if _, err := os.Stat(name); err != nil {
-			return cfg, nil
-		}
-	}
-
-	data, err := os.ReadFile(filepath.Clean(name))
-	if err != nil {
-		return cfg, err
-	}
-
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return cfg, err
-	}
-
-	return cfg, nil
+	return config.Load[Config](name, config.LoadOptions{
+		Fallback: "oteldb.yml",
+		Optional: true,
+	})
 }
 
 // Config is the oteldb config.
@@ -228,178 +214,21 @@ func (cfg *Config) setDefaults() {
 	}
 }
 
-// TempoConfig is Tempo API config.
-type TempoConfig struct {
-	Bind string       `json:"bind" yaml:"bind"`
-	Auth []AuthConfig `json:"auth" yaml:"auth"`
-}
-
-func (cfg *TempoConfig) setDefaults() {
-	if cfg.Bind == "" {
-		cfg.Bind = ":3200"
-	}
-}
-
-// PyroscopeConfig is Pyroscope API config.
-type PyroscopeConfig struct {
-	Bind string       `json:"bind" yaml:"bind"`
-	Auth []AuthConfig `json:"auth" yaml:"auth"`
-}
-
-func (cfg *PyroscopeConfig) setDefaults() {
-	if cfg.Bind == "" {
-		cfg.Bind = ":4040"
-	}
-}
-
-// PrometheusConfig is Prometheus API config.
-type PrometheusConfig struct {
-	Bind string       `json:"bind" yaml:"bind"`
-	Auth []AuthConfig `json:"auth" yaml:"auth"`
-
-	// MaxSamples caps the samples one query may load, defaulting to Prometheus' own
-	// --query.max-samples. The two engines count it differently: the fork tracks samples resident
-	// at once, scarecrow every sample read (docs/promql-engine.md, M11), because its columnar model
-	// holds one series at a time and a peak gauge would never trip on a scan touching millions of
-	// series. So the same number is stricter under scarecrow — size it for the total a query reads,
-	// not for its result.
-	MaxSamples           int           `json:"max_samples" yaml:"max_samples"`
-	MaxTimeseries        int           `json:"max_timeseries" yaml:"max_timeseries"`
-	Timeout              time.Duration `json:"timeout" yaml:"timeout"`
-	LookbackDelta        time.Duration `json:"lookback_delta" yaml:"lookback_delta"`
-	EnableAtModifier     bool          `json:"enable_at_modifier" yaml:"enable_at_modifier"`
-	EnableNegativeOffset *bool         `json:"enable_negative_offset" yaml:"enable_negative_offset"`
-	EnablePerStepStats   bool          `json:"enable_per_step_stats" yaml:"enable_per_step_stats"`
-
-	// EnableScarecrowEngine routes PromQL queries through internal/scarecrow (the native
-	// series-major engine, docs/promql-engine.md) instead of the Thanos-fork engine
-	// (internal/promql). It gets a native columnar Scanner (no per-sample copy/iterator boxing)
-	// only when metrics are served from the embedded storage engine (metrics.backend: storage);
-	// otherwise it falls back to scarecrow's generic storage.Queryable adapter, which is correct
-	// but pays the same conversion cost the fork already does. MaxSamples and Timeout are enforced
-	// (MaxSamples cumulatively, see its own doc); EnablePerStepStats is not. Experimental: corpus
-	// coverage is partial
-	// (see internal/scarecrow's unsupportedFiles), so unsupported query shapes error instead of
-	// falling back to the fork.
-	EnableScarecrowEngine bool `json:"enable_scarecrow_engine" yaml:"enable_scarecrow_engine"`
-
-	// DisableRateOffloading disables PromQL rate offloading.
-	DisableRateOffloading bool `json:"disable_rate_offloading" yaml:"disable_rate_offloading"`
-	// DisableMetricOffloading disables all PromQL offloading.
-	DisableMetricOffloading bool `json:"disable_metric_offloading" yaml:"disable_metric_offloading"`
-
-	Cache MetricsCacheConfig `json:"cache" yaml:"cache"`
-}
-
-// MetricsCacheConfig is metrics cache config.
-type MetricsCacheConfig struct {
-	MaxBytes  xbytes.Bytes  `json:"max_bytes" yaml:"max_bytes"`
-	SafetyLag time.Duration `json:"safety_lag" yaml:"safety_lag"`
-}
-
-func (cfg *PrometheusConfig) setDefaults() {
-	if cfg.Bind == "" {
-		cfg.Bind = ":9090"
-	}
-	if cfg.MaxSamples == 0 {
-		// Prometheus' own default. The previous 1M was 50x below it, which a single node-exporter
-		// CPU panel exceeds: 256 series over 6h at a 5s scrape is 1.1M samples.
-		cfg.MaxSamples = 50_000_000
-	}
-	if cfg.MaxTimeseries == 0 {
-		cfg.MaxTimeseries = 1_000_000
-	}
-	if cfg.Timeout == 0 {
-		cfg.Timeout = time.Minute
-	}
-	setBool := func(p **bool, defaultValue bool) {
-		if *p == nil {
-			*p = &defaultValue
-		}
-	}
-	setBool(&cfg.EnableNegativeOffset, true)
-}
-
-// LokiConfig is Loki API config.
-type LokiConfig struct {
-	Bind             string       `json:"bind" yaml:"bind"`
-	Auth             []AuthConfig `json:"auth" yaml:"auth"`
-	DrilldownEnabled bool         `json:"drilldown_enabled" yaml:"drilldown_enabled"`
-
-	LookbackDelta time.Duration `json:"lookback_delta" yaml:"lookback_delta"`
-
-	// MaxSampleRows defines max number of log rows a sample query
-	// (count_over_time, rate, bytes_over_time, etc.) is allowed to fetch.
-	MaxSampleRows int `json:"max_sample_rows" yaml:"max_sample_rows"`
-	// MaxSampleResultBytes defines max number of result bytes a sample
-	// query is allowed to fetch from ClickHouse.
-	MaxSampleResultBytes xbytes.Bytes `json:"max_sample_result_bytes" yaml:"max_sample_result_bytes"`
-}
-
-func (cfg *LokiConfig) setDefaults() {
-	if cfg.Bind == "" {
-		cfg.Bind = ":3100"
-	}
-	if cfg.MaxSampleRows == 0 {
-		cfg.MaxSampleRows = 1_000_000
-	}
-	if cfg.MaxSampleResultBytes == 0 {
-		cfg.MaxSampleResultBytes = 256 * 1024 * 1024 // 256 MiB
-	}
-}
-
-// AdminConfig is the admin panel API config.
-type AdminConfig struct {
-	Bind string       `json:"bind" yaml:"bind"`
-	Auth []AuthConfig `json:"auth" yaml:"auth"`
-}
-
-func (cfg *AdminConfig) setDefaults() {
-	if cfg.Bind == "" {
-		cfg.Bind = ":8090"
-	}
-}
-
-// HealthCheckConfig is health check config.
-type HealthCheckConfig struct {
-	Bind string       `json:"bind" yaml:"bind"`
-	Auth []AuthConfig `json:"auth" yaml:"auth"`
-}
-
-func (cfg *HealthCheckConfig) setDefaults() {
-	if cfg.Bind == "" {
-		cfg.Bind = ":13133"
-	}
-}
-
-// AuthType defines authentication method type.
-type AuthType string
-
-const (
-	AuthTypeNone        AuthType = "none"
-	AuthTypeBasic       AuthType = "basicauth"
-	AuthTypeBearerToken AuthType = "bearertoken"
+// Per-signal config blocks, shared with the role binaries.
+type (
+	TempoConfig        = config.Tempo
+	PyroscopeConfig    = config.Pyroscope
+	PrometheusConfig   = config.Prometheus
+	MetricsCacheConfig = config.MetricsCache
+	LokiConfig         = config.Loki
+	AdminConfig        = config.Admin
+	HealthCheckConfig  = config.HealthCheck
+	AuthConfig         = config.Auth
+	AuthType           = config.AuthType
 )
 
-// IsValid checks if auth type is valid.
-func (t AuthType) IsValid() bool {
-	switch t {
-	case AuthTypeNone, AuthTypeBasic, AuthTypeBearerToken:
-		return true
-	default:
-		return false
-	}
-}
-
-// AuthConfig is authentication config.
-type AuthConfig struct {
-	Type   AuthType                         `json:"type" yaml:"type"`
-	Tokens []httpmiddleware.Token           `json:"tokens" yaml:"tokens"`
-	Users  []httpmiddleware.UserCredentials `json:"users" yaml:"users"`
-}
-
-func (cfg *AuthConfig) setDefaults() {
-	if cfg.Type == "" {
-		cfg.Type = AuthTypeNone
-	}
-}
+const (
+	AuthTypeNone        = config.AuthTypeNone
+	AuthTypeBasic       = config.AuthTypeBasic
+	AuthTypeBearerToken = config.AuthTypeBearerToken
+)

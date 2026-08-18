@@ -13,7 +13,6 @@ import (
 	"github.com/oteldb/promql-engine/extlabels"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/engine"
 	"github.com/oteldb/storage/query/fetch"
 	storagepromql "github.com/oteldb/storage/query/promql"
@@ -46,7 +45,7 @@ var overTimeFold = map[string]func(engine.SeriesAgg) float64{
 // shape); the raw matrix selector stays correct there and is used instead. See
 // docs/storage-integration.md.
 type aggregateOverTimeOp struct {
-	store    *storage.Storage
+	src      Source
 	tenant   signal.TenantID
 	matchers []*labels.Matcher
 	fold     func(engine.SeriesAgg) float64
@@ -65,7 +64,7 @@ type aggregateOverTimeOp struct {
 }
 
 func newAggregateOverTimeOp(
-	store *storage.Storage,
+	src Source,
 	tenant signal.TenantID,
 	matchers []*labels.Matcher,
 	fnName string,
@@ -73,7 +72,7 @@ func newAggregateOverTimeOp(
 	evalT, rangeMs, offsetMs int64,
 ) *aggregateOverTimeOp {
 	return &aggregateOverTimeOp{
-		store:    store,
+		src:      src,
 		tenant:   tenant,
 		matchers: matchers,
 		fold:     fold,
@@ -145,7 +144,7 @@ func (o *aggregateOverTimeOp) doLoad(ctx context.Context) error {
 
 	const nsPerMs = int64(time.Millisecond)
 
-	aggs, err := o.store.AggregateMetricsNamed(ctx, o.tenant, fetch.Request{
+	aggs, err := o.src.AggregateMetricsNamed(ctx, o.tenant, fetch.Request{
 		Tenant:   o.tenant,
 		Start:    (mint + 1) * nsPerMs, // PromQL's (mint, maxt] ⇒ storage's inclusive [mint+1, maxt].
 		End:      maxt * nsPerMs,

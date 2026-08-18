@@ -11,7 +11,6 @@ import (
 	"github.com/oteldb/promql-engine/extlabels"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/engine"
 	"github.com/oteldb/storage/query/fetch"
 	storagepromql "github.com/oteldb/storage/query/promql"
@@ -38,7 +37,7 @@ import (
 // filter, or @ modifier); rate/increase/quantile/… and anything else fall back to the matrix
 // selector. See [scanners.NewMatrixSelector].
 type aggregateOverTimeRangeOp struct {
-	store    *storage.Storage
+	src      Source
 	tenant   signal.TenantID
 	matchers []*labels.Matcher
 	fold     func(engine.SeriesAgg) float64
@@ -70,7 +69,7 @@ type sampleVal struct {
 }
 
 func newAggregateOverTimeRangeOp(
-	store *storage.Storage,
+	src Source,
 	tenant signal.TenantID,
 	matchers []*labels.Matcher,
 	fnName string,
@@ -79,7 +78,7 @@ func newAggregateOverTimeRangeOp(
 	numSteps int,
 ) *aggregateOverTimeRangeOp {
 	return &aggregateOverTimeRangeOp{
-		store:    store,
+		src:      src,
 		tenant:   tenant,
 		matchers: matchers,
 		fold:     fold,
@@ -171,7 +170,7 @@ func (o *aggregateOverTimeRangeOp) doLoad(ctx context.Context) error {
 	// anchored at the query's first step — PromQL's grid is not a multiple of the step.
 	firstEval := o.start - o.offset
 
-	aggs, err := o.store.AggregateMetricsWindowNamed(ctx, o.tenant, fetch.Request{
+	aggs, err := o.src.AggregateMetricsWindowNamed(ctx, o.tenant, fetch.Request{
 		Tenant:   o.tenant,
 		Start:    (firstEval - o.rangeMs + 1) * nsPerMs, // lead-in: the first window opens a range early
 		End:      (o.end - o.offset) * nsPerMs,

@@ -3,7 +3,7 @@ ARG BASE_IMAGE=alpine:latest
 
 FROM golang:${GO_VERSION} AS builder
 ARG GOPROXY=https://proxy.golang.org,direct
-ARG TARGETS="oteldb odbbackup odbrestore odbmigrate odbingest"
+ARG TARGETS="oteldb odbbackup odbrestore odbmigrate odbingest odbselect"
 
 WORKDIR /app
 

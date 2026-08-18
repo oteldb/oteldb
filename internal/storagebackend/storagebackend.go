@@ -39,6 +39,12 @@ import (
 // Backend adapts a *storage.Storage to oteldb's metric query and ingestion interfaces.
 // The zero value is not usable; construct with [New].
 type Backend struct {
+	// src is the read seam every query API is served from. It is the engine itself on a storage
+	// node, and a routed view of the cluster on a stateless query node.
+	src Source
+	// store is the local engine, set only when this Backend was built over one. Ingestion,
+	// maintenance and the statistics views need engine-local state, so they are the only methods
+	// that reach for it — and they refuse with [ErrNoEngine] when it is nil.
 	store  *storage.Storage
 	tenant signal.TenantID
 	// logParallelism is the max number of workers used to materialize log query results across the
@@ -89,8 +95,17 @@ func WithTraceQLPushdown(enabled bool) Option {
 // to the "default" tenant; the empty tenant id here normalizes to "default" on the read side,
 // keeping reads and writes on the same tenant (which also makes cluster reads owner-aware).
 func New(store *storage.Storage, opts ...Option) *Backend {
+	b := NewQuery(store, opts...)
+	b.store = store
+	return b
+}
+
+// NewQuery returns a read-only Backend over src. It serves the same query APIs as [New], but every
+// method that needs engine-local state — the ingestion sinks, maintenance, and the statistics views
+// — refuses with [ErrNoEngine]. It is what a stateless query node is built from.
+func NewQuery(src Source, opts ...Option) *Backend {
 	b := &Backend{
-		store:            store,
+		src:              src,
 		overTimePushdown: true,
 		traceQLPushdown:  true,
 		labels:           storagepromql.NewLabelCache(),
@@ -104,7 +119,11 @@ func New(store *storage.Storage, opts ...Option) *Backend {
 // Inspect returns an in-memory snapshot of engine statistics (tenants, per-signal series/parts/head
 // and WAL state, caches, and cluster membership when clustered). It performs no backend I/O and is
 // safe to poll at a seconds cadence; it is the admin panel's primary storage view.
+// A query-only backend has no engine to inspect and returns the zero snapshot.
 func (b *Backend) Inspect() storage.StoreStats {
+	if b.store == nil {
+		return storage.StoreStats{}
+	}
 	return b.store.Inspect()
 }
 
@@ -112,12 +131,18 @@ func (b *Backend) Inspect() storage.StoreStats {
 // bytes per point, compression ratios). Unlike Inspect it performs backend I/O (per-part object
 // sizes) — poll it at dashboard cadence, not per request.
 func (b *Backend) EfficiencyStats(ctx context.Context) ([]storage.TenantEfficiency, error) {
+	if b.store == nil {
+		return nil, ErrNoEngine
+	}
 	return b.store.EfficiencyStats(ctx)
 }
 
 // MaintainNow runs one full maintenance cycle immediately (flush + merge + retention across every
 // owned tenant and signal), i.e. the background maintenance loop's body on demand.
 func (b *Backend) MaintainNow(ctx context.Context) error {
+	if b.store == nil {
+		return ErrNoEngine
+	}
 	return b.store.Admin().MaintainNow(ctx)
 }
 
@@ -131,6 +156,9 @@ func (b *Backend) MaintainNow(ctx context.Context) error {
 func (b *Backend) StreamCosts(
 	ctx context.Context, tenant signal.TenantID, sig signal.Signal, opts storage.StreamCostOptions,
 ) ([]storage.StreamCost, error) {
+	if b.store == nil {
+		return nil, ErrNoEngine
+	}
 	if tenant == "" {
 		tenant = b.tenant
 	}
@@ -147,6 +175,9 @@ func (b *Backend) StreamCosts(
 // call it again to make further progress. Shards this node is not the compaction owner of are
 // skipped rather than failing the whole pass.
 func (b *Backend) CompactNow(ctx context.Context) error {
+	if b.store == nil {
+		return ErrNoEngine
+	}
 	admin := b.store.Admin()
 	for _, t := range b.store.Inspect().Tenants {
 		for _, s := range t.Signals {
@@ -171,7 +202,7 @@ func (b *Backend) CompactNow(ctx context.Context) error {
 // owners), whereas the no-arg form reads only tenants local to this node — so a query node that does
 // not own the tenant would see nothing. The record signals already scope by b.tenant the same way.
 func (b *Backend) queryable() *storagepromql.Queryable {
-	return storagepromql.NewQueryableWithCache(b.store.Fetcher(b.tenant), b.tenant, b.labels)
+	return storagepromql.NewQueryableWithCache(b.src.Fetcher(b.tenant), b.tenant, b.labels)
 }
 
 // Querier implements storage.Queryable.
@@ -226,6 +257,10 @@ func (b *Backend) MetricMetadata(context.Context, metricstorage.MetadataParams) 
 func (b *Backend) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
 	// A fresh batch is used (not pooled) because the engine may retain projected series
 	// bytes; pdataconv already copies out of pdata, so this allocates regardless.
+	if b.store == nil {
+		return ErrNoEngine
+	}
+
 	var batch metric.Metrics
 	pdataconv.AppendMetrics(&batch, md)
 
@@ -336,7 +371,7 @@ func (s scanners) NewMatrixSelector(
 			case opts.IsInstantQuery():
 				if plainInstant {
 					return newAggregateOverTimeOp(
-						s.b.store, s.b.tenant, vs.LabelMatchers, call.Func.Name, fold,
+						s.b.src, s.b.tenant, vs.LabelMatchers, call.Func.Name, fold,
 						opts.Start.UnixMilli(), node.Range.Milliseconds(), vs.Offset.Milliseconds(),
 					), nil
 				}
@@ -346,7 +381,7 @@ func (s scanners) NewMatrixSelector(
 			// only push down its absence.
 			case opts.Step > 0 && plainInstant && vs.Timestamp == nil && !vs.SelectTimestamp:
 				return newAggregateOverTimeRangeOp(
-					s.b.store, s.b.tenant, vs.LabelMatchers, call.Func.Name, fold,
+					s.b.src, s.b.tenant, vs.LabelMatchers, call.Func.Name, fold,
 					opts.Start.UnixMilli(), opts.End.UnixMilli(), opts.Step.Milliseconds(),
 					node.Range.Milliseconds(), vs.Offset.Milliseconds(), opts.NumStepsPerBatch(),
 				), nil

@@ -68,7 +68,7 @@ func (s *scarecrowScanner) AggregateGrid(
 		lastEnd  = grid.Start + int64(grid.NumSteps-1)*grid.Step
 	)
 
-	named, err := s.b.store.AggregateMetricsWindowNamed(ctx, s.b.tenant, fetch.Request{
+	named, err := s.b.src.AggregateMetricsWindowNamed(ctx, s.b.tenant, fetch.Request{
 		Tenant: s.b.tenant,
 		Scope:  s.scope,
 		// Lead-in: the first window opens a full width before the first step.
@@ -138,7 +138,7 @@ func (s *scarecrowScanner) AggregateOverTime(
 
 	// scarecrow's window is PromQL's half-open (mint, maxt]; storage's fetch range is inclusive,
 	// so mint is exclusive (start = mint+1 ms) and maxt inclusive.
-	aggs, err := s.b.store.AggregateMetricsNamed(ctx, s.b.tenant, fetch.Request{
+	aggs, err := s.b.src.AggregateMetricsNamed(ctx, s.b.tenant, fetch.Request{
 		Tenant:   s.b.tenant,
 		Scope:    s.scope,
 		Start:    (mint + 1) * nsPerMs,
@@ -229,7 +229,7 @@ func (s *scarecrowScanner) Series(
 ) ([]labels.Labels, error) {
 	const nsPerMs = int64(time.Millisecond)
 
-	series, err := s.b.store.MetricSeries(
+	series, err := s.b.src.MetricSeries(
 		ctx, s.b.tenant, storagepromql.PushableMatchers(matchers), mint*nsPerMs, maxt*nsPerMs,
 	)
 	if err != nil {
@@ -259,7 +259,7 @@ func (s *scarecrowScanner) Scan(
 ) (scarecrow.SeriesIterator, error) {
 	const nsPerMs = int64(time.Millisecond)
 
-	it, err := s.b.store.Fetcher(s.b.tenant).Fetch(ctx, fetch.Request{
+	it, err := s.b.src.Fetcher(s.b.tenant).Fetch(ctx, fetch.Request{
 		Tenant:   s.b.tenant,
 		Scope:    s.scope,
 		Start:    mint * nsPerMs,

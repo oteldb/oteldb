@@ -47,7 +47,7 @@ tasks:
     cmds:
       - |
         set -e
-        for target in oteldb odbbackup odbrestore odbmigrate odbingest otelproxy chotel odbagent; do
+        for target in oteldb odbbackup odbrestore odbmigrate odbingest odbselect otelproxy chotel odbagent; do
           go build -trimpath -buildvcs=false -v -o ./$target ./cmd/$target
         done
 

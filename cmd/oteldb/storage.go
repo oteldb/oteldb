@@ -12,13 +12,8 @@ import (
 
 	"github.com/oteldb/oteldb/internal/chstorage"
 	"github.com/oteldb/oteldb/internal/globalmetric"
-	"github.com/oteldb/oteldb/internal/logql/logqlengine"
-	"github.com/oteldb/oteldb/internal/logstorage"
-	"github.com/oteldb/oteldb/internal/metricstorage"
 	"github.com/oteldb/oteldb/internal/profilestorage"
-	"github.com/oteldb/oteldb/internal/promql"
-	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
-	"github.com/oteldb/oteldb/internal/tracestorage"
+	"github.com/oteldb/oteldb/internal/queryapi"
 )
 
 type otelStorage struct {
@@ -36,20 +31,12 @@ type otelStorage struct {
 	chClient chstorage.ClickHouseClient
 }
 
-type logQuerier interface {
-	logstorage.Querier
-	logqlengine.Querier
-}
-
-type traceQuerier interface {
-	tracestorage.Querier
-	traceqlengine.Querier
-}
-
-type metricQuerier interface {
-	promql.Querier
-	metricstorage.MetadataQuerier
-}
+// Queriers backing the query APIs.
+type (
+	logQuerier    = queryapi.LogQuerier
+	traceQuerier  = queryapi.TraceQuerier
+	metricQuerier = queryapi.MetricQuerier
+)
 
 func setupCH(
 	ctx context.Context,

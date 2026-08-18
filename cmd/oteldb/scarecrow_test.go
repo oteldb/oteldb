@@ -62,7 +62,7 @@ func TestNewScarecrowEngineNativeScanner(t *testing.T) {
 
 	app := &App{lg: zap.NewNop()}
 	cfg := PrometheusConfig{EnableScarecrowEngine: true}
-	cfg.setDefaults()
+	cfg.SetDefaults()
 
 	engine := app.newScarecrowEngine(b, cfg)
 
@@ -111,7 +111,7 @@ func TestNewScarecrowEngineFallsBackOverOtherQuerier(t *testing.T) {
 
 	app := &App{lg: zap.NewNop()}
 	cfg := PrometheusConfig{EnableScarecrowEngine: true}
-	cfg.setDefaults()
+	cfg.SetDefaults()
 
 	wrapped := metricQuerierWrapper{b}
 	engine := app.newScarecrowEngine(wrapped, cfg)

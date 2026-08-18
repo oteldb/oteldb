@@ -32,7 +32,7 @@ var reservedProfileLabels = map[string]struct{}{
 // tenant's streams in the window, reading the type out of each series' reserved labels.
 func (q *ProfileQuerier) ProfileTypes(ctx context.Context, opts profilestorage.ProfileTypesOptions) ([]profileql.ProfileType, error) {
 	start, end := seriesWindow(opts.Start, opts.End)
-	series, err := q.b.store.ProfileSeries(ctx, q.b.tenant, nil, start, end)
+	series, err := q.b.src.ProfileSeries(ctx, q.b.tenant, nil, start, end)
 	if err != nil {
 		return nil, errors.Wrap(err, "profile series")
 	}
@@ -59,7 +59,7 @@ func (q *ProfileQuerier) LabelNames(ctx context.Context, opts profilestorage.Lab
 		return nil, err
 	}
 	start, end := seriesWindow(opts.Start, opts.End)
-	series, err := q.b.store.ProfileSeries(ctx, q.b.tenant, matchers, start, end)
+	series, err := q.b.src.ProfileSeries(ctx, q.b.tenant, matchers, start, end)
 	if err != nil {
 		return nil, errors.Wrap(err, "profile series")
 	}
@@ -79,7 +79,7 @@ func (q *ProfileQuerier) LabelValues(ctx context.Context, label string, opts pro
 		return nil, err
 	}
 	start, end := seriesWindow(opts.Start, opts.End)
-	series, err := q.b.store.ProfileSeries(ctx, q.b.tenant, matchers, start, end)
+	series, err := q.b.src.ProfileSeries(ctx, q.b.tenant, matchers, start, end)
 	if err != nil {
 		return nil, errors.Wrap(err, "profile series")
 	}
@@ -104,7 +104,7 @@ func (q *ProfileQuerier) SelectMergeProfile(ctx context.Context, params profiles
 		return nil, err
 	}
 
-	resolver, err := q.b.store.ProfileResolver(ctx, q.b.tenant)
+	resolver, err := q.b.src.ProfileResolver(ctx, q.b.tenant)
 	if err != nil {
 		return nil, errors.Wrap(err, "profile resolver")
 	}
@@ -119,7 +119,7 @@ func (q *ProfileQuerier) SelectMergeProfile(ctx context.Context, params profiles
 		Projection: []string{sigprofile.ColStackID, sigprofile.ColValue},
 	}
 
-	it, err := q.b.store.ProfileFetcher(q.b.tenant).Fetch(ctx, req)
+	it, err := q.b.src.ProfileFetcher(q.b.tenant).Fetch(ctx, req)
 	if err != nil {
 		return nil, errors.Wrap(err, "fetch profiles")
 	}

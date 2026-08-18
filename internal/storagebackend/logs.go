@@ -150,7 +150,7 @@ func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, opts fet
 		req.AllConditions = true
 	}
 
-	it, err := n.q.b.store.LogFetcher(n.q.b.tenant).Fetch(ctx, req)
+	it, err := n.q.b.src.LogFetcher(n.q.b.tenant).Fetch(ctx, req)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "fetch logs")
 	}
@@ -314,7 +314,7 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 		return nil, nil, len(n.selector) == 0
 	}
 
-	keys, err := n.q.b.store.LogKeys(ctx, n.q.b.tenant, lo, hi)
+	keys, err := n.q.b.src.LogKeys(ctx, n.q.b.tenant, lo, hi)
 	if err != nil {
 		return nil, nil, false // best effort: fall back to in-memory filtering.
 	}
@@ -538,7 +538,7 @@ func (q *LogQuerier) LabelNames(ctx context.Context, opts logstorage.LabelsOptio
 	// can't soundly restrict them.
 	if len(opts.Query.Matchers) == 0 {
 		lo, hi := seriesWindow(opts.Start, opts.End)
-		keys, err := q.b.store.LogKeys(ctx, q.b.tenant, lo, hi)
+		keys, err := q.b.src.LogKeys(ctx, q.b.tenant, lo, hi)
 		if err != nil {
 			return nil, errors.Wrap(err, "log keys")
 		}
@@ -655,7 +655,7 @@ func (q *LogQuerier) DetectedFields(ctx context.Context, opts logstorage.LabelsO
 // logStreams returns the label sets of the streams matching the selector within [start, end].
 func (q *LogQuerier) logStreams(ctx context.Context, start, end time.Time, matchers []logql.LabelMatcher) ([]logqlabels.LabelSet, error) {
 	lo, hi := seriesWindow(start, end)
-	series, err := q.b.store.LogSeries(ctx, q.b.tenant, nil, lo, hi)
+	series, err := q.b.src.LogSeries(ctx, q.b.tenant, nil, lo, hi)
 	if err != nil {
 		return nil, errors.Wrap(err, "log series")
 	}
