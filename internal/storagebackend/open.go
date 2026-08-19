@@ -33,7 +33,9 @@ import (
 // Open constructs the embedded storage engine and an adapter implementing
 // oteldb's metric query and ingestion interfaces. The returned close func stops and flushes
 // the engine. It is used when [Config.MetricsBackend] is [MetricsBackendStorage].
-func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*Backend, func(context.Context) error, error) {
+func Open(
+	ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry, backendOpts ...Option,
+) (*Backend, func(context.Context) error, error) {
 	// The engine logs, traces, and meters through the injected providers (no-op if absent).
 	opts := []storage.Option{
 		storage.WithLogger(lg),
@@ -96,6 +98,7 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 			zap.Int("downsample_tiers", len(cfg.Policy.Downsample)),
 			zap.Bool("recompress", cfg.Policy.Recompress != nil),
 			zap.Bool("ec", cfg.Policy.EC != nil),
+			zap.Int("tenant_policies", len(cfg.Policy.Tenants)),
 			zap.Duration("retention_max_age", retentionMaxAge(cfg.Policy.Retention)),
 			zap.Bool("limits", cfg.Policy.Limits != nil),
 		)
@@ -119,9 +122,7 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		zap.Int64("merge_memory_bytes", caches.MergeMemory),
 		zap.Bool("aggregate_stats", caches.AggregateStats),
 	)
-	b := New(store,
-		WithLogParallelism(cfg.LogQueryParallelism),
-	)
+	b := New(store, append([]Option{WithLogParallelism(cfg.LogQueryParallelism)}, backendOpts...)...)
 	return b, store.Close, nil
 }
 
