@@ -1,9 +1,14 @@
 # Clustered storage-engine demo
 
-A three-node **oteldb cluster on the embedded storage engine** — no ClickHouse and **no shared
-object store**. Each node keeps its data on a **local file backend** and replicates writes to its
-peers (RF=2) over an etcd-coordinated [rendezvous-hash](https://en.wikipedia.org/wiki/Rendezvous_hashing)
-ring. This is the shared-nothing model: data is sharded and replicated across the nodes' own disks.
+A three-node **oteldb cluster on the embedded storage engine** — no ClickHouse. Nodes coordinate
+through an etcd-backed [rendezvous-hash](https://en.wikipedia.org/wiki/Rendezvous_hashing) ring.
+
+Both storage models are runnable here:
+
+- **shared-nothing** (default) — each node keeps its data on a **local file backend** and replicates
+  writes to its peers (RF=2). Data is sharded and replicated across the nodes' own disks.
+- **shared-store** ([below](#shared-store-variant)) — every node reads and writes **one object
+  store**, so flushed parts need no mirroring.
 
 ## Run
 
@@ -78,6 +83,48 @@ would all have no source. A deployment where every node points at the same objec
 
 To scale out, add another `oteldb-N` service (with its own `hostname` and data volume) pointing at
 the same etcd — it joins the ring and takes ownership of a share of the data automatically.
+
+## Shared-store variant
+
+The default stack above is **shared-nothing**: each node owns its disk and mirrors flushed parts to
+its peers. The other deployment model is **shared-store** — every node reads and writes one object
+store under one prefix, so a flushed part is already visible to every peer and there is nothing to
+mirror.
+
+```bash
+docker compose -f dev/local/storage-cluster/docker-compose.yml \
+               -f dev/local/storage-cluster/docker-compose.shared-store.yml \
+               --profile minio up --build
+```
+
+Same three nodes, same etcd, same ring; [`oteldb-shared.yml`](./oteldb-shared.yml) replaces the file
+backend with `backend: s3` and flips `private_backend` to `false`. The WAL stays on each node's own
+volume — it holds head data that has not reached the bucket yet, so it has to survive a restart of
+*that* node. Browse what the cluster writes at <http://localhost:9001> (MinIO console,
+`oteldb`/`oteldbsecret`).
+
+### What this exercises that the default cannot
+
+Several writers committing **one bucket index**. Each node commits through
+`backend.CompareAndSwap`, which on S3 is a conditional PUT (`If-Match`, or `If-None-Match: *` for
+the first write) — the *store* evaluates the condition, so two nodes committing at once cannot
+overwrite each other's parts. Nothing but a real object store evaluates that the way a deployment
+would, which is the whole reason this variant exists as a runnable stack rather than a unit test.
+
+### Choosing the object store
+
+| profile | store | why |
+|---|---|---|
+| `minio` (default) | MinIO | An independent, widely deployed implementation. A green run is evidence about oteldb. |
+| `fs` | [go-faster/fs](https://github.com/go-faster/fs) in single-node filesystem mode | A sibling project. Lighter, but a green run says the two agree — not the same claim. |
+
+Pick deliberately. If the conditional-PUT path breaks against a store you also maintain, you cannot
+tell from the failure which side is wrong. Use `--profile fs` when you want to exercise go-faster/fs
+against a real workload, and `--profile minio` when you want to make a claim about oteldb.
+
+Neither is a substitute for running against the store you deploy on: `If-Match` on PUT is not
+universal among S3-compatible services, and where it is missing `CompareAndSwap` has no ground to
+stand on.
 
 ## Automated test
 
