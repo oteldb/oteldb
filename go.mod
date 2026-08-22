@@ -27,7 +27,7 @@ require (
 	github.com/fatih/color v1.19.0
 	github.com/go-faster/errors v0.8.0
 	github.com/go-faster/jx v1.2.0
-	github.com/go-faster/sdk v0.39.0
+	github.com/go-faster/sdk v0.39.1
 	github.com/go-faster/tetragon v1.3.2
 	github.com/go-faster/yaml v0.4.6
 	github.com/go-logfmt/logfmt v0.6.1
@@ -86,7 +86,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.158.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/webhookeventreceiver v0.158.0
 	github.com/oteldb/promql-engine v0.10.0
-	github.com/oteldb/storage v0.39.0
+	github.com/oteldb/storage v0.40.1
 	github.com/pierrec/lz4/v4 v4.1.28
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.70.1
@@ -95,7 +95,7 @@ require (
 	github.com/sergi/go-diff v1.4.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
-	github.com/stretchr/testify v1.12.0
+	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/zeebo/xxh3 v1.1.0
@@ -166,7 +166,7 @@ require (
 	github.com/cenkalti/backoff/v7 v7.0.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3 // indirect
-	github.com/klauspost/reedsolomon v1.14.1 // indirect
+	github.com/klauspost/reedsolomon v1.14.2 // indirect
 	github.com/maypok86/otter/v2 v2.3.0 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
