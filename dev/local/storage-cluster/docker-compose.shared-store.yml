@@ -1,0 +1,104 @@
+# Shared-store overlay: the same three-node cluster, but every node keeps its parts in ONE object
+# store instead of on its own disk.
+#
+#   docker compose -f dev/local/storage-cluster/docker-compose.yml \
+#                  -f dev/local/storage-cluster/docker-compose.shared-store.yml \
+#                  --profile minio up --build
+#
+# Swap `--profile minio` for `--profile fs` to run the same cluster against go-faster/fs instead.
+# Pick deliberately: MinIO is an independent, widely deployed implementation, so a green run is
+# evidence about oteldb. go-faster/fs is a sibling project, so a green run there says the two agree
+# — useful, but not the same claim. MinIO is the default for that reason.
+#
+# What this exercises that the shared-nothing default cannot: several writers committing one bucket
+# index. Every node's commit goes through backend.CompareAndSwap (S3 conditional PUT, If-Match), and
+# nothing but a real store evaluates that condition the way a deployment would.
+#
+# The overlay mounts its config at a different path and repoints --config at it, rather than
+# replacing the base mount — compose merges volume lists, and two entries on one target is a
+# conflict rather than an override.
+
+# Applied to each oteldb node: read the shared-store config, and wait for the bucket to exist.
+x-shared-store-node: &shared-store-node
+  command:
+    - --embedded
+    - --config=/etc/oteldb/oteldb-shared.yml
+  volumes:
+    - ./oteldb-shared.yml:/etc/oteldb/oteldb-shared.yml:ro
+  depends_on:
+    objectstore-init:
+      condition: service_completed_successfully
+
+services:
+  # MinIO (default). Reaches the cluster as `objectstore`, the alias oteldb-shared.yml points at.
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    profiles: ["minio"]
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      - MINIO_ROOT_USER=oteldb
+      - MINIO_ROOT_PASSWORD=oteldbsecret
+    volumes:
+      - objectstore-data:/data
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # MinIO console (browse the parts the cluster writes)
+    networks:
+      default:
+        aliases: [objectstore]
+
+  # go-faster/fs in its single-node filesystem mode: one process, no etcd, no planes. Anonymous
+  # auth is fine here because nothing outside the compose network can reach it.
+  fs:
+    image: ghcr.io/go-faster/fs:v0.13.1
+    profiles: ["fs"]
+    command: ["s3", "--addr", ":9000", "--root", "/data", "--insecure-no-auth"]
+    volumes:
+      - objectstore-data:/data
+    ports:
+      - "9000:9000"
+    networks:
+      default:
+        aliases: [objectstore]
+
+  # Creates the bucket, whichever store is running. It polls rather than waiting on a healthcheck so
+  # it needs no knowledge of which profile is active.
+  #
+  # The depends_on entries are `required: false` because exactly one of the two stores exists in any
+  # given run. They are still needed: without them, naming services explicitly ("up oteldb-1") pulls
+  # in this init container but *not* the store it talks to, and it would poll until the deadline.
+  objectstore-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio:
+        condition: service_started
+        required: false
+      fs:
+        condition: service_started
+        required: false
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        for i in $$(seq 1 60); do
+          mc alias set os http://objectstore:9000 oteldb oteldbsecret && break
+          echo "waiting for the object store ($$i/60)"; sleep 1
+        done
+        if ! mc alias list os >/dev/null 2>&1; then
+          echo "no object store answered on http://objectstore:9000 --"
+          echo "pass --profile minio (or --profile fs) so one of them starts."
+          exit 1
+        fi
+        mc mb --ignore-existing os/oteldb
+
+  oteldb-1:
+    <<: *shared-store-node
+
+  oteldb-2:
+    <<: *shared-store-node
+
+  oteldb-3:
+    <<: *shared-store-node
+
+volumes:
+  objectstore-data:

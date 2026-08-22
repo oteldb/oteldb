@@ -719,8 +719,8 @@ github.com/klauspost/cpuid/v2 v2.3.0 h1:S4CRMLnYUhGeDFDqkGriYKdfoFlDnMtqTiI/sFzh
 github.com/klauspost/cpuid/v2 v2.3.0/go.mod h1:hqwkgyIinND0mEev00jJYCxPNVRVXFQeu1XKlok6oO0=
 github.com/klauspost/pgzip v1.2.6 h1:8RXeL5crjEUFnR2/Sn6GJNWtSQ3Dk8pq4CL3jvdDyjU=
 github.com/klauspost/pgzip v1.2.6/go.mod h1:Ch1tH69qFZu15pkjo5kYi6mth2Zzwzt50oCQKQE9RUs=
-github.com/klauspost/reedsolomon v1.14.1 h1:swE9kzyWXD/wVG+l5Pe8bWnQ0giIY7D1GjCBKk3kG2U=
-github.com/klauspost/reedsolomon v1.14.1/go.mod h1:yjqqjgMTQkBUHSG97/rm4zipffCNbCiZcB3kTqr++sQ=
+github.com/klauspost/reedsolomon v1.14.2 h1:SafJYwpBBQBI6amHUygcjxZjXeN2HpiENHQDwuPWCCQ=
+github.com/klauspost/reedsolomon v1.14.2/go.mod h1:yjqqjgMTQkBUHSG97/rm4zipffCNbCiZcB3kTqr++sQ=
 github.com/knadh/koanf v1.5.0 h1:q2TSd/3Pyc/5yP9ldIrSdIz26MCcyNQzW0pEAugLPNs=
 github.com/knadh/koanf v1.5.0/go.mod h1:Hgyjp4y8v44hpZtPzs7JZfRAW5AhN7KfZcwv1RYggDs=
 github.com/knadh/koanf/providers/env/v2 v2.0.0 h1:Ad5H3eun722u+FvchiIcEIJZsZ2M6oxCkgZfWN5B5KY=
@@ -1030,8 +1030,8 @@ github.com/openzipkin/zipkin-go v0.4.3/go.mod h1:M9wCJZFWCo2RiY+o1eBCEMe0Dp2S5LD
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
 github.com/oteldb/promql-engine v0.10.0 h1:CT3ffpna47gbih3Mff8moOHS4J9UVDP3gUf20ylNWIE=
 github.com/oteldb/promql-engine v0.10.0/go.mod h1:1zs5GoXb9XmZf+AC9TmsHgIg8VKVhQLxoORuM9JptiY=
-github.com/oteldb/storage v0.39.0 h1:g/KDpaJ9nzYsElA0JczFm0QOrbmk/LoMS3t2XLq+LBg=
-github.com/oteldb/storage v0.39.0/go.mod h1:6CM7jbZpdhlpJCB3HHyZw3FhPll5d5X11HDgWd9Qnj4=
+github.com/oteldb/storage v0.40.1 h1:Og7MuUzDZngIuKsANFmq9MGwCpYDFH+MyrvStyIv9Q0=
+github.com/oteldb/storage v0.40.1/go.mod h1:z/Cm8l1Ba8YsG7YH1FAny6yqOOoLFLxvHubeoCha030=
 github.com/outscale/osc-sdk-go/v2 v2.34.0 h1:hHH5W9Fmgt6b8nGUmDyu4vVP+zqJ+W0zflzjgsGEGUQ=
 github.com/outscale/osc-sdk-go/v2 v2.34.0/go.mod h1:6J8WRznaSIEXXVHhhTXisGJQgvE5fYzbf8hAw7YIGfQ=
 github.com/ovh/go-ovh v1.9.0 h1:6K8VoL3BYjVV3In9tPJUdT7qMx9h0GExN9EXx1r2kKE=

@@ -1,9 +1,13 @@
 name: "Cluster E2E"
 
-# End-to-end test for the storage-engine cluster (dev/local/storage-cluster): three oteldb nodes on
-# local file backends, replicating over an etcd ring. A metric, a log, and a trace are ingested at
-# one node via OTLP and queried back through the PromQL / LogQL / TraceQL APIs of *other* nodes, so a
-# pass proves cross-node routing + replication across all three signals.
+# End-to-end test for the storage-engine cluster (dev/local/storage-cluster): three oteldb nodes
+# replicating over an etcd ring. A metric, a log, and a trace are ingested at one node via OTLP and
+# queried back through the PromQL / LogQL / TraceQL APIs of *other* nodes, so a pass proves
+# cross-node routing + replication across all three signals.
+#
+# Both storage models run, because they fail differently. shared-nothing exercises partsync
+# (flushed parts mirrored node-to-node); shared-store puts every node on one MinIO bucket, where
+# the bucket index is committed by several writers through a real conditional PUT.
 
 on:
   push:
@@ -17,6 +21,18 @@ permissions:
 jobs:
   cluster:
     runs-on: ubuntu-latest
+    name: ${{ matrix.model }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Each node on its own disk; flushed parts mirrored over partsync.
+          - model: shared-nothing
+            compose: "-f docker-compose.yml -f docker-compose.ci.yml"
+          # Every node on one MinIO bucket; parts exchanged through the store, index committed
+          # with CompareAndSwap (S3 conditional PUT).
+          - model: shared-store
+            compose: "-f docker-compose.yml -f docker-compose.ci.yml -f docker-compose.shared-store.yml --profile minio"
     steps:
       - name: Install Go
         uses: actions/setup-go@v7
@@ -53,7 +69,7 @@ jobs:
 
       - name: Start cluster
         working-directory: dev/local/storage-cluster
-        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build oteldb-1 oteldb-2 oteldb-3
+        run: docker compose ${{ matrix.compose }} up -d --build oteldb-1 oteldb-2 oteldb-3
 
       - name: Verify ingest + cross-node queries
         run: |
@@ -67,9 +83,9 @@ jobs:
       - name: Dump cluster logs
         if: failure()
         working-directory: dev/local/storage-cluster
-        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color
+        run: docker compose ${{ matrix.compose }} logs --no-color
 
       - name: Cleanup
         if: always()
         working-directory: dev/local/storage-cluster
-        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down --remove-orphans --volumes --timeout 10
+        run: docker compose ${{ matrix.compose }} down --remove-orphans --volumes --timeout 10
