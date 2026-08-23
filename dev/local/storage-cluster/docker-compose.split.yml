@@ -1,0 +1,68 @@
+# Split-process overlay for the storage cluster (used with docker-compose.yml).
+#
+# The base demo runs every node with --embedded, so one process both stores and serves. This
+# overlay adds the two halves as their own processes: odbingest takes ingest and routes each shard
+# to its ring primary, odbselect answers queries by fanning out across the ring. Both are stateless
+# and follow membership read-only, so the three oteldb nodes are unchanged -- they simply stop
+# being the only front door.
+#
+# The demo `server` is repointed at odbingest while `client` keeps ingesting at oteldb-1, so both
+# write paths carry traffic at once. Grafana gets a second set of datasources pointing at
+# odbselect, which makes the split and embedded paths comparable side by side in one dashboard.
+
+x-odb-process: &odb-process
+  image: ghcr.io/oteldb/oteldb/odbsplit
+  # Same source and Dockerfile as the nodes, under its own tag: the CI overlay swaps in the
+  # prebuilt-binary image for the nodes, and a shared tag would make that build ambiguous.
+  pull_policy: build
+  build:
+    context: ../../../
+    dockerfile: dev/Dockerfile
+  environment:
+    - OTEL_LOG_LEVEL=info
+    - OTEL_TRACES_EXPORTER=none
+    - OTEL_METRICS_EXPORTER=none
+    - OTEL_LOGS_EXPORTER=stdout
+  restart: unless-stopped
+  depends_on:
+    etcd:
+      condition: service_healthy
+
+services:
+  # Write half. Both images put the binaries on PATH, so overriding the entrypoint selects which
+  # one runs without needing a separate build per process.
+  odbingest:
+    <<: *odb-process
+    entrypoint: ["odbingest"]
+    command: ["--config=/etc/oteldb/odbingest.yml"]
+    volumes:
+      - ./odbingest.yml:/etc/oteldb/odbingest.yml:ro
+    ports:
+      - "24317:4317"  # OTLP gRPC
+      - "19291:19291" # Prometheus remote write
+
+  # Read half.
+  odbselect:
+    <<: *odb-process
+    entrypoint: ["odbselect"]
+    command: ["--config=/etc/oteldb/odbselect.yml"]
+    volumes:
+      - ./odbselect.yml:/etc/oteldb/odbselect.yml:ro
+    ports:
+      - "19090:9090" # Prometheus / PromQL
+      - "13100:3100" # Loki / LogQL
+      - "13200:3200" # Tempo / TraceQL
+      - "14040:4040" # Pyroscope / ProfileQL
+
+  # Ingests through the split write path instead of oteldb-2's embedded one.
+  server:
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://odbingest:4317
+    depends_on:
+      - odbingest
+
+  grafana:
+    volumes:
+      - ./grafana/datasources-split.yml:/etc/grafana/provisioning/datasources/datasources-split.yml:ro
+    depends_on:
+      - odbselect

@@ -1,0 +1,11 @@
+# CI override for the split-process overlay (used with docker-compose.split.yml).
+#
+# Same trade as docker-compose.ci.yml makes for the nodes: the binaries are built on the host with
+# the shared Go cache and baked in via deploy.Dockerfile, instead of a cold compile per image.
+services:
+  odbingest:
+    build:
+      dockerfile: ./dev/deploy/deploy.Dockerfile
+  odbselect:
+    build:
+      dockerfile: ./dev/deploy/deploy.Dockerfile

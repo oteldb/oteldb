@@ -1,0 +1,10 @@
+# Config for odbingest in the split-process topology (docker-compose.split.yml).
+#
+# odbingest is the write half of oteldb on its own: it accepts OTLP and Prometheus remote write,
+# converts straight to the engine's ingest model, and routes each shard to its ring primary. It
+# stores nothing and never joins the ring, so all it needs is a way to find the cluster.
+cluster:
+  etcd: ["http://etcd:2379"]
+  # Must match the storage nodes' cluster block in oteldb.yml, or routing lands on the wrong owners.
+  rf: 2
+  root: /oteldb
