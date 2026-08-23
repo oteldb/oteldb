@@ -90,10 +90,12 @@ func TestIntegrationTrace(t *testing.T) {
 	require.NoError(t, conn.Do(ctx, ch.Query{
 		Body:   "SELECT 1",
 		Result: discardResult(),
-		OnLog: func(ctx context.Context, l ch.Log) error {
+		OnLogs: func(ctx context.Context, logs []ch.Log) error {
 			sc := trace.SpanContextFromContext(ctx)
 			traceID = sc.TraceID()
-			t.Logf("[%s-%s]: %s", sc.TraceID(), sc.SpanID(), l.Text)
+			for _, l := range logs {
+				t.Logf("[%s-%s]: %s", sc.TraceID(), sc.SpanID(), l.Text)
+			}
 			return nil
 		},
 	}))

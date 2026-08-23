@@ -178,11 +178,12 @@ var parseTests = []parseTestCase{
 	},
 
 	// Errors.
-	{"", Expr{}, true},                                                                      // empty.
-	{`{service_name="frontend"}`, Expr{}, true},                                             // no profile type.
-	{"{}", Expr{}, true},                                                                    // empty selector, no profile type.
-	{"not_a_profile_type", Expr{}, true},                                                    // invalid profile type.
-	{"process_cpu:cpu:nanoseconds:cpu", Expr{}, true},                                       // too few type parts.
+	{"", Expr{}, true},                                // empty.
+	{`{service_name="frontend"}`, Expr{}, true},       // no profile type.
+	{"{}", Expr{}, true},                              // empty selector, no profile type.
+	{"not_a_profile_type", Expr{}, true},              // invalid profile type.
+	{"process_cpu:cpu:nanoseconds:cpu", Expr{}, true}, // too few type parts.
+
 	{`process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name=}`, Expr{}, true},            // missing value.
 	{`process_cpu:cpu:nanoseconds:cpu:nanoseconds{="frontend"}`, Expr{}, true},              // missing label name.
 	{`process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name~"x"}`, Expr{}, true},         // bad op.
