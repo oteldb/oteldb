@@ -1,0 +1,33 @@
+# Shared config for every node in the SHARED-STORE variant of the storage cluster. Every node reads
+# and writes one object store under one prefix, so flushed parts are exchanged through the bucket
+# rather than mirrored node-to-node. Contrast oteldb.yml, the shared-nothing variant.
+#
+# The node's ring identity and replication address still default to its hostname, so all three
+# services use this one file unchanged.
+storage:
+  backend: s3
+  # The WAL stays node-local even though the parts do not: it holds head data that has not reached
+  # the bucket yet, so it must survive a restart of *this* node.
+  wal_dir: /data
+  s3:
+    bucket: oteldb
+    prefix: cluster/
+    region: us-east-1
+    # objectstore is a network alias, so the same config serves whichever store the profile started.
+    endpoint: http://objectstore:9000
+    # S3-compatible stores address objects as endpoint/bucket/key, not virtual-host style.
+    force_path_style: true
+    access_key_id: oteldb
+    secret_access_key: oteldbsecret
+  cluster:
+    etcd: ["http://etcd:2379"]
+    # id and addr are derived from the container hostname (e.g. oteldb-1 -> addr oteldb-1:7946).
+    port: 7946
+    # Replication factor for head (unflushed) writes. Flushed parts need no replication here —
+    # they are already in a store every node can read.
+    rf: 2
+    root: /oteldb
+    # The whole point of this variant: one store, many writers. Every node's commit of the bucket
+    # index goes through backend.CompareAndSwap, so two nodes committing at once cannot lose each
+    # other's parts.
+    private_backend: false
