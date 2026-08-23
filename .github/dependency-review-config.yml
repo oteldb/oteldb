@@ -19,3 +19,6 @@ allow-dependencies-licenses:
   - "pkg:golang/github.com/hashicorp/cronexpr"
   # Used in CI, is not directly linked or used by oteldb.
   - "pkg:actions/go-task/setup-task"
+  # Simply wrong: the module's LICENSE file is MPL-2.0; no JSON-licensed
+  # files exist in the module. See https://github.com/hashicorp/consul/blob/main/api/LICENSE.
+  - "pkg:golang/github.com/hashicorp/consul/api"
