@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -17,7 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/server/v3/embed"
 	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/oteldb/storage/cluster"
@@ -33,50 +31,10 @@ import (
 
 	"github.com/prometheus/prometheus/prompb"
 
+	"github.com/oteldb/oteldb/internal/etcdtest"
 	"github.com/oteldb/oteldb/internal/otlpdirect"
 	"github.com/oteldb/oteldb/internal/promrw"
 )
-
-func freeAddr(tb testing.TB) string {
-	tb.Helper()
-
-	var lc net.ListenConfig
-
-	l, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
-	require.NoError(tb, err)
-	defer func() { _ = l.Close() }()
-
-	return l.Addr().String()
-}
-
-// startEtcd runs an embedded etcd and returns its client endpoint.
-func startEtcd(t *testing.T) string {
-	t.Helper()
-
-	lc := url.URL{Scheme: "http", Host: freeAddr(t)}
-	lp := url.URL{Scheme: "http", Host: freeAddr(t)}
-
-	cfg := embed.NewConfig()
-	cfg.Dir = t.TempDir()
-	cfg.LogLevel = "error"
-	cfg.ListenClientUrls = []url.URL{lc}
-	cfg.AdvertiseClientUrls = []url.URL{lc}
-	cfg.ListenPeerUrls = []url.URL{lp}
-	cfg.AdvertisePeerUrls = []url.URL{lp}
-	cfg.InitialCluster = cfg.Name + "=" + lp.String()
-
-	e, err := embed.StartEtcd(cfg)
-	require.NoError(t, err)
-	t.Cleanup(e.Close)
-
-	select {
-	case <-e.Server.ReadyNotify():
-	case <-time.After(30 * time.Second):
-		t.Fatal("embedded etcd did not become ready")
-	}
-
-	return lc.String()
-}
 
 // fakeNode is a storage node as far as routing is concerned: it registers in the ring and serves
 // the primary-write endpoint, recording what it was asked to apply.
@@ -94,7 +52,7 @@ func startNode(t *testing.T, endpoint, root, id string) *fakeNode {
 	t.Helper()
 
 	n := &fakeNode{
-		addr:   freeAddr(t),
+		addr:   etcdtest.FreeAddr(t),
 		shards: map[string]int{},
 		series: map[signal.SeriesID]signal.Series{},
 	}
@@ -245,7 +203,7 @@ func TestIngestRoutesHeaderTenant(t *testing.T) {
 
 	const root = "/tenants"
 
-	endpoint := startEtcd(t)
+	endpoint := etcdtest.Start(t)
 	node := startNode(t, endpoint, root, "node-tenant")
 
 	tenants, err := newTenantResolver(TenantConfig{Header: HeaderScopeOrgID})
@@ -285,7 +243,7 @@ func TestIngestRoutesToPrimary(t *testing.T) {
 
 	const root = "/test"
 
-	endpoint := startEtcd(t)
+	endpoint := etcdtest.Start(t)
 	node := startNode(t, endpoint, root, "node-a")
 
 	h := promrw.NewHandler(newTestSink(t, endpoint, root, 1), promrw.HandlerConfig{
@@ -321,7 +279,7 @@ func TestIngestSpreadsAcrossShards(t *testing.T) {
 		shards = 4
 	)
 
-	endpoint := startEtcd(t)
+	endpoint := etcdtest.Start(t)
 	node := startNode(t, endpoint, root, "node-a")
 
 	h := promrw.NewHandler(newTestSink(t, endpoint, root, shards), promrw.HandlerConfig{
@@ -359,7 +317,7 @@ func TestIngestSpreadsAcrossShards(t *testing.T) {
 func TestIngestFailsWhenClusterIsUnreachable(t *testing.T) {
 	t.Parallel()
 
-	endpoint := startEtcd(t) // no nodes join
+	endpoint := etcdtest.Start(t) // no nodes join
 
 	rt, err := router.Open(t.Context(), router.Config{Etcd: []string{endpoint}, Root: "/test", RF: 1})
 	require.NoError(t, err)
@@ -429,7 +387,7 @@ func TestOTLPRoutesEverySignalToPrimary(t *testing.T) {
 
 	const root = "/test"
 
-	endpoint := startEtcd(t)
+	endpoint := etcdtest.Start(t)
 	node := startNode(t, endpoint, root, "node-a")
 
 	mux := http.NewServeMux()

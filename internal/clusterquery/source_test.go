@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"net/url"
 	"slices"
 	"sort"
 	"testing"
@@ -13,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/server/v3/embed"
 
 	"github.com/oteldb/storage/cluster"
 	"github.com/oteldb/storage/cluster/etcd"
@@ -22,51 +20,11 @@ import (
 	"github.com/oteldb/storage/signal"
 
 	"github.com/oteldb/oteldb/internal/clusterquery"
+	"github.com/oteldb/oteldb/internal/etcdtest"
 )
 
 // clusterRoot is the etcd key prefix these tests coordinate under.
 const clusterRoot = "/test"
-
-func freeAddr(tb testing.TB) string {
-	tb.Helper()
-
-	var lc net.ListenConfig
-
-	l, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
-	require.NoError(tb, err)
-	defer func() { _ = l.Close() }()
-
-	return l.Addr().String()
-}
-
-// startEtcd runs an embedded etcd and returns its client endpoint.
-func startEtcd(t *testing.T) string {
-	t.Helper()
-
-	lc := url.URL{Scheme: "http", Host: freeAddr(t)}
-	lp := url.URL{Scheme: "http", Host: freeAddr(t)}
-
-	cfg := embed.NewConfig()
-	cfg.Dir = t.TempDir()
-	cfg.LogLevel = "error"
-	cfg.ListenClientUrls = []url.URL{lc}
-	cfg.AdvertiseClientUrls = []url.URL{lc}
-	cfg.ListenPeerUrls = []url.URL{lp}
-	cfg.AdvertisePeerUrls = []url.URL{lp}
-	cfg.InitialCluster = cfg.Name + "=" + lp.String()
-
-	e, err := embed.StartEtcd(cfg)
-	require.NoError(t, err)
-	t.Cleanup(e.Close)
-
-	select {
-	case <-e.Server.ReadyNotify():
-	case <-time.After(30 * time.Second):
-		t.Fatal("embedded etcd did not become ready")
-	}
-
-	return lc.String()
-}
 
 // series builds a one-label stream identity.
 func series(name string) signal.Series {
@@ -99,7 +57,7 @@ type fakeNode struct {
 func startNode(t *testing.T, endpoint, id string, held map[string][]string) *fakeNode {
 	t.Helper()
 
-	n := &fakeNode{addr: freeAddr(t), held: held, keys: map[string][]cluster.KeyInfo{}}
+	n := &fakeNode{addr: etcdtest.FreeAddr(t), held: held, keys: map[string][]cluster.KeyInfo{}}
 
 	mux := http.NewServeMux()
 	mux.Handle(cluster.ReadPath, cluster.ReadHandler(n.fetch, n.fetch, n.fetch, n.fetch))
@@ -233,7 +191,7 @@ func TestFetcherGathersEveryShard(t *testing.T) {
 
 	const shards = 4
 
-	endpoint := startEtcd(t)
+	endpoint := etcdtest.Start(t)
 
 	keys := shardKeys(shards)
 	require.Len(t, keys, shards)
@@ -268,7 +226,7 @@ func TestFetcherGathersEveryShard(t *testing.T) {
 func TestFetcherReappliesMatchers(t *testing.T) {
 	t.Parallel()
 
-	endpoint := startEtcd(t)
+	endpoint := etcdtest.Start(t)
 	startNode(t, endpoint, "node-a", map[string][]string{
 		string(cluster.DefaultTenant): {"kept", "dropped"},
 	})
@@ -294,7 +252,7 @@ func TestFetcherReappliesMatchers(t *testing.T) {
 func TestSeriesFailsOverAbsentOwner(t *testing.T) {
 	t.Parallel()
 
-	endpoint := startEtcd(t)
+	endpoint := etcdtest.Start(t)
 
 	key := string(cluster.DefaultTenant)
 
@@ -321,7 +279,7 @@ func TestSeriesFailsOverAbsentOwner(t *testing.T) {
 func TestSeriesEmptyWhenEveryOwnerDisclaims(t *testing.T) {
 	t.Parallel()
 
-	endpoint := startEtcd(t)
+	endpoint := etcdtest.Start(t)
 	startNode(t, endpoint, "node-a", map[string][]string{})
 
 	src := clusterquery.New(openRouter(t, endpoint, 1, 1))
@@ -339,7 +297,7 @@ func TestLogKeysUnionsShards(t *testing.T) {
 
 	const shards = 2
 
-	endpoint := startEtcd(t)
+	endpoint := etcdtest.Start(t)
 
 	keys := shardKeys(shards)
 

@@ -9,6 +9,7 @@ import (
 	sigmetric "github.com/oteldb/storage/signal/metric"
 
 	"github.com/oteldb/oteldb/internal/clusterquery"
+	"github.com/oteldb/oteldb/internal/etcdtest"
 	"github.com/oteldb/oteldb/internal/storagebackend"
 )
 
@@ -20,7 +21,7 @@ func TestBackendServesFromCluster(t *testing.T) {
 
 	const shards = 2
 
-	endpoint := startEtcd(t)
+	endpoint := etcdtest.Start(t)
 
 	keys := shardKeys(shards)
 	startNode(t, endpoint, "node-a", map[string][]string{
