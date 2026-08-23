@@ -10,6 +10,9 @@ Both storage models are runnable here:
 - **shared-store** ([below](#shared-store-variant)) — every node reads and writes **one object
   store**, so flushed parts need no mirroring.
 
+Either storage model can also be run **split** ([below](#split-process-variant)): ingest and query
+move out of the nodes into `odbingest` and `odbselect`, their own stateless processes.
+
 ## Run
 
 ```bash
@@ -126,17 +129,64 @@ Neither is a substitute for running against the store you deploy on: `If-Match` 
 universal among S3-compatible services, and where it is missing `CompareAndSwap` has no ground to
 stand on.
 
+## Split-process variant
+
+By default every node runs `--embedded`, so one process both stores and serves. In production the
+two halves scale independently, and they are separate binaries:
+
+- **`odbingest`** — takes OTLP and Prometheus remote write, and routes each shard to its ring primary.
+- **`odbselect`** — answers PromQL/LogQL/TraceQL/ProfileQL by fanning out across the ring and
+  merging replicas.
+
+Both are stateless: they follow membership read-only, never join the ring, and hold no data. The
+three nodes are unchanged — they simply stop being the only front door.
+
+```bash
+docker compose -f dev/local/storage-cluster/docker-compose.yml \
+               -f dev/local/storage-cluster/docker-compose.split.yml up --build
+```
+
+The demo `server` ingests through `odbingest` while `client` keeps ingesting at `oteldb-1`, so both
+write paths carry traffic at once, and Grafana gets a second set of datasources ("PromQL (split)"
+and friends) pointing at `odbselect`. The two paths serve the same cluster, so the same data should
+appear through either — which is the point of having both in one dashboard.
+
+| | embedded | split |
+|---|---|---|
+| PromQL | <http://localhost:9090> | <http://localhost:19090> |
+| LogQL | <http://localhost:3100> | <http://localhost:13100> |
+| TraceQL | <http://localhost:3200> | <http://localhost:13200> |
+| ProfileQL | <http://localhost:4040> | <http://localhost:14040> |
+| OTLP gRPC | <localhost:4317> | <localhost:24317> |
+
+This composes with the shared-store overlay: add both files to put split processes in front of
+nodes that share one bucket.
+
 ## Automated test
 
 The **Cluster E2E** CI job (`.github/workflows/cluster-e2e.yml`) starts this stack with the
 [`docker-compose.ci.yml`](./docker-compose.ci.yml) overlay and runs
 [`cmd/cluster-verify`](./cmd/cluster-verify), which pushes one metric, log, and trace via OTLP to one
 node and asserts they are served by the PromQL/LogQL/TraceQL APIs of other nodes — exercising
-cross-node routing and replication for every signal. Run it locally with:
+cross-node routing and replication for every signal.
+
+It runs once per model (`shared-nothing`, `shared-store`, `split`), because they fail differently:
+the first two change where parts live, while `split` changes which process routes and fans out.
+Run it locally with:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build oteldb-1 oteldb-2 oteldb-3
 go run ./cmd/cluster-verify -otlp localhost:14317 -prometheus http://localhost:9092 \
   -loki http://localhost:3100 -tempo http://localhost:3200
+```
+
+Or against the split processes:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.ci.yml \
+               -f docker-compose.split.yml -f docker-compose.split.ci.yml \
+               up -d --build oteldb-1 oteldb-2 oteldb-3 odbingest odbselect
+go run ./cmd/cluster-verify -otlp localhost:24317 -prometheus http://localhost:19090 \
+  -loki http://localhost:13100 -tempo http://localhost:13200
 ```
 

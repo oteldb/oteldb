@@ -8,6 +8,10 @@ name: "Cluster E2E"
 # Both storage models run, because they fail differently. shared-nothing exercises partsync
 # (flushed parts mirrored node-to-node); shared-store puts every node on one MinIO bucket, where
 # the bucket index is committed by several writers through a real conditional PUT.
+#
+# The split model changes the processes rather than the storage: ingest and query move out of the
+# nodes into odbingest and odbselect, so a pass proves those two route and fan out correctly
+# instead of only the --embedded path.
 
 on:
   push:
@@ -33,6 +37,13 @@ jobs:
           # with CompareAndSwap (S3 conditional PUT).
           - model: shared-store
             compose: "-f docker-compose.yml -f docker-compose.ci.yml -f docker-compose.shared-store.yml --profile minio"
+          # Ingest and query as their own processes in front of the same three nodes.
+          - model: split
+            compose: "-f docker-compose.yml -f docker-compose.ci.yml -f docker-compose.split.yml -f docker-compose.split.ci.yml"
+            services: "oteldb-1 oteldb-2 oteldb-3 odbingest odbselect"
+            # Ingest through odbingest, query through odbselect: neither stores anything, so a
+            # result proves the whole path -- route to primary, then fan out and merge.
+            verify: "-otlp localhost:24317 -prometheus http://localhost:19090 -loki http://localhost:13100 -tempo http://localhost:13200"
     steps:
       - name: Install Go
         uses: actions/setup-go@v7
@@ -69,15 +80,12 @@ jobs:
 
       - name: Start cluster
         working-directory: dev/local/storage-cluster
-        run: docker compose ${{ matrix.compose }} up -d --build oteldb-1 oteldb-2 oteldb-3
+        run: docker compose ${{ matrix.compose }} up -d --build ${{ matrix.services || 'oteldb-1 oteldb-2 oteldb-3' }}
 
       - name: Verify ingest + cross-node queries
         run: |
           go run ./dev/local/storage-cluster/cmd/cluster-verify \
-            -otlp localhost:14317 \
-            -prometheus http://localhost:9092 \
-            -loki http://localhost:3100 \
-            -tempo http://localhost:3200 \
+            ${{ matrix.verify || '-otlp localhost:14317 -prometheus http://localhost:9092 -loki http://localhost:3100 -tempo http://localhost:3200' }} \
             -timeout 120s
 
       - name: Dump cluster logs

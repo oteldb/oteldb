@@ -1,0 +1,56 @@
+apiVersion: 1
+
+# Read path through odbselect, the query half of oteldb running as its own process
+# (docker-compose.split.yml). It stores nothing: it fans out across the ring and merges replicas,
+# so it answers for data ingested at any node. Named "(split)" to sit alongside the embedded
+# datasources from datasources.yml, which point at oteldb-1 -- both serve the same cluster.
+datasources:
+  - name: PromQL (split)
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://odbselect:9090
+    uid: prom-odbselect
+    jsonData:
+      prometheusType: Prometheus
+      exemplarTraceIdDestinations:
+        - datasourceUid: tempo-odbselect
+          name: trace_id
+
+  - name: LogQL (split)
+    type: loki
+    access: proxy
+    orgId: 1
+    url: http://odbselect:3100
+    uid: loki-odbselect
+    jsonData:
+      maxLines: 500
+      derivedFields:
+        - datasourceUid: tempo-odbselect
+          matcherType: label
+          matcherRegex: trace_id
+          name: trace
+          url: "$${__value.raw}"
+          urlDisplayLabel: "View Trace"
+
+  - name: TraceQL (split)
+    type: tempo
+    access: proxy
+    orgId: 1
+    url: http://odbselect:3200
+    uid: tempo-odbselect
+    jsonData:
+      httpMethod: GET
+      tracesToLogsV2:
+        datasourceUid: loki-odbselect
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        customQuery: true
+        query: '{$${__tags}} |= "$${__span.traceId}"'
+        tags:
+          - key: service.name
+            value: service_name
+      nodeGraph:
+        enabled: true
+      serviceMap:
+        datasourceUid: prom-odbselect
