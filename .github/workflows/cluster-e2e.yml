@@ -22,6 +22,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Bake in binaries built on the host with a warm Go cache, instead of compiling in-container.
+  CLUSTER_DOCKERFILE: ./dev/deploy/deploy.Dockerfile
+
 jobs:
   cluster:
     runs-on: ubuntu-latest
@@ -32,14 +36,14 @@ jobs:
         include:
           # Each node on its own disk; flushed parts mirrored over partsync.
           - model: shared-nothing
-            compose: "-f docker-compose.yml -f docker-compose.ci.yml"
+            compose: "-f docker-compose.yml"
           # Every node on one MinIO bucket; parts exchanged through the store, index committed
           # with CompareAndSwap (S3 conditional PUT).
           - model: shared-store
-            compose: "-f docker-compose.yml -f docker-compose.ci.yml -f docker-compose.shared-store.yml --profile minio"
+            compose: "-f docker-compose.yml -f docker-compose.shared-store.yml --profile minio"
           # Ingest and query as their own processes in front of the same three nodes.
           - model: split
-            compose: "-f docker-compose.yml -f docker-compose.ci.yml -f docker-compose.split.yml -f docker-compose.split.ci.yml"
+            compose: "-f docker-compose.yml -f docker-compose.split.yml"
             services: "oteldb-1 oteldb-2 oteldb-3 odbingest odbselect"
             # Ingest through odbingest, query through odbselect: neither stores anything, so a
             # result proves the whole path -- route to primary, then fan out and merge.

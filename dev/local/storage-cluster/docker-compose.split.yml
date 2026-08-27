@@ -12,12 +12,12 @@
 
 x-odb-process: &odb-process
   image: ghcr.io/oteldb/oteldb/odbsplit
-  # Same source and Dockerfile as the nodes, under its own tag: the CI overlay swaps in the
-  # prebuilt-binary image for the nodes, and a shared tag would make that build ambiguous.
+  # Its own tag, built from the same source and Dockerfile as the nodes: sharing their tag would
+  # make the build ambiguous when CLUSTER_DOCKERFILE changes which Dockerfile that tag comes from.
   pull_policy: build
   build:
     context: ../../../
-    dockerfile: dev/Dockerfile
+    dockerfile: ${CLUSTER_DOCKERFILE:-dev/Dockerfile}
   environment:
     - OTEL_LOG_LEVEL=info
     - OTEL_TRACES_EXPORTER=none

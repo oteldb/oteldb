@@ -26,7 +26,9 @@ x-oteldb-node: &oteldb-node
   pull_policy: build
   build:
     context: ../../../
-    dockerfile: dev/Dockerfile
+    # CI sets CLUSTER_DOCKERFILE to deploy.Dockerfile, which bakes in binaries already built on the
+    # host with a warm Go cache instead of compiling in-container. Same image either way.
+    dockerfile: ${CLUSTER_DOCKERFILE:-dev/Dockerfile}
   command:
     - --embedded
     - --config=/etc/oteldb/oteldb.yml
@@ -80,7 +82,8 @@ services:
       - ./oteldb.yml:/etc/oteldb/oteldb.yml:ro
       - oteldb-2-data:/data
     ports:
-      - "9091:9090" # this node's PromQL (to show any node answers the full query)
+      - "9091:9090"  # this node's PromQL (to show any node answers the full query)
+      - "14317:4317" # this node's OTLP gRPC (host-side ingest target for cmd/cluster-verify)
 
   oteldb-3:
     <<: *oteldb-node
