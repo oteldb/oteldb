@@ -164,8 +164,7 @@ nodes that share one bucket.
 
 ## Automated test
 
-The **Cluster E2E** CI job (`.github/workflows/cluster-e2e.yml`) starts this stack with the
-[`docker-compose.ci.yml`](./docker-compose.ci.yml) overlay and runs
+The **Cluster E2E** CI job (`.github/workflows/cluster-e2e.yml`) starts this stack and runs
 [`cmd/cluster-verify`](./cmd/cluster-verify), which pushes one metric, log, and trace via OTLP to one
 node and asserts they are served by the PromQL/LogQL/TraceQL APIs of other nodes — exercising
 cross-node routing and replication for every signal.
@@ -175,7 +174,7 @@ the first two change where parts live, while `split` changes which process route
 Run it locally with:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build oteldb-1 oteldb-2 oteldb-3
+docker compose -f docker-compose.yml up -d --build oteldb-1 oteldb-2 oteldb-3
 go run ./cmd/cluster-verify -otlp localhost:14317 -prometheus http://localhost:9092 \
   -loki http://localhost:3100 -tempo http://localhost:3200
 ```
@@ -183,10 +182,22 @@ go run ./cmd/cluster-verify -otlp localhost:14317 -prometheus http://localhost:9
 Or against the split processes:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.ci.yml \
-               -f docker-compose.split.yml -f docker-compose.split.ci.yml \
+docker compose -f docker-compose.yml -f docker-compose.split.yml \
                up -d --build oteldb-1 oteldb-2 oteldb-3 odbingest odbselect
 go run ./cmd/cluster-verify -otlp localhost:24317 -prometheus http://localhost:19090 \
   -loki http://localhost:13100 -tempo http://localhost:13200
 ```
+
+### Faster builds
+
+By default every image compiles oteldb inside Docker. To reuse binaries built on the host with a
+warm Go cache instead — what CI does — build them first and point `CLUSTER_DOCKERFILE` at the image
+that just bakes them in:
+
+```bash
+task build-deploy
+CLUSTER_DOCKERFILE=./dev/deploy/deploy.Dockerfile docker compose -f docker-compose.yml up -d --build
+```
+
+It changes only how the image is built, never the topology, so it composes with any overlay.
 
