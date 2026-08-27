@@ -79,11 +79,13 @@ type Migrator struct {
 	logs       *chstorage.LogsSource
 	traces     *chstorage.TracesSource
 	metrics    *chstorage.MetricsSource
-	back       *storagebackend.Backend
+	dst        destination
 	logger     *zap.Logger
 	throttle   time.Duration
 	checkpoint *Checkpoint
 	sync       func(context.Context) error
+	// dialErr defers an [Option] failure to [Migrator.Err], since options cannot return one.
+	dialErr error
 	// attrs memoizes attribute-set projections across the whole migration (see convert.go). It is
 	// shared by every signal: a resource attribute set is typically common to all of them.
 	attrs *attrConv
@@ -91,6 +93,23 @@ type Migrator struct {
 
 // Option configures a [Migrator].
 type Option func(*Migrator)
+
+// WithOTLP sends everything to an OTLP gRPC endpoint instead of the embedded engine. It is how a
+// cluster is loaded: writes go through the same routing and replication as live traffic, whereas
+// the engine destination would put parts in one node's backend that the ring never assigned it.
+//
+// maxSendBytes caps a single export message; batches large enough to exceed the receiver's limit
+// fail outright, so it should match the ingest side's max_body_bytes.
+func WithOTLP(endpoint string, maxSendBytes int) Option {
+	return func(m *Migrator) {
+		dst, err := dialOTLP(endpoint, maxSendBytes)
+		if err != nil {
+			m.dialErr = err
+			return
+		}
+		m.dst = dst
+	}
+}
 
 // WithThrottle sleeps d after every ingested batch. A bulk migration can
 // ingest orders of magnitude faster than the storage engine's background flush/compaction
@@ -126,10 +145,10 @@ func NewMigrator(client chstorage.ClickHouseClient, tables chstorage.Tables, bac
 		logs:    chstorage.NewLogsSource(client, tables, logger.Named("logs_source")),
 		traces:  chstorage.NewTracesSource(client, tables, logger.Named("traces_source")),
 		metrics: chstorage.NewMetricsSource(client, tables, logger.Named("metrics_source")),
-		back:    back,
 		logger:  logger,
 		attrs:   newAttrConv(),
 	}
+	m.dst = &backendDest{back: back, attrs: m.attrs}
 	for _, opt := range opts {
 		opt(m)
 	}
@@ -218,8 +237,8 @@ func (m *Migrator) MigrateLogs(ctx context.Context, w chstorage.Window, batchSiz
 
 		dayRecords := 0
 		err := m.logs.Scan(ctx, d.From, d.To, batchSize, func(ctx context.Context, records []logstorage.Record) error {
-			if err := m.back.WriteLogs(ctx, ConvertLogs(records, m.attrs)); err != nil {
-				return errors.Wrap(err, "write logs")
+			if err := m.dst.WriteLogs(ctx, records); err != nil {
+				return err
 			}
 			dayRecords += len(records)
 			stats.Records += len(records)
@@ -271,8 +290,8 @@ func (m *Migrator) MigrateTraces(ctx context.Context, w chstorage.Window, batchS
 
 		daySpans := 0
 		err := m.traces.Scan(ctx, d.From, d.To, batchSize, func(ctx context.Context, spans []tracestorage.Span) error {
-			if err := m.back.WriteTraces(ctx, ConvertTraces(spans, m.attrs)); err != nil {
-				return errors.Wrap(err, "write traces")
+			if err := m.dst.WriteTraces(ctx, spans); err != nil {
+				return err
 			}
 			daySpans += len(spans)
 			stats.Spans += len(spans)
@@ -333,8 +352,8 @@ func (m *Migrator) MigrateMetrics(ctx context.Context, w chstorage.Window, batch
 
 		dayPoints := 0
 		err := scan.ScanNumbers(ctx, d.From, d.To, batchSize, func(ctx context.Context, points []metricstorage.NumberPoint) error {
-			if err := m.back.WriteMetrics(ctx, ConvertNumberPoints(points, m.attrs)); err != nil {
-				return errors.Wrap(err, "write metrics")
+			if err := m.dst.WriteNumberPoints(ctx, points); err != nil {
+				return err
 			}
 			dayPoints += len(points)
 			stats.Points += len(points)
@@ -346,9 +365,8 @@ func (m *Migrator) MigrateMetrics(ctx context.Context, w chstorage.Window, batch
 		}
 
 		err = scan.ScanExpHistograms(ctx, d.From, d.To, batchSize, func(ctx context.Context, points []metricstorage.ExpHistogramPoint) error {
-			md := metricstorage.ExpHistogramsToMetrics(points)
-			if err := m.back.ConsumeMetrics(ctx, md); err != nil {
-				return errors.Wrap(err, "consume exp histograms")
+			if err := m.dst.WriteMetrics(ctx, metricstorage.ExpHistogramsToMetrics(points)); err != nil {
+				return err
 			}
 			dayPoints += len(points)
 			stats.ExpHistograms += len(points)
@@ -375,3 +393,10 @@ func (m *Migrator) MigrateMetrics(ctx context.Context, w chstorage.Window, batch
 	}
 	return stats, nil
 }
+
+// Err reports a failure from an [Option] that could not return one, such as [WithOTLP] failing to
+// connect. It must be checked before migrating.
+func (m *Migrator) Err() error { return m.dialErr }
+
+// Close releases the destination.
+func (m *Migrator) Close() error { return m.dst.Close() }

@@ -34,6 +34,8 @@ func run(ctx context.Context) error {
 	var (
 		dsn        = flag.String("dsn", "clickhouse://localhost:9000", "Clickhouse connection URL")
 		storageDir = flag.String("storage-dir", "", "Directory for the embedded storage engine's file backend (empty uses an ephemeral in-memory backend)")
+		otlpAddr   = flag.String("otlp", "", "Export to this OTLP gRPC endpoint (host:port) instead of a local engine; use it to load a cluster through odbingest")
+		otlpMaxMsg = flag.Int("otlp-max-msg-bytes", 64<<20, "Cap on a single OTLP export message; should match the receiver's max_body_bytes")
 		batchSize  = flag.Int("batch", 5_000, "Number of records/spans to convert and ingest per batch")
 		signals    = flag.String("signals", "logs,traces,metrics", "Comma-separated list of signals to migrate (logs, traces, metrics)")
 
@@ -108,20 +110,36 @@ func run(ctx context.Context) error {
 		return printEstimates(ctx, m, *signals, window)
 	}
 
-	store, err := openStore(ctx, *storageDir, *flushInterval, *maxPartBytes, lg)
-	if err != nil {
-		return errors.Wrap(err, "open storage engine")
-	}
-	defer func() {
-		_ = store.Close(ctx)
-	}()
-	back := storagebackend.New(store)
-
-	m := ch2storagebackend.NewMigrator(client, chstorage.DefaultTables(), back, lg,
+	opts := []ch2storagebackend.Option{
 		ch2storagebackend.WithThrottle(*throttle),
 		ch2storagebackend.WithCheckpoint(checkpoint),
-		ch2storagebackend.WithSync(syncStore(store)),
-	)
+	}
+
+	// An OTLP destination owns no engine: the cluster on the other end flushes on its own cadence,
+	// so there is no local store to open or sync.
+	var back *storagebackend.Backend
+	if *otlpAddr != "" {
+		lg.Info("Exporting over OTLP", zap.String("endpoint", *otlpAddr))
+		opts = append(opts, ch2storagebackend.WithOTLP(*otlpAddr, *otlpMaxMsg))
+	} else {
+		store, err := openStore(ctx, *storageDir, *flushInterval, *maxPartBytes, lg)
+		if err != nil {
+			return errors.Wrap(err, "open storage engine")
+		}
+		defer func() {
+			_ = store.Close(ctx)
+		}()
+		back = storagebackend.New(store)
+		opts = append(opts, ch2storagebackend.WithSync(syncStore(store)))
+	}
+
+	m := ch2storagebackend.NewMigrator(client, chstorage.DefaultTables(), back, lg, opts...)
+	if err := m.Err(); err != nil {
+		return errors.Wrap(err, "set up destination")
+	}
+	defer func() {
+		_ = m.Close()
+	}()
 
 	for sig := range strings.SplitSeq(*signals, ",") {
 		switch sig {
