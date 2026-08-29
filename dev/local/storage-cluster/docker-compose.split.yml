@@ -11,9 +11,9 @@
 # odbselect, which makes the split and embedded paths comparable side by side in one dashboard.
 
 x-odb-process: &odb-process
-  image: ghcr.io/oteldb/oteldb/odbsplit
-  # Its own tag, built from the same source and Dockerfile as the nodes: sharing their tag would
-  # make the build ambiguous when CLUSTER_DOCKERFILE changes which Dockerfile that tag comes from.
+  # The node image already carries every binary, so these reuse it and pick one by entrypoint
+  # rather than building a second, identical image.
+  image: ghcr.io/oteldb/oteldb
   pull_policy: build
   build:
     context: ../../../
@@ -29,8 +29,7 @@ x-odb-process: &odb-process
       condition: service_healthy
 
 services:
-  # Write half. Both images put the binaries on PATH, so overriding the entrypoint selects which
-  # one runs without needing a separate build per process.
+  # Write half. Both Dockerfiles put the binaries on PATH, so the entrypoint selects which runs.
   odbingest:
     <<: *odb-process
     entrypoint: ["odbingest"]
