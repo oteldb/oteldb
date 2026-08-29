@@ -11,26 +11,30 @@
 # odbselect, which makes the split and embedded paths comparable side by side in one dashboard.
 
 x-odb-process: &odb-process
-  image: ghcr.io/oteldb/oteldb/odbsplit
-  # Its own tag, built from the same source and Dockerfile as the nodes: sharing their tag would
-  # make the build ambiguous when CLUSTER_DOCKERFILE changes which Dockerfile that tag comes from.
-  pull_policy: build
+  # The node image already carries every binary, so these reuse it and pick one by entrypoint
+  # rather than building a second, identical image.
+  image: ghcr.io/oteldb/oteldb
+  pull_policy: never
   build:
     context: ../../../
     dockerfile: ${CLUSTER_DOCKERFILE:-dev/Dockerfile}
   environment:
     - OTEL_LOG_LEVEL=info
-    - OTEL_TRACES_EXPORTER=none
-    - OTEL_METRICS_EXPORTER=none
-    - OTEL_LOGS_EXPORTER=stdout
+    # Both halves ship their own telemetry to otelcol, like the nodes do.
+    - OTEL_METRICS_EXPORTER=otlp
+    - OTEL_TRACES_EXPORTER=otlp
+    - OTEL_LOGS_EXPORTER=otlp
+    - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+    - OTEL_EXPORTER_OTLP_INSECURE=true
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
+    - OTEL_METRIC_EXPORT_INTERVAL=5000
   restart: unless-stopped
   depends_on:
     etcd:
       condition: service_healthy
 
 services:
-  # Write half. Both images put the binaries on PATH, so overriding the entrypoint selects which
-  # one runs without needing a separate build per process.
+  # Write half. Both Dockerfiles put the binaries on PATH, so the entrypoint selects which runs.
   odbingest:
     <<: *odb-process
     entrypoint: ["odbingest"]
@@ -58,6 +62,14 @@ services:
   server:
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://odbingest:4317
+    depends_on:
+      - odbingest
+
+  # Self-telemetry takes the path under test too: the collector forwards to the write half rather
+  # than to a node's embedded receiver.
+  otelcol:
+    environment:
+      - OTELDB_OTLP_ENDPOINT=odbingest:4317
     depends_on:
       - odbingest
 

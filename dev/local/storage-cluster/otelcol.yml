@@ -1,0 +1,51 @@
+# Collector for the cluster's own telemetry.
+#
+# Every oteldb process ships here rather than straight to the ring, so the pipeline is one file to
+# edit: drop a noisy signal, sample traces, add an attribute, or fan out to somewhere else, without
+# touching the services or restarting the cluster's data path.
+#
+# OTELDB_OTLP_ENDPOINT selects the front door: a node in the default topology, odbingest in the
+# split one. That is the only difference between them, so the pipeline itself never forks.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+  # The cluster ingests its own telemetry, so a burst of ingest work produces more ingest work.
+  # This caps that loop rather than trusting it to settle.
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+exporters:
+  otlp:
+    endpoint: ${env:OTELDB_OTLP_ENDPOINT}
+    tls:
+      insecure: true
+
+extensions:
+  health_check:
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp]

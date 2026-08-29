@@ -22,8 +22,10 @@ volumes:
 # its hostname, so the three nodes differ only by hostname and data volume.
 x-oteldb-node: &oteldb-node
   image: ghcr.io/oteldb/oteldb
-  # Always build from local source so the cluster wiring is present (not a stale published image).
-  pull_policy: build
+  # Never pull: ghcr.io/oteldb/oteldb is published, so the default policy would fetch a build that
+  # predates the local cluster wiring. `never` still builds when the image is absent, and reuses it
+  # afterwards -- `--build` forces a rebuild, which `build` would otherwise do on every `up`.
+  pull_policy: never
   build:
     context: ../../../
     # CI sets CLUSTER_DOCKERFILE to deploy.Dockerfile, which bakes in binaries already built on the
@@ -34,9 +36,16 @@ x-oteldb-node: &oteldb-node
     - --config=/etc/oteldb/oteldb.yml
   environment:
     - OTEL_LOG_LEVEL=info
-    - OTEL_TRACES_EXPORTER=none
-    - OTEL_METRICS_EXPORTER=none
-    - OTEL_LOGS_EXPORTER=stdout
+    # The cluster stores its own telemetry, as the other demos do, by way of otelcol -- so the
+    # pipeline is one file to edit instead of an environment change per service. The sdk tees zap
+    # into the OTLP bridge, so `docker logs` keeps working while the records also reach the ring.
+    - OTEL_METRICS_EXPORTER=otlp
+    - OTEL_TRACES_EXPORTER=otlp
+    - OTEL_LOGS_EXPORTER=otlp
+    - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+    - OTEL_EXPORTER_OTLP_INSECURE=true
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
+    - OTEL_METRIC_EXPORT_INTERVAL=5000
   restart: unless-stopped
   depends_on:
     etcd:
@@ -46,7 +55,7 @@ x-oteldb-node: &oteldb-node
 # `image:` set, compose tries to pull a tag that is never published.
 x-oteldemo: &oteldemo
   image: ghcr.io/oteldb/oteldb/oteldemo
-  pull_policy: build
+  pull_policy: never
   build:
     context: ../../../
     dockerfile: dev/Dockerfile
@@ -144,6 +153,20 @@ services:
     depends_on:
       - oteldb-1
       - server
+
+  # Pipeline for the cluster's own telemetry: every process ships here, and this forwards to the
+  # ring. Editing otelcol.yml changes what is kept without touching the services.
+  otelcol:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.140.1
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./otelcol.yml:/etc/otelcol/config.yml:ro
+    environment:
+      # The ring's front door. The split overlay points this at odbingest instead.
+      - OTELDB_OTLP_ENDPOINT=oteldb-1:4317
+    restart: unless-stopped
+    depends_on:
+      - oteldb-1
 
   grafana:
     image: "grafana/grafana-oss:12.3.1"
