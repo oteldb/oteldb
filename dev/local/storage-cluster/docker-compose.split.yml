@@ -14,7 +14,7 @@ x-odb-process: &odb-process
   # The node image already carries every binary, so these reuse it and pick one by entrypoint
   # rather than building a second, identical image.
   image: ghcr.io/oteldb/oteldb
-  pull_policy: build
+  pull_policy: never
   build:
     context: ../../../
     dockerfile: ${CLUSTER_DOCKERFILE:-dev/Dockerfile}

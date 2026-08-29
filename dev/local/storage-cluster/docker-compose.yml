@@ -22,8 +22,10 @@ volumes:
 # its hostname, so the three nodes differ only by hostname and data volume.
 x-oteldb-node: &oteldb-node
   image: ghcr.io/oteldb/oteldb
-  # Always build from local source so the cluster wiring is present (not a stale published image).
-  pull_policy: build
+  # Never pull: ghcr.io/oteldb/oteldb is published, so the default policy would fetch a build that
+  # predates the local cluster wiring. `never` still builds when the image is absent, and reuses it
+  # afterwards -- `--build` forces a rebuild, which `build` would otherwise do on every `up`.
+  pull_policy: never
   build:
     context: ../../../
     # CI sets CLUSTER_DOCKERFILE to deploy.Dockerfile, which bakes in binaries already built on the
@@ -46,7 +48,7 @@ x-oteldb-node: &oteldb-node
 # `image:` set, compose tries to pull a tag that is never published.
 x-oteldemo: &oteldemo
   image: ghcr.io/oteldb/oteldb/oteldemo
-  pull_policy: build
+  pull_policy: never
   build:
     context: ../../../
     dockerfile: dev/Dockerfile
