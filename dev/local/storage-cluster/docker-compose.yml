@@ -157,7 +157,7 @@ services:
   # Pipeline for the cluster's own telemetry: every process ships here, and this forwards to the
   # ring. Editing otelcol.yml changes what is kept without touching the services.
   otelcol:
-    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.140.1
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.159.0
     command: ["--config=/etc/otelcol/config.yml"]
     volumes:
       - ./otelcol.yml:/etc/otelcol/config.yml:ro
