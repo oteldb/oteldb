@@ -25,8 +25,9 @@ are pre-provisioned against `oteldb-1`.
 ### Self-telemetry
 
 The cluster stores its own signals. Every process ships to [`otelcol`](./otelcol.yml), which
-forwards into the ring — so `odbingest.cluster.accepted_points`, `engine.flush` spans and the rest
-are queryable next to whatever you ingest. Change what is kept by editing `otelcol.yml`; the
+forwards into the ring — so `odbingest.cluster.accepted_points`, `engine.flush` spans and the
+cluster's own log lines are queryable next to whatever you ingest. The sdk tees zap into the OTLP
+bridge, so `docker logs` still works: the records reach the ring *and* stderr. Change what is kept by editing `otelcol.yml`; the
 services need no change, and `OTELDB_OTLP_ENDPOINT` is the only thing the split overlay overrides.
 
 ### Demo workload

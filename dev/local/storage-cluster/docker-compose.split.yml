@@ -23,7 +23,7 @@ x-odb-process: &odb-process
     # Both halves ship their own telemetry to otelcol, like the nodes do.
     - OTEL_METRICS_EXPORTER=otlp
     - OTEL_TRACES_EXPORTER=otlp
-    - OTEL_LOGS_EXPORTER=stdout
+    - OTEL_LOGS_EXPORTER=otlp
     - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
     - OTEL_EXPORTER_OTLP_INSECURE=true
     - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317

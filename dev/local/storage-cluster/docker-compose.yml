@@ -37,10 +37,11 @@ x-oteldb-node: &oteldb-node
   environment:
     - OTEL_LOG_LEVEL=info
     # The cluster stores its own telemetry, as the other demos do, by way of otelcol -- so the
-    # pipeline is one file to edit instead of an environment change per service.
+    # pipeline is one file to edit instead of an environment change per service. The sdk tees zap
+    # into the OTLP bridge, so `docker logs` keeps working while the records also reach the ring.
     - OTEL_METRICS_EXPORTER=otlp
     - OTEL_TRACES_EXPORTER=otlp
-    - OTEL_LOGS_EXPORTER=stdout
+    - OTEL_LOGS_EXPORTER=otlp
     - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
     - OTEL_EXPORTER_OTLP_INSECURE=true
     - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
