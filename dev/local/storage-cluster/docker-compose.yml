@@ -42,6 +42,18 @@ x-oteldb-node: &oteldb-node
     etcd:
       condition: service_healthy
 
+# The demo workload. Both services share one image, so both must know how to build it: with only
+# `image:` set, compose tries to pull a tag that is never published.
+x-oteldemo: &oteldemo
+  image: ghcr.io/oteldb/oteldb/oteldemo
+  pull_policy: build
+  build:
+    context: ../../../
+    dockerfile: dev/Dockerfile
+    args:
+      TARGETS: oteldemo
+      ENTRYPOINT_BIN: oteldemo
+
 services:
   etcd:
     image: quay.io/coreos/etcd:v3.5.17
@@ -96,14 +108,8 @@ services:
 
   # Handles requests from the client; ingests its telemetry at oteldb-2.
   server:
-    image: ghcr.io/oteldb/oteldb/oteldemo
-    pull_policy: build
-    build:
-      context: ../../../
-      dockerfile: dev/Dockerfile
-      args:
-        TARGETS: oteldemo
-        ENTRYPOINT_BIN: oteldemo
+    <<: *oteldemo
+    profiles: [demo]
     command: ["server"]
     restart: always
     environment:
@@ -121,7 +127,8 @@ services:
 
   # Calls the server once per second; ingests its telemetry at oteldb-1.
   client:
-    image: ghcr.io/oteldb/oteldb/oteldemo
+    <<: *oteldemo
+    profiles: [demo]
     command: ["client"]
     restart: always
     environment:

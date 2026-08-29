@@ -22,6 +22,15 @@ docker compose -f dev/local/storage-cluster/docker-compose.yml up --build
 Open Grafana at <http://localhost:3000> (anonymous admin) — PromQL, LogQL, and TraceQL datasources
 are pre-provisioned against `oteldb-1`.
 
+### Demo workload
+
+The stack ingests nothing on its own. Add `--profile demo` for a client/server pair that generates
+traffic, or point your own collector at the OTLP endpoints and leave it off:
+
+```bash
+docker compose -f dev/local/storage-cluster/docker-compose.yml --profile demo up --build
+```
+
 ## Topology
 
 ```
