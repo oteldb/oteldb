@@ -22,6 +22,13 @@ docker compose -f dev/local/storage-cluster/docker-compose.yml up --build
 Open Grafana at <http://localhost:3000> (anonymous admin) — PromQL, LogQL, and TraceQL datasources
 are pre-provisioned against `oteldb-1`.
 
+### Self-telemetry
+
+The cluster stores its own signals. Every process ships to [`otelcol`](./otelcol.yml), which
+forwards into the ring — so `odbingest.cluster.accepted_points`, `engine.flush` spans and the rest
+are queryable next to whatever you ingest. Change what is kept by editing `otelcol.yml`; the
+services need no change, and `OTELDB_OTLP_ENDPOINT` is the only thing the split overlay overrides.
+
 ### Demo workload
 
 The stack ingests nothing on its own. Add `--profile demo` for a client/server pair that generates

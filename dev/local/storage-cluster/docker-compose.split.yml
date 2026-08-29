@@ -20,9 +20,14 @@ x-odb-process: &odb-process
     dockerfile: ${CLUSTER_DOCKERFILE:-dev/Dockerfile}
   environment:
     - OTEL_LOG_LEVEL=info
-    - OTEL_TRACES_EXPORTER=none
-    - OTEL_METRICS_EXPORTER=none
+    # Both halves ship their own telemetry to otelcol, like the nodes do.
+    - OTEL_METRICS_EXPORTER=otlp
+    - OTEL_TRACES_EXPORTER=otlp
     - OTEL_LOGS_EXPORTER=stdout
+    - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+    - OTEL_EXPORTER_OTLP_INSECURE=true
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
+    - OTEL_METRIC_EXPORT_INTERVAL=5000
   restart: unless-stopped
   depends_on:
     etcd:
@@ -57,6 +62,14 @@ services:
   server:
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://odbingest:4317
+    depends_on:
+      - odbingest
+
+  # Self-telemetry takes the path under test too: the collector forwards to the write half rather
+  # than to a node's embedded receiver.
+  otelcol:
+    environment:
+      - OTELDB_OTLP_ENDPOINT=odbingest:4317
     depends_on:
       - odbingest
 

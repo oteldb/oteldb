@@ -36,9 +36,15 @@ x-oteldb-node: &oteldb-node
     - --config=/etc/oteldb/oteldb.yml
   environment:
     - OTEL_LOG_LEVEL=info
-    - OTEL_TRACES_EXPORTER=none
-    - OTEL_METRICS_EXPORTER=none
+    # The cluster stores its own telemetry, as the other demos do, by way of otelcol -- so the
+    # pipeline is one file to edit instead of an environment change per service.
+    - OTEL_METRICS_EXPORTER=otlp
+    - OTEL_TRACES_EXPORTER=otlp
     - OTEL_LOGS_EXPORTER=stdout
+    - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+    - OTEL_EXPORTER_OTLP_INSECURE=true
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
+    - OTEL_METRIC_EXPORT_INTERVAL=5000
   restart: unless-stopped
   depends_on:
     etcd:
@@ -146,6 +152,20 @@ services:
     depends_on:
       - oteldb-1
       - server
+
+  # Pipeline for the cluster's own telemetry: every process ships here, and this forwards to the
+  # ring. Editing otelcol.yml changes what is kept without touching the services.
+  otelcol:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.140.1
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./otelcol.yml:/etc/otelcol/config.yml:ro
+    environment:
+      # The ring's front door. The split overlay points this at odbingest instead.
+      - OTELDB_OTLP_ENDPOINT=oteldb-1:4317
+    restart: unless-stopped
+    depends_on:
+      - oteldb-1
 
   grafana:
     image: "grafana/grafana-oss:12.3.1"
