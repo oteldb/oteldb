@@ -3,7 +3,6 @@ package tempohandler
 import (
 	"slices"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcev1 "go.opentelemetry.io/proto/otlp/resource/v1"
@@ -72,46 +71,54 @@ func (b *metadataCollector) Result() (r []tempoapi.TraceSearchMetadata) {
 }
 
 type spanKey struct {
-	batchID      uuid.UUID
+	resource     otelstorage.Hash
 	scopeName    string
 	scopeVersion string
+	scopeAttrs   otelstorage.Hash
 }
 
 type batchCollector struct {
 	spanCount  int
-	resSpans   map[uuid.UUID]*tracev1.ResourceSpans
+	resOrder   []otelstorage.Hash
+	resSpans   map[otelstorage.Hash]*tracev1.ResourceSpans
 	scopeSpans map[spanKey]*tracev1.ScopeSpans
 }
 
 func (b *batchCollector) init() {
 	if b.resSpans == nil {
-		b.resSpans = make(map[uuid.UUID]*tracev1.ResourceSpans)
+		b.resSpans = make(map[otelstorage.Hash]*tracev1.ResourceSpans)
 	}
 	if b.scopeSpans == nil {
 		b.scopeSpans = make(map[spanKey]*tracev1.ScopeSpans)
 	}
 }
 
+// getScopeSpans returns the batch a span belongs to, grouping by its resource and scope identity.
+// Grouping by anything coarser (the ingest batch id, which not every storage backend even carries)
+// puts spans of different services under one resource, so a multi-service trace renders as one.
 func (b *batchCollector) getScopeSpans(s tracestorage.Span) *tracev1.ScopeSpans {
 	b.init()
 
+	resHash := s.ResourceAttrs.Hash()
 	k := spanKey{
-		batchID:      s.BatchID,
+		resource:     resHash,
 		scopeName:    s.ScopeName,
 		scopeVersion: s.ScopeVersion,
+		scopeAttrs:   s.ScopeAttrs.Hash(),
 	}
 	if ss, ok := b.scopeSpans[k]; ok {
 		return ss
 	}
 
-	resSpan, ok := b.resSpans[s.BatchID]
+	resSpan, ok := b.resSpans[resHash]
 	if !ok {
 		resSpan = &tracev1.ResourceSpans{
 			Resource: &resourcev1.Resource{
 				Attributes: attrsToProto(s.ResourceAttrs),
 			},
 		}
-		b.resSpans[s.BatchID] = resSpan
+		b.resSpans[resHash] = resSpan
+		b.resOrder = append(b.resOrder, resHash)
 	}
 
 	scopeSpan := &tracev1.ScopeSpans{
@@ -140,9 +147,9 @@ func (b *batchCollector) SpanCount() int {
 }
 
 func (b *batchCollector) resourceSpans() []*tracev1.ResourceSpans {
-	result := make([]*tracev1.ResourceSpans, 0, len(b.resSpans))
-	for _, rs := range b.resSpans {
-		result = append(result, rs)
+	result := make([]*tracev1.ResourceSpans, 0, len(b.resOrder))
+	for _, h := range b.resOrder {
+		result = append(result, b.resSpans[h])
 	}
 	return result
 }
@@ -200,10 +207,10 @@ func spanToProto(span tracestorage.Span) *tracev1.Span {
 }
 
 func attrsToProto(attrs otelstorage.Attrs) []*commonv1.KeyValue {
-	m := attrs.AsMap()
-	if m.Len() == 0 {
+	if attrs.Len() == 0 {
 		return nil
 	}
+	m := attrs.AsMap()
 	result := make([]*commonv1.KeyValue, 0, m.Len())
 	m.Range(func(k string, v pcommon.Value) bool {
 		result = append(result, &commonv1.KeyValue{
