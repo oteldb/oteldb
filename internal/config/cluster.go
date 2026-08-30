@@ -3,6 +3,7 @@ package config
 import (
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/oteldb/storage/cluster/router"
@@ -29,7 +30,11 @@ type Cluster struct {
 }
 
 // RouterConfig builds the routing view of the cluster described by cfg.
-func (cfg Cluster) RouterConfig(lg *zap.Logger) router.Config {
+//
+// tp is what the routed RPCs report their spans through. A nil provider silently drops every
+// client-side and hedge span while the owners keep reporting their own, which reads as "the fan-out
+// is not instrumented" — so it is passed explicitly rather than defaulted.
+func (cfg Cluster) RouterConfig(lg *zap.Logger, tp trace.TracerProvider) router.Config {
 	return router.Config{
 		Etcd:            cfg.Etcd,
 		Root:            cfg.Root,
@@ -37,5 +42,6 @@ func (cfg Cluster) RouterConfig(lg *zap.Logger) router.Config {
 		ShardsPerTenant: cfg.ShardsPerTenant,
 		DialTimeout:     cfg.DialTimeout,
 		Logger:          lg,
+		TracerProvider:  tp,
 	}
 }
