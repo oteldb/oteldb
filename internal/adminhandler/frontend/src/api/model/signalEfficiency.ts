@@ -7,6 +7,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Signal } from './signal';
+import type { PartEfficiency } from './partEfficiency';
 
 /**
  * One (tenant, signal)'s flushed-data shape: how many points it stores, in how many bytes, and how well they compress. Stored bytes are this node's on-disk footprint — under erasure coding with slot filtering that is the local shard, not the cluster-wide total.
@@ -29,4 +30,7 @@ export interface SignalEfficiency {
   logical_bytes?: number;
   /** Logical/stored ratio (e.g. 8.0 = stored at 1/8th of logical); present only when logical size is known. */
   compression_ratio?: number;
+  /** The individual parts behind the counters above, present only when the request asked for them. Absent and empty are indistinguishable in JSON, so read this together with `parts`: a signal with parts > 0 and no `parts_detail` was not asked for detail.
+ */
+  parts_detail?: PartEfficiency[];
 }
