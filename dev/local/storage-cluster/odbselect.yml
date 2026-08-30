@@ -9,3 +9,8 @@ cluster:
   etcd: ["http://etcd:2379"]
   rf: 2
   root: /oteldb
+
+# Logs Drilldown: index/volume, detected_labels and detected_fields answer for real rather than
+# returning the gated empties Grafana reads as "nothing here".
+loki:
+  drilldown_enabled: true
