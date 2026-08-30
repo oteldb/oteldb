@@ -49,6 +49,16 @@ services:
 
   # go-faster/fs in its single-node filesystem mode: one process, no etcd, no planes. Anonymous
   # auth is fine here because nothing outside the compose network can reach it.
+  #
+  # No counterpart to MinIO's console on 9001, deliberately. v0.13.1 does ship an admin dashboard,
+  # but it is not an object browser: _oas/admin.yml exposes info, access keys, cluster status and
+  # bucket *usage counters* -- nothing lists or fetches an object, so it cannot show the parts the
+  # cluster writes. It is also config-only (`admin.enabled`/`admin.addr`; no flag on `s3`), refuses
+  # to start alongside --insecure-no-auth, and needs a bearer token -- and in filesystem mode its
+  # one bucket page answers 501 "bucket usage accounting is not available on this admin listener",
+  # since the usage index lives in the cluster control plane. Trading this service's anonymous
+  # simplicity for a dashboard of version and uptime is not worth it; browse the parts with `mc`,
+  # or run --profile minio.
   fs:
     image: ghcr.io/go-faster/fs:v0.13.1
     profiles: ["fs"]
@@ -56,7 +66,7 @@ services:
     volumes:
       - objectstore-data:/data
     ports:
-      - "9000:9000"
+      - "9000:9000" # S3 API
     networks:
       default:
         aliases: [objectstore]
