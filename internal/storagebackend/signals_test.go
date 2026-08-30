@@ -211,6 +211,81 @@ func TestBackendTraceIntrinsicTagValues(t *testing.T) {
 	})
 }
 
+// TestBackendTraceTagValuesPushdownMatchesScan proves the storage-side enumeration TagValues now
+// uses for the name intrinsic and a span-scoped attribute (see [storagebackend.TraceQuerier.TagValues])
+// returns exactly the values a full window scan (via SearchTags, which still scans) would produce:
+// pushing the lookup down to the column dictionaries must not change the answer.
+func TestBackendTraceTagValuesPushdownMatchesScan(t *testing.T) {
+	b, ctx := newBackend(t)
+
+	ts := time.Now().Truncate(time.Second)
+	traceID := pcommon.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+
+	td := ptrace.NewTraces()
+	rs := td.ResourceSpans().AppendEmpty()
+	rs.Resource().Attributes().PutStr("service.name", "api")
+	ss := rs.ScopeSpans().AppendEmpty()
+
+	newSpan := func(id byte, name, method string) {
+		s := ss.Spans().AppendEmpty()
+		s.SetTraceID(traceID)
+		s.SetSpanID(pcommon.SpanID([8]byte{id, id, id, id, id, id, id, id}))
+		s.SetName(name)
+		s.SetStartTimestamp(pcommon.Timestamp(ts.UnixNano()))
+		s.SetEndTimestamp(pcommon.Timestamp(ts.Add(time.Second).UnixNano()))
+		s.Attributes().PutStr("http.method", method)
+	}
+	newSpan(1, "GET /", "GET")
+	newSpan(2, "GET /", "GET") // Duplicate name and value, proving both paths dedup.
+	newSpan(3, "db.query", "POST")
+
+	require.NoError(t, b.ConsumeTraces(ctx, td))
+
+	tq := b.Traces()
+	start, end := ts.Add(-time.Hour), ts.Add(time.Hour)
+
+	spans := drain(t, mustSearchTags(ctx, t, tq, map[string]string{}, start, end))
+	require.Len(t, spans, 3)
+
+	wantNames := map[string]struct{}{}
+	wantMethods := map[string]struct{}{}
+	for _, span := range spans {
+		wantNames[span.Name] = struct{}{}
+		if v, ok := span.Attrs.AsMap().Get("http.method"); ok {
+			wantMethods[v.AsString()] = struct{}{}
+		}
+	}
+
+	tagValues := func(t *testing.T, attr traceql.Attribute) []string {
+		t.Helper()
+		it, err := tq.TagValues(ctx, attr, tracestorage.TagValuesOptions{Start: start, End: end})
+		require.NoError(t, err)
+		tags := drain(t, it)
+		out := make([]string, 0, len(tags))
+		for _, tag := range tags {
+			out = append(out, tag.Value)
+		}
+		return out
+	}
+
+	t.Run("name", func(t *testing.T) {
+		got := tagValues(t, traceql.Attribute{Prop: traceql.SpanName})
+		require.ElementsMatch(t, mapKeys(wantNames), got)
+	})
+	t.Run("span attribute", func(t *testing.T) {
+		got := tagValues(t, traceql.Attribute{Name: "http.method", Scope: traceql.ScopeSpan})
+		require.ElementsMatch(t, mapKeys(wantMethods), got)
+	})
+}
+
+func mapKeys(m map[string]struct{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
 // TestBackendProfilesRoundtrip ingests an OTLP profile through the storage sink and queries the
 // merged flamegraph back through the profiles querier adapter.
 func TestBackendProfilesRoundtrip(t *testing.T) {

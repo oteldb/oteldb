@@ -8,6 +8,7 @@ import (
 	"github.com/go-faster/errors"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 
+	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/query/fetch"
 	"github.com/oteldb/storage/signal"
 	sigtrace "github.com/oteldb/storage/signal/trace"
@@ -139,6 +140,22 @@ func (q *TraceQuerier) TagNames(ctx context.Context, opts tracestorage.TagNamesO
 // Only the string-ish intrinsics are enumerable: name, status, kind, rootName and rootServiceName.
 // duration, traceDuration and childCount are numeric/unbounded and parent is structural, so — mirroring
 // Tempo and [chstorage.Querier.TagValues] — they yield no autocomplete values.
+//
+// Two shapes are answered from the parts' column dictionaries via [storagebackend.Source.ColumnValues]
+// instead of a full window scan: the name intrinsic ([sigtrace.ColName]) and a span-scoped attribute
+// (attr.Scope == [traceql.ScopeSpan]). Both are O(distinct values); the result is a superset of the
+// window (a part overlapping it contributes its whole dictionary), which the storage doc calls out as
+// fine for autocomplete and this package already relies on elsewhere.
+//
+// Everything else still scans:
+//   - rootName and rootServiceName filter to root spans (empty parent span id), a predicate a column
+//     enumeration cannot express.
+//   - a resource- or instrumentation-scoped attribute lives on the stream identity, not the per-record
+//     attribute blob AttrKey enumerates, and there is no trace-stream enumeration primitive on [Source]
+//     (unlike [LogQuerier], which has LogSeries) to answer it more cheaply.
+//   - ScopeNone must cover every scope, so it needs both the span-scoped and the stream-scoped values;
+//     since only the former is pushable, the whole lookup falls back to the scan rather than silently
+//     dropping resource/instrumentation values.
 func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, opts tracestorage.TagValuesOptions) (iterators.Iterator[tracestorage.Tag], error) {
 	switch attr.Prop {
 	case traceql.SpanStatus:
@@ -147,6 +164,12 @@ func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, op
 		return iterators.Slice(spanKindTags(attr)), nil
 	case traceql.SpanDuration, traceql.SpanChildCount, traceql.SpanParent, traceql.TraceDuration:
 		return iterators.Empty[tracestorage.Tag](), nil
+	case traceql.SpanName:
+		return q.columnTagValues(ctx, attr, sigtrace.ColName, opts)
+	case traceql.SpanAttribute:
+		if attr.Scope == traceql.ScopeSpan {
+			return q.attrTagValues(ctx, attr, opts)
+		}
 	}
 
 	spans, err := q.scanSpans(ctx, opts.Start, opts.End, nil)
@@ -155,7 +178,7 @@ func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, op
 	}
 
 	switch attr.Prop {
-	case traceql.SpanName, traceql.RootSpanName:
+	case traceql.RootSpanName:
 		return iterators.Slice(spanNameTags(attr, spans)), nil
 	case traceql.RootServiceName:
 		return iterators.Slice(rootServiceNameTags(attr, spans)), nil
@@ -177,6 +200,54 @@ func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, op
 	out := make([]tracestorage.Tag, 0, len(seen))
 	for _, tag := range seen {
 		out = append(out, tag)
+	}
+	return iterators.Slice(out), nil
+}
+
+// columnTagValues enumerates a byte column's distinct values via [Source.ColumnValues].
+func (q *TraceQuerier) columnTagValues(
+	ctx context.Context, attr traceql.Attribute, column string, opts tracestorage.TagValuesOptions,
+) (iterators.Iterator[tracestorage.Tag], error) {
+	lo, hi := seriesWindow(opts.Start, opts.End)
+	values, err := q.b.src.ColumnValues(ctx, q.b.tenant, storage.ValuesRequest{
+		Signal: signal.Trace,
+		Column: column,
+		Start:  lo,
+		End:    hi,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "column values")
+	}
+
+	name := attr.String()
+	out := make([]tracestorage.Tag, 0, len(values))
+	for _, v := range values {
+		out = append(out, tracestorage.Tag{Name: name, Value: string(v), Type: traceql.TypeString})
+	}
+	return iterators.Slice(out), nil
+}
+
+// attrTagValues enumerates a span-scoped attribute's distinct values via [Source.ColumnValues]. It
+// must not be called for any other scope: resource and instrumentation attributes are not part of
+// the per-record attribute blob AttrKey enumerates.
+func (q *TraceQuerier) attrTagValues(
+	ctx context.Context, attr traceql.Attribute, opts tracestorage.TagValuesOptions,
+) (iterators.Iterator[tracestorage.Tag], error) {
+	lo, hi := seriesWindow(opts.Start, opts.End)
+	values, err := q.b.src.ColumnValues(ctx, q.b.tenant, storage.ValuesRequest{
+		Signal:  signal.Trace,
+		AttrKey: []byte(attr.Name),
+		Start:   lo,
+		End:     hi,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "column values")
+	}
+
+	name := attr.String()
+	out := make([]tracestorage.Tag, 0, len(values))
+	for _, v := range values {
+		out = append(out, tracestorage.Tag{Name: name, Value: string(v), Type: traceql.TypeString, Scope: traceql.ScopeSpan})
 	}
 	return iterators.Slice(out), nil
 }
