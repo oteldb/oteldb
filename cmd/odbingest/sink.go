@@ -8,6 +8,7 @@ import (
 
 	"github.com/oteldb/storage/cluster"
 	"github.com/oteldb/storage/cluster/router"
+	"github.com/oteldb/storage/signal"
 	"github.com/oteldb/storage/signal/log"
 	sigmetric "github.com/oteldb/storage/signal/metric"
 	"github.com/oteldb/storage/signal/profile"
@@ -57,25 +58,25 @@ func newClusterSink(r *router.Router, tenantOf tenantFuncOf, mp metric.MeterProv
 func (s *clusterSink) WriteMetrics(ctx context.Context, batch sigmetric.Metrics) error {
 	res, err := s.router.WriteMetrics(ctx, batch, s.routing(ctx))
 
-	return s.record(ctx, "metrics", res, err)
+	return s.record(ctx, signal.Metric, res, err)
 }
 
 func (s *clusterSink) WriteLogs(ctx context.Context, batch log.Logs) error {
 	res, err := s.router.WriteLogs(ctx, batch, s.routing(ctx))
 
-	return s.record(ctx, "logs", res, err)
+	return s.record(ctx, signal.Log, res, err)
 }
 
 func (s *clusterSink) WriteTraces(ctx context.Context, batch trace.Traces) error {
 	res, err := s.router.WriteTraces(ctx, batch, s.routing(ctx))
 
-	return s.record(ctx, "traces", res, err)
+	return s.record(ctx, signal.Trace, res, err)
 }
 
 func (s *clusterSink) WriteProfiles(ctx context.Context, batch *profile.Profiles) error {
 	res, err := s.router.WriteProfiles(ctx, batch, s.routing(ctx))
 
-	return s.record(ctx, "profiles", res, err)
+	return s.record(ctx, signal.Profile, res, err)
 }
 
 func (s *clusterSink) routing(ctx context.Context) cluster.TenantFunc {
@@ -87,8 +88,8 @@ func (s *clusterSink) routing(ctx context.Context) cluster.TenantFunc {
 }
 
 // record meters what the primaries said and turns a routing failure into the caller's error.
-func (s *clusterSink) record(ctx context.Context, sig string, res router.Written, err error) error {
-	attr := metric.WithAttributes(signalKey.String(sig))
+func (s *clusterSink) record(ctx context.Context, sig signal.Signal, res router.Written, err error) error {
+	attr := metric.WithAttributes(signalKey.String(sig.String()))
 
 	s.accepted.Add(ctx, int64(res.Accepted), attr)
 	s.observeRejects(ctx, sig, res.Rejected)
@@ -100,7 +101,7 @@ func (s *clusterSink) record(ctx context.Context, sig string, res router.Written
 	return nil
 }
 
-func (s *clusterSink) observeRejects(ctx context.Context, sig string, rej cluster.Reject) {
+func (s *clusterSink) observeRejects(ctx context.Context, sig signal.Signal, rej cluster.Reject) {
 	for reason, n := range map[string]int{
 		"out_of_order":  rej.OOO,
 		"max_series":    rej.Cardinality,
@@ -108,7 +109,7 @@ func (s *clusterSink) observeRejects(ctx context.Context, sig string, rej cluste
 	} {
 		if n > 0 {
 			s.rejected.Add(ctx, int64(n),
-				metric.WithAttributes(signalKey.String(sig), reasonKey.String(reason)))
+				metric.WithAttributes(signalKey.String(sig.String()), reasonKey.String(reason)))
 		}
 	}
 }
