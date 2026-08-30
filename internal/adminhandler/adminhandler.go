@@ -56,10 +56,12 @@ type Options struct {
 }
 
 // EngineStatsProvider exposes embedded-storage engine statistics: the in-memory Inspect snapshot,
-// the I/O-bound efficiency breakdown, and the decode-bound per-stream cost attribution.
+// the I/O-bound efficiency breakdown, the per-part listing behind it, and the decode-bound
+// per-stream cost attribution.
 type EngineStatsProvider interface {
 	Inspect() storage.StoreStats
 	EfficiencyStats(ctx context.Context) ([]storage.TenantEfficiency, error)
+	PartsDetailed(ctx context.Context, tenant signal.TenantID, sig signal.Signal) ([]storage.PartDetail, error)
 	StreamCosts(
 		ctx context.Context, tenant signal.TenantID, sig signal.Signal, opts storage.StreamCostOptions,
 	) ([]storage.StreamCost, error)
@@ -181,7 +183,7 @@ func (a *AdminAPI) GetStorage(ctx context.Context) (*adminapi.StorageStats, erro
 }
 
 // GetEfficiency implements getEfficiency operation.
-func (a *AdminAPI) GetEfficiency(ctx context.Context) (*adminapi.EfficiencyStats, error) {
+func (a *AdminAPI) GetEfficiency(ctx context.Context, params adminapi.GetEfficiencyParams) (*adminapi.EfficiencyStats, error) {
 	stats := &adminapi.EfficiencyStats{
 		StorageEnabled: a.opts.Engine != nil,
 		Tenants:        []adminapi.TenantEfficiency{},
@@ -194,9 +196,40 @@ func (a *AdminAPI) GetEfficiency(ctx context.Context) (*adminapi.EfficiencyStats
 		return nil, errors.Wrap(err, "collect efficiency stats")
 	}
 	for _, t := range tenants {
-		stats.Tenants = append(stats.Tenants, mapTenantEfficiency(t))
+		te := mapTenantEfficiency(t)
+		if params.Parts.Or(false) {
+			if err := a.attachParts(ctx, t.Tenant, &te); err != nil {
+				return nil, err
+			}
+		}
+		stats.Tenants = append(stats.Tenants, te)
 	}
 	return stats, nil
+}
+
+// attachParts lists the parts behind each of a tenant's signals. It is a second pass over the
+// backend rather than a by-product of the efficiency walk, which the storage library aggregates
+// before returning, so the two snapshots can disagree by a merge or a flush.
+func (a *AdminAPI) attachParts(ctx context.Context, tenant signal.TenantID, te *adminapi.TenantEfficiency) error {
+	for i := range te.Signals {
+		sig, err := engineSignal(te.Signals[i].Signal)
+		if err != nil {
+			return err
+		}
+		parts, err := a.opts.Engine.PartsDetailed(ctx, tenant, sig)
+		if err != nil {
+			return errors.Wrapf(err, "list %s/%s parts", tenant, sig)
+		}
+		te.Signals[i].PartsDetail = mapParts(parts)
+	}
+	return nil
+}
+
+// GetClusterStorage implements getClusterStorage operation. A storage node knows its own footprint
+// and its ring peers' identities, but not their footprints — the aggregation is odbadmin's job, and
+// answering from one node's numbers would report a fraction of the cluster as the whole of it.
+func (a *AdminAPI) GetClusterStorage(context.Context) (*adminapi.ClusterStorage, error) {
+	return nil, errors.New("cluster-wide storage is served by odbadmin; a storage node reports only itself")
 }
 
 // RunAction implements runAction operation.

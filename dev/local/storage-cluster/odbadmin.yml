@@ -1,0 +1,12 @@
+# Config for odbadmin, the cluster-wide admin panel.
+#
+# odbadmin stores nothing. It follows the ring read-only to learn who the members are, asks each
+# node's own admin API, and merges the answers -- so it needs the cluster's etcd and nothing else.
+#
+# The nodes block is left at its defaults (http, :8090, 10s): every node serves its admin API on the
+# container-internal 8090. That is not the published 8090/18090/28090, which are host-side mappings
+# onto that same internal port.
+cluster:
+  etcd: ["http://etcd:2379"]
+  rf: 2
+  root: /oteldb

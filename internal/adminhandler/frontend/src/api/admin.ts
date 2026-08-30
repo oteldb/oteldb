@@ -28,8 +28,10 @@ import type {
 import type {
   ActionName,
   ActionResult,
+  ClusterStorage,
   EfficiencyStats,
   ErrorResponse,
+  GetEfficiencyParams,
   GetStreamCostsParams,
   HealthReport,
   InstanceInfo,
@@ -426,13 +428,14 @@ export function useGetStorage<TData = Awaited<ReturnType<typeof getStorage>>, TE
  * @summary Embedded storage efficiency statistics
  */
 export const getEfficiency = (
-    
+    params?: GetEfficiencyParams,
  signal?: AbortSignal
 ) => {
       
       
       return customFetch<EfficiencyStats>(
-      {url: `/api/v1/storage/efficiency`, method: 'GET', signal
+      {url: `/api/v1/storage/efficiency`, method: 'GET',
+        params, signal
     },
       );
     }
@@ -440,23 +443,23 @@ export const getEfficiency = (
 
 
 
-export const getGetEfficiencyQueryKey = () => {
+export const getGetEfficiencyQueryKey = (params?: GetEfficiencyParams,) => {
     return [
-    `/api/v1/storage/efficiency`
+    `/api/v1/storage/efficiency`, ...(params ? [params]: [])
     ] as const;
     }
 
     
-export const getGetEfficiencyQueryOptions = <TData = Awaited<ReturnType<typeof getEfficiency>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>>, }
+export const getGetEfficiencyQueryOptions = <TData = Awaited<ReturnType<typeof getEfficiency>>, TError = ErrorResponse>(params?: GetEfficiencyParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>>, }
 ) => {
 
 const {query: queryOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetEfficiencyQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetEfficiencyQueryKey(params);
 
   
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEfficiency>>> = ({ signal }) => getEfficiency(signal);
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEfficiency>>> = ({ signal }) => getEfficiency(params, signal);
 
       
 
@@ -470,7 +473,7 @@ export type GetEfficiencyQueryError = ErrorResponse
 
 
 export function useGetEfficiency<TData = Awaited<ReturnType<typeof getEfficiency>>, TError = ErrorResponse>(
-  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>> & Pick<
+ params: undefined |  GetEfficiencyParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getEfficiency>>,
           TError,
@@ -480,7 +483,7 @@ export function useGetEfficiency<TData = Awaited<ReturnType<typeof getEfficiency
  , queryClient?: QueryClient
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetEfficiency<TData = Awaited<ReturnType<typeof getEfficiency>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>> & Pick<
+ params?: GetEfficiencyParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getEfficiency>>,
           TError,
@@ -490,7 +493,7 @@ export function useGetEfficiency<TData = Awaited<ReturnType<typeof getEfficiency
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetEfficiency<TData = Awaited<ReturnType<typeof getEfficiency>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>>, }
+ params?: GetEfficiencyParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>>, }
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
@@ -498,11 +501,107 @@ export function useGetEfficiency<TData = Awaited<ReturnType<typeof getEfficiency
  */
 
 export function useGetEfficiency<TData = Awaited<ReturnType<typeof getEfficiency>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>>, }
+ params?: GetEfficiencyParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getEfficiency>>, TError, TData>>, }
  , queryClient?: QueryClient 
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
-  const queryOptions = getGetEfficiencyQueryOptions(options)
+  const queryOptions = getGetEfficiencyQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+
+
+/**
+ * Folds every member node's storage efficiency into one view, reporting the replicated footprint and the deduplicated one side by side: summing per-node bytes counts a part once per replica, which overstates how much data the cluster actually holds.
+Served by a cluster-wide admin (odbadmin). A storage node sees only itself and answers with an error.
+
+ * @summary Cluster-wide storage footprint
+ */
+export const getClusterStorage = (
+    
+ signal?: AbortSignal
+) => {
+      
+      
+      return customFetch<ClusterStorage>(
+      {url: `/api/v1/cluster/storage`, method: 'GET', signal
+    },
+      );
+    }
+  
+
+
+
+export const getGetClusterStorageQueryKey = () => {
+    return [
+    `/api/v1/cluster/storage`
+    ] as const;
+    }
+
+    
+export const getGetClusterStorageQueryOptions = <TData = Awaited<ReturnType<typeof getClusterStorage>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClusterStorage>>, TError, TData>>, }
+) => {
+
+const {query: queryOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetClusterStorageQueryKey();
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getClusterStorage>>> = ({ signal }) => getClusterStorage(signal);
+
+      
+
+      
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getClusterStorage>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetClusterStorageQueryResult = NonNullable<Awaited<ReturnType<typeof getClusterStorage>>>
+export type GetClusterStorageQueryError = ErrorResponse
+
+
+export function useGetClusterStorage<TData = Awaited<ReturnType<typeof getClusterStorage>>, TError = ErrorResponse>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClusterStorage>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getClusterStorage>>,
+          TError,
+          Awaited<ReturnType<typeof getClusterStorage>>
+        > , 'initialData'
+      >, }
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetClusterStorage<TData = Awaited<ReturnType<typeof getClusterStorage>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClusterStorage>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getClusterStorage>>,
+          TError,
+          Awaited<ReturnType<typeof getClusterStorage>>
+        > , 'initialData'
+      >, }
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetClusterStorage<TData = Awaited<ReturnType<typeof getClusterStorage>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClusterStorage>>, TError, TData>>, }
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Cluster-wide storage footprint
+ */
+
+export function useGetClusterStorage<TData = Awaited<ReturnType<typeof getClusterStorage>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClusterStorage>>, TError, TData>>, }
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetClusterStorageQueryOptions(options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

@@ -1,5 +1,6 @@
 node_modules
-# dist is committed so `go build` can embed the SPA without a bun toolchain.
-# Remove this comment block if you switch to a build-time generation step.
+# dist is NOT committed: it is built by CI, by the bun stage in dev/Dockerfile, and on
+# release. Only the .gitkeep placeholder is tracked, so `go:embed all:frontend/dist` compiles
+# on a clean checkout.
 *.tsbuildinfo
 .vite

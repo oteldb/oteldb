@@ -25,6 +25,9 @@ type fakeEngine struct {
 	maintains  int
 	compacts   int
 
+	// parts is the per-part listing returned for every (tenant, signal).
+	parts []storage.PartDetail
+
 	costs    []storage.StreamCost
 	costsErr error
 	// costOpts records the options of the last StreamCosts call, so a test can assert what the
@@ -38,6 +41,12 @@ func (f *fakeEngine) Inspect() storage.StoreStats { return f.stats }
 
 func (f *fakeEngine) EfficiencyStats(context.Context) ([]storage.TenantEfficiency, error) {
 	return f.efficiency, nil
+}
+
+func (f *fakeEngine) PartsDetailed(
+	context.Context, signal.TenantID, signal.Signal,
+) ([]storage.PartDetail, error) {
+	return f.parts, nil
 }
 
 func (f *fakeEngine) StreamCosts(
@@ -207,12 +216,61 @@ func TestAdmin_Efficiency(t *testing.T) {
 	assert.False(t, logs.CompressionRatio.Set)
 	assert.InDelta(t, 50, logs.BytesPerPoint, 1e-9)
 
+	// Part identities are off by default: they exist for a cluster-wide aggregator, and the list
+	// grows with the part count.
+	assert.Empty(t, metric.PartsDetail)
+
 	// Disabled engine reports empty stats instead of an error.
 	ts2 := testServer(t, Options{})
 	defer ts2.Close()
 	get(t, ts2.URL, "/api/v1/storage/efficiency", &eff)
 	assert.False(t, eff.StorageEnabled)
 	assert.Empty(t, eff.Tenants)
+}
+
+// TestAdmin_EfficiencyParts pins that asking for part detail lists the parts behind each signal. The
+// id is what lets a cluster-wide aggregator count a part mirrored to several owners once.
+func TestAdmin_EfficiencyParts(t *testing.T) {
+	eng := &fakeEngine{
+		efficiency: []storage.TenantEfficiency{{
+			Tenant:  signal.TenantID("default"),
+			Signals: []storage.SignalEfficiency{{Signal: signal.Metric, Parts: 2}},
+		}},
+		parts: []storage.PartDetail{
+			{PartInfo: storage.PartInfo{ID: "default/metrics/a", Series: 3, Rows: 10}, Bytes: 100},
+			{PartInfo: storage.PartInfo{ID: "default/metrics/b", Series: 4, Rows: 20}, Bytes: 200},
+		},
+	}
+	ts := testServer(t, Options{Engine: eng})
+	defer ts.Close()
+
+	var eff adminapi.EfficiencyStats
+	get(t, ts.URL, "/api/v1/storage/efficiency?parts=true", &eff)
+
+	require.Len(t, eff.Tenants, 1)
+	require.Len(t, eff.Tenants[0].Signals, 1)
+
+	parts := eff.Tenants[0].Signals[0].PartsDetail
+	require.Len(t, parts, 2)
+	assert.Equal(t, "default/metrics/a", parts[0].ID)
+	assert.Equal(t, int64(100), parts[0].Bytes)
+	assert.Equal(t, int64(10), parts[0].Rows)
+	assert.Equal(t, int64(3), parts[0].Series)
+	assert.Equal(t, "default/metrics/b", parts[1].ID)
+}
+
+// TestAdmin_ClusterStorageIsNotServedByANode pins that a storage node refuses the cluster-wide
+// report rather than answering with its own share: a third of the cluster presented as the whole of
+// it is worse than no answer.
+func TestAdmin_ClusterStorageIsNotServedByANode(t *testing.T) {
+	ts := testServer(t, Options{Engine: &fakeEngine{}})
+	defer ts.Close()
+
+	resp, err := ts.Client().Get(ts.URL + "/api/v1/cluster/storage")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 }
 
 func TestAdmin_Actions(t *testing.T) {

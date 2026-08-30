@@ -8,5 +8,6 @@ COPY $TARGETPLATFORM/odbrestore /usr/local/bin/odbrestore
 COPY $TARGETPLATFORM/odbmigrate /usr/local/bin/odbmigrate
 COPY $TARGETPLATFORM/odbingest  /usr/local/bin/odbingest
 COPY $TARGETPLATFORM/odbselect  /usr/local/bin/odbselect
+COPY $TARGETPLATFORM/odbadmin   /usr/local/bin/odbadmin
 
 ENTRYPOINT ["/usr/local/bin/oteldb"]

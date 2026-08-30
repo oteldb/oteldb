@@ -14,6 +14,78 @@ import (
 	"github.com/ogen-go/ogen/validate"
 )
 
+// GetEfficiencyParams is parameters of getEfficiency operation.
+type GetEfficiencyParams struct {
+	// Lists each signal's parts individually in `parts_detail`. A cluster-wide aggregator needs part
+	// identities to count a replicated part once instead of once per replica; a single-node dashboard does
+	// not, and the list grows with the part count, so it is off by default.
+	Parts OptBool `json:",omitempty,omitzero"`
+}
+
+func unpackGetEfficiencyParams(packed middleware.Parameters) (params GetEfficiencyParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "parts",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Parts = v.(OptBool)
+		}
+	}
+	return params
+}
+
+func decodeGetEfficiencyParams(args [0]string, argsEscaped bool, r *http.Request) (params GetEfficiencyParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Set default value for query: parts.
+	{
+		val := bool(false)
+		params.Parts.SetTo(val)
+	}
+	// Decode query: parts.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "parts",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotPartsVal bool
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToBool(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotPartsVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Parts.SetTo(paramsDotPartsVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "parts",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // GetStreamCostsParams is parameters of getStreamCosts operation.
 type GetStreamCostsParams struct {
 	// Signal to attribute. Metrics carry no per-record columns, so they are not attributable.
