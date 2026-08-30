@@ -139,7 +139,7 @@ func (l *labelStaticIterator) Close() error { return nil }
 // LabelValues implements [logstorage.Querier].
 func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logstorage.LabelsOptions) (riter iterators.Iterator[logstorage.Label], rerr error) {
 	table := q.tables.Logs
-	labelName = DecodeUnicodeLabel(labelName)
+	labelName = otelstorage.UnescapeLabelName(labelName)
 
 	ctx, span := q.tracer.Start(ctx, "chstorage.logs.LabelValues",
 		trace.WithAttributes(

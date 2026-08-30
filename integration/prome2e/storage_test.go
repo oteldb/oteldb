@@ -81,6 +81,30 @@ func TestStorageBackend(t *testing.T) {
 		})
 	}
 
+	// Grafana value-encodes every label name it puts in a URL path or a selector, so a store
+	// keyed by the decoded name matches nothing unless the handler decodes it first. Both
+	// positions are escaped here; "handler" carries no special characters, so the encoding is
+	// the bare U__ prefix and the expected values are the plain ones.
+	t.Run("ValueEncodedLabelName", func(t *testing.T) {
+		t.Parallel()
+		a := require.New(t)
+
+		plain, err := c.GetLabelValues(ctx, promapi.GetLabelValuesParams{Label: "handler"})
+		a.NoError(err)
+		a.NotEmpty(plain.Data, "plain label name resolves")
+
+		escaped, err := c.GetLabelValues(ctx, promapi.GetLabelValuesParams{Label: "U__handler"})
+		a.NoError(err)
+		a.Equal([]string(plain.Data), []string(escaped.Data))
+
+		matched, err := c.GetLabelValues(ctx, promapi.GetLabelValuesParams{
+			Label: "U__handler",
+			Match: []string{`{U__handler="/api/v1/query"}`},
+		})
+		a.NoError(err)
+		a.Equal([]string{"/api/v1/query"}, []string(matched.Data))
+	})
+
 	// An instant query over the gauge build-info metric must return its single series.
 	t.Run("InstantBuildInfo", func(t *testing.T) {
 		a := require.New(t)

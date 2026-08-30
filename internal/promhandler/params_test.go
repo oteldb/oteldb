@@ -217,6 +217,16 @@ func TestParseLabelMatchers(t *testing.T) {
 			},
 			false,
 		},
+		// Value-encoded names are decoded, so a dotted OTel attribute reaches the store as
+		// the name it is actually indexed under.
+		{
+			[]string{`{U__service_2e_name="api", plain="x"}`},
+			[][]*labels.Matcher{{
+				labels.MustNewMatcher(labels.MatchEqual, "service.name", "api"),
+				labels.MustNewMatcher(labels.MatchEqual, "plain", "x"),
+			}},
+			false,
+		},
 
 		// Invalid syntax.
 		{[]string{"{"}, nil, true},

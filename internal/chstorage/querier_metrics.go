@@ -5,7 +5,6 @@ import (
 	"math"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ClickHouse/ch-go/proto"
@@ -140,33 +139,6 @@ func (p *promQuerier) getEnd(t time.Time) time.Time {
 	default:
 		return p.maxt
 	}
-}
-
-// DecodeUnicodeLabel tries to decode U__k8s_2e_node_2e_name into k8s.node.name.
-// It decodes any hex-encoded character in the format _XX_ where XX is a two-digit hex value.
-func DecodeUnicodeLabel(v string) string {
-	if !strings.HasPrefix(v, "U__") {
-		return v
-	}
-	var (
-		sb    strings.Builder
-		runes = []rune(v[3:]) // Skip U__
-	)
-	for i := 0; i < len(runes); i++ {
-		if runes[i] == '_' && i+3 < len(runes) && runes[i+3] == '_' {
-			// Try to decode _XX_ where XX is hexNumber
-			hexNumber := string([]rune{runes[i+1], runes[i+2]})
-			if b, err := strconv.ParseUint(hexNumber, 16, 8); err == nil {
-				sb.WriteByte(byte(b))
-				i += 3 // Skip _XX_
-			} else {
-				sb.WriteRune(runes[i])
-			}
-		} else {
-			sb.WriteRune(runes[i])
-		}
-	}
-	return sb.String()
 }
 
 func promQLLabelMatcher(valueSel []chsql.Expr, typ labels.MatchType, value string) (e chsql.Expr, rerr error) {

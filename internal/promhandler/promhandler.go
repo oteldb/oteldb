@@ -23,6 +23,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/chstorage"
 	"github.com/oteldb/oteldb/internal/metricstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 	"github.com/oteldb/oteldb/internal/promapi"
 	"github.com/oteldb/oteldb/internal/xattribute"
 )
@@ -82,6 +83,7 @@ func (h *PromAPI) GetLabelValues(ctx context.Context, params promapi.GetLabelVal
 	if err != nil {
 		return nil, validationErr("parse match", err)
 	}
+	label := otelstorage.UnescapeLabelName(params.Label)
 	hints := &storage.LabelHints{Limit: params.Limit.Or(0)}
 
 	q, err := h.querier(ctx, mint, maxt)
@@ -99,7 +101,7 @@ func (h *PromAPI) GetLabelValues(ctx context.Context, params promapi.GetLabelVal
 			matchers = sets[0]
 		}
 
-		values, annots, err := q.LabelValues(ctx, params.Label, hints, matchers...)
+		values, annots, err := q.LabelValues(ctx, label, hints, matchers...)
 		if err != nil {
 			return nil, executionErr("get label values", err)
 		}
@@ -127,7 +129,7 @@ func (h *PromAPI) GetLabelValues(ctx context.Context, params promapi.GetLabelVal
 		grp.Go(func() error {
 			ctx := grpCtx
 
-			vals, w, err := q.LabelValues(ctx, params.Label, hints, set...)
+			vals, w, err := q.LabelValues(ctx, label, hints, set...)
 			if err != nil {
 				return err
 			}

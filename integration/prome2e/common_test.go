@@ -299,6 +299,20 @@ func runTest(
 				false,
 			},
 			{
+				// Grafana value-encodes every label name it puts in the path, so the handler
+				// must decode it before the store sees it. Both the path label and the
+				// matcher name are escaped here.
+				"ValueEncodedName",
+				promapi.GetLabelValuesParams{
+					Label: "U__handler",
+					Match: []string{
+						`{U__handler="/api/v1/series"}`,
+					},
+				},
+				[]string{"/api/v1/series"},
+				false,
+			},
+			{
 				"RegexMatcher",
 				promapi.GetLabelValuesParams{
 					Label: "handler",
