@@ -10,3 +10,10 @@ Dockerfile
 
 # remore write queries
 *.rwq
+
+# The admin SPA is built by the bun stage in dev/Dockerfile; keeping a stale local build out of
+# the context makes the image the same whether or not the host ever ran `bun run build`. The
+# .gitkeep placeholder stays so the frontend-skip stage has something to supply.
+internal/adminhandler/frontend/node_modules
+internal/adminhandler/frontend/dist
+!internal/adminhandler/frontend/dist/.gitkeep

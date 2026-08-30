@@ -72,9 +72,10 @@ lock-step.
 bun run build          # orval + tsc + vite build → dist/
 ```
 
-`dist/` is committed so the Go build embeds the UI without needing a Bun
-toolchain. After a UI change: `bun run build`, then rebuild the binary
-(`go build -o ./oteldb ./cmd/oteldb`).
+`dist/` is not committed: CI builds it, and so does the bun stage in
+`dev/Dockerfile`. For a local `go build`, run `bun run build` yourself first,
+then rebuild the binary (`go build -o ./oteldb ./cmd/oteldb`) — otherwise the
+binary embeds the placeholder and serves the "not built" notice.
 
 ## Requests
 
