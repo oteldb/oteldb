@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-faster/errors"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/oteldb/oteldb/internal/config"
@@ -103,6 +104,10 @@ type Config struct {
 
 	// Auth is global auth config.
 	Auth []AuthConfig `json:"auth" yaml:"auth"`
+
+	// Tenancy configures read-path multi-tenancy. Disabled by default, in which case every read is
+	// served from the single default tenant, exactly as before.
+	Tenancy config.Tenancy `json:"tenancy" yaml:"tenancy"`
 
 	// Whether if enable certain collector/inserter signals.
 	CollectorSignals map[string]bool `json:"collector_signals" yaml:"collector_signals"`
@@ -232,3 +237,34 @@ const (
 	AuthTypeBasic       = config.AuthTypeBasic
 	AuthTypeBearerToken = config.AuthTypeBearerToken
 )
+
+// validateTenancy refuses a config where enabling read-path tenancy would not actually isolate
+// tenants.
+//
+// Tenancy is implemented by the embedded storage engine, where a tenant is the shard-key namespace
+// data is stored under. A signal still served by ClickHouse has no such namespace here (see #1038),
+// so it would answer every credential from the same tables — the exact cross-tenant read tenancy is
+// turned on to prevent. Refusing at startup keeps that from being a silent hole.
+func (cfg *Config) validateTenancy() error {
+	if !cfg.Tenancy.Enabled {
+		return nil
+	}
+
+	for _, s := range []struct {
+		name    string
+		backend string
+	}{
+		{"metrics", cfg.MetricsBackend},
+		{"traces", cfg.TracesBackend},
+		{"logs", cfg.LogsBackend},
+	} {
+		if s.backend != MetricsBackendStorage {
+			return errors.Errorf(
+				"tenancy.enabled requires %s_backend to be %q, got %q: ClickHouse-backed signals are not tenant-scoped",
+				s.name, MetricsBackendStorage, s.backend,
+			)
+		}
+	}
+
+	return nil
+}

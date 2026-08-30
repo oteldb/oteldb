@@ -88,6 +88,28 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
 
 ## Other touch points
 
+- **Read-path tenancy:** every storage call is tenant-parameterised, and `internal/storagebackend`
+  resolves that tenant per request instead of pinning one for the backend's lifetime. It is opt-in
+  (`tenancy.enabled`, default off): without it a backend never reads the request context and serves
+  the single default tenant, exactly as before.
+
+  A tenant is granted by the *credential*, not by a header. `tenancy.tokens[]{token, tenants[],
+  username}` maps a credential to the tenants it may read (`internal/multitenancy`'s `Resolver` →
+  `Decision`); `X-Scope-OrgID` is only a selector *within* that grant, required when a credential
+  permits more than one tenant and refused (403) when it names one the credential does not permit.
+  This is deliberately not the ingest side's precedence: ingest routes trusted senders, queries
+  authorize untrusted callers, so a header that is a routing hint there would be a grant here.
+
+  It is fail-closed at both ends. With tenancy on, a read whose context carries no tenant is refused
+  with `ErrNoTenant` rather than served the default, so a route that bypassed the middleware reads
+  nothing; and `cmd/oteldb` refuses to start with tenancy enabled while any signal is still served
+  by ClickHouse, which has no tenant scoping on this path (see #1038).
+
+  The `LabelCache` shared across tenants is safe: it is keyed by the content-addressed
+  `signal.SeriesID` and its value is a pure projection of that same identity, so two tenants with an
+  identical series share one entry holding the label set both would have computed, and an entry is
+  only looked up for a series the caller's own tenant-scoped fetch returned. The library's query
+  results cache keys on the tenant set (`Storage.tenantScope`) and is not enabled by oteldb anyway.
 - **Lossy precision:** expose `tenant.Precision{Tiers: []{After, Bits}}` (age-tiered lossy float
   compression) through oteldb's per-tenant resolver, alongside Downsample/Recompress.
   **Implemented** in `internal/storagebackend/policy.go` (`tenancyOption` → `storage.WithTenancy`):
@@ -98,8 +120,9 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
   max_merge_part_size}`. `max_part_size` bounds a *flushed* part's uncompressed estimate;
   `max_merge_part_size` bounds a *merged* part's compressed size on disk, and left at zero is
   derived from the backend's free space.
-  oteldb runs the embedded engine single-tenant, so a static `tenant.ResolverFunc` returns one
-  policy for every tenant — retention is therefore one global window, not per-tenant.
+  The rules written directly under `storage.policy` are the default, resolved for every tenant not
+  named under `storage.policy.tenants.<id>`; a named tenant's block replaces the default wholesale
+  rather than merging into it, so retention, limits and durability can differ per tenant.
   Both `retention.max_age` and `retention.max_bytes` are enforced by the library.
   `ec` is an age tier like `recompress`, but for durability: cold parts are stored as `data`+`parity`
   Reed-Solomon shards, one per cluster node, instead of RF full copies. It applies only under

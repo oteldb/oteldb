@@ -68,8 +68,13 @@ func (s *scarecrowScanner) AggregateGrid(
 		lastEnd  = grid.Start + int64(grid.NumSteps-1)*grid.Step
 	)
 
-	named, err := s.b.src.AggregateMetricsWindowNamed(ctx, s.b.tenant, fetch.Request{
-		Tenant: s.b.tenant,
+	tenant, err := s.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	named, err := s.b.src.AggregateMetricsWindowNamed(ctx, tenant, fetch.Request{
+		Tenant: tenant,
 		Scope:  s.scope,
 		// Lead-in: the first window opens a full width before the first step.
 		Start:    (firstEnd - grid.Width + 1) * nsPerMs,
@@ -138,8 +143,13 @@ func (s *scarecrowScanner) AggregateOverTime(
 
 	// scarecrow's window is PromQL's half-open (mint, maxt]; storage's fetch range is inclusive,
 	// so mint is exclusive (start = mint+1 ms) and maxt inclusive.
-	aggs, err := s.b.src.AggregateMetricsNamed(ctx, s.b.tenant, fetch.Request{
-		Tenant:   s.b.tenant,
+	tenant, err := s.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	aggs, err := s.b.src.AggregateMetricsNamed(ctx, tenant, fetch.Request{
+		Tenant:   tenant,
 		Scope:    s.scope,
 		Start:    (mint + 1) * nsPerMs,
 		End:      maxt * nsPerMs,
@@ -178,7 +188,12 @@ func (s *scarecrowScanner) AggregateOverTime(
 func (s *scarecrowScanner) CountSeries(
 	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
 ) (uint64, error) {
-	q, err := s.b.queryable().QuerierWithScope(mint, maxt, s.scope)
+	tenant, err := s.b.tenantFor(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	q, err := s.b.queryable(tenant).QuerierWithScope(mint, maxt, s.scope)
 	if err != nil {
 		return 0, errors.Wrap(err, "count pushdown: create querier")
 	}
@@ -200,7 +215,12 @@ func (s *scarecrowScanner) CountSeries(
 func (s *scarecrowScanner) CountSeriesBy(
 	ctx context.Context, mint, maxt int64, label string, matchers []*labels.Matcher,
 ) (map[string]uint64, error) {
-	q, err := s.b.queryable().QuerierWithScope(mint, maxt, s.scope)
+	tenant, err := s.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := s.b.queryable(tenant).QuerierWithScope(mint, maxt, s.scope)
 	if err != nil {
 		return nil, errors.Wrap(err, "count-by pushdown: create querier")
 	}
@@ -229,8 +249,13 @@ func (s *scarecrowScanner) Series(
 ) ([]labels.Labels, error) {
 	const nsPerMs = int64(time.Millisecond)
 
+	tenant, err := s.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	series, err := s.b.src.MetricSeries(
-		ctx, s.b.tenant, storagepromql.PushableMatchers(matchers), mint*nsPerMs, maxt*nsPerMs,
+		ctx, tenant, storagepromql.PushableMatchers(matchers), mint*nsPerMs, maxt*nsPerMs,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "metric series")
@@ -259,8 +284,13 @@ func (s *scarecrowScanner) Scan(
 ) (scarecrow.SeriesIterator, error) {
 	const nsPerMs = int64(time.Millisecond)
 
-	it, err := s.b.src.Fetcher(s.b.tenant).Fetch(ctx, fetch.Request{
-		Tenant:   s.b.tenant,
+	tenant, err := s.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	it, err := s.b.src.Fetcher(tenant).Fetch(ctx, fetch.Request{
+		Tenant:   tenant,
 		Scope:    s.scope,
 		Start:    mint * nsPerMs,
 		End:      maxt * nsPerMs,

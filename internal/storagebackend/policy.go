@@ -11,17 +11,29 @@ import (
 	"github.com/oteldb/storage/signal"
 	"github.com/oteldb/storage/tenant"
 
+	"github.com/oteldb/oteldb/internal/multitenancy"
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
-// PolicyConfig configures the per-tenant storage policy applied to the embedded engine's
-// background merges: age-tiered lossy float precision, downsampling, cold-data recompression, and
-// cold-data erasure coding.
-// The storage library resolves these per-tenant via a [tenant.Resolver] callback; oteldb runs the
-// embedded engine single-tenant (every signal routes to the "default" tenant), so this one policy
-// is resolved for every tenant. Empty ⇒ no tenancy resolver is installed (the library default:
-// lossless, no rollup, no recompression).
+// PolicyConfig configures the storage policy applied to the embedded engine's background merges:
+// age-tiered lossy float precision, downsampling, cold-data recompression, and cold-data erasure
+// coding.
+//
+// The rules declared inline are the default policy, resolved for every tenant that Tenants does not
+// name. Empty (no default rules and no per-tenant ones) ⇒ no tenancy resolver is installed (the
+// library default: lossless, no rollup, no recompression).
 type PolicyConfig struct {
+	// PolicyRules is the default policy, applied to every tenant Tenants does not name. It is
+	// inlined, so a single-tenant deployment spells its policy exactly as before.
+	PolicyRules `json:",inline" yaml:",inline"`
+	// Tenants overrides the default policy per tenant id. A named tenant's policy replaces the
+	// default wholesale rather than merging into it, so a tenant's retention and limits can be read
+	// off its own block without consulting the default.
+	Tenants map[string]PolicyRules `json:"tenants" yaml:"tenants"`
+}
+
+// PolicyRules is one tenant's merge-time storage policy.
+type PolicyRules struct {
 	// Precision is the age-tiered lossy float-compression policy: each tier re-encodes, at merge,
 	// the value column of parts older than After to retain only Bits significant mantissa bits, so
 	// recent data stays lossless and only old data trades accuracy for size. Empty ⇒ lossless.
@@ -160,7 +172,7 @@ func retentionMaxAge(cfg *RetentionConfig) time.Duration {
 // deployment is still correct, only paying for a policy it does not get. Refusing would also turn
 // a config that is valid on its own into a startup failure decided by an unrelated section.
 func warnECInert(cluster *ClusterConfig, policy *PolicyConfig, lg *zap.Logger) {
-	if policy == nil || policy.EC == nil {
+	if policy == nil || !policy.usesEC() {
 		return
 	}
 
@@ -179,8 +191,23 @@ func warnECInert(cluster *ClusterConfig, policy *PolicyConfig, lg *zap.Logger) {
 	)
 }
 
-// empty reports whether the policy configures nothing, in which case no resolver is installed.
-func (cfg *PolicyConfig) empty() bool {
+// usesEC reports whether any tenant's policy configures erasure coding.
+func (cfg *PolicyConfig) usesEC() bool {
+	if cfg.EC != nil {
+		return true
+	}
+
+	for _, rules := range cfg.Tenants {
+		if rules.EC != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+// empty reports whether the rules configure nothing, in which case no resolver is installed.
+func (cfg *PolicyRules) empty() bool {
 	return cfg == nil || (len(cfg.Precision) == 0 &&
 		len(cfg.Downsample) == 0 &&
 		cfg.Recompress == nil &&
@@ -190,26 +217,52 @@ func (cfg *PolicyConfig) empty() bool {
 }
 
 // tenancyOption builds the storage tenancy option from the policy config, or returns (nil, nil)
-// when no policy is configured. The resolved policy is applied to every tenant — oteldb runs the
-// embedded engine single-tenant, so a static resolver suffices.
+// when no policy is configured at all.
+//
+// The resolver is a lookup rather than a constant: the library asks per tenant, so a named tenant
+// gets its own policy and everything else the default. The table is built once at startup, so an
+// invalid tenant id or aggregation name is a startup error rather than a policy that silently never
+// resolves.
 func tenancyOption(cfg *PolicyConfig) (storage.Option, error) {
-	if cfg.empty() {
+	if cfg == nil || (cfg.PolicyRules.empty() && len(cfg.Tenants) == 0) {
 		return nil, nil
 	}
 
-	policy, err := cfg.policy()
+	def, err := cfg.PolicyRules.policy()
 	if err != nil {
 		return nil, err
 	}
 
-	return storage.WithTenancy(tenant.ResolverFunc(func(signal.TenantID) tenant.Policy {
-		return policy
+	var byTenant map[signal.TenantID]tenant.Policy
+	if len(cfg.Tenants) > 0 {
+		byTenant = make(map[signal.TenantID]tenant.Policy, len(cfg.Tenants))
+		for name, rules := range cfg.Tenants {
+			id, err := multitenancy.ParseTenantID(name)
+			if err != nil {
+				return nil, errors.Wrap(err, "policy.tenants")
+			}
+
+			p, err := rules.policy()
+			if err != nil {
+				return nil, errors.Wrapf(err, "policy.tenants[%q]", name)
+			}
+
+			byTenant[signal.TenantID(id)] = p
+		}
+	}
+
+	return storage.WithTenancy(tenant.ResolverFunc(func(id signal.TenantID) tenant.Policy {
+		if p, ok := byTenant[id]; ok {
+			return p
+		}
+
+		return def
 	})), nil
 }
 
 // policy translates the config into a [tenant.Policy]. It validates the downsample aggregation
 // names so a typo is a startup error rather than a silently-ignored tier.
-func (cfg *PolicyConfig) policy() (tenant.Policy, error) {
+func (cfg *PolicyRules) policy() (tenant.Policy, error) {
 	var p tenant.Policy
 
 	for _, t := range cfg.Precision {

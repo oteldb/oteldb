@@ -13,6 +13,8 @@ import (
 	"github.com/oteldb/storage/cluster/router"
 
 	"github.com/oteldb/oteldb/internal/clusterquery"
+	"github.com/oteldb/oteldb/internal/config"
+	"github.com/oteldb/oteldb/internal/httpmiddleware"
 	"github.com/oteldb/oteldb/internal/storagebackend"
 )
 
@@ -24,6 +26,10 @@ type App struct {
 	lg     *zap.Logger
 	tel    *sdkapp.Telemetry
 	router *router.Router
+
+	// tenancy resolves each request's tenant from its credential. Nil when read-path tenancy is not
+	// configured, in which case every read serves the default tenant.
+	tenancy httpmiddleware.Middleware
 
 	servers map[string]*http.Server
 }
@@ -42,7 +48,20 @@ func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *sdkapp.Telemetry
 		servers: map[string]*http.Server{},
 	}
 
-	backend := storagebackend.NewQuery(clusterquery.New(rt))
+	tenancy, err := config.TenancyMiddleware(cfg.Tenancy)
+	if err != nil {
+		_ = rt.Close(ctx)
+
+		return nil, errors.Wrap(err, "setup tenancy")
+	}
+	app.tenancy = tenancy
+
+	var backendOpts []storagebackend.Option
+	if cfg.Tenancy.Enabled {
+		backendOpts = append(backendOpts, storagebackend.WithTenancy())
+	}
+
+	backend := storagebackend.NewQuery(clusterquery.New(rt), backendOpts...)
 
 	if err := app.setupAPIs(backend); err != nil {
 		_ = rt.Close(ctx)
