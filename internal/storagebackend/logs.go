@@ -556,7 +556,11 @@ func (q *LogQuerier) LabelNames(ctx context.Context, opts logstorage.LabelsOptio
 }
 
 // LabelValues implements [logstorage.Querier]. It returns the distinct values of labelName across
-// the streams matching the options' selector.
+// the streams matching the options' selector, plus — for an unfiltered listing — the values of any
+// record attribute that normalizes to the same label.
+//
+// The record half mirrors [LogQuerier.LabelNames], which advertises those attribute keys: a name it
+// offers whose values endpoint always answers empty is worse than one it never offered.
 func (q *LogQuerier) LabelValues(ctx context.Context, labelName string, opts logstorage.LabelsOptions) (iterators.Iterator[logstorage.Label], error) {
 	values := map[string]struct{}{}
 	if err := q.forEachLogStreamLabel(ctx, opts.Start, opts.End, opts.Query.Matchers, func(name, value string) {
@@ -566,6 +570,13 @@ func (q *LogQuerier) LabelValues(ctx context.Context, labelName string, opts log
 	}); err != nil {
 		return nil, err
 	}
+
+	if len(opts.Query.Matchers) == 0 {
+		if err := q.recordAttrValues(ctx, labelName, opts, values); err != nil {
+			return nil, err
+		}
+	}
+
 	keys := sortedKeys(values)
 	if opts.Limit > 0 && len(keys) > opts.Limit {
 		keys = keys[:opts.Limit]
@@ -575,6 +586,55 @@ func (q *LogQuerier) LabelValues(ctx context.Context, labelName string, opts log
 		labelsOut[i] = logstorage.Label{Name: labelName, Value: v}
 	}
 	return iterators.Slice(labelsOut), nil
+}
+
+// recordAttrValues adds the values of every record attribute whose key normalizes to labelName.
+//
+// The mapping is resolved forwards, not inverted: [otelstorage.KeyToLabel] is lossy (code.function
+// and code_function are the same label), so the keys are enumerated and normalized to find the ones
+// that match, and a label backed by several keys unions them.
+//
+// It is only sound for an unfiltered listing. A stream selector restricts streams, and a record
+// attribute is not part of stream identity, so there is no way to honor the selector here — the same
+// reason [LogQuerier.LabelNames] folds record keys in only when no matcher is set.
+//
+// The values are a superset for the window: a part overlapping it contributes its whole dictionary.
+// That is the enumeration's contract and is harmless for autocomplete.
+func (q *LogQuerier) recordAttrValues(
+	ctx context.Context, labelName string, opts logstorage.LabelsOptions, values map[string]struct{},
+) error {
+	lo, hi := seriesWindow(opts.Start, opts.End)
+
+	keys, err := q.b.src.LogKeys(ctx, q.b.tenant, lo, hi)
+	if err != nil {
+		return errors.Wrap(err, "log keys")
+	}
+
+	for _, ki := range keys {
+		if ki.Scope&storage.KeyScopeRecord == 0 {
+			continue
+		}
+		if otelstorage.KeyToLabel(string(ki.Key)) != labelName {
+			continue
+		}
+
+		got, err := q.b.src.ColumnValues(ctx, q.b.tenant, storage.ValuesRequest{
+			Signal:  signal.Log,
+			AttrKey: ki.Key,
+			Start:   lo,
+			End:     hi,
+			Limit:   opts.Limit,
+		})
+		if err != nil {
+			return errors.Wrapf(err, "values of log attribute %q", ki.Key)
+		}
+
+		for _, v := range got {
+			values[string(v)] = struct{}{}
+		}
+	}
+
+	return nil
 }
 
 // Series implements [logstorage.Querier]. It returns the label sets of the streams matching any of

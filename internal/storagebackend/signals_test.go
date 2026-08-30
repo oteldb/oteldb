@@ -2,6 +2,7 @@ package storagebackend_test
 
 import (
 	"context"
+	"sort"
 	"testing"
 	"time"
 
@@ -303,4 +304,63 @@ func mustSearchTags(ctx context.Context, t *testing.T, tq *storagebackend.TraceQ
 	it, err := tq.SearchTags(ctx, tags, tracestorage.SearchTagsOptions{Start: start, End: end})
 	require.NoError(t, err)
 	return it
+}
+
+// TestBackendLogRecordAttributeValues pins the half of autocomplete that used to be missing:
+// LabelNames advertises a record attribute's key, so LabelValues must be able to answer for it.
+// Stream labels always worked; record attributes returned nothing at all.
+func TestBackendLogRecordAttributeValues(t *testing.T) {
+	b, ctx := newBackend(t)
+
+	ts := time.Now().Truncate(time.Second)
+
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", "api")
+	sl := rl.ScopeLogs().AppendEmpty()
+	for _, method := range []string{"GET", "POST", "GET"} {
+		rec := sl.LogRecords().AppendEmpty()
+		rec.SetTimestamp(pcommon.Timestamp(ts.UnixNano()))
+		rec.Body().SetStr("request served")
+		rec.SetSeverityNumber(plog.SeverityNumberInfo)
+		rec.Attributes().PutStr("http.request.method", method)
+	}
+	require.NoError(t, b.ConsumeLogs(ctx, ld))
+
+	var (
+		lq          = b.Logs()
+		start, end  = ts.Add(-time.Hour), ts.Add(time.Hour)
+		opts        = logstorage.LabelsOptions{Start: start, End: end}
+		recordLabel = "http_request_method"
+	)
+
+	names, err := lq.LabelNames(ctx, opts)
+	require.NoError(t, err)
+	require.Contains(t, names, recordLabel, "the record attribute is advertised")
+
+	values := drainLabels(ctx, t, lq, recordLabel, opts)
+	require.Equal(t, []string{"GET", "POST"}, values, "advertised name must resolve to its values")
+
+	// The stream label still resolves, and a name nothing carries still yields nothing.
+	require.Equal(t, []string{"api"}, drainLabels(ctx, t, lq, "service_name", opts))
+	require.Empty(t, drainLabels(ctx, t, lq, "nope", opts))
+}
+
+func drainLabels(
+	ctx context.Context, t *testing.T, lq *storagebackend.LogQuerier,
+	name string, opts logstorage.LabelsOptions,
+) []string {
+	t.Helper()
+
+	it, err := lq.LabelValues(ctx, name, opts)
+	require.NoError(t, err)
+
+	var out []string
+	require.NoError(t, iterators.ForEach(it, func(l logstorage.Label) error {
+		out = append(out, l.Value)
+		return nil
+	}))
+	sort.Strings(out)
+
+	return out
 }
