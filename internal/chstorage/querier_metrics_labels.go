@@ -14,6 +14,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/chstorage/chsql"
 	"github.com/oteldb/oteldb/internal/metricstorage"
+	"github.com/oteldb/oteldb/internal/otelstorage"
 	"github.com/oteldb/oteldb/internal/xattribute"
 )
 
@@ -25,7 +26,7 @@ func (p *promQuerier) LabelValues(ctx context.Context, labelName string, hints *
 	if hints == nil {
 		hints = &storage.LabelHints{}
 	}
-	labelName = DecodeUnicodeLabel(labelName)
+	labelName = otelstorage.UnescapeLabelName(labelName)
 	ctx, span := p.tracer.Start(ctx, "chstorage.metrics.LabelValues",
 		trace.WithAttributes(
 			attribute.String("chstorage.label", labelName),

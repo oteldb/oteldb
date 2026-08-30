@@ -27,6 +27,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/oteldb/oteldb/internal/otelstorage"
 	"github.com/oteldb/oteldb/internal/promapi"
 )
 
@@ -198,6 +199,11 @@ func parseLabelMatchers(matchers []string) ([][]*labels.Matcher, error) {
 		matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(s)
 		if err != nil {
 			return nil, errors.Wrapf(err, "parse selector %q", s)
+		}
+		// A dotted OTel attribute cannot be written bare in a selector, so clients send it
+		// value-encoded; the store knows only the decoded name.
+		for _, m := range matchers {
+			m.Name = otelstorage.UnescapeLabelName(m.Name)
 		}
 		matcherSets = append(matcherSets, matchers)
 	}
