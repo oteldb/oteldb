@@ -98,7 +98,7 @@ services:
       # The admin panel is per-node: it reports this process's own heap, goroutines, shards and
       # ingest counters, not the ring's. All three are published (8090/18090/28090, as PromQL gets
       # 9090/9091/9092) so a single published port cannot be mistaken for a cluster-wide view.
-      # TODO: cmd/odbadmin will serve one cluster-aggregated panel; add it here once it exists.
+      # The odbadmin service below serves the cluster-aggregated panel on 38090.
       - "8090:8090" # this node's admin panel
 
   oteldb-2:
@@ -121,6 +121,24 @@ services:
     ports:
       - "9092:9090"
       - "28090:8090" # this node's admin panel
+
+  # The cluster-wide admin panel. Unlike the per-node panels above it holds no engine: it follows
+  # the ring to find the members, asks each one's admin API, and merges. That merge is the reason it
+  # exists -- with rf: 2 a node's own report describes one replica, and summing the three
+  # double-counts, so only this view can say what the cluster actually stores.
+  odbadmin:
+    <<: *oteldb-node
+    entrypoint: ["odbadmin"]
+    command: ["--config=/etc/oteldb/odbadmin.yml"]
+    volumes:
+      - ./odbadmin.yml:/etc/oteldb/odbadmin.yml:ro
+    ports:
+      - "38090:8090" # cluster-aggregated admin panel (8090/18090/28090 are the per-node ones)
+    depends_on:
+      - etcd
+      - oteldb-1
+      - oteldb-2
+      - oteldb-3
 
   # Handles requests from the client; ingests its telemetry at oteldb-2.
   server:

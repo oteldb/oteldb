@@ -25,7 +25,7 @@ FROM frontend-${FRONTEND} AS frontend
 
 FROM golang:${GO_VERSION} AS builder
 ARG GOPROXY=https://proxy.golang.org,direct
-ARG TARGETS="oteldb odbbackup odbrestore odbmigrate odbingest odbselect"
+ARG TARGETS="oteldb odbbackup odbrestore odbmigrate odbingest odbselect odbadmin"
 
 WORKDIR /app
 
