@@ -461,8 +461,9 @@ type ClusterSignalStorage struct {
 	// The cluster's configured replication factor, repeated here so the two byte figures read on their
 	// own.
 	ReplicationFactor int `json:"replication_factor"`
-	// What each node contributed. A node that answered but holds nothing for this signal appears with
-	// zeroes; a node that did not answer is omitted here and reported unreachable in the report's `nodes`.
+	// What each node contributed, ordered by node id. Only nodes holding data for this (tenant, signal)
+	// appear: a node that holds none of it and a node that did not answer are both absent here, and the
+	// report's `nodes` is what tells them apart.
 	Nodes []ClusterNodeSignalStorage `json:"nodes"`
 }
 
@@ -623,9 +624,10 @@ func (s *ClusterStats) SetEc(val OptECStats) {
 type ClusterStorage struct {
 	// The cluster's configured replication factor, as this aggregator is configured.
 	ReplicationFactor int `json:"replication_factor"`
-	// Whether every member answered. False makes every deduplicated figure below a lower bound: a node
-	// that did not answer contributes no parts to the union, and a part only it holds is missing entirely.
-	// See `nodes` for which node failed.
+	// Whether every member answered, and answered with the part identities deduplication needs. False
+	// makes every logical figure below a LOWER BOUND: a node that did not answer contributes no parts to
+	// the union, so a part only it holds is missing from the count entirely. See `nodes` for which node
+	// failed.
 	Complete bool `json:"complete"`
 	// Every member the aggregator asked, answering or not.
 	Nodes   []ClusterNodeStatus    `json:"nodes"`
