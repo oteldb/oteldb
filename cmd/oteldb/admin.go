@@ -28,6 +28,7 @@ func (app *App) setupAdmin() error {
 		ClickHouseEnabled: app.chClient != nil,
 		Signals:           app.adminSignals(),
 		Components:        app.adminComponents(),
+		TracerProvider:    app.telemetry.TracerProvider(),
 	}
 	if b := app.storageBackend; b != nil {
 		opts.Engine = b

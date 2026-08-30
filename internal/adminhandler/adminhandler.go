@@ -10,6 +10,10 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/signal"
@@ -53,6 +57,9 @@ type Options struct {
 	// CHStorage collects deprecated ClickHouse storage statistics. Nil when no signal is served from
 	// ClickHouse.
 	CHStorage StorageStatsCollector
+	// TracerProvider provides the OpenTelemetry tracer for the backend work behind a request. Nil
+	// selects the global provider, which is a noop unless the process configures one.
+	TracerProvider trace.TracerProvider
 }
 
 // EngineStatsProvider exposes embedded-storage engine statistics: the in-memory Inspect snapshot,
@@ -81,14 +88,22 @@ type StorageStatsCollector interface {
 
 // AdminAPI implements adminapi.Handler.
 type AdminAPI struct {
-	opts Options
+	opts   Options
+	tracer trace.Tracer
 }
 
 var _ adminapi.Handler = (*AdminAPI)(nil)
 
 // NewAdminAPI creates a new admin API handler.
 func NewAdminAPI(opts Options) *AdminAPI {
-	return &AdminAPI{opts: opts}
+	if opts.TracerProvider == nil {
+		opts.TracerProvider = otel.GetTracerProvider()
+	}
+
+	return &AdminAPI{
+		opts:   opts,
+		tracer: opts.TracerProvider.Tracer("adminhandler.AdminAPI"),
+	}
 }
 
 // GetInfo implements getInfo operation.
@@ -173,17 +188,51 @@ func (a *AdminAPI) GetStorage(ctx context.Context) (*adminapi.StorageStats, erro
 		stats.Engine = adminapi.NewOptEngineStats(mapEngineStats(a.opts.Engine.Inspect()))
 	}
 	if a.opts.CHStorage != nil {
-		tables, err := a.opts.CHStorage.CollectStorageStats(ctx)
+		tables, err := a.collectCHStats(ctx)
 		if err != nil {
-			return nil, errors.Wrap(err, "collect clickhouse storage stats")
+			return nil, err
 		}
 		stats.Clickhouse = adminapi.NewOptClickHouseStats(adminapi.ClickHouseStats{Tables: tables})
 	}
 	return stats, nil
 }
 
+// collectCHStats reads the deprecated ClickHouse storage's per-table stats, which is a query against
+// system.parts and the one part of a storage report that leaves the process.
+func (a *AdminAPI) collectCHStats(ctx context.Context) (_ []adminapi.TableStats, rerr error) {
+	ctx, span := a.tracer.Start(ctx, "adminhandler.storage.clickhouse")
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
+
+	tables, err := a.opts.CHStorage.CollectStorageStats(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "collect clickhouse storage stats")
+	}
+	span.SetAttributes(attribute.Int("adminhandler.tables", len(tables)))
+
+	return tables, nil
+}
+
 // GetEfficiency implements getEfficiency operation.
-func (a *AdminAPI) GetEfficiency(ctx context.Context, params adminapi.GetEfficiencyParams) (*adminapi.EfficiencyStats, error) {
+func (a *AdminAPI) GetEfficiency(
+	ctx context.Context, params adminapi.GetEfficiencyParams,
+) (_ *adminapi.EfficiencyStats, rerr error) {
+	ctx, span := a.tracer.Start(ctx, "adminhandler.efficiency",
+		trace.WithAttributes(attribute.Bool("adminhandler.parts", params.Parts.Or(false))),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
+
 	stats := &adminapi.EfficiencyStats{
 		StorageEnabled: a.opts.Engine != nil,
 		Tenants:        []adminapi.TenantEfficiency{},
@@ -195,6 +244,8 @@ func (a *AdminAPI) GetEfficiency(ctx context.Context, params adminapi.GetEfficie
 	if err != nil {
 		return nil, errors.Wrap(err, "collect efficiency stats")
 	}
+	span.SetAttributes(attribute.Int("adminhandler.tenants", len(tenants)))
+
 	for _, t := range tenants {
 		te := mapTenantEfficiency(t)
 		if params.Parts.Or(false) {
@@ -210,7 +261,21 @@ func (a *AdminAPI) GetEfficiency(ctx context.Context, params adminapi.GetEfficie
 // attachParts lists the parts behind each of a tenant's signals. It is a second pass over the
 // backend rather than a by-product of the efficiency walk, which the storage library aggregates
 // before returning, so the two snapshots can disagree by a merge or a flush.
-func (a *AdminAPI) attachParts(ctx context.Context, tenant signal.TenantID, te *adminapi.TenantEfficiency) error {
+func (a *AdminAPI) attachParts(
+	ctx context.Context, tenant signal.TenantID, te *adminapi.TenantEfficiency,
+) (rerr error) {
+	ctx, span := a.tracer.Start(ctx, "adminhandler.efficiency.attachParts",
+		trace.WithAttributes(attribute.String("adminhandler.tenant", string(tenant))),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
+
+	var total int
 	for i := range te.Signals {
 		sig, err := engineSignal(te.Signals[i].Signal)
 		if err != nil {
@@ -220,8 +285,14 @@ func (a *AdminAPI) attachParts(ctx context.Context, tenant signal.TenantID, te *
 		if err != nil {
 			return errors.Wrapf(err, "list %s/%s parts", tenant, sig)
 		}
+		total += len(parts)
 		te.Signals[i].PartsDetail = mapParts(parts)
 	}
+	span.SetAttributes(
+		attribute.Int("adminhandler.signals", len(te.Signals)),
+		attribute.Int("adminhandler.parts_listed", total),
+	)
+
 	return nil
 }
 

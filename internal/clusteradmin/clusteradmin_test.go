@@ -73,7 +73,7 @@ func (s staticPeers) Peers() ([]Peer, error) { return s.peers, s.err }
 
 // newTestAggregator serves each node over HTTP and points an aggregator at them, so the fan-out
 // exercises the real ogen client and encoding rather than an in-process call.
-func newTestAggregator(t *testing.T, rf int, nodes map[string]*fakeNode) *Aggregator {
+func newTestAggregator(t *testing.T, rf int, nodes map[string]*fakeNode, override ...func(*Options)) *Aggregator {
 	t.Helper()
 
 	var peers []Peer
@@ -90,11 +90,16 @@ func newTestAggregator(t *testing.T, rf int, nodes map[string]*fakeNode) *Aggreg
 		peers = append(peers, Peer{Node: name, Addr: ts.URL, Client: client})
 	}
 
-	a, err := New(Options{
+	opts := Options{
 		Peers:             staticPeers{peers: peers},
 		ReplicationFactor: rf,
 		Timeout:           10 * time.Second,
-	})
+	}
+	for _, o := range override {
+		o(&opts)
+	}
+
+	a, err := New(opts)
 	require.NoError(t, err)
 
 	return a

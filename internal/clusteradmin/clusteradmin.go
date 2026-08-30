@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/oteldb/oteldb/internal/adminapi"
@@ -69,11 +71,15 @@ type Options struct {
 	Timeout time.Duration
 	// Logger records per-node failures, which the response reports but does not explain.
 	Logger *zap.Logger
+	// TracerProvider provides the OpenTelemetry tracer for the fan-out. Nil selects the global
+	// provider, which is a noop unless the process configures one.
+	TracerProvider trace.TracerProvider
 }
 
 // Aggregator implements adminapi.Handler over a cluster's member nodes.
 type Aggregator struct {
-	opts Options
+	opts   Options
+	tracer trace.Tracer
 }
 
 var _ adminapi.Handler = (*Aggregator)(nil)
@@ -95,8 +101,14 @@ func New(opts Options) (*Aggregator, error) {
 	if opts.StartTime.IsZero() {
 		opts.StartTime = time.Now()
 	}
+	if opts.TracerProvider == nil {
+		opts.TracerProvider = otel.GetTracerProvider()
+	}
 
-	return &Aggregator{opts: opts}, nil
+	return &Aggregator{
+		opts:   opts,
+		tracer: opts.TracerProvider.Tracer("clusteradmin.Aggregator"),
+	}, nil
 }
 
 // GetStreamCosts implements getStreamCosts operation. Stream cost attribution decodes every
