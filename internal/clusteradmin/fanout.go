@@ -2,7 +2,8 @@ package clusteradmin
 
 import (
 	"context"
-	"sort"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,7 +58,7 @@ func fanout[T any](
 		return nil, errors.Wrap(err, "resolve cluster members")
 	}
 
-	sort.Slice(peers, func(i, j int) bool { return peers[i].Node < peers[j].Node })
+	slices.SortFunc(peers, func(a, b Peer) int { return strings.Compare(a.Node, b.Node) })
 
 	span.SetAttributes(attribute.Int("clusteradmin.peers", len(peers)))
 

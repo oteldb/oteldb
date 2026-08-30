@@ -1,9 +1,10 @@
 package clusteradmin
 
 import (
+	"cmp"
 	"context"
 	"runtime"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/oteldb/oteldb/internal/adminapi"
@@ -64,7 +65,7 @@ func (a *Aggregator) GetInfo(ctx context.Context) (*adminapi.InstanceInfo, error
 	for _, s := range signals {
 		info.Signals = append(info.Signals, s)
 	}
-	sort.Slice(info.Signals, func(i, j int) bool { return info.Signals[i].Signal < info.Signals[j].Signal })
+	slices.SortFunc(info.Signals, func(a, b adminapi.SignalInfo) int { return cmp.Compare(a.Signal, b.Signal) })
 
 	return info, nil
 }

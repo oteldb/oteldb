@@ -1,8 +1,9 @@
 package clusteradmin
 
 import (
+	"cmp"
 	"context"
-	"sort"
+	"slices"
 
 	"github.com/oteldb/oteldb/internal/adminapi"
 )
@@ -129,12 +130,8 @@ func (s *storageAggregate) lookup(k signalKey) *signalAggregate {
 // tenants renders the accumulated state, sorted by tenant then signal so a dashboard polling it
 // does not see rows move between refreshes.
 func (s *storageAggregate) tenants() []adminapi.ClusterTenantStorage {
-	sort.Slice(s.order, func(i, j int) bool {
-		if s.order[i].tenant != s.order[j].tenant {
-			return s.order[i].tenant < s.order[j].tenant
-		}
-
-		return s.order[i].signal < s.order[j].signal
+	slices.SortFunc(s.order, func(a, b signalKey) int {
+		return cmp.Or(cmp.Compare(a.tenant, b.tenant), cmp.Compare(a.signal, b.signal))
 	})
 
 	out := []adminapi.ClusterTenantStorage{}

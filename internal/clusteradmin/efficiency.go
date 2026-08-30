@@ -1,8 +1,9 @@
 package clusteradmin
 
 import (
+	"cmp"
 	"context"
-	"sort"
+	"slices"
 
 	"github.com/oteldb/oteldb/internal/adminapi"
 )
@@ -48,7 +49,7 @@ func (a *Aggregator) GetEfficiency(ctx context.Context, _ adminapi.GetEfficiency
 		}
 	}
 
-	sort.Strings(order)
+	slices.Sort(order)
 	for _, name := range order {
 		te := tenants[name]
 		for i := range te.Signals {
@@ -64,15 +65,15 @@ func addTenantEfficiency(into *adminapi.TenantEfficiency, from adminapi.TenantEf
 	for _, s := range from.Signals {
 		s.PartsDetail = nil
 
-		i := sort.Search(len(into.Signals), func(i int) bool { return into.Signals[i].Signal >= s.Signal })
-		if i < len(into.Signals) && into.Signals[i].Signal == s.Signal {
+		i, found := slices.BinarySearchFunc(into.Signals, s.Signal,
+			func(e adminapi.SignalEfficiency, want adminapi.Signal) int { return cmp.Compare(e.Signal, want) },
+		)
+		if found {
 			addSignalEfficiency(&into.Signals[i], s)
 
 			continue
 		}
-		into.Signals = append(into.Signals, adminapi.SignalEfficiency{})
-		copy(into.Signals[i+1:], into.Signals[i:])
-		into.Signals[i] = s
+		into.Signals = slices.Insert(into.Signals, i, s)
 	}
 }
 

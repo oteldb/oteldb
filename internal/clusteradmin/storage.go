@@ -1,8 +1,10 @@
 package clusteradmin
 
 import (
+	"cmp"
 	"context"
-	"sort"
+	"maps"
+	"slices"
 
 	"github.com/oteldb/oteldb/internal/adminapi"
 )
@@ -63,7 +65,7 @@ func (a *Aggregator) GetStorage(ctx context.Context) (*adminapi.StorageStats, er
 		return stats, nil
 	}
 
-	sort.Strings(order)
+	slices.Sort(order)
 	for _, name := range order {
 		engine.Tenants = append(engine.Tenants, *tenants[name])
 	}
@@ -115,11 +117,7 @@ func mergeClusterStats(into *adminapi.OptClusterStats, from adminapi.ClusterStat
 		owned[s] = struct{}{}
 	}
 
-	cur.Owned = cur.Owned[:0]
-	for s := range owned {
-		cur.Owned = append(cur.Owned, s)
-	}
-	sort.Strings(cur.Owned)
+	cur.Owned = slices.Sorted(maps.Keys(owned))
 
 	if ps, ok := from.PartSync.Get(); ok {
 		acc, _ := cur.PartSync.Get()
@@ -165,15 +163,15 @@ func addTenantStats(into *adminapi.TenantStats, from adminapi.TenantStats) {
 	into.Admission.Overflowed += from.Admission.Overflowed
 
 	for _, s := range from.Signals {
-		i := sort.Search(len(into.Signals), func(i int) bool { return into.Signals[i].Signal >= s.Signal })
-		if i < len(into.Signals) && into.Signals[i].Signal == s.Signal {
+		i, found := slices.BinarySearchFunc(into.Signals, s.Signal,
+			func(e adminapi.EngineSignalStats, want adminapi.Signal) int { return cmp.Compare(e.Signal, want) },
+		)
+		if found {
 			addSignalStats(&into.Signals[i], s)
 
 			continue
 		}
-		into.Signals = append(into.Signals, adminapi.EngineSignalStats{})
-		copy(into.Signals[i+1:], into.Signals[i:])
-		into.Signals[i] = s
+		into.Signals = slices.Insert(into.Signals, i, s)
 	}
 }
 
