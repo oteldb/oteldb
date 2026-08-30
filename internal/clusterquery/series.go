@@ -8,6 +8,7 @@ import (
 	"github.com/go-faster/errors"
 
 	"github.com/oteldb/storage"
+	"github.com/oteldb/storage/cluster"
 	"github.com/oteldb/storage/query/fetch"
 	"github.com/oteldb/storage/signal"
 	sigprofile "github.com/oteldb/storage/signal/profile"
@@ -82,6 +83,56 @@ func (s *Source) LogKeys(
 	out := make([]storage.KeyInfo, len(keys))
 	for i, k := range keys {
 		out[i] = storage.KeyInfo{Key: []byte(k), Scope: storage.KeyScope(scopes[k])}
+	}
+
+	return out, nil
+}
+
+// ColumnValues implements [storagebackend.Source]. It enumerates one column's (or one attribute
+// key's) distinct values across every shard and unions them: a value can occur in more than one
+// shard, so unlike [Source.series] the shards' answers overlap and are deduplicated.
+//
+// The per-shard Limit is deliberately the caller's, not a share of it. A shard cannot know which of
+// its values survive the union, so splitting the budget would return fewer than Limit values while
+// more existed. The union is truncated once, after sorting, which is where the limit means what the
+// caller asked for.
+func (s *Source) ColumnValues(
+	ctx context.Context, tenant signal.TenantID, req storage.ValuesRequest,
+) ([][]byte, error) {
+	seen := map[string]struct{}{}
+
+	for _, sk := range s.shardKeys(tenant) {
+		got, err := s.rt.Values(ctx, cluster.ValuesRequest{
+			Signal:  req.Signal,
+			Column:  req.Column,
+			AttrKey: req.AttrKey,
+			Start:   req.Start,
+			End:     req.End,
+			Limit:   req.Limit,
+		}, sk)
+		if err != nil {
+			return nil, errors.Wrapf(err, "list %s values of shard %q", req.Signal, sk)
+		}
+
+		for _, v := range got {
+			seen[string(v)] = struct{}{}
+		}
+	}
+
+	values := make([]string, 0, len(seen))
+	for v := range seen {
+		values = append(values, v)
+	}
+
+	sort.Strings(values)
+
+	if req.Limit > 0 && len(values) > req.Limit {
+		values = values[:req.Limit]
+	}
+
+	out := make([][]byte, len(values))
+	for i, v := range values {
+		out[i] = []byte(v)
 	}
 
 	return out, nil
