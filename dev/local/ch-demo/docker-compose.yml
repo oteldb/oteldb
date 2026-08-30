@@ -101,6 +101,8 @@ services:
       - OTEL_METRIC_EXPORT_INTERVAL=5000
     command:
       - --config=/etc/oteldb/cfg.yml
+    ports:
+      - "8090:8090" # admin panel (single node, so one port is the whole picture)
     volumes:
       - ./oteldb.yml:/etc/oteldb/cfg.yml:ro
       - ./server.crt:/etc/oteldb/server.crt:ro

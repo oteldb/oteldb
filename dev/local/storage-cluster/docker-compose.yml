@@ -95,6 +95,11 @@ services:
       - "3200:3200" # Tempo / TraceQL
       - "4040:4040" # Pyroscope / ProfileQL
       - "4317:4317" # OTLP gRPC ingestion
+      # The admin panel is per-node: it reports this process's own heap, goroutines, shards and
+      # ingest counters, not the ring's. All three are published (8090/18090/28090, as PromQL gets
+      # 9090/9091/9092) so a single published port cannot be mistaken for a cluster-wide view.
+      # TODO: cmd/odbadmin will serve one cluster-aggregated panel; add it here once it exists.
+      - "8090:8090" # this node's admin panel
 
   oteldb-2:
     <<: *oteldb-node
@@ -105,6 +110,7 @@ services:
     ports:
       - "9091:9090"  # this node's PromQL (to show any node answers the full query)
       - "14317:4317" # this node's OTLP gRPC (host-side ingest target for cmd/cluster-verify)
+      - "18090:8090" # this node's admin panel
 
   oteldb-3:
     <<: *oteldb-node
@@ -114,6 +120,7 @@ services:
       - oteldb-3-data:/data
     ports:
       - "9092:9090"
+      - "28090:8090" # this node's admin panel
 
   # Handles requests from the client; ingests its telemetry at oteldb-2.
   server:
