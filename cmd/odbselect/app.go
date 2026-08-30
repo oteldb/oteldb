@@ -29,7 +29,7 @@ type App struct {
 }
 
 func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *sdkapp.Telemetry) (*App, error) {
-	rt, err := router.Open(ctx, cfg.Cluster.RouterConfig(lg.Named("cluster")))
+	rt, err := router.Open(ctx, cfg.Cluster.RouterConfig(lg.Named("cluster"), m.TracerProvider()))
 	if err != nil {
 		return nil, errors.Wrap(err, "open cluster router")
 	}
