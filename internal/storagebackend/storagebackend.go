@@ -137,6 +137,18 @@ func (b *Backend) EfficiencyStats(ctx context.Context) ([]storage.TenantEfficien
 	return b.store.EfficiencyStats(ctx)
 }
 
+// PartsDetailed lists a (tenant, signal)'s flushed parts with their identity and on-backend size.
+// Like EfficiencyStats it reads object sizes from the backend, so it is a drill-down rather than a
+// poll. It returns nil (no error) when the tenant has no engine for the signal.
+func (b *Backend) PartsDetailed(
+	ctx context.Context, tenant signal.TenantID, sig signal.Signal,
+) ([]storage.PartDetail, error) {
+	if b.store == nil {
+		return nil, ErrNoEngine
+	}
+	return b.store.PartsDetailed(ctx, tenant, sig)
+}
+
 // MaintainNow runs one full maintenance cycle immediately (flush + merge + retention across every
 // owned tenant and signal), i.e. the background maintenance loop's body on demand.
 func (b *Backend) MaintainNow(ctx context.Context) error {

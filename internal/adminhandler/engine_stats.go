@@ -3,6 +3,8 @@ package adminhandler
 import (
 	"time"
 
+	"github.com/go-faster/errors"
+
 	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/signal"
 
@@ -169,6 +171,35 @@ func mapTenantEfficiency(t storage.TenantEfficiency) adminapi.TenantEfficiency {
 		te.Signals = append(te.Signals, se)
 	}
 	return te
+}
+
+func mapParts(parts []storage.PartDetail) []adminapi.PartEfficiency {
+	out := make([]adminapi.PartEfficiency, 0, len(parts))
+	for _, p := range parts {
+		out = append(out, adminapi.PartEfficiency{
+			ID:     p.ID,
+			Bytes:  p.Bytes,
+			Rows:   p.Rows,
+			Series: int64(p.Series),
+		})
+	}
+	return out
+}
+
+// engineSignal is the inverse of [mapSignal].
+func engineSignal(s adminapi.Signal) (signal.Signal, error) {
+	switch s {
+	case adminapi.SignalMetrics:
+		return signal.Metric, nil
+	case adminapi.SignalLogs:
+		return signal.Log, nil
+	case adminapi.SignalTraces:
+		return signal.Trace, nil
+	case adminapi.SignalProfiles:
+		return signal.Profile, nil
+	default:
+		return 0, errors.Errorf("unknown signal %q", s)
+	}
 }
 
 // mapSignal maps a storage signal (singular names) onto the admin API signal enum (plural names).
