@@ -79,6 +79,18 @@ paths:
         endpoints this one performs backend I/O (per-part object sizes) —
         poll it at dashboard cadence, not per request. Empty when the
         embedded engine is not active.
+      parameters:
+        - name: parts
+          in: query
+          required: false
+          description: >
+            Lists each signal's parts individually in `parts_detail`. A cluster-wide aggregator
+            needs part identities to count a replicated part once instead of once per replica;
+            a single-node dashboard does not, and the list grows with the part count, so it is
+            off by default.
+          schema:
+            type: boolean
+            default: false
       responses:
         200:
           description: Efficiency statistics.
@@ -86,6 +98,26 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/EfficiencyStats"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/cluster/storage:
+    get:
+      operationId: "getClusterStorage"
+      summary: "Cluster-wide storage footprint"
+      description: >
+        Folds every member node's storage efficiency into one view, reporting the replicated
+        footprint and the deduplicated one side by side: summing per-node bytes counts a part
+        once per replica, which overstates how much data the cluster actually holds.
+
+        Served by a cluster-wide admin (odbadmin). A storage node sees only itself and answers
+        with an error.
+      responses:
+        200:
+          description: Cluster-wide storage footprint.
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/ClusterStorage"
         default:
           $ref: "#/components/responses/Error"
   /api/v1/storage/stream-costs:
@@ -814,6 +846,203 @@ components:
           type: number
           format: double
           description: "Logical/stored ratio (e.g. 8.0 = stored at 1/8th of logical); present only when logical size is known."
+        parts_detail:
+          type: array
+          description: >
+            The individual parts behind the counters above, present only when the request asked
+            for them. Absent and empty are indistinguishable in JSON, so read this together with
+            `parts`: a signal with parts > 0 and no `parts_detail` was not asked for detail.
+          items:
+            $ref: "#/components/schemas/PartEfficiency"
+    PartEfficiency:
+      type: object
+      description: "One flushed part's identity and size."
+      required:
+        - id
+        - bytes
+        - rows
+        - series
+      properties:
+        id:
+          type: string
+          description: >
+            The part's backend key prefix. It is assigned once by the node that wrote the part and
+            is preserved verbatim when the part is mirrored, so the same id on two nodes is the
+            same data — which is what makes cluster-wide deduplication possible.
+          example: "default/metrics/01M00000000000000000000007"
+        bytes:
+          type: integer
+          format: int64
+          description: "Sum of the part's backend object sizes on this node."
+        rows:
+          type: integer
+          format: int64
+          description: "Samples (metrics) or records (logs/traces/profiles) in the part."
+        series:
+          type: integer
+          format: int64
+          description: "Distinct series/streams in the part."
+    ClusterStorage:
+      type: object
+      description: >
+        The cluster's storage footprint, counted both ways: once per stored copy and once per
+        distinct part.
+      required:
+        - replication_factor
+        - complete
+        - nodes
+        - tenants
+      properties:
+        replication_factor:
+          type: integer
+          description: "The cluster's configured replication factor, as this aggregator is configured."
+        complete:
+          type: boolean
+          description: >
+            Whether every member answered, and answered with the part identities deduplication
+            needs. False makes every logical figure below a LOWER BOUND: a node that did not
+            answer contributes no parts to the union, so a part only it holds is missing from the
+            count entirely. See `nodes` for which node failed.
+        nodes:
+          type: array
+          description: "Every member the aggregator asked, answering or not."
+          items:
+            $ref: "#/components/schemas/ClusterNodeStatus"
+        tenants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterTenantStorage"
+    ClusterNodeStatus:
+      type: object
+      description: "One member node's participation in this report."
+      required:
+        - node
+        - status
+      properties:
+        node:
+          type: string
+          description: "Member id in the ring."
+          example: "oteldb-1"
+        addr:
+          type: string
+          description: "Admin API base URL the aggregator used."
+        status:
+          $ref: "#/components/schemas/ClusterNodeState"
+        error:
+          type: string
+          description: "Why the node did not answer. Present only when status is unreachable."
+        duration_seconds:
+          type: number
+          format: double
+          description: "How long the node took to answer."
+    ClusterNodeState:
+      type: string
+      description: "Whether a member answered the aggregator."
+      enum:
+        - ok
+        - unreachable
+    ClusterTenantStorage:
+      type: object
+      description: "One tenant's cluster-wide footprint."
+      required:
+        - tenant
+        - signals
+      properties:
+        tenant:
+          type: string
+          example: "default"
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterSignalStorage"
+    ClusterSignalStorage:
+      type: object
+      description: >
+        One (tenant, signal)'s footprint across the cluster. The logical figures deduplicate by
+        part id; the physical ones do not, and their ratio is the replication actually achieved —
+        which is not the configured factor while a rebalance is in flight or a replica is missing.
+      required:
+        - signal
+        - logical_bytes
+        - physical_bytes
+        - logical_parts
+        - physical_parts
+        - logical_points
+        - physical_points
+        - replication_factor
+        - nodes
+      properties:
+        signal:
+          $ref: "#/components/schemas/Signal"
+        logical_bytes:
+          type: integer
+          format: int64
+          description: >
+            Stored bytes of the distinct parts the cluster holds — a part mirrored to several
+            owners is counted once, at the size the first node reporting it gave. This is the
+            number to plan capacity against. It is a LOWER BOUND when `complete` is false: parts
+            held only by a node that did not answer are missing from the union entirely.
+        physical_bytes:
+          type: integer
+          format: int64
+          description: >
+            Sum of every answering node's stored bytes, counting a part once per replica. This is
+            what the disks actually hold, and it is deliberately not `logical_bytes` times the
+            replication factor: under-replication and in-flight rebalancing move the two apart,
+            which is exactly when the difference is worth looking at.
+        logical_parts:
+          type: integer
+          format: int64
+          description: "Distinct part ids across the answering nodes."
+        physical_parts:
+          type: integer
+          format: int64
+          description: "Sum of the answering nodes' part counts — one count per stored replica."
+        logical_points:
+          type: integer
+          format: int64
+          description: >
+            Samples or records in the distinct parts, deduplicated the same way as
+            `logical_bytes` and an underestimate under the same condition.
+        physical_points:
+          type: integer
+          format: int64
+          description: "Sum of the answering nodes' point counts, counting a replicated part once per replica."
+        replication_factor:
+          type: integer
+          description: "The cluster's configured replication factor, repeated here so the two byte figures read on their own."
+        nodes:
+          type: array
+          description: >
+            What each node contributed, ordered by node id. Only nodes holding data for this
+            (tenant, signal) appear: a node that holds none of it and a node that did not answer
+            are both absent here, and the report's `nodes` is what tells them apart.
+          items:
+            $ref: "#/components/schemas/ClusterNodeSignalStorage"
+    ClusterNodeSignalStorage:
+      type: object
+      description: "One node's share of a (tenant, signal)."
+      required:
+        - node
+        - bytes
+        - parts
+        - points
+      properties:
+        node:
+          type: string
+          example: "oteldb-1"
+        bytes:
+          type: integer
+          format: int64
+          description: "Stored bytes on this node."
+        parts:
+          type: integer
+          format: int64
+          description: "Parts on this node."
+        points:
+          type: integer
+          format: int64
+          description: "Samples or records on this node."
     StreamCosts:
       type: object
       description: "Per-stream (or per-label-value) storage cost attribution for one signal."
