@@ -2,6 +2,7 @@ package clusterquery_test
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"slices"
@@ -18,6 +19,7 @@ import (
 	"github.com/oteldb/storage/cluster/router"
 	"github.com/oteldb/storage/query/fetch"
 	"github.com/oteldb/storage/signal"
+	sigtrace "github.com/oteldb/storage/signal/trace"
 
 	"github.com/oteldb/oteldb/internal/clusterquery"
 	"github.com/oteldb/oteldb/internal/etcdtest"
@@ -52,6 +54,9 @@ type fakeNode struct {
 	held map[string][]string
 	// keys maps a shard key to the record-attribute keys the node reports for it.
 	keys map[string][]cluster.KeyInfo
+	// traceIDs maps a shard key to the trace id of each span row the node holds for it. When set,
+	// a read of that shard answers with those rows instead of the metric-shaped streams.
+	traceIDs map[string][]string
 }
 
 func startNode(t *testing.T, endpoint, id string, held map[string][]string) *fakeNode {
@@ -110,6 +115,10 @@ func (n *fakeNode) fetch(
 	streams, err := n.streams(shardKey)
 	if err != nil {
 		return nil, err
+	}
+
+	if ids, ok := n.traceIDs[shardKey]; ok {
+		return []*fetch.Batch{n.spanBatch(start, ids)}, nil
 	}
 
 	out := make([]*fetch.Batch, 0, len(streams))
@@ -325,4 +334,67 @@ func TestLogKeysUnionsShards(t *testing.T) {
 	assert.Equal(t, []string{"host", "level"}, names)
 	assert.Equal(t, uint8(5), scopes["host"], "the scope bits of both shards")
 	assert.Equal(t, uint8(4), scopes["level"])
+}
+
+// spanBatch answers a trace read with one span row per trace id. The conditions a trace-by-id read
+// carries never reach a peer, so this is deliberately every row of the shard.
+func (n *fakeNode) spanBatch(start int64, ids []string) *fetch.Batch {
+	s := series("spans")
+
+	b := &fetch.Batch{
+		ID:     s.Hash(),
+		Series: s,
+		Columns: []fetch.NamedColumn{
+			{Name: sigtrace.ColTraceID},
+			{Name: sigtrace.ColName},
+		},
+	}
+	for i, id := range ids {
+		b.Timestamps = append(b.Timestamps, start+int64(i))
+		b.Columns[0].Bytes = append(b.Columns[0].Bytes, []byte(id))
+		b.Columns[1].Bytes = append(b.Columns[1].Bytes, fmt.Appendf(nil, "span-%d", i))
+	}
+
+	return b
+}
+
+// TestTraceByIDNarrowsToOneTrace pins the read that has no matchers at all: trace-by-id is a single
+// columnar condition, and conditions do not cross the wire. Narrowing a peer's answer by matchers
+// alone left the condition unapplied, so every span the shard held came back as one trace — and a
+// trace id that exists nowhere returned the whole window instead of nothing.
+func TestTraceByIDNarrowsToOneTrace(t *testing.T) {
+	t.Parallel()
+
+	endpoint := etcdtest.Start(t)
+	node := startNode(t, endpoint, "node-a", map[string][]string{
+		string(cluster.DefaultTenant): {"spans"},
+	})
+	node.traceIDs = map[string][]string{
+		string(cluster.DefaultTenant): {"aaa", "bbb", "aaa", "ccc"},
+	}
+
+	src := clusterquery.New(openRouter(t, endpoint, 1, 1))
+
+	rows := func(id string) []string {
+		t.Helper()
+
+		batches, err := src.Trace(t.Context(), "", []byte(id))
+		require.NoError(t, err)
+
+		var out []string
+		for _, b := range batches {
+			col, ok := b.Column(sigtrace.ColTraceID)
+			require.True(t, ok)
+
+			for _, v := range col.Bytes {
+				out = append(out, string(v))
+			}
+		}
+
+		return out
+	}
+
+	assert.Equal(t, []string{"aaa", "aaa"}, rows("aaa"))
+	assert.Equal(t, []string{"bbb"}, rows("bbb"))
+	assert.Empty(t, rows("nope"), "a trace id nothing holds must return nothing, not the window")
 }
