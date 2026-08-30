@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"slices"
-	"sort"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -752,7 +751,7 @@ func seriesKey(m map[string]string) string {
 	for k := range m {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 	var buf []byte
 	for _, k := range keys {
 		buf = append(buf, k...)

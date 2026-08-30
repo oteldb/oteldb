@@ -3,7 +3,7 @@ package clusterquery
 import (
 	"bytes"
 	"context"
-	"sort"
+	"slices"
 
 	"github.com/go-faster/errors"
 
@@ -78,7 +78,7 @@ func (s *Source) LogKeys(
 		keys = append(keys, k)
 	}
 
-	sort.Strings(keys)
+	slices.Sort(keys)
 
 	out := make([]storage.KeyInfo, len(keys))
 	for i, k := range keys {
@@ -124,7 +124,7 @@ func (s *Source) ColumnValues(
 		values = append(values, v)
 	}
 
-	sort.Strings(values)
+	slices.Sort(values)
 
 	if req.Limit > 0 && len(values) > req.Limit {
 		values = values[:req.Limit]

@@ -2,12 +2,12 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -191,8 +191,8 @@ func summarizeLogQLQueries(queries []logqlbench.LogQLReportQuery) []logQLSummary
 			ReadRows:  readRows,
 		})
 	}
-	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].Type+rows[i].Title < rows[j].Type+rows[j].Title
+	slices.SortFunc(rows, func(a, b logQLSummaryRow) int {
+		return cmp.Compare(a.Type+a.Title, b.Type+b.Title)
 	})
 	return rows
 }

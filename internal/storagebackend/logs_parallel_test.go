@@ -3,7 +3,7 @@ package storagebackend_test
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -85,7 +85,7 @@ func resultRows(tb testing.TB, b *storagebackend.Backend, sel []logql.LabelMatch
 		e.Set.Range(func(k logql.Label, v pcommon.Value) {
 			labels = append(labels, fmt.Sprintf("%s=%s", k, v.AsString()))
 		})
-		sort.Strings(labels)
+		slices.Sort(labels)
 		rows = append(rows, fmt.Sprintf("%d|%s|%v", e.Timestamp, e.Line, labels))
 	}
 	require.NoError(tb, it.Err())

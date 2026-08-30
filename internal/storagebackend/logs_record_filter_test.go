@@ -1,7 +1,7 @@
 package storagebackend_test
 
 import (
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -61,7 +61,7 @@ func TestLogRecordAttrPushdown(t *testing.T) {
 			lines = append(lines, e.Line)
 		}
 		require.NoError(t, it.Err())
-		sort.Strings(lines)
+		slices.Sort(lines)
 		return lines
 	}
 
@@ -110,5 +110,5 @@ func TestLogRecordAttrLabelNames(t *testing.T) {
 	require.Contains(t, names, "service_name") // resource label
 	require.Contains(t, names, "job")          // clean record-attribute key
 	require.Contains(t, names, "http_method")  // dotted record-attribute key, normalized
-	require.True(t, sort.StringsAreSorted(names), "label names must be sorted")
+	require.True(t, slices.IsSorted(names), "label names must be sorted")
 }

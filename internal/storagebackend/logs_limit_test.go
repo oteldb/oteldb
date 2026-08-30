@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
 
@@ -29,7 +28,7 @@ func canonicalize(tb testing.TB, data lokiapi.QueryResponseData) limitResult {
 		for k, v := range s.Stream.Value {
 			pairs = append(pairs, k+"="+v)
 		}
-		sort.Strings(pairs)
+		slices.Sort(pairs)
 		key := strings.Join(pairs, ",")
 		require.NotContains(tb, out, key, "duplicate stream in result")
 		out[key] = s.Values

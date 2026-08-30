@@ -3,7 +3,7 @@ package storagebackend_test
 import (
 	"encoding/base64"
 	"regexp"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -47,7 +47,7 @@ func TestLogStreamMatcherPushdown(t *testing.T) {
 			lines = append(lines, e.Line)
 		}
 		require.NoError(t, it.Err())
-		sort.Strings(lines)
+		slices.Sort(lines)
 		return lines
 	}
 

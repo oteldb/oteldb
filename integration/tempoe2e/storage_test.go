@@ -3,7 +3,7 @@ package tempoe2e_test
 import (
 	"context"
 	"io"
-	"sort"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -110,6 +110,6 @@ func apiTraceIDs(traces []tempoapi.TraceSearchMetadata) []string {
 	for _, tr := range traces {
 		ids = append(ids, tr.TraceID)
 	}
-	sort.Strings(ids)
+	slices.Sort(ids)
 	return ids
 }

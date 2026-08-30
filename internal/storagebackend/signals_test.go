@@ -2,7 +2,7 @@ package storagebackend_test
 
 import (
 	"context"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -435,7 +435,7 @@ func drainLabels(
 		out = append(out, l.Value)
 		return nil
 	}))
-	sort.Strings(out)
+	slices.Sort(out)
 
 	return out
 }

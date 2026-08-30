@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -185,8 +185,8 @@ func (o *aggregateOverTimeOp) doLoad(ctx context.Context) error {
 	for i := range order {
 		order[i] = i
 	}
-	sort.SliceStable(order, func(a, c int) bool {
-		return labels.Compare(o.series[order[a]], o.series[order[c]]) < 0
+	slices.SortStableFunc(order, func(a, c int) int {
+		return labels.Compare(o.series[a], o.series[c])
 	})
 	sortedSeries := make([]labels.Labels, len(order))
 	sortedVals := make([]float64, len(order))
