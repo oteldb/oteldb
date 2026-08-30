@@ -92,7 +92,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.cluster.self_absent — the node is up and serving but missing from etcd, so no peer routes anything to it. Should be 0.",
+      "description": "storage.cluster.self_absent \u2014 the node is up and serving but missing from etcd, so no peer routes anything to it. Should be 0.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -162,7 +162,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.disk.out_of_space — an engine is refusing writes because the medium is out of bytes or inodes. Should be 0.",
+      "description": "storage.disk.out_of_space \u2014 an engine is refusing writes because the medium is out of bytes or inodes. Should be 0.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -298,7 +298,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.parts.merge_backlog — unsealed parts a merge may still take.",
+      "description": "storage.parts.merge_backlog \u2014 unsealed parts a merge may still take.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -443,7 +443,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.ingest.accepted — points accepted for storage, counted at the engine that stores them.",
+      "description": "storage.ingest.accepted \u2014 points accepted for storage, counted at the engine that stores them.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -473,7 +473,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "normal"
@@ -538,7 +538,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "Admission control. storage.ingest.rejected (by reason), storage.ingest.sampled_dropped and storage.ingest.overflowed. Nothing is charted until admission actually sheds — an empty panel is the healthy state.",
+      "description": "Admission control. storage.ingest.rejected (by reason), storage.ingest.sampled_dropped and storage.ingest.overflowed. Nothing is charted until admission actually sheds \u2014 an empty panel is the healthy state.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -568,7 +568,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -685,7 +685,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -777,7 +777,7 @@
       },
       "id": 12,
       "panels": [],
-      "title": "Flush (head → part)",
+      "title": "Flush (head \u2192 part)",
       "type": "row"
     },
     {
@@ -785,7 +785,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.flush.total — head flushes to an immutable part.",
+      "description": "storage.flush.total \u2014 head flushes to an immutable part.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -815,7 +815,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -880,7 +880,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.flush.duration_sum / _count. The engine's PromQL has no histogram_quantile, so this is a mean, not a quantile — read it next to the bucket panel.",
+      "description": "storage.flush.duration_sum / _count. The engine's PromQL has no histogram_quantile, so this is a mean, not a quantile \u2014 read it next to the bucket panel.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -910,7 +910,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -978,53 +978,16 @@
       "description": "Rate of storage.flush.duration_bucket per cumulative le bucket (seconds). Buckets are the OTel defaults, so the useful signal is which bucket stops growing.",
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
           "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
             }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              }
-            ]
-          },
-          "unit": "cps"
+          }
         },
         "overrides": []
       },
@@ -1036,16 +999,40 @@
       },
       "id": 15,
       "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "cellValues": {},
+        "color": {
+          "mode": "scheme",
+          "scheme": "Oranges",
+          "steps": 64,
+          "reverse": false,
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "min": 0
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-09
+        },
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto",
+          "value": "requests"
         },
         "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "desc"
+          "mode": "single",
+          "showColorScale": false,
+          "yHistogram": true
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "cps"
         }
       },
       "pluginVersion": "13.0.2",
@@ -1057,20 +1044,21 @@
           },
           "editorMode": "code",
           "expr": "sum by (le) (rate({\"storage.flush.duration_bucket\", \"host.name\"=~\"$node\", signal=~\"$signal\"}[$__rate_interval]))",
-          "legendFormat": "le {{le}}",
+          "legendFormat": "{{le}}",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "format": "heatmap"
         }
       ],
       "title": "Flush duration distribution",
-      "type": "timeseries"
+      "type": "heatmap"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.flush.rows_sum rate — rows landing in parts.",
+      "description": "storage.flush.rows_sum rate \u2014 rows landing in parts.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1100,7 +1088,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "normal"
@@ -1165,7 +1153,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.flush.rows_sum / _count — how big a head gets before it is cut.",
+      "description": "storage.flush.rows_sum / _count \u2014 how big a head gets before it is cut.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1195,7 +1183,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -1260,7 +1248,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.disk.rejected_writes — writes the medium could not store. Empty is healthy; a non-zero rate means the node is acking writes it cannot keep.",
+      "description": "storage.disk.rejected_writes \u2014 writes the medium could not store. Empty is healthy; a non-zero rate means the node is acking writes it cannot keep.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1290,7 +1278,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -1368,7 +1356,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.merge.total — background merges (compaction/retention/downsample/recompress).",
+      "description": "storage.merge.total \u2014 background merges (compaction/retention/downsample/recompress).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1398,7 +1386,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -1493,7 +1481,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -1588,7 +1576,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -1683,7 +1671,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -1789,7 +1777,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -1865,7 +1853,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.merge.cap_bytes — the part size at which a merged part is sealed.",
+      "description": "storage.merge.cap_bytes \u2014 the part size at which a merged part is sealed.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1895,7 +1883,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -1965,7 +1953,7 @@
       },
       "id": 26,
       "panels": [],
-      "title": "Read path (fetch over head ∪ parts)",
+      "title": "Read path (fetch over head \u222a parts)",
       "type": "row"
     },
     {
@@ -2003,7 +1991,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -2098,7 +2086,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -2166,53 +2154,16 @@
       "description": "Rate of storage.fetch.duration_bucket per cumulative le bucket (seconds).",
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
           "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
             }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              }
-            ]
-          },
-          "unit": "cps"
+          }
         },
         "overrides": []
       },
@@ -2224,16 +2175,40 @@
       },
       "id": 29,
       "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "cellValues": {},
+        "color": {
+          "mode": "scheme",
+          "scheme": "Oranges",
+          "steps": 64,
+          "reverse": false,
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "min": 0
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-09
+        },
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto",
+          "value": "requests"
         },
         "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "desc"
+          "mode": "single",
+          "showColorScale": false,
+          "yHistogram": true
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "cps"
         }
       },
       "pluginVersion": "13.0.2",
@@ -2245,20 +2220,21 @@
           },
           "editorMode": "code",
           "expr": "sum by (le) (rate({\"storage.fetch.duration_bucket\", \"host.name\"=~\"$node\", signal=~\"$signal\"}[$__rate_interval]))",
-          "legendFormat": "le {{le}}",
+          "legendFormat": "{{le}}",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "format": "heatmap"
         }
       ],
       "title": "Fetch duration distribution",
-      "type": "timeseries"
+      "type": "heatmap"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.fetch.series_matched_sum / _count — index selectivity.",
+      "description": "storage.fetch.series_matched_sum / _count \u2014 index selectivity.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2288,7 +2264,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -2383,7 +2359,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -2448,7 +2424,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.fetch.parts_scanned is the read amplification the merge backlog buys you. storage.fetch.decode_budget_forced_admissions counts queries let past the decode-memory ceiling after a stalled wait — any non-zero rate means the ceiling is not holding.",
+      "description": "storage.fetch.parts_scanned is the read amplification the merge backlog buys you. storage.fetch.decode_budget_forced_admissions counts queries let past the decode-memory ceiling after a stalled wait \u2014 any non-zero rate means the ceiling is not holding.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2478,7 +2454,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -2567,7 +2543,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.rpc.attempts — every node-to-node transport attempt, including the first, by op.",
+      "description": "storage.rpc.attempts \u2014 every node-to-node transport attempt, including the first, by op.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2597,7 +2573,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -2692,7 +2668,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -2768,7 +2744,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.rpc.shard_absent: this node owns the shard in the ring but holds no data, so the read failed over — the ring and the data disagree. storage.rpc.shard_incomplete: it holds the shard but came back without the unflushed head, so the window is only on another owner. A sustained incomplete rate means nobody is flushing.",
+      "description": "storage.rpc.shard_absent: this node owns the shard in the ring but holds no data, so the read failed over \u2014 the ring and the data disagree. storage.rpc.shard_incomplete: it holds the shard but came back without the unflushed head, so the window is only on another owner. A sustained incomplete rate means nobody is flushing.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2798,7 +2774,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -2904,7 +2880,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -3023,7 +2999,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "normal"
@@ -3118,7 +3094,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -3213,7 +3189,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -3308,7 +3284,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -3376,53 +3352,16 @@
       "description": "Rate of storage.backend.latency_bucket per cumulative le bucket (seconds).",
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
           "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
             }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              }
-            ]
-          },
-          "unit": "cps"
+          }
         },
         "overrides": []
       },
@@ -3434,16 +3373,40 @@
       },
       "id": 43,
       "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "cellValues": {},
+        "color": {
+          "mode": "scheme",
+          "scheme": "Oranges",
+          "steps": 64,
+          "reverse": false,
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "min": 0
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-09
+        },
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto",
+          "value": "requests"
         },
         "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "desc"
+          "mode": "single",
+          "showColorScale": false,
+          "yHistogram": true
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "cps"
         }
       },
       "pluginVersion": "13.0.2",
@@ -3455,13 +3418,14 @@
           },
           "editorMode": "code",
           "expr": "sum by (le) (rate({\"storage.backend.latency_bucket\", \"host.name\"=~\"$node\"}[$__rate_interval]))",
-          "legendFormat": "le {{le}}",
+          "legendFormat": "{{le}}",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "format": "heatmap"
         }
       ],
       "title": "Backend latency distribution",
-      "type": "timeseries"
+      "type": "heatmap"
     },
     {
       "collapsed": false,
@@ -3511,7 +3475,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -3606,7 +3570,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -3671,7 +3635,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "go.memory.allocated rate — allocator pressure, the input to GC frequency.",
+      "description": "go.memory.allocated rate \u2014 allocator pressure, the input to GC frequency.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3701,7 +3665,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -3766,7 +3730,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "go.memory.gc.goal — the heap size the next GC cycle targets.",
+      "description": "go.memory.gc.goal \u2014 the heap size the next GC cycle targets.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3796,7 +3760,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -3874,7 +3838,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "odbingest.otlp.requests — OTLP requests reaching the split-process writer.",
+      "description": "odbingest.otlp.requests \u2014 OTLP requests reaching the split-process writer.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3904,7 +3868,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -3969,7 +3933,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "odbingest.otlp.items — points, spans and log records decoded.",
+      "description": "odbingest.otlp.items \u2014 points, spans and log records decoded.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3999,7 +3963,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -4094,7 +4058,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -4159,7 +4123,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "odbingest.cluster.accepted_points — what odbingest handed to the storage ring.",
+      "description": "odbingest.cluster.accepted_points \u2014 what odbingest handed to the storage ring.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4189,7 +4153,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false,
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
