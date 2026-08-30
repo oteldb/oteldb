@@ -13,6 +13,18 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// GetClusterStorage implements getClusterStorage operation.
+//
+// Folds every member node's storage efficiency into one view, reporting the replicated footprint and
+// the deduplicated one side by side: summing per-node bytes counts a part once per replica, which
+// overstates how much data the cluster actually holds. Served by a cluster-wide admin (odbadmin). A
+// storage node sees only itself and answers with an error.
+//
+// GET /api/v1/cluster/storage
+func (UnimplementedHandler) GetClusterStorage(ctx context.Context) (r *ClusterStorage, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetEfficiency implements getEfficiency operation.
 //
 // Per-tenant, per-signal capacity and efficiency breakdown of the embedded storage engine: series,
@@ -21,7 +33,7 @@ var _ Handler = UnimplementedHandler{}
 // not per request. Empty when the embedded engine is not active.
 //
 // GET /api/v1/storage/efficiency
-func (UnimplementedHandler) GetEfficiency(ctx context.Context) (r *EfficiencyStats, _ error) {
+func (UnimplementedHandler) GetEfficiency(ctx context.Context, params GetEfficiencyParams) (r *EfficiencyStats, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

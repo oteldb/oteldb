@@ -274,6 +274,288 @@ func (s *ClusterMember) SetAddr(val OptString) {
 	s.Addr = val
 }
 
+// One node's share of a (tenant, signal).
+// Ref: #/components/schemas/ClusterNodeSignalStorage
+type ClusterNodeSignalStorage struct {
+	Node string `json:"node"`
+	// Stored bytes on this node.
+	Bytes int64 `json:"bytes"`
+	// Parts on this node.
+	Parts int64 `json:"parts"`
+	// Samples or records on this node.
+	Points int64 `json:"points"`
+}
+
+// GetNode returns the value of Node.
+func (s *ClusterNodeSignalStorage) GetNode() string {
+	return s.Node
+}
+
+// GetBytes returns the value of Bytes.
+func (s *ClusterNodeSignalStorage) GetBytes() int64 {
+	return s.Bytes
+}
+
+// GetParts returns the value of Parts.
+func (s *ClusterNodeSignalStorage) GetParts() int64 {
+	return s.Parts
+}
+
+// GetPoints returns the value of Points.
+func (s *ClusterNodeSignalStorage) GetPoints() int64 {
+	return s.Points
+}
+
+// SetNode sets the value of Node.
+func (s *ClusterNodeSignalStorage) SetNode(val string) {
+	s.Node = val
+}
+
+// SetBytes sets the value of Bytes.
+func (s *ClusterNodeSignalStorage) SetBytes(val int64) {
+	s.Bytes = val
+}
+
+// SetParts sets the value of Parts.
+func (s *ClusterNodeSignalStorage) SetParts(val int64) {
+	s.Parts = val
+}
+
+// SetPoints sets the value of Points.
+func (s *ClusterNodeSignalStorage) SetPoints(val int64) {
+	s.Points = val
+}
+
+// Whether a member answered the aggregator.
+// Ref: #/components/schemas/ClusterNodeState
+type ClusterNodeState string
+
+const (
+	ClusterNodeStateOk          ClusterNodeState = "ok"
+	ClusterNodeStateUnreachable ClusterNodeState = "unreachable"
+)
+
+// AllValues returns all ClusterNodeState values.
+func (ClusterNodeState) AllValues() []ClusterNodeState {
+	return []ClusterNodeState{
+		ClusterNodeStateOk,
+		ClusterNodeStateUnreachable,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ClusterNodeState) MarshalText() ([]byte, error) {
+	switch s {
+	case ClusterNodeStateOk:
+		return []byte(s), nil
+	case ClusterNodeStateUnreachable:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ClusterNodeState) UnmarshalText(data []byte) error {
+	switch ClusterNodeState(data) {
+	case ClusterNodeStateOk:
+		*s = ClusterNodeStateOk
+		return nil
+	case ClusterNodeStateUnreachable:
+		*s = ClusterNodeStateUnreachable
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// One member node's participation in this report.
+// Ref: #/components/schemas/ClusterNodeStatus
+type ClusterNodeStatus struct {
+	// Member id in the ring.
+	Node string `json:"node"`
+	// Admin API base URL the aggregator used.
+	Addr   OptString        `json:"addr"`
+	Status ClusterNodeState `json:"status"`
+	// Why the node did not answer. Present only when status is unreachable.
+	Error OptString `json:"error"`
+	// How long the node took to answer.
+	DurationSeconds OptFloat64 `json:"duration_seconds"`
+}
+
+// GetNode returns the value of Node.
+func (s *ClusterNodeStatus) GetNode() string {
+	return s.Node
+}
+
+// GetAddr returns the value of Addr.
+func (s *ClusterNodeStatus) GetAddr() OptString {
+	return s.Addr
+}
+
+// GetStatus returns the value of Status.
+func (s *ClusterNodeStatus) GetStatus() ClusterNodeState {
+	return s.Status
+}
+
+// GetError returns the value of Error.
+func (s *ClusterNodeStatus) GetError() OptString {
+	return s.Error
+}
+
+// GetDurationSeconds returns the value of DurationSeconds.
+func (s *ClusterNodeStatus) GetDurationSeconds() OptFloat64 {
+	return s.DurationSeconds
+}
+
+// SetNode sets the value of Node.
+func (s *ClusterNodeStatus) SetNode(val string) {
+	s.Node = val
+}
+
+// SetAddr sets the value of Addr.
+func (s *ClusterNodeStatus) SetAddr(val OptString) {
+	s.Addr = val
+}
+
+// SetStatus sets the value of Status.
+func (s *ClusterNodeStatus) SetStatus(val ClusterNodeState) {
+	s.Status = val
+}
+
+// SetError sets the value of Error.
+func (s *ClusterNodeStatus) SetError(val OptString) {
+	s.Error = val
+}
+
+// SetDurationSeconds sets the value of DurationSeconds.
+func (s *ClusterNodeStatus) SetDurationSeconds(val OptFloat64) {
+	s.DurationSeconds = val
+}
+
+// One (tenant, signal)'s footprint across the cluster. The logical figures deduplicate by part id; the
+// physical ones do not, and their ratio is the replication actually achieved — which is not the
+// configured factor while a rebalance is in flight or a replica is missing.
+// Ref: #/components/schemas/ClusterSignalStorage
+type ClusterSignalStorage struct {
+	Signal Signal `json:"signal"`
+	// Stored bytes of the distinct parts the cluster holds — a part mirrored to several owners is
+	// counted once, at the size the first node reporting it gave. This is the number to plan capacity
+	// against. It is a LOWER BOUND when `complete` is false: parts held only by a node that did not answer
+	// are missing from the union entirely.
+	LogicalBytes int64 `json:"logical_bytes"`
+	// Sum of every answering node's stored bytes, counting a part once per replica. This is what the disks
+	// actually hold, and it is deliberately not `logical_bytes` times the replication factor:
+	// under-replication and in-flight rebalancing move the two apart, which is exactly when the difference
+	// is worth looking at.
+	PhysicalBytes int64 `json:"physical_bytes"`
+	// Distinct part ids across the answering nodes.
+	LogicalParts int64 `json:"logical_parts"`
+	// Sum of the answering nodes' part counts — one count per stored replica.
+	PhysicalParts int64 `json:"physical_parts"`
+	// Samples or records in the distinct parts, deduplicated the same way as `logical_bytes` and an
+	// underestimate under the same condition.
+	LogicalPoints int64 `json:"logical_points"`
+	// Sum of the answering nodes' point counts, counting a replicated part once per replica.
+	PhysicalPoints int64 `json:"physical_points"`
+	// The cluster's configured replication factor, repeated here so the two byte figures read on their
+	// own.
+	ReplicationFactor int `json:"replication_factor"`
+	// What each node contributed. A node that answered but holds nothing for this signal appears with
+	// zeroes; a node that did not answer is omitted here and reported unreachable in the report's `nodes`.
+	Nodes []ClusterNodeSignalStorage `json:"nodes"`
+}
+
+// GetSignal returns the value of Signal.
+func (s *ClusterSignalStorage) GetSignal() Signal {
+	return s.Signal
+}
+
+// GetLogicalBytes returns the value of LogicalBytes.
+func (s *ClusterSignalStorage) GetLogicalBytes() int64 {
+	return s.LogicalBytes
+}
+
+// GetPhysicalBytes returns the value of PhysicalBytes.
+func (s *ClusterSignalStorage) GetPhysicalBytes() int64 {
+	return s.PhysicalBytes
+}
+
+// GetLogicalParts returns the value of LogicalParts.
+func (s *ClusterSignalStorage) GetLogicalParts() int64 {
+	return s.LogicalParts
+}
+
+// GetPhysicalParts returns the value of PhysicalParts.
+func (s *ClusterSignalStorage) GetPhysicalParts() int64 {
+	return s.PhysicalParts
+}
+
+// GetLogicalPoints returns the value of LogicalPoints.
+func (s *ClusterSignalStorage) GetLogicalPoints() int64 {
+	return s.LogicalPoints
+}
+
+// GetPhysicalPoints returns the value of PhysicalPoints.
+func (s *ClusterSignalStorage) GetPhysicalPoints() int64 {
+	return s.PhysicalPoints
+}
+
+// GetReplicationFactor returns the value of ReplicationFactor.
+func (s *ClusterSignalStorage) GetReplicationFactor() int {
+	return s.ReplicationFactor
+}
+
+// GetNodes returns the value of Nodes.
+func (s *ClusterSignalStorage) GetNodes() []ClusterNodeSignalStorage {
+	return s.Nodes
+}
+
+// SetSignal sets the value of Signal.
+func (s *ClusterSignalStorage) SetSignal(val Signal) {
+	s.Signal = val
+}
+
+// SetLogicalBytes sets the value of LogicalBytes.
+func (s *ClusterSignalStorage) SetLogicalBytes(val int64) {
+	s.LogicalBytes = val
+}
+
+// SetPhysicalBytes sets the value of PhysicalBytes.
+func (s *ClusterSignalStorage) SetPhysicalBytes(val int64) {
+	s.PhysicalBytes = val
+}
+
+// SetLogicalParts sets the value of LogicalParts.
+func (s *ClusterSignalStorage) SetLogicalParts(val int64) {
+	s.LogicalParts = val
+}
+
+// SetPhysicalParts sets the value of PhysicalParts.
+func (s *ClusterSignalStorage) SetPhysicalParts(val int64) {
+	s.PhysicalParts = val
+}
+
+// SetLogicalPoints sets the value of LogicalPoints.
+func (s *ClusterSignalStorage) SetLogicalPoints(val int64) {
+	s.LogicalPoints = val
+}
+
+// SetPhysicalPoints sets the value of PhysicalPoints.
+func (s *ClusterSignalStorage) SetPhysicalPoints(val int64) {
+	s.PhysicalPoints = val
+}
+
+// SetReplicationFactor sets the value of ReplicationFactor.
+func (s *ClusterSignalStorage) SetReplicationFactor(val int) {
+	s.ReplicationFactor = val
+}
+
+// SetNodes sets the value of Nodes.
+func (s *ClusterSignalStorage) SetNodes(val []ClusterNodeSignalStorage) {
+	s.Nodes = val
+}
+
 // Cluster membership, present only in cluster mode.
 // Ref: #/components/schemas/ClusterStats
 type ClusterStats struct {
@@ -334,6 +616,87 @@ func (s *ClusterStats) SetPartSync(val OptPartSyncStats) {
 // SetEc sets the value of Ec.
 func (s *ClusterStats) SetEc(val OptECStats) {
 	s.Ec = val
+}
+
+// The cluster's storage footprint, counted both ways: once per stored copy and once per distinct part.
+// Ref: #/components/schemas/ClusterStorage
+type ClusterStorage struct {
+	// The cluster's configured replication factor, as this aggregator is configured.
+	ReplicationFactor int `json:"replication_factor"`
+	// Whether every member answered. False makes every deduplicated figure below a lower bound: a node
+	// that did not answer contributes no parts to the union, and a part only it holds is missing entirely.
+	// See `nodes` for which node failed.
+	Complete bool `json:"complete"`
+	// Every member the aggregator asked, answering or not.
+	Nodes   []ClusterNodeStatus    `json:"nodes"`
+	Tenants []ClusterTenantStorage `json:"tenants"`
+}
+
+// GetReplicationFactor returns the value of ReplicationFactor.
+func (s *ClusterStorage) GetReplicationFactor() int {
+	return s.ReplicationFactor
+}
+
+// GetComplete returns the value of Complete.
+func (s *ClusterStorage) GetComplete() bool {
+	return s.Complete
+}
+
+// GetNodes returns the value of Nodes.
+func (s *ClusterStorage) GetNodes() []ClusterNodeStatus {
+	return s.Nodes
+}
+
+// GetTenants returns the value of Tenants.
+func (s *ClusterStorage) GetTenants() []ClusterTenantStorage {
+	return s.Tenants
+}
+
+// SetReplicationFactor sets the value of ReplicationFactor.
+func (s *ClusterStorage) SetReplicationFactor(val int) {
+	s.ReplicationFactor = val
+}
+
+// SetComplete sets the value of Complete.
+func (s *ClusterStorage) SetComplete(val bool) {
+	s.Complete = val
+}
+
+// SetNodes sets the value of Nodes.
+func (s *ClusterStorage) SetNodes(val []ClusterNodeStatus) {
+	s.Nodes = val
+}
+
+// SetTenants sets the value of Tenants.
+func (s *ClusterStorage) SetTenants(val []ClusterTenantStorage) {
+	s.Tenants = val
+}
+
+// One tenant's cluster-wide footprint.
+// Ref: #/components/schemas/ClusterTenantStorage
+type ClusterTenantStorage struct {
+	Tenant  string                 `json:"tenant"`
+	Signals []ClusterSignalStorage `json:"signals"`
+}
+
+// GetTenant returns the value of Tenant.
+func (s *ClusterTenantStorage) GetTenant() string {
+	return s.Tenant
+}
+
+// GetSignals returns the value of Signals.
+func (s *ClusterTenantStorage) GetSignals() []ClusterSignalStorage {
+	return s.Signals
+}
+
+// SetTenant sets the value of Tenant.
+func (s *ClusterTenantStorage) SetTenant(val string) {
+	s.Tenant = val
+}
+
+// SetSignals sets the value of Signals.
+func (s *ClusterTenantStorage) SetSignals(val []ClusterSignalStorage) {
+	s.Signals = val
 }
 
 // One column's share of a stream cost.
@@ -1182,6 +1545,52 @@ func (s *MaintenanceStats) SetLastCycleTasks(val int64) {
 	s.LastCycleTasks = val
 }
 
+// NewOptBool returns new OptBool with value set to v.
+func NewOptBool(v bool) OptBool {
+	return OptBool{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptBool is optional bool.
+type OptBool struct {
+	Value bool
+	Set   bool
+}
+
+// IsSet returns true if OptBool was set.
+func (o OptBool) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptBool) Reset() {
+	var v bool
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptBool) SetTo(v bool) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptBool) Get() (v bool, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptBool) Or(d bool) bool {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptClickHouseStats returns new OptClickHouseStats with value set to v.
 func NewOptClickHouseStats(v ClickHouseStats) OptClickHouseStats {
 	return OptClickHouseStats{
@@ -1734,6 +2143,61 @@ func (o OptTraceID) Or(d TraceID) TraceID {
 	return d
 }
 
+// One flushed part's identity and size.
+// Ref: #/components/schemas/PartEfficiency
+type PartEfficiency struct {
+	// The part's backend key prefix. It is assigned once by the node that wrote the part and is preserved
+	// verbatim when the part is mirrored, so the same id on two nodes is the same data — which is what
+	// makes cluster-wide deduplication possible.
+	ID string `json:"id"`
+	// Sum of the part's backend object sizes on this node.
+	Bytes int64 `json:"bytes"`
+	// Samples (metrics) or records (logs/traces/profiles) in the part.
+	Rows int64 `json:"rows"`
+	// Distinct series/streams in the part.
+	Series int64 `json:"series"`
+}
+
+// GetID returns the value of ID.
+func (s *PartEfficiency) GetID() string {
+	return s.ID
+}
+
+// GetBytes returns the value of Bytes.
+func (s *PartEfficiency) GetBytes() int64 {
+	return s.Bytes
+}
+
+// GetRows returns the value of Rows.
+func (s *PartEfficiency) GetRows() int64 {
+	return s.Rows
+}
+
+// GetSeries returns the value of Series.
+func (s *PartEfficiency) GetSeries() int64 {
+	return s.Series
+}
+
+// SetID sets the value of ID.
+func (s *PartEfficiency) SetID(val string) {
+	s.ID = val
+}
+
+// SetBytes sets the value of Bytes.
+func (s *PartEfficiency) SetBytes(val int64) {
+	s.Bytes = val
+}
+
+// SetRows sets the value of Rows.
+func (s *PartEfficiency) SetRows(val int64) {
+	s.Rows = val
+}
+
+// SetSeries sets the value of Series.
+func (s *PartEfficiency) SetSeries(val int64) {
+	s.Series = val
+}
+
 // Cumulative shared-nothing part-mirroring activity of this node, present only when the cluster runs
 // with a private (per-node) backend.
 // Ref: #/components/schemas/PartSyncStats
@@ -2072,6 +2536,10 @@ type SignalEfficiency struct {
 	// Logical/stored ratio (e.g. 8.0 = stored at 1/8th of logical); present only when logical size is
 	// known.
 	CompressionRatio OptFloat64 `json:"compression_ratio"`
+	// The individual parts behind the counters above, present only when the request asked for them. Absent
+	// and empty are indistinguishable in JSON, so read this together with `parts`: a signal with parts > 0
+	// and no `parts_detail` was not asked for detail.
+	PartsDetail []PartEfficiency `json:"parts_detail"`
 }
 
 // GetSignal returns the value of Signal.
@@ -2114,6 +2582,11 @@ func (s *SignalEfficiency) GetCompressionRatio() OptFloat64 {
 	return s.CompressionRatio
 }
 
+// GetPartsDetail returns the value of PartsDetail.
+func (s *SignalEfficiency) GetPartsDetail() []PartEfficiency {
+	return s.PartsDetail
+}
+
 // SetSignal sets the value of Signal.
 func (s *SignalEfficiency) SetSignal(val Signal) {
 	s.Signal = val
@@ -2152,6 +2625,11 @@ func (s *SignalEfficiency) SetLogicalBytes(val OptInt64) {
 // SetCompressionRatio sets the value of CompressionRatio.
 func (s *SignalEfficiency) SetCompressionRatio(val OptFloat64) {
 	s.CompressionRatio = val
+}
+
+// SetPartsDetail sets the value of PartsDetail.
+func (s *SignalEfficiency) SetPartsDetail(val []PartEfficiency) {
+	s.PartsDetail = val
 }
 
 // Ref: #/components/schemas/SignalInfo

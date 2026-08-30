@@ -8,6 +8,15 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// GetClusterStorage implements getClusterStorage operation.
+	//
+	// Folds every member node's storage efficiency into one view, reporting the replicated footprint and
+	// the deduplicated one side by side: summing per-node bytes counts a part once per replica, which
+	// overstates how much data the cluster actually holds. Served by a cluster-wide admin (odbadmin). A
+	// storage node sees only itself and answers with an error.
+	//
+	// GET /api/v1/cluster/storage
+	GetClusterStorage(ctx context.Context) (*ClusterStorage, error)
 	// GetEfficiency implements getEfficiency operation.
 	//
 	// Per-tenant, per-signal capacity and efficiency breakdown of the embedded storage engine: series,
@@ -16,7 +25,7 @@ type Handler interface {
 	// not per request. Empty when the embedded engine is not active.
 	//
 	// GET /api/v1/storage/efficiency
-	GetEfficiency(ctx context.Context) (*EfficiencyStats, error)
+	GetEfficiency(ctx context.Context, params GetEfficiencyParams) (*EfficiencyStats, error)
 	// GetHealth implements getHealth operation.
 	//
 	// Health of each wired service (query APIs, collector, storage).
