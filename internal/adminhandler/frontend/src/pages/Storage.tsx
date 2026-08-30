@@ -263,7 +263,11 @@ function flattenEfficiency(tenants: TenantEfficiency[]): EfficiencyRow[] {
 
 function Efficiency() {
   // Efficiency stats do backend I/O on the server — poll at a slower cadence.
-  const { data, isLoading, error } = useGetEfficiency({ query: { refetchInterval: 30_000 } });
+  // The first argument is the operation's query parameters; parts_detail is for odbadmin's
+  // cluster-wide dedupe, not this per-node view, so it stays off.
+  const { data, isLoading, error } = useGetEfficiency(undefined, {
+    query: { refetchInterval: 30_000 },
+  });
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorAlert error={error} what="efficiency stats" />;
