@@ -2,9 +2,11 @@ package main
 
 import (
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/figureout"
 
 	"github.com/oteldb/oteldb/internal/config"
 )
@@ -58,9 +60,43 @@ func (cfg *Config) validate() error {
 	return errors.New("every query API is disabled: odbselect would serve nothing")
 }
 
+// describeConfig registers every field of [Config], which is what makes a key no field claims a
+// startup error rather than a setting that looks applied and is not.
+func describeConfig(c *Config, s *figureout.Schema[Config]) {
+	figureout.Group(s, "cluster", func(s *figureout.Schema[Config]) {
+		config.DescribeCluster(s, &c.Cluster)
+	})
+	figureout.Group(s, "prometheus", func(s *figureout.Schema[Config]) {
+		config.DescribePrometheus(s, &c.Prometheus)
+	})
+	figureout.Group(s, "loki", func(s *figureout.Schema[Config]) {
+		config.DescribeLoki(s, &c.Loki)
+	})
+	figureout.Group(s, "tempo", func(s *figureout.Schema[Config]) {
+		config.DescribeTempo(s, &c.Tempo)
+	})
+	figureout.Group(s, "pyroscope", func(s *figureout.Schema[Config]) {
+		config.DescribePyroscope(s, &c.Pyroscope)
+	})
+	figureout.Group(s, "health", func(s *figureout.Schema[Config]) {
+		config.DescribeHealthCheck(s, &c.Health)
+	})
+	figureout.Value(s, &c.ShutdownTimeout, "shutdown_timeout")
+}
+
+// descriptor compiles the description once, on the path that can report a failure and exit.
+var descriptor = sync.OnceValues(func() (*figureout.Descriptor[Config], error) {
+	return config.Descriptor(describeConfig)
+})
+
 // loadConfig reads the config file, falling back to odbselect.yml.
 func loadConfig(name string) (Config, error) {
-	cfg, err := config.Load[Config](name, config.LoadOptions{Fallback: "odbselect.yml"})
+	d, err := descriptor()
+	if err != nil {
+		return Config{}, errors.Wrap(err, "describe config")
+	}
+
+	cfg, _, err := config.Resolve(d, name, config.LoadOptions{Fallback: "odbselect.yml"})
 	cfg.setDefaults()
 
 	return cfg, err
