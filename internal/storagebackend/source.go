@@ -43,6 +43,12 @@ type Source interface {
 	// LogKeys enumerates the distinct attribute keys of a tenant's log records in [start, end] ns.
 	LogKeys(ctx context.Context, tenant signal.TenantID, start, end int64) ([]storage.KeyInfo, error)
 
+	// ColumnValues enumerates the distinct values one record column, or one per-record attribute
+	// key, takes for a tenant. It answers from the parts' column dictionaries, so tag/label value
+	// autocomplete costs O(distinct values) instead of a window scan. The result is a superset:
+	// a part overlapping the window contributes its whole dictionary.
+	ColumnValues(ctx context.Context, tenant signal.TenantID, req storage.ValuesRequest) ([][]byte, error)
+
 	// TraceFetcher returns the traces read seam over the named tenants.
 	TraceFetcher(tenants ...signal.TenantID) fetch.Fetcher
 	// Trace returns every span of one trace.
