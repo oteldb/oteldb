@@ -135,10 +135,30 @@ func (q *TraceQuerier) TagNames(ctx context.Context, opts tracestorage.TagNamesO
 
 // TagValues implements [tracestorage.Querier]. It enumerates the distinct values the attribute takes
 // across the spans in the window.
+//
+// Only the string-ish intrinsics are enumerable: name, status, kind, rootName and rootServiceName.
+// duration, traceDuration and childCount are numeric/unbounded and parent is structural, so — mirroring
+// Tempo and [chstorage.Querier.TagValues] — they yield no autocomplete values.
 func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, opts tracestorage.TagValuesOptions) (iterators.Iterator[tracestorage.Tag], error) {
+	switch attr.Prop {
+	case traceql.SpanStatus:
+		return iterators.Slice(spanStatusTags(attr)), nil
+	case traceql.SpanKind:
+		return iterators.Slice(spanKindTags(attr)), nil
+	case traceql.SpanDuration, traceql.SpanChildCount, traceql.SpanParent, traceql.TraceDuration:
+		return iterators.Empty[tracestorage.Tag](), nil
+	}
+
 	spans, err := q.scanSpans(ctx, opts.Start, opts.End, nil)
 	if err != nil {
 		return nil, err
+	}
+
+	switch attr.Prop {
+	case traceql.SpanName, traceql.RootSpanName:
+		return iterators.Slice(spanNameTags(attr, spans)), nil
+	case traceql.RootServiceName:
+		return iterators.Slice(rootServiceNameTags(attr, spans)), nil
 	}
 
 	seen := map[string]tracestorage.Tag{}
@@ -159,6 +179,77 @@ func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, op
 		out = append(out, tag)
 	}
 	return iterators.Slice(out), nil
+}
+
+// spanStatusTags returns the full [traceql.TypeSpanStatus] enum, formatted the way TraceQL expects
+// (see [SpanMatcher.String]), regardless of which statuses are actually present in the window.
+func spanStatusTags(attr traceql.Attribute) []tracestorage.Tag {
+	name := attr.String()
+	values := [...]string{"unset", "ok", "error"}
+	out := make([]tracestorage.Tag, 0, len(values))
+	for _, v := range values {
+		out = append(out, tracestorage.Tag{Name: name, Value: v, Type: traceql.TypeSpanStatus})
+	}
+	return out
+}
+
+// spanKindTags returns the full [traceql.TypeSpanKind] enum, formatted the way TraceQL expects (see
+// [SpanMatcher.String]), regardless of which kinds are actually present in the window.
+func spanKindTags(attr traceql.Attribute) []tracestorage.Tag {
+	name := attr.String()
+	values := [...]string{"unspecified", "internal", "server", "client", "producer", "consumer"}
+	out := make([]tracestorage.Tag, 0, len(values))
+	for _, v := range values {
+		out = append(out, tracestorage.Tag{Name: name, Value: v, Type: traceql.TypeSpanKind})
+	}
+	return out
+}
+
+// spanNameTags enumerates the distinct span names in spans. For RootSpanName it is restricted to
+// root spans (empty parent span id), since a root span's name is a span-local property and needs no
+// full trace assembly.
+func spanNameTags(attr traceql.Attribute, spans []tracestorage.Span) []tracestorage.Tag {
+	name := attr.String()
+	seen := map[string]struct{}{}
+	var out []tracestorage.Tag
+	for _, span := range spans {
+		if attr.Prop == traceql.RootSpanName && !span.ParentSpanID.IsEmpty() {
+			continue
+		}
+		if span.Name == "" {
+			continue
+		}
+		if _, ok := seen[span.Name]; ok {
+			continue
+		}
+		seen[span.Name] = struct{}{}
+		out = append(out, tracestorage.Tag{Name: name, Value: span.Name, Type: traceql.TypeString})
+	}
+	return out
+}
+
+// rootServiceNameTags enumerates the distinct service.name resource attribute values of root spans
+// (empty parent span id). A root span's own resource is a span-local property, so this needs no full
+// trace assembly.
+func rootServiceNameTags(attr traceql.Attribute, spans []tracestorage.Span) []tracestorage.Tag {
+	name := attr.String()
+	seen := map[string]struct{}{}
+	var out []tracestorage.Tag
+	for _, span := range spans {
+		if !span.ParentSpanID.IsEmpty() {
+			continue
+		}
+		svc, ok := span.ServiceName()
+		if !ok || svc == "" {
+			continue
+		}
+		if _, ok := seen[svc]; ok {
+			continue
+		}
+		seen[svc] = struct{}{}
+		out = append(out, tracestorage.Tag{Name: name, Value: svc, Type: traceql.TypeString})
+	}
+	return out
 }
 
 // candidateTraces resolves the query's span matchers to storage filters and returns the ids of the
