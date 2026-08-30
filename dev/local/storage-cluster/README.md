@@ -20,7 +20,9 @@ docker compose -f dev/local/storage-cluster/docker-compose.yml up --build
 ```
 
 Open Grafana at <http://localhost:3000> (anonymous admin) — PromQL, LogQL, and TraceQL datasources
-are pre-provisioned against `oteldb-1`.
+are pre-provisioned against `oteldb-1`, along with the **storage: engine** dashboard
+(`/d/storage-engine`), which charts the engine's own `storage.*` instruments: ingest admission,
+flush, merge and part shape, fetch, cluster RPC failover, and the object-store backend.
 
 ### Self-telemetry
 

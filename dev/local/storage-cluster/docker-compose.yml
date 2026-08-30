@@ -180,5 +180,7 @@ services:
       - "3000:3000"
     volumes:
       - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/default.yml:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
     depends_on:
       - oteldb-1
