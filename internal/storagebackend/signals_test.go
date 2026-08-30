@@ -20,6 +20,7 @@ import (
 	"github.com/oteldb/oteldb/internal/profileql"
 	"github.com/oteldb/oteldb/internal/profilestorage"
 	"github.com/oteldb/oteldb/internal/storagebackend"
+	"github.com/oteldb/oteldb/internal/traceql"
 	"github.com/oteldb/oteldb/internal/tracestorage"
 )
 
@@ -101,13 +102,18 @@ func TestBackendTracesRoundtrip(t *testing.T) {
 	parent.SetStartTimestamp(pcommon.Timestamp(ts.UnixNano()))
 	parent.SetEndTimestamp(pcommon.Timestamp(ts.Add(time.Second).UnixNano()))
 	parent.Attributes().PutStr("http.method", "GET")
+	parent.SetKind(ptrace.SpanKindServer)
+	parent.Status().SetCode(ptrace.StatusCodeOk)
 
 	child := ss.Spans().AppendEmpty()
 	child.SetTraceID(traceID)
 	child.SetSpanID(pcommon.SpanID([8]byte{2, 2, 2, 2, 2, 2, 2, 2}))
+	child.SetParentSpanID(parent.SpanID())
 	child.SetName("db.query")
 	child.SetStartTimestamp(pcommon.Timestamp(ts.UnixNano()))
 	child.SetEndTimestamp(pcommon.Timestamp(ts.Add(time.Second).UnixNano()))
+	child.SetKind(ptrace.SpanKindClient)
+	child.Status().SetCode(ptrace.StatusCodeError)
 
 	require.NoError(t, b.ConsumeTraces(ctx, td))
 
@@ -132,6 +138,76 @@ func TestBackendTracesRoundtrip(t *testing.T) {
 		keys = append(keys, tn.Name)
 	}
 	require.Contains(t, keys, "http.method")
+}
+
+// TestBackendTraceIntrinsicTagValues ingests a two-span trace (one root, one child, with distinct
+// status/kind) and verifies that TagValues enumerates values for the string-ish TraceQL intrinsics:
+// name, status, kind, rootName and rootServiceName.
+func TestBackendTraceIntrinsicTagValues(t *testing.T) {
+	b, ctx := newBackend(t)
+
+	ts := time.Now().Truncate(time.Second)
+	traceID := pcommon.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+
+	td := ptrace.NewTraces()
+	rs := td.ResourceSpans().AppendEmpty()
+	rs.Resource().Attributes().PutStr("service.name", "api")
+	ss := rs.ScopeSpans().AppendEmpty()
+
+	parent := ss.Spans().AppendEmpty()
+	parent.SetTraceID(traceID)
+	parent.SetSpanID(pcommon.SpanID([8]byte{1, 1, 1, 1, 1, 1, 1, 1}))
+	parent.SetName("GET /")
+	parent.SetStartTimestamp(pcommon.Timestamp(ts.UnixNano()))
+	parent.SetEndTimestamp(pcommon.Timestamp(ts.Add(time.Second).UnixNano()))
+	parent.SetKind(ptrace.SpanKindServer)
+	parent.Status().SetCode(ptrace.StatusCodeOk)
+
+	child := ss.Spans().AppendEmpty()
+	child.SetTraceID(traceID)
+	child.SetSpanID(pcommon.SpanID([8]byte{2, 2, 2, 2, 2, 2, 2, 2}))
+	child.SetParentSpanID(parent.SpanID())
+	child.SetName("db.query")
+	child.SetStartTimestamp(pcommon.Timestamp(ts.UnixNano()))
+	child.SetEndTimestamp(pcommon.Timestamp(ts.Add(time.Second).UnixNano()))
+	child.SetKind(ptrace.SpanKindClient)
+	child.Status().SetCode(ptrace.StatusCodeError)
+
+	require.NoError(t, b.ConsumeTraces(ctx, td))
+
+	tq := b.Traces()
+	start, end := ts.Add(-time.Hour), ts.Add(time.Hour)
+
+	values := func(t *testing.T, attr traceql.Attribute) []string {
+		t.Helper()
+		it, err := tq.TagValues(ctx, attr, tracestorage.TagValuesOptions{Start: start, End: end})
+		require.NoError(t, err)
+		tags := drain(t, it)
+		out := make([]string, 0, len(tags))
+		for _, tag := range tags {
+			out = append(out, tag.Value)
+		}
+		return out
+	}
+
+	t.Run("name", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"GET /", "db.query"}, values(t, traceql.Attribute{Prop: traceql.SpanName}))
+	})
+	t.Run("status", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"unset", "ok", "error"}, values(t, traceql.Attribute{Prop: traceql.SpanStatus}))
+	})
+	t.Run("kind", func(t *testing.T) {
+		require.ElementsMatch(t,
+			[]string{"unspecified", "internal", "server", "client", "producer", "consumer"},
+			values(t, traceql.Attribute{Prop: traceql.SpanKind}),
+		)
+	})
+	t.Run("rootName", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"GET /"}, values(t, traceql.Attribute{Prop: traceql.RootSpanName}))
+	})
+	t.Run("rootServiceName", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"api"}, values(t, traceql.Attribute{Prop: traceql.RootServiceName}))
+	})
 }
 
 // TestBackendProfilesRoundtrip ingests an OTLP profile through the storage sink and queries the
