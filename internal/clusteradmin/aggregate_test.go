@@ -216,11 +216,15 @@ func (m fakeMembership) Members() []etcd.Member { return m }
 func TestRingPeersEndpoints(t *testing.T) {
 	t.Parallel()
 
-	peers, err := NewRingPeers(fakeMembership{
-		{ID: "oteldb-1", Addr: "oteldb-1:7946"},
-		{ID: "oteldb-2", Addr: "10.20.0.5:7946"},
-		{ID: "oteldb-3"},
-	}, "http", 8090)
+	peers, err := NewRingPeers(RingPeersOptions{
+		Members: fakeMembership{
+			{ID: "oteldb-1", Addr: "oteldb-1:7946"},
+			{ID: "oteldb-2", Addr: "10.20.0.5:7946"},
+			{ID: "oteldb-3"},
+		},
+		Scheme: "http",
+		Port:   8090,
+	})
 	require.NoError(t, err)
 
 	got, err := peers.Peers()
@@ -238,7 +242,7 @@ func TestRingPeersReusesClients(t *testing.T) {
 	t.Parallel()
 
 	members := fakeMembership{{ID: "oteldb-1", Addr: "oteldb-1:7946"}}
-	peers, err := NewRingPeers(members, "http", 8090)
+	peers, err := NewRingPeers(RingPeersOptions{Members: members, Scheme: "http", Port: 8090})
 	require.NoError(t, err)
 
 	first, err := peers.Peers()
@@ -269,7 +273,9 @@ func TestRingPeersRejectsBadConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := NewRingPeers(fakeMembership{}, tt.scheme, tt.port)
+			_, err := NewRingPeers(RingPeersOptions{
+				Members: fakeMembership{}, Scheme: tt.scheme, Port: tt.port,
+			})
 			require.Error(t, err)
 		})
 	}

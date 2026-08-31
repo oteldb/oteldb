@@ -1,11 +1,12 @@
 package prome2e_test
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math"
 	"math/rand"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -153,7 +154,7 @@ func genNodeExporter(end time.Time) []prompb.TimeSeries {
 	add := func(name string, base []prompb.Label, extra []prompb.Label, kind neKind, rate, baseVal, amp float64) {
 		labels := append([]prompb.Label{neLabel("__name__", name)}, base...)
 		labels = append(labels, extra...)
-		sort.Slice(labels, func(i, j int) bool { return string(labels[i].Name) < string(labels[j].Name) })
+		slices.SortFunc(labels, func(a, b prompb.Label) int { return cmp.Compare(string(a.Name), string(b.Name)) })
 		out = append(out, prompb.TimeSeries{
 			Labels:  labels,
 			Samples: neSamples(stamps, stepSec, kind, rate, baseVal, amp, rng),

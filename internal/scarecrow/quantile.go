@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -180,7 +180,7 @@ func quantile(q float64, values []float64) float64 {
 		return math.Inf(+1)
 	}
 
-	sort.Float64s(values)
+	slices.Sort(values)
 
 	n := float64(len(values))
 	rank := q * (n - 1)

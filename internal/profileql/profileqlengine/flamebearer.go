@@ -1,7 +1,8 @@
 package profileqlengine
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/oteldb/oteldb/internal/profileql"
 	"github.com/oteldb/oteldb/internal/profilestorage"
@@ -141,9 +142,7 @@ func minValue(root *profilestorage.FlameNode, maxNodes int) int64 {
 	if len(totals) <= maxNodes {
 		return 0
 	}
-	sort.Slice(totals, func(i, j int) bool {
-		return totals[i] > totals[j]
-	})
+	slices.SortFunc(totals, func(a, b int64) int { return cmp.Compare(b, a) })
 	return totals[maxNodes-1]
 }
 

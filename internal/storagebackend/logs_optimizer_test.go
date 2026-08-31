@@ -2,7 +2,7 @@ package storagebackend_test
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -116,7 +116,7 @@ func normalize(t *testing.T, data lokiapi.QueryResponseData) []string {
 		for k := range ls {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		var lb strings.Builder
 		for _, k := range keys {
 			fmt.Fprintf(&lb, "%s=%s,", k, ls[k])
@@ -125,6 +125,6 @@ func normalize(t *testing.T, data lokiapi.QueryResponseData) []string {
 			out = append(out, fmt.Sprintf("%s@%g=%s", lb.String(), v.T, v.V))
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }

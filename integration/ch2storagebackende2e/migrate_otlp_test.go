@@ -11,7 +11,7 @@ import (
 	"context"
 	"net"
 	"net/http/httptest"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -131,7 +131,7 @@ func queryLogBodies(t *testing.T, back *storagebackend.Backend, base time.Time) 
 			bodies = append(bodies, v.V)
 		}
 	}
-	sort.Strings(bodies)
+	slices.Sort(bodies)
 
 	return bodies
 }

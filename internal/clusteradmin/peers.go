@@ -2,11 +2,15 @@ package clusteradmin
 
 import (
 	"net"
+	"net/http"
 	"net/url"
 	"strconv"
 	"sync"
 
 	"github.com/go-faster/errors"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/oteldb/storage/cluster/etcd"
 
@@ -31,30 +35,57 @@ type RingPeers struct {
 	scheme  string
 	port    int
 
+	tracerProvider trace.TracerProvider
+	// httpClient is shared by every node's client so the outbound call carries the trace context to
+	// the node, whose server span then continues it.
+	httpClient *http.Client
+
 	mu      sync.Mutex
 	clients map[string]NodeClient
 }
 
 var _ PeerSet = (*RingPeers)(nil)
 
+// RingPeersOptions configures [RingPeers].
+type RingPeersOptions struct {
+	// Members is the live ring view. Required.
+	Members Membership
+	// Scheme is the admin API scheme, "http" or "https". Required.
+	Scheme string
+	// Port is the admin API port every node serves on. Required.
+	Port int
+	// TracerProvider instruments the calls to the nodes. Nil selects the global provider, which is a
+	// noop unless the process configures one.
+	TracerProvider trace.TracerProvider
+}
+
 // NewRingPeers resolves ring members to admin APIs at scheme://<member host>:port.
-func NewRingPeers(members Membership, scheme string, port int) (*RingPeers, error) {
-	if members == nil {
+func NewRingPeers(opts RingPeersOptions) (*RingPeers, error) {
+	if opts.Members == nil {
 		return nil, errors.New("membership is required")
 	}
-	if port <= 0 || port > 65535 {
-		return nil, errors.Errorf("admin port %d is out of range", port)
+	if opts.Port <= 0 || opts.Port > 65535 {
+		return nil, errors.Errorf("admin port %d is out of range", opts.Port)
 	}
-	switch scheme {
+	switch opts.Scheme {
 	case "http", "https":
 	default:
-		return nil, errors.Errorf("unsupported scheme %q", scheme)
+		return nil, errors.Errorf("unsupported scheme %q", opts.Scheme)
+	}
+	if opts.TracerProvider == nil {
+		opts.TracerProvider = otel.GetTracerProvider()
 	}
 
 	return &RingPeers{
-		members: members,
-		scheme:  scheme,
-		port:    port,
+		members:        opts.Members,
+		scheme:         opts.Scheme,
+		port:           opts.Port,
+		tracerProvider: opts.TracerProvider,
+		httpClient: &http.Client{
+			Transport: otelhttp.NewTransport(http.DefaultTransport,
+				otelhttp.WithTracerProvider(opts.TracerProvider),
+			),
+		},
 		clients: map[string]NodeClient{},
 	}, nil
 }
@@ -77,7 +108,10 @@ func (r *RingPeers) Peers() ([]Peer, error) {
 
 		client, ok := r.clients[addr]
 		if !ok {
-			client, err = adminapi.NewClient(addr)
+			client, err = adminapi.NewClient(addr,
+				adminapi.WithTracerProvider(r.tracerProvider),
+				adminapi.WithClient(r.httpClient),
+			)
 			if err != nil {
 				return nil, errors.Wrapf(err, "admin client for %s", m.ID)
 			}

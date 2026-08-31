@@ -1,10 +1,10 @@
 package storagebackend
 
 import (
+	"cmp"
 	"context"
 	"regexp"
 	"slices"
-	"sort"
 
 	"github.com/go-faster/errors"
 
@@ -47,7 +47,7 @@ func (q *ProfileQuerier) ProfileTypes(ctx context.Context, opts profilestorage.P
 	for _, pt := range seen {
 		out = append(out, pt)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID() < out[j].ID() })
+	slices.SortFunc(out, func(a, b profileql.ProfileType) int { return cmp.Compare(a.ID(), b.ID()) })
 	return out, nil
 }
 
@@ -292,6 +292,6 @@ func sortedKeys(set map[string]struct{}) []string {
 	for k := range set {
 		out = append(out, k)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }

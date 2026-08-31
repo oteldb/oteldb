@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"slices"
-	"sort"
 	"testing"
 	"time"
 
@@ -188,7 +187,7 @@ func drainNames(t *testing.T, f fetch.Fetcher, matchers []fetch.Matcher) []strin
 		out = append(out, nameOf(b.Series))
 	}
 
-	sort.Strings(out)
+	slices.Sort(out)
 
 	return out
 }
@@ -224,7 +223,7 @@ func TestFetcherGathersEveryShard(t *testing.T) {
 		names = append(names, nameOf(s))
 	}
 
-	sort.Strings(names)
+	slices.Sort(names)
 	assert.Equal(t, []string{"a", "b", "c", "d"}, names)
 }
 

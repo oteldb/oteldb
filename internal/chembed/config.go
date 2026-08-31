@@ -2,7 +2,7 @@ package chembed
 
 import (
 	"encoding/xml"
-	"sort"
+	"slices"
 
 	"github.com/go-faster/errors"
 )
@@ -44,7 +44,7 @@ func (c Clusters) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	for k := range c {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 
 	if err := e.EncodeToken(start); err != nil {
 		return errors.Wrap(err, "secret end")
@@ -76,7 +76,7 @@ func (m Map) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	for k := range m {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 
 	if err := e.EncodeToken(start); err != nil {
 		return errors.Wrap(err, "end")

@@ -63,7 +63,12 @@ func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *sdkapp.Telemetry
 
 // setupAdmin wires the aggregating admin API and the embedded web UI.
 func (a *App) setupAdmin(m *sdkapp.Telemetry) error {
-	peers, err := clusteradmin.NewRingPeers(a.router, a.cfg.Nodes.Scheme, a.cfg.Nodes.Port)
+	peers, err := clusteradmin.NewRingPeers(clusteradmin.RingPeersOptions{
+		Members:        a.router,
+		Scheme:         a.cfg.Nodes.Scheme,
+		Port:           a.cfg.Nodes.Port,
+		TracerProvider: m.TracerProvider(),
+	})
 	if err != nil {
 		return errors.Wrap(err, "resolve node admin endpoints")
 	}
@@ -81,6 +86,7 @@ func (a *App) setupAdmin(m *sdkapp.Telemetry) error {
 		ReplicationFactor: a.cfg.Cluster.RF,
 		Timeout:           a.cfg.Nodes.Timeout,
 		Logger:            a.lg.Named("clusteradmin"),
+		TracerProvider:    m.TracerProvider(),
 	})
 	if err != nil {
 		return errors.Wrap(err, "create cluster admin handler")

@@ -2,11 +2,15 @@ package clusteradmin
 
 import (
 	"context"
-	"sort"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-faster/errors"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/oteldb/oteldb/internal/adminapi"
@@ -30,15 +34,33 @@ func (r nodeAnswer[T]) ok() bool { return r.Err == nil }
 //
 // Answers come back in peer order, so an aggregate built from them does not depend on which node
 // replied first.
+//
+// Every node gets a span of its own. The response already carries each node's duration and status,
+// so the spans are not there to repeat them: they place the calls on one timeline, showing how much
+// of the fan-out actually overlapped and how a node's answer split between the aggregator's wait and
+// the node's own work, which the node's server span continues under the same trace.
 func fanout[T any](
 	ctx context.Context, a *Aggregator, name string, call func(context.Context, Peer) (T, error),
-) ([]nodeAnswer[T], error) {
+) (_ []nodeAnswer[T], rerr error) {
+	ctx, span := a.tracer.Start(ctx, "clusteradmin.fanout",
+		trace.WithAttributes(attribute.String("clusteradmin.op", name)),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
+
 	peers, err := a.opts.Peers.Peers()
 	if err != nil {
 		return nil, errors.Wrap(err, "resolve cluster members")
 	}
 
-	sort.Slice(peers, func(i, j int) bool { return peers[i].Node < peers[j].Node })
+	slices.SortFunc(peers, func(a, b Peer) int { return strings.Compare(a.Node, b.Node) })
+
+	span.SetAttributes(attribute.Int("clusteradmin.peers", len(peers)))
 
 	out := make([]nodeAnswer[T], len(peers))
 
@@ -48,11 +70,23 @@ func fanout[T any](
 			nodeCtx, cancel := context.WithTimeout(ctx, a.opts.Timeout)
 			defer cancel()
 
+			nodeCtx, nodeSpan := a.tracer.Start(nodeCtx, "clusteradmin.fanout.node",
+				trace.WithAttributes(
+					attribute.String("clusteradmin.op", name),
+					attribute.String("clusteradmin.node", p.Node),
+					attribute.String("clusteradmin.addr", p.Addr),
+				),
+			)
+			defer nodeSpan.End()
+
 			started := time.Now()
 			v, err := call(nodeCtx, p)
 			out[i] = nodeAnswer[T]{Peer: p, Value: v, Err: err, Took: time.Since(started)}
 
 			if err != nil {
+				nodeSpan.RecordError(err)
+				nodeSpan.SetStatus(codes.Error, err.Error())
+
 				a.opts.Logger.Warn("Node did not answer",
 					zap.String("op", name), zap.String("node", p.Node), zap.String("addr", p.Addr),
 					zap.Error(err),
