@@ -29,6 +29,13 @@ func (s *Source) LogSeries(
 	return s.series(ctx, signal.Log, tenant, matchers, start, end)
 }
 
+// TraceSeries implements [storagebackend.Source].
+func (s *Source) TraceSeries(
+	ctx context.Context, tenant signal.TenantID, matchers []fetch.Matcher, start, end int64,
+) ([]signal.Series, error) {
+	return s.series(ctx, signal.Trace, tenant, matchers, start, end)
+}
+
 // ProfileSeries implements [storagebackend.Source].
 func (s *Source) ProfileSeries(
 	ctx context.Context, tenant signal.TenantID, matchers []fetch.Matcher, start, end int64,

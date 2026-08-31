@@ -51,6 +51,12 @@ type Source interface {
 
 	// TraceFetcher returns the traces read seam over the named tenants.
 	TraceFetcher(tenants ...signal.TenantID) fetch.Fetcher
+	// TraceSeries enumerates a tenant's matching span stream identities in [start, end] ns. It is the
+	// traces twin of LogSeries, and it is what lets a resource- or instrumentation-scoped tag lookup
+	// be answered from the stream identities instead of by materializing every span in the window.
+	TraceSeries(
+		ctx context.Context, tenant signal.TenantID, matchers []fetch.Matcher, start, end int64,
+	) ([]signal.Series, error)
 	// Trace returns every span of one trace.
 	Trace(ctx context.Context, tenant signal.TenantID, traceID []byte) ([]*fetch.Batch, error)
 

@@ -1,8 +1,10 @@
 package storagebackend
 
 import (
+	"cmp"
 	"context"
 	"maps"
+	"slices"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -147,28 +149,46 @@ func (q *TraceQuerier) TagNames(ctx context.Context, opts tracestorage.TagNamesO
 // window (a part overlapping it contributes its whole dictionary), which the storage doc calls out as
 // fine for autocomplete and this package already relies on elsewhere.
 //
-// Everything else still scans:
-//   - rootName and rootServiceName filter to root spans (empty parent span id), a predicate a column
-//     enumeration cannot express.
-//   - a resource- or instrumentation-scoped attribute lives on the stream identity, not the per-record
-//     attribute blob AttrKey enumerates, and there is no trace-stream enumeration primitive on [Source]
-//     (unlike [LogQuerier], which has LogSeries) to answer it more cheaply.
-//   - ScopeNone must cover every scope, so it needs both the span-scoped and the stream-scoped values;
-//     since only the former is pushable, the whole lookup falls back to the scan rather than silently
-//     dropping resource/instrumentation values.
+// A resource- or instrumentation-scoped attribute lives on the stream identity rather than the
+// per-record attribute blob AttrKey enumerates, so it is answered from [Source.TraceSeries] — the
+// traces twin of LogSeries. ScopeNone needs both halves and takes the union of the two.
+//
+// Everything else still scans, and only these:
+//   - rootName and rootServiceName filter to root spans (empty parent span id), a predicate neither a
+//     column enumeration nor a stream enumeration can express.
+//   - an event- or link-scoped attribute lives inside the events/links blob columns, which carry no
+//     dictionary of their own.
 func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, opts tracestorage.TagValuesOptions) (iterators.Iterator[tracestorage.Tag], error) {
 	switch attr.Prop {
 	case traceql.SpanStatus:
 		return iterators.Slice(spanStatusTags(attr)), nil
 	case traceql.SpanKind:
 		return iterators.Slice(spanKindTags(attr)), nil
-	case traceql.SpanDuration, traceql.SpanChildCount, traceql.SpanParent, traceql.TraceDuration:
+	case traceql.SpanDuration, traceql.SpanChildCount, traceql.SpanParent, traceql.TraceDuration,
+		traceql.NestedSetLeft, traceql.NestedSetRight, traceql.NestedSetParent,
+		traceql.EventTimeSinceStart,
+		traceql.SpanID, traceql.ParentID, traceql.TraceID,
+		traceql.LinkTraceID, traceql.LinkSpanID:
+		// Numeric, structural, or identifier intrinsics: nothing here is worth autocompleting, and the
+		// ids are unbounded cardinality — enumerating trace ids would build a set the size of the
+		// window. These already returned nothing, because the generic fallback below only ever visits
+		// attribute maps and an intrinsic's Name is empty; saying so here is what drops the scan that
+		// was computing that empty answer.
 		return iterators.Empty[tracestorage.Tag](), nil
 	case traceql.SpanName:
 		return q.columnTagValues(ctx, attr, sigtrace.ColName, opts)
+	case traceql.SpanStatusMessage:
+		return q.columnTagValues(ctx, attr, sigtrace.ColStatusMsg, opts)
+	case traceql.InstrumentationName, traceql.InstrumentationVersion:
+		return q.scopeTagValues(ctx, attr, opts)
 	case traceql.SpanAttribute:
-		if attr.Scope == traceql.ScopeSpan {
+		switch attr.Scope {
+		case traceql.ScopeSpan:
 			return q.attrTagValues(ctx, attr, opts)
+		case traceql.ScopeResource, traceql.ScopeInstrumentation:
+			return q.seriesTagValues(ctx, attr, opts)
+		case traceql.ScopeNone:
+			return q.unscopedTagValues(ctx, attr, opts)
 		}
 	}
 
@@ -202,6 +222,147 @@ func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, op
 		out = append(out, tag)
 	}
 	return iterators.Slice(out), nil
+}
+
+// forEachStreamTag calls fn for every (scope, name, value) attribute pair carried by a matching span
+// stream's identity. It is the [forEachSpanTag] of the identity side, and formats values the same way
+// on purpose: an attribute must render identically whichever path answered it.
+//
+// The cost is O(streams), not O(spans) — the per-series pcommon.Map is bounded by stream cardinality,
+// which is what makes this worth doing at all.
+func (q *TraceQuerier) forEachStreamTag(
+	ctx context.Context, opts tracestorage.TagValuesOptions, fn func(scope traceql.AttributeScope, name, value string),
+) error {
+	lo, hi := seriesWindow(opts.Start, opts.End)
+
+	series, err := q.b.src.TraceSeries(ctx, q.b.tenant, nil, lo, hi)
+	if err != nil {
+		return errors.Wrap(err, "trace series")
+	}
+
+	visit := func(scope traceql.AttributeScope, attrs signal.Attributes) {
+		otelAttrs(attrs).AsMap().Range(func(k string, v pcommon.Value) bool {
+			fn(scope, k, v.AsString())
+
+			return true
+		})
+	}
+
+	for _, ser := range series {
+		visit(traceql.ScopeResource, ser.Resource.Attributes)
+		visit(traceql.ScopeInstrumentation, ser.Scope.Attributes)
+	}
+
+	return nil
+}
+
+// seriesTagValues enumerates a resource- or instrumentation-scoped attribute's values from the stream
+// identities. It must not be called for [traceql.ScopeSpan], whose values live in the per-record
+// attribute blob and are cheaper still through [TraceQuerier.attrTagValues].
+func (q *TraceQuerier) seriesTagValues(
+	ctx context.Context, attr traceql.Attribute, opts tracestorage.TagValuesOptions,
+) (iterators.Iterator[tracestorage.Tag], error) {
+	seen := map[string]tracestorage.Tag{}
+
+	if err := q.forEachStreamTag(ctx, opts, func(scope traceql.AttributeScope, name, value string) {
+		if name != attr.Name || scope != attr.Scope {
+			return
+		}
+
+		seen[value] = tracestorage.Tag{Name: name, Value: value, Type: traceql.TypeString, Scope: scope}
+	}); err != nil {
+		return nil, err
+	}
+
+	return iterators.Slice(sortedTags(seen)), nil
+}
+
+// unscopedTagValues answers an unscoped attribute — the shape Grafana's autocomplete sends — as the
+// union of the span-scoped values (the per-record attribute dictionary) and the stream-scoped ones
+// (the identities). Both halves are needed: dropping either would silently hide values that exist.
+//
+// Values are deduplicated by value alone, exactly as the scan did. Two scopes carrying the same value
+// collapse to one tag, and which scope it reports is arbitrary — the Tempo responses use only the
+// value and its type, never the scope.
+func (q *TraceQuerier) unscopedTagValues(
+	ctx context.Context, attr traceql.Attribute, opts tracestorage.TagValuesOptions,
+) (iterators.Iterator[tracestorage.Tag], error) {
+	seen := map[string]tracestorage.Tag{}
+
+	spanScoped := attr
+	spanScoped.Scope = traceql.ScopeSpan
+
+	iter, err := q.attrTagValues(ctx, spanScoped, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := iterators.ForEach(iter, func(tag tracestorage.Tag) error {
+		seen[tag.Value] = tag
+
+		return nil
+	}); err != nil {
+		return nil, errors.Wrap(err, "span-scoped values")
+	}
+
+	if err := q.forEachStreamTag(ctx, opts, func(scope traceql.AttributeScope, name, value string) {
+		if name != attr.Name {
+			return
+		}
+
+		seen[value] = tracestorage.Tag{Name: name, Value: value, Type: traceql.TypeString, Scope: scope}
+	}); err != nil {
+		return nil, err
+	}
+
+	return iterators.Slice(sortedTags(seen)), nil
+}
+
+// scopeTagValues enumerates the instrumentation scope name/version intrinsics, which live on the
+// stream identity next to its attributes.
+func (q *TraceQuerier) scopeTagValues(
+	ctx context.Context, attr traceql.Attribute, opts tracestorage.TagValuesOptions,
+) (iterators.Iterator[tracestorage.Tag], error) {
+	lo, hi := seriesWindow(opts.Start, opts.End)
+
+	series, err := q.b.src.TraceSeries(ctx, q.b.tenant, nil, lo, hi)
+	if err != nil {
+		return nil, errors.Wrap(err, "trace series")
+	}
+
+	name := attr.String()
+	seen := map[string]tracestorage.Tag{}
+
+	for _, ser := range series {
+		field := ser.Scope.Name
+		if attr.Prop == traceql.InstrumentationVersion {
+			field = ser.Scope.Version
+		}
+
+		if len(field) == 0 {
+			continue
+		}
+
+		value := string(field)
+		seen[value] = tracestorage.Tag{
+			Name: name, Value: value, Type: traceql.TypeString, Scope: traceql.ScopeInstrumentation,
+		}
+	}
+
+	return iterators.Slice(sortedTags(seen)), nil
+}
+
+// sortedTags flattens a value-keyed tag set into a deterministic slice. Map order would otherwise
+// reshuffle an autocomplete list between identical requests.
+func sortedTags(seen map[string]tracestorage.Tag) []tracestorage.Tag {
+	out := make([]tracestorage.Tag, 0, len(seen))
+	for _, tag := range seen {
+		out = append(out, tag)
+	}
+
+	slices.SortFunc(out, func(a, b tracestorage.Tag) int { return cmp.Compare(a.Value, b.Value) })
+
+	return out
 }
 
 // columnTagValues enumerates a byte column's distinct values via [Source.ColumnValues].
