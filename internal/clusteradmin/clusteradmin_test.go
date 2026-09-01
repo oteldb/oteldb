@@ -26,6 +26,9 @@ type fakeNode struct {
 
 	// err makes every call fail, standing in for an unreachable or broken node.
 	err error
+	// ran records the actions the node was asked to run, so a forwarded action is provably
+	// executed on the node that was named and on no other.
+	ran []adminapi.ActionName
 	// wantParts records whether the last efficiency call asked for part identities.
 	wantParts bool
 }
@@ -43,16 +46,35 @@ func (f *fakeNode) GetInfo(context.Context) (*adminapi.InstanceInfo, error) {
 	return f.info, f.err
 }
 
-func (f *fakeNode) GetHealth(context.Context) (*adminapi.HealthReport, error) {
+func (f *fakeNode) GetHealth(_ context.Context, _ adminapi.GetHealthParams) (*adminapi.HealthReport, error) {
 	return f.health, f.err
 }
 
-func (f *fakeNode) GetRuntime(context.Context) (*adminapi.RuntimeStats, error) {
+func (f *fakeNode) GetRuntime(_ context.Context, _ adminapi.GetRuntimeParams) (*adminapi.RuntimeStats, error) {
 	return f.runtime, f.err
 }
 
-func (f *fakeNode) GetStorage(context.Context) (*adminapi.StorageStats, error) {
+func (f *fakeNode) GetStorage(_ context.Context, _ adminapi.GetStorageParams) (*adminapi.StorageStats, error) {
 	return f.storage, f.err
+}
+
+func (f *fakeNode) GetStreamCosts(
+	_ context.Context, params adminapi.GetStreamCostsParams,
+) (*adminapi.StreamCosts, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+
+	return &adminapi.StreamCosts{Signal: params.Signal, GroupBy: params.GroupBy}, nil
+}
+
+func (f *fakeNode) RunAction(_ context.Context, params adminapi.RunActionParams) (*adminapi.ActionResult, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	f.ran = append(f.ran, params.Action)
+
+	return &adminapi.ActionResult{Action: params.Action, Ok: true, Message: "ran"}, nil
 }
 
 func (f *fakeNode) GetEfficiency(

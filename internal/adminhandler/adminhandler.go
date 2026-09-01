@@ -128,7 +128,11 @@ func (a *AdminAPI) GetInfo(_ context.Context) (*adminapi.InstanceInfo, error) {
 }
 
 // GetHealth implements getHealth operation.
-func (a *AdminAPI) GetHealth(ctx context.Context) (*adminapi.HealthReport, error) {
+//
+// The node parameter is ignored, here and on every other operation that takes one: it addresses one
+// member of a cluster, and a storage node is the only member it can answer for. The aggregator
+// strips it before forwarding, so a node only ever sees one a client aimed at it directly.
+func (a *AdminAPI) GetHealth(ctx context.Context, _ adminapi.GetHealthParams) (*adminapi.HealthReport, error) {
 	components := make([]adminapi.ComponentHealth, 0, len(a.opts.Components))
 	overall := adminapi.HealthStatusHealthy
 	for _, c := range a.opts.Components {
@@ -155,7 +159,7 @@ func (a *AdminAPI) GetHealth(ctx context.Context) (*adminapi.HealthReport, error
 }
 
 // GetRuntime implements getRuntime operation.
-func (a *AdminAPI) GetRuntime(_ context.Context) (*adminapi.RuntimeStats, error) {
+func (a *AdminAPI) GetRuntime(_ context.Context, _ adminapi.GetRuntimeParams) (*adminapi.RuntimeStats, error) {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 
@@ -180,7 +184,7 @@ func (a *AdminAPI) GetRuntime(_ context.Context) (*adminapi.RuntimeStats, error)
 const memLimitOff = int64(1<<63 - 1)
 
 // GetStorage implements getStorage operation.
-func (a *AdminAPI) GetStorage(ctx context.Context) (*adminapi.StorageStats, error) {
+func (a *AdminAPI) GetStorage(ctx context.Context, _ adminapi.GetStorageParams) (*adminapi.StorageStats, error) {
 	stats := &adminapi.StorageStats{
 		StorageEnabled:    a.opts.Engine != nil,
 		ClickhouseEnabled: a.opts.ClickHouseEnabled,
@@ -295,6 +299,12 @@ func (a *AdminAPI) attachParts(
 	)
 
 	return nil
+}
+
+// GetClusterNodes implements getClusterNodes operation. A storage node knows its ring peers, but
+// not the admin endpoints they serve — that mapping is odbadmin's configuration, not the ring's.
+func (a *AdminAPI) GetClusterNodes(context.Context) (*adminapi.ClusterNodes, error) {
+	return nil, errors.New("cluster membership is served by odbadmin; a storage node reports only itself")
 }
 
 // GetClusterStorage implements getClusterStorage operation. A storage node knows its own footprint

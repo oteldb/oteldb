@@ -14,9 +14,19 @@ import (
 // Every counter is the sum over the nodes that answered, so replicated data is counted once per
 // replica — these are per-node schemas and there is nothing in them to deduplicate by.
 // /api/v1/cluster/storage is the view that separates the two readings.
-func (a *Aggregator) GetStorage(ctx context.Context) (*adminapi.StorageStats, error) {
+//
+// A request naming a node is that node's own report, forwarded unchanged.
+func (a *Aggregator) GetStorage(ctx context.Context, params adminapi.GetStorageParams) (*adminapi.StorageStats, error) {
+	if node, ok := params.Node.Get(); ok {
+		return forward(ctx, a, "storage", node, func(ctx context.Context, p Peer) (*adminapi.StorageStats, error) {
+			return p.Client.GetStorage(ctx, adminapi.GetStorageParams{})
+		})
+	}
+
 	answers, err := fanout(ctx, a, "storage",
-		func(ctx context.Context, p Peer) (*adminapi.StorageStats, error) { return p.Client.GetStorage(ctx) },
+		func(ctx context.Context, p Peer) (*adminapi.StorageStats, error) {
+			return p.Client.GetStorage(ctx, adminapi.GetStorageParams{})
+		},
 	)
 	if err != nil {
 		return nil, err

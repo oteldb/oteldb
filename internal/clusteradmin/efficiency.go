@@ -14,9 +14,22 @@ import (
 // twice — this schema describes one node's footprint and has no place to say otherwise.
 // /api/v1/cluster/storage reports the deduplicated total alongside this one.
 //
-// The per-part listing is not forwarded: an individual part belongs to the node holding it, and the
-// same part would appear once per replica here.
-func (a *Aggregator) GetEfficiency(ctx context.Context, _ adminapi.GetEfficiencyParams) (*adminapi.EfficiencyStats, error) {
+// The per-part listing is dropped from the aggregate: an individual part belongs to the node
+// holding it, and the same part would appear once per replica here. A request naming a node keeps
+// it — one node's parts are exactly what that node has to say.
+func (a *Aggregator) GetEfficiency(
+	ctx context.Context, params adminapi.GetEfficiencyParams,
+) (*adminapi.EfficiencyStats, error) {
+	if node, ok := params.Node.Get(); ok {
+		params.Node.Reset()
+
+		return forward(ctx, a, "storage/efficiency", node,
+			func(ctx context.Context, p Peer) (*adminapi.EfficiencyStats, error) {
+				return p.Client.GetEfficiency(ctx, params)
+			},
+		)
+	}
+
 	answers, err := fanout(ctx, a, "storage/efficiency",
 		func(ctx context.Context, p Peer) (*adminapi.EfficiencyStats, error) {
 			return p.Client.GetEfficiency(ctx, adminapi.GetEfficiencyParams{})
