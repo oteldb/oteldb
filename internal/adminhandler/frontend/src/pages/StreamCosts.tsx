@@ -5,6 +5,7 @@ import { Magnifier } from "@gravity-ui/icons";
 import { useGetStreamCosts } from "../api/admin";
 import { Chip, ErrorAlert, head, Mono, Panel, Rule } from "../components/ui";
 import { NodeOnly } from "../components/NodeOnly";
+import { useSelectedNode } from "../lib/node";
 import { fmtBytes, fmtNum } from "../lib/format";
 import type { ColumnCost, RecordSignal, StreamCost } from "../api/model";
 
@@ -74,8 +75,9 @@ function StreamCostsPage() {
   // Draft state is what the form edits; the query runs against the values committed by Analyze.
   const [query, setQuery] = useState<{ signal: RecordSignal; groupBy: string } | null>(null);
 
+  const { params } = useSelectedNode();
   const costs = useGetStreamCosts(
-    { signal: query?.signal ?? signal, group_by: query?.groupBy ?? groupBy },
+    { ...params, signal: query?.signal ?? signal, group_by: query?.groupBy ?? groupBy },
     // This decodes every accounted byte column of every live part, so it runs only when asked:
     // no refetch on mount, focus or interval.
     {

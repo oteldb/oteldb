@@ -5,6 +5,7 @@ import { HashRouter } from "react-router-dom";
 import { Toaster, ToasterComponent, ToasterProvider } from "@gravity-ui/uikit";
 import App from "./App";
 import { AppThemeProvider } from "./lib/theme";
+import { SelectedNodeProvider } from "./lib/node";
 
 // uikit's fonts.css @imports Inter from Google Fonts. This console ships inside
 // the oteldb binary and must render the same on a host with no internet, so the
@@ -31,9 +32,11 @@ createRoot(document.getElementById("root")!).render(
     <AppThemeProvider>
       <ToasterProvider toaster={toaster}>
         <QueryClientProvider client={queryClient}>
-          <HashRouter>
-            <App />
-          </HashRouter>
+          <SelectedNodeProvider>
+            <HashRouter>
+              <App />
+            </HashRouter>
+          </SelectedNodeProvider>
         </QueryClientProvider>
         <ToasterComponent />
       </ToasterProvider>

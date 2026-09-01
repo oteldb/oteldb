@@ -3,9 +3,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button, Flex, Icon, Text, useToaster } from "@gravity-ui/uikit";
 import { BroomMotion, Layers3Diagonal, TrashBin, Wrench } from "@gravity-ui/icons";
 import type { IconData } from "@gravity-ui/uikit";
-import { useGetInfo, useRunAction } from "../api/admin";
+import { useGetStorage, useRunAction } from "../api/admin";
 import { Panel } from "../components/ui";
 import { NodeOnly } from "../components/NodeOnly";
+import { useSelectedNode } from "../lib/node";
 import { fmtBytes } from "../lib/format";
 import type { ActionName } from "../api/model";
 
@@ -53,18 +54,22 @@ export function Maintenance() {
 }
 
 function MaintenancePage() {
-  const info = useGetInfo();
+  const { node, params } = useSelectedNode();
+  // Whether the engine is active is asked of whatever the actions will run on. Instance info is
+  // the union of the cluster's members, so on the aggregator it would offer an engine action for a
+  // node that has no engine.
+  const storage = useGetStorage(params);
   const qc = useQueryClient();
   const toaster = useToaster();
   const run = useRunAction();
   const [pending, setPending] = useState<ActionName | null>(null);
 
-  const storageEnabled = info.data?.storage_enabled ?? false;
+  const storageEnabled = storage.data?.storage_enabled ?? false;
 
   async function onRun(action: ActionName) {
     setPending(action);
     try {
-      const r = await run.mutateAsync({ action });
+      const r = await run.mutateAsync({ action, params });
       const freed = r.freed_bytes != null ? ` (freed ${fmtBytes(r.freed_bytes)})` : "";
       toaster.add({
         name: `action-${action}`,
@@ -89,7 +94,7 @@ function MaintenancePage() {
   }
 
   return (
-    <Panel title="Actions" sub="Each runs immediately on this instance">
+    <Panel title="Actions" sub={`Each runs immediately on ${node ?? "this instance"}`}>
       <Flex gap={6} wrap>
         {ACTIONS.map((a) => {
           const unavailable = a.needsStorage && !storageEnabled;

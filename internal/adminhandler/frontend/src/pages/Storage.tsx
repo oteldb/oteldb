@@ -1,6 +1,7 @@
 import { Alert, Col, Flex, Row, Table, Text } from "@gravity-ui/uikit";
 import type { ColProps, TableColumnConfig } from "@gravity-ui/uikit";
 import { useGetEfficiency, useGetStorage } from "../api/admin";
+import { useSelectedNode } from "../lib/node";
 import {
   Chip,
   ErrCount,
@@ -265,7 +266,8 @@ function Efficiency() {
   // Efficiency stats do backend I/O on the server — poll at a slower cadence.
   // The first argument is the operation's query parameters; parts_detail is for odbadmin's
   // cluster-wide dedupe, not this per-node view, so it stays off.
-  const { data, isLoading, error } = useGetEfficiency(undefined, {
+  const { params } = useSelectedNode();
+  const { data, isLoading, error } = useGetEfficiency(params, {
     query: { refetchInterval: 30_000 },
   });
 
@@ -307,7 +309,8 @@ const CH_COLUMNS: TableColumnConfig<TableStats>[] = [
 ];
 
 export function Storage() {
-  const { data, isLoading, error } = useGetStorage({ query: { refetchInterval: 8_000 } });
+  const { params } = useSelectedNode();
+  const { data, isLoading, error } = useGetStorage(params, { query: { refetchInterval: 8_000 } });
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorAlert error={error} what="storage stats" />;

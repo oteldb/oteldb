@@ -9,6 +9,7 @@ import {
   type VitalKey,
 } from "../lib/vitals";
 import { fmtBytes, fmtDur, fmtNum } from "../lib/format";
+import { useSelectedNode } from "../lib/node";
 
 const SPARK_W = 64;
 const SPARK_H = 22;
@@ -74,9 +75,10 @@ const DASH = "—";
  * pages make anyway — react-query serves both from one request per interval.
  */
 export function Vitals() {
+  const { params } = useSelectedNode();
   const info = useGetInfo({ query: { refetchInterval: 10_000 } });
-  const runtime = useGetRuntime({ query: { refetchInterval: 3_000 } });
-  const storage = useGetStorage({ query: { refetchInterval: 10_000 } });
+  const runtime = useGetRuntime(params, { query: { refetchInterval: 3_000 } });
+  const storage = useGetStorage(params, { query: { refetchInterval: 10_000 } });
   const history = useVitalHistory();
 
   useEffect(() => {
