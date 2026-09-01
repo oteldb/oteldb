@@ -113,26 +113,62 @@ func (q *TraceQuerier) SearchTags(ctx context.Context, tags map[string]string, o
 
 // TagNames implements [tracestorage.Querier]. It enumerates the distinct attribute names seen on the
 // spans in the window, restricted to the requested scope.
+//
+// Neither half scans. Span-scoped names come from the parts' attribute-key dictionaries via
+// [Source.TraceKeys]; resource- and instrumentation-scoped names come from the stream identities via
+// [Source.TraceSeries], the same split [TraceQuerier.TagValues] makes. A scoped request only pays for
+// the half it asks about.
+//
+// The two sources cannot be swapped for one another. TraceKeys does report resource/scope bits, but
+// it derives them from the stream identity and also synthesizes the otel.scope.name/version labels,
+// which are intrinsics here rather than attributes — enumerating them as tag names would invent names
+// the scan never returned. So the identity half stays on TraceSeries, which carries exactly the
+// attribute maps the old per-span walk read.
+//
+// Like every enumeration path here the answer is a superset of the window: a part overlapping it
+// contributes its whole key dictionary. That is the autocomplete tradeoff [TraceQuerier.TagValues]
+// already documents.
 func (q *TraceQuerier) TagNames(ctx context.Context, opts tracestorage.TagNamesOptions) ([]tracestorage.TagName, error) {
-	spans, err := q.scanSpans(ctx, opts.Start, opts.End, nil)
-	if err != nil {
-		return nil, err
-	}
+	lo, hi := seriesWindow(opts.Start, opts.End)
 
 	seen := map[tracestorage.TagName]struct{}{}
-	for _, span := range spans {
-		forEachSpanTag(span, func(scope traceql.AttributeScope, name, _ string) {
-			if opts.Scope != traceql.ScopeNone && opts.Scope != scope {
-				return
+	add := func(scope traceql.AttributeScope, name string) {
+		if opts.Scope != traceql.ScopeNone && opts.Scope != scope {
+			return
+		}
+		seen[tracestorage.TagName{Scope: scope, Name: name}] = struct{}{}
+	}
+
+	if opts.Scope == traceql.ScopeNone || opts.Scope == traceql.ScopeSpan {
+		keys, err := q.b.src.TraceKeys(ctx, q.b.tenant, lo, hi)
+		if err != nil {
+			return nil, errors.Wrap(err, "trace keys")
+		}
+		for _, k := range keys {
+			if k.Scope&storage.KeyScopeRecord != 0 {
+				add(traceql.ScopeSpan, string(k.Key))
 			}
-			seen[tracestorage.TagName{Scope: scope, Name: name}] = struct{}{}
-		})
+		}
+	}
+
+	if opts.Scope == traceql.ScopeNone || opts.Scope == traceql.ScopeResource || opts.Scope == traceql.ScopeInstrumentation {
+		if err := q.forEachStreamAttr(ctx, lo, hi, func(scope traceql.AttributeScope, name, _ string) {
+			add(scope, name)
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	out := make([]tracestorage.TagName, 0, len(seen))
 	for tn := range seen {
 		out = append(out, tn)
 	}
+	slices.SortFunc(out, func(a, b tracestorage.TagName) int {
+		if c := cmp.Compare(a.Scope, b.Scope); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Name, b.Name)
+	})
 	return out, nil
 }
 
@@ -235,6 +271,14 @@ func (q *TraceQuerier) forEachStreamTag(
 ) error {
 	lo, hi := seriesWindow(opts.Start, opts.End)
 
+	return q.forEachStreamAttr(ctx, lo, hi, fn)
+}
+
+// forEachStreamAttr is [TraceQuerier.forEachStreamTag] over an already-resolved nanosecond window,
+// so the tag-name path can share it without building a [tracestorage.TagValuesOptions].
+func (q *TraceQuerier) forEachStreamAttr(
+	ctx context.Context, lo, hi int64, fn func(scope traceql.AttributeScope, name, value string),
+) error {
 	series, err := q.b.src.TraceSeries(ctx, q.b.tenant, nil, lo, hi)
 	if err != nil {
 		return errors.Wrap(err, "trace series")

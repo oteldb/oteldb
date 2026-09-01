@@ -57,6 +57,11 @@ type Source interface {
 	TraceSeries(
 		ctx context.Context, tenant signal.TenantID, matchers []fetch.Matcher, start, end int64,
 	) ([]signal.Series, error)
+	// TraceKeys enumerates the distinct attribute keys of a tenant's spans in [start, end] ns, each
+	// tagged with the scope(s) it appears in. It is the traces twin of LogKeys, and it is what lets a
+	// span-scoped tag-name lookup be answered from the parts' key dictionaries instead of by
+	// materializing every span in the window.
+	TraceKeys(ctx context.Context, tenant signal.TenantID, start, end int64) ([]storage.KeyInfo, error)
 	// Trace returns every span of one trace.
 	Trace(ctx context.Context, tenant signal.TenantID, traceID []byte) ([]*fetch.Batch, error)
 
