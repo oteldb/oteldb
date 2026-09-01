@@ -165,6 +165,29 @@ func TestGetInfoUnion(t *testing.T) {
 	assert.Equal(t, "storage", got.Signals[1].Backend, "\"none\" yields to a node that names a backend")
 	assert.True(t, got.Signals[1].Queryable)
 	assert.Equal(t, ":3200", got.Signals[1].Bind.Or(""))
+	assert.Equal(t, adminapi.InstanceModeCluster, got.Mode.Or(""),
+		"the union is the aggregator's answer and says so")
+}
+
+// The mode is a capability claim, not a label: a client hides the per-node-only controls on the
+// strength of it. If either operation below ever starts working cluster-wide, this fails and the
+// claim has to be revisited rather than quietly going stale.
+func TestClusterModeMatchesRefusedOperations(t *testing.T) {
+	t.Parallel()
+
+	a := newTestAggregator(t, 1, map[string]*fakeNode{
+		"a": {info: &adminapi.InstanceInfo{StorageEnabled: true}},
+	})
+
+	got, err := a.GetInfo(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, adminapi.InstanceModeCluster, got.Mode.Or(""))
+
+	_, err = a.GetStreamCosts(t.Context(), adminapi.GetStreamCostsParams{Signal: adminapi.RecordSignalTraces})
+	assert.Error(t, err, "stream costs stay a per-node drill-down")
+
+	_, err = a.RunAction(t.Context(), adminapi.RunActionParams{Action: adminapi.ActionNameGc})
+	assert.Error(t, err, "actions mutate one node and do not fan out")
 }
 
 // TestGetEfficiencySums pins that the per-node schema is summed, not deduplicated — it has nowhere

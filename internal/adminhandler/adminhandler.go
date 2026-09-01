@@ -119,6 +119,7 @@ func (a *AdminAPI) GetInfo(_ context.Context) (*adminapi.InstanceInfo, error) {
 		StorageEnabled:    a.opts.Engine != nil,
 		ClickhouseEnabled: a.opts.ClickHouseEnabled,
 		Signals:           a.opts.Signals,
+		Mode:              adminapi.NewOptInstanceMode(adminapi.InstanceModeNode),
 	}
 	if a.opts.StorageBackend != "" {
 		info.StorageBackend = adminapi.NewOptString(a.opts.StorageBackend)
