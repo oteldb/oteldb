@@ -47,6 +47,17 @@ x-oteldb-node: &oteldb-node
     - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
     - OTEL_METRIC_EXPORT_INTERVAL=5000
   restart: unless-stopped
+  # A limit here is not just a blast radius: the sdk reads the cgroup at startup and sets GOMAXPROCS
+  # from the CPU quota and GOMEMLIMIT from the memory limit, and oteldb sizes its read cache, decode
+  # cache, decode-admission budget and max_query_bytes off that same GOMEMLIMIT. So the number below
+  # is what makes the process back off and refuse work, rather than what decides who the OOM killer
+  # takes. Without it every service sees the whole 30 GiB host and sizes itself for a machine it does
+  # not have to itself.
+  deploy:
+    resources:
+      limits:
+        cpus: "4"
+        memory: 4g
   depends_on:
     etcd:
       condition: service_healthy
@@ -82,6 +93,11 @@ services:
       interval: 2s
       timeout: 2s
       retries: 30
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1g
 
   oteldb-1:
     <<: *oteldb-node
@@ -134,6 +150,12 @@ services:
       - ./odbadmin.yml:/etc/oteldb/odbadmin.yml:ro
     ports:
       - "38090:8090" # cluster-aggregated admin panel (8090/18090/28090 are the per-node ones)
+    # Overrides the node anchor's limit: this one holds no engine, it only merges peer reports.
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512m
     depends_on:
       - etcd
       - oteldb-1
@@ -156,6 +178,11 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://oteldb-2:4317
       - OTEL_RESOURCE_ATTRIBUTES=service.name=server
       - OTEL_METRIC_EXPORT_INTERVAL=5000
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256m
     depends_on:
       - oteldb-2
 
@@ -175,6 +202,11 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://oteldb-1:4317
       - OTEL_RESOURCE_ATTRIBUTES=service.name=client
       - OTEL_METRIC_EXPORT_INTERVAL=5000
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256m
     depends_on:
       - oteldb-1
       - server
@@ -190,6 +222,11 @@ services:
       # The ring's front door. The split overlay points this at odbingest instead.
       - OTELDB_OTLP_ENDPOINT=oteldb-1:4317
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1g
     depends_on:
       - oteldb-1
 
@@ -207,5 +244,10 @@ services:
       - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
       - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/default.yml:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1g
     depends_on:
       - oteldb-1

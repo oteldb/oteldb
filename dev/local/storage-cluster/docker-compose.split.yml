@@ -29,6 +29,14 @@ x-odb-process: &odb-process
     - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
     - OTEL_METRIC_EXPORT_INTERVAL=5000
   restart: unless-stopped
+  # Both halves are stateless, so their limit is not sizing a working set -- it is the ceiling a
+  # single query may drive this process to. The sdk turns it into GOMEMLIMIT at startup, so the
+  # runtime collects hard before the cgroup kills anything. Overridden per half below.
+  deploy:
+    resources:
+      limits:
+        cpus: "2"
+        memory: 1g
   depends_on:
     etcd:
       condition: service_healthy
@@ -44,6 +52,12 @@ services:
     ports:
       - "24317:4317"  # OTLP gRPC
       - "19291:19291" # Prometheus remote write
+    # Decodes and routes; it holds a batch at a time, not a result set.
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1g
 
   # Read half.
   odbselect:
@@ -57,6 +71,13 @@ services:
       - "13100:3100" # Loki / LogQL
       - "13200:3200" # Tempo / TraceQL
       - "14040:4040" # Pyroscope / ProfileQL
+    # The aggregator gets the most headroom of the two: it holds every owner's answer at once to
+    # merge them, so it is the process a single unselective query drives hardest.
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 4g
 
   # Ingests through the split write path instead of oteldb-2's embedded one.
   server:
