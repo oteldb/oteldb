@@ -28,6 +28,8 @@ paths:
       operationId: "getHealth"
       summary: "Component health"
       description: "Health of each wired service (query APIs, collector, storage)."
+      parameters:
+        - $ref: "#/components/parameters/NodeParam"
       responses:
         200:
           description: Health report.
@@ -42,6 +44,8 @@ paths:
       operationId: "getRuntime"
       summary: "Go runtime statistics"
       description: "Live heap, GC and goroutine counters of the running process."
+      parameters:
+        - $ref: "#/components/parameters/NodeParam"
       responses:
         200:
           description: Runtime statistics.
@@ -59,6 +63,8 @@ paths:
         Per-table statistics (rows, on-disk and uncompressed bytes, parts,
         min/max timestamp) collected from ClickHouse system tables. Empty when
         no signal is served from ClickHouse.
+      parameters:
+        - $ref: "#/components/parameters/NodeParam"
       responses:
         200:
           description: Storage statistics.
@@ -80,6 +86,7 @@ paths:
         poll it at dashboard cadence, not per request. Empty when the
         embedded engine is not active.
       parameters:
+        - $ref: "#/components/parameters/NodeParam"
         - name: parts
           in: query
           required: false
@@ -120,6 +127,27 @@ paths:
                 $ref: "#/components/schemas/ClusterStorage"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/cluster/nodes:
+    get:
+      operationId: "getClusterNodes"
+      summary: "Cluster ring membership"
+      description: >
+        The members the aggregator fans out to, with the admin API address it reaches each on and
+        whether it answered. This is the cheap membership query behind a node selector:
+        /api/v1/cluster/storage carries the same list, but only as part of a storage report that
+        reads every part of every node.
+
+        Served by a cluster-wide admin (odbadmin). A storage node is a member of nothing it can
+        see from here and answers with an error.
+      responses:
+        200:
+          description: Cluster ring membership.
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/ClusterNodes"
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/storage/stream-costs:
     get:
       operationId: "getStreamCosts"
@@ -131,6 +159,7 @@ paths:
         live part is read and decoded once — so it is an on-demand drill-down, not something to
         poll. Narrow it with `columns` when only one column is in question.
       parameters:
+        - $ref: "#/components/parameters/NodeParam"
         - name: signal
           in: query
           required: true
@@ -181,6 +210,7 @@ paths:
       summary: "Run a runtime control action"
       description: "Execute a maintenance action against the running process."
       parameters:
+        - $ref: "#/components/parameters/NodeParam"
         - name: action
           in: path
           required: true
@@ -930,6 +960,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ClusterTenantStorage"
+    ClusterNodes:
+      type: object
+      description: "The cluster's current ring membership."
+      required:
+        - nodes
+      properties:
+        nodes:
+          type: array
+          description: "Every member the aggregator knows, answering or not."
+          items:
+            $ref: "#/components/schemas/ClusterNodeStatus"
     ClusterNodeStatus:
       type: object
       description: "One member node's participation in this report."
@@ -1211,6 +1252,23 @@ components:
           $ref: "#/components/schemas/TraceID"
         span_id:
           $ref: "#/components/schemas/SpanID"
+  parameters:
+    NodeParam:
+      name: node
+      in: query
+      required: false
+      description: >
+        Addresses one member node by its ring id instead of the whole cluster. A cluster-wide
+        admin forwards the request to that member and returns its answer verbatim; unset, it
+        aggregates every member as usual. Names come from /api/v1/cluster/nodes.
+
+        This is what makes the per-node-only operations reachable from the cluster panel: stream
+        cost attribution and the maintenance actions are refused cluster-wide, but are ordinary
+        requests once addressed to a node. A storage node ignores the parameter -- it is the only
+        node it can answer for.
+      schema:
+        type: string
+      example: "oteldb-1"
   responses:
     Error:
       description: Structured error response.

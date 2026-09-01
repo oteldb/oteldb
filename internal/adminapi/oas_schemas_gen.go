@@ -433,6 +433,23 @@ func (s *ClusterNodeStatus) SetDurationSeconds(val OptFloat64) {
 	s.DurationSeconds = val
 }
 
+// The cluster's current ring membership.
+// Ref: #/components/schemas/ClusterNodes
+type ClusterNodes struct {
+	// Every member the aggregator knows, answering or not.
+	Nodes []ClusterNodeStatus `json:"nodes"`
+}
+
+// GetNodes returns the value of Nodes.
+func (s *ClusterNodes) GetNodes() []ClusterNodeStatus {
+	return s.Nodes
+}
+
+// SetNodes sets the value of Nodes.
+func (s *ClusterNodes) SetNodes(val []ClusterNodeStatus) {
+	s.Nodes = val
+}
+
 // One (tenant, signal)'s footprint across the cluster. The logical figures deduplicate by part id; the
 // physical ones do not, and their ratio is the replication actually achieved — which is not the
 // configured factor while a rebalance is in flight or a replica is missing.

@@ -53,7 +53,7 @@ func TestGetHealth(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := newTestAggregator(t, 2, tt.nodes).GetHealth(t.Context())
+			got, err := newTestAggregator(t, 2, tt.nodes).GetHealth(t.Context(), adminapi.GetHealthParams{})
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.want, got.Status)
@@ -70,7 +70,7 @@ func TestGetHealthEmptyRing(t *testing.T) {
 	a, err := New(Options{Peers: staticPeers{}})
 	require.NoError(t, err)
 
-	got, err := a.GetHealth(t.Context())
+	got, err := a.GetHealth(t.Context(), adminapi.GetHealthParams{})
 	require.NoError(t, err)
 
 	assert.Equal(t, adminapi.HealthStatusUnhealthy, got.Status)
@@ -94,7 +94,7 @@ func TestGetRuntimeSums(t *testing.T) {
 
 		got, err := newTestAggregator(t, 2, map[string]*fakeNode{
 			"a": {runtime: limited}, "b": {runtime: limited},
-		}).GetRuntime(t.Context())
+		}).GetRuntime(t.Context(), adminapi.GetRuntimeParams{})
 		require.NoError(t, err)
 
 		assert.Equal(t, int64(20), got.Goroutines)
@@ -109,7 +109,7 @@ func TestGetRuntimeSums(t *testing.T) {
 
 		got, err := newTestAggregator(t, 2, map[string]*fakeNode{
 			"a": {runtime: limited}, "b": {runtime: unlimited},
-		}).GetRuntime(t.Context())
+		}).GetRuntime(t.Context(), adminapi.GetRuntimeParams{})
 		require.NoError(t, err)
 
 		assert.Equal(t, int64(15), got.Goroutines)
@@ -121,7 +121,7 @@ func TestGetRuntimeSums(t *testing.T) {
 
 		got, err := newTestAggregator(t, 2, map[string]*fakeNode{
 			"a": {runtime: unlimited}, "b": {err: errors.New("down")},
-		}).GetRuntime(t.Context())
+		}).GetRuntime(t.Context(), adminapi.GetRuntimeParams{})
 		require.NoError(t, err)
 
 		assert.Equal(t, int64(5), got.Goroutines, "a missing node subtracts its share")
@@ -170,8 +170,9 @@ func TestGetInfoUnion(t *testing.T) {
 }
 
 // The mode is a capability claim, not a label: a client hides the per-node-only controls on the
-// strength of it. If either operation below ever starts working cluster-wide, this fails and the
-// claim has to be revisited rather than quietly going stale.
+// strength of it, or addresses them to a member instead. If either operation below ever starts
+// working cluster-wide — unaddressed, as tested here — this fails and the claim has to be revisited
+// rather than quietly going stale.
 func TestClusterModeMatchesRefusedOperations(t *testing.T) {
 	t.Parallel()
 

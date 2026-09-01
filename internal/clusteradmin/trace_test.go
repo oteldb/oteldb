@@ -61,7 +61,7 @@ func TestFanoutSpans(t *testing.T) {
 		o.TracerProvider = sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(rec))
 	})
 
-	_, err := a.GetHealth(t.Context())
+	_, err := a.GetHealth(t.Context(), adminapi.GetHealthParams{})
 	require.NoError(t, err)
 
 	spans := tracetest.SpanStubsFromReadOnlySpans(rec.Ended())

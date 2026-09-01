@@ -12,9 +12,19 @@ import (
 // The cluster's components are its nodes: one entry per member, carrying that node's own overall
 // verdict. A node that did not answer is unhealthy rather than absent — dropping it would turn an
 // unreachable node into a healthy cluster.
-func (a *Aggregator) GetHealth(ctx context.Context) (*adminapi.HealthReport, error) {
+//
+// A request naming a node is that node's own health report, forwarded unchanged.
+func (a *Aggregator) GetHealth(ctx context.Context, params adminapi.GetHealthParams) (*adminapi.HealthReport, error) {
+	if node, ok := params.Node.Get(); ok {
+		return forward(ctx, a, "health", node, func(ctx context.Context, p Peer) (*adminapi.HealthReport, error) {
+			return p.Client.GetHealth(ctx, adminapi.GetHealthParams{})
+		})
+	}
+
 	answers, err := fanout(ctx, a, "health",
-		func(ctx context.Context, p Peer) (*adminapi.HealthReport, error) { return p.Client.GetHealth(ctx) },
+		func(ctx context.Context, p Peer) (*adminapi.HealthReport, error) {
+			return p.Client.GetHealth(ctx, adminapi.GetHealthParams{})
+		},
 	)
 	if err != nil {
 		return nil, err

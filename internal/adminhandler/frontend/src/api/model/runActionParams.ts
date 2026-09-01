@@ -8,16 +8,11 @@
  */
 import type { NodeParamParameter } from './nodeParamParameter';
 
-export type GetEfficiencyParams = {
+export type RunActionParams = {
 /**
  * Addresses one member node by its ring id instead of the whole cluster. A cluster-wide admin forwards the request to that member and returns its answer verbatim; unset, it aggregates every member as usual. Names come from /api/v1/cluster/nodes.
 This is what makes the per-node-only operations reachable from the cluster panel: stream cost attribution and the maintenance actions are refused cluster-wide, but are ordinary requests once addressed to a node. A storage node ignores the parameter -- it is the only node it can answer for.
 
  */
 node?: NodeParamParameter;
-/**
- * Lists each signal's parts individually in `parts_detail`. A cluster-wide aggregator needs part identities to count a replicated part once instead of once per replica; a single-node dashboard does not, and the list grows with the part count, so it is off by default.
-
- */
-parts?: boolean;
 };

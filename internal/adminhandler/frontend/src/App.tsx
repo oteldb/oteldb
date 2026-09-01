@@ -20,7 +20,9 @@ import type { Theme } from "@gravity-ui/uikit";
 import { useGetInfo } from "./api/admin";
 import { useAppTheme } from "./lib/theme";
 import { Loading } from "./components/ui";
+import { NodePicker } from "./components/NodePicker";
 import { Vitals } from "./components/Vitals";
+import { useSelectedNode } from "./lib/node";
 
 // Pages are split out of the initial bundle; the chart library on Runtime is
 // the bulk of the app's JavaScript and is only fetched when that page opens.
@@ -35,7 +37,8 @@ const StreamCosts = lazy(() =>
   import("./pages/StreamCosts").then((m) => ({ default: m.StreamCosts })),
 );
 
-// nodeOnly entries drive operations the cluster aggregator refuses; see components/NodeOnly.
+// nodeOnly entries drive operations that only answer for a single node: the aggregator refuses them
+// unaddressed and forwards them once a member is picked. See components/NodeOnly.
 const NAV = [
   { id: "/", title: "Overview", icon: ChartMixed },
   { id: "/runtime", title: "Runtime", icon: Cpu },
@@ -71,6 +74,7 @@ function TopBar({ section }: { section: string }) {
     <Flex className="topbar" alignItems="center" gap={3}>
       <span className="label-micro">{section}</span>
       <Flex grow />
+      <NodePicker />
       <ThemeButton />
       <Button
         view="outlined"
@@ -90,18 +94,21 @@ export default function App() {
   const { pathname } = useLocation();
   const [compact, setCompact] = useState(false);
   const info = useGetInfo({ query: { refetchInterval: 10_000 } });
-  const isCluster = info.data?.mode === "cluster";
+  const { node } = useSelectedNode();
+  // A per-node page is offerable whenever the request has a node to address: this is a storage
+  // node, or the picker names one for the aggregator to forward to.
+  const hideNodeOnly = info.data?.mode === "cluster" && node == null;
 
   const menuItems = useMemo<AsideHeaderItem[]>(
     () =>
-      NAV.filter((item) => !(item.nodeOnly && isCluster)).map((item) => ({
+      NAV.filter((item) => !(item.nodeOnly && hideNodeOnly)).map((item) => ({
         id: item.id,
         title: item.title,
         icon: item.icon,
         current: pathname === item.id,
         onItemClick: () => navigate(item.id),
       })),
-    [pathname, navigate, isCluster],
+    [pathname, navigate, hideNodeOnly],
   );
 
   const section = NAV.find((item) => item.id === pathname)?.title ?? "Overview";

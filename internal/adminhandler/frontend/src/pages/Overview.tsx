@@ -2,6 +2,7 @@ import { Alert, Col, Flex, Icon, Row, Table, Text } from "@gravity-ui/uikit";
 import type { ColProps, TableColumnConfig } from "@gravity-ui/uikit";
 import { CircleCheck } from "@gravity-ui/icons";
 import { useGetHealth, useGetInfo } from "../api/admin";
+import { useSelectedNode } from "../lib/node";
 import { head, KV, Mono, Panel, QueryState, Rule } from "../components/ui";
 import { fmtTime } from "../lib/format";
 import type { HealthReport, SignalInfo } from "../api/model";
@@ -64,8 +65,9 @@ const SIGNAL_COLUMNS: TableColumnConfig<SignalInfo>[] = [
 ];
 
 export function Overview() {
+  const { params } = useSelectedNode();
   const info = useGetInfo({ query: { refetchInterval: 10_000 } });
-  const health = useGetHealth({ query: { refetchInterval: 10_000 } });
+  const health = useGetHealth(params, { query: { refetchInterval: 10_000 } });
 
   return (
     <Flex direction="column" gap={5}>

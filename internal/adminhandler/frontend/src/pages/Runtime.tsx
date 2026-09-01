@@ -4,6 +4,7 @@ import type { ColProps } from "@gravity-ui/uikit";
 import { Chart, FORMAT_UNITS_BYTES } from "@gravity-ui/charts";
 import type { ChartData } from "@gravity-ui/charts";
 import { useGetRuntime } from "../api/admin";
+import { useSelectedNode } from "../lib/node";
 import { ErrorAlert, KV, Loading, Mono, Panel, UsageBar } from "../components/ui";
 import { fmtBytes, fmtNum } from "../lib/format";
 
@@ -27,7 +28,8 @@ const SERIES_COLORS = {
 };
 
 export function Runtime() {
-  const { data, isLoading, error } = useGetRuntime({ query: { refetchInterval: POLL_MS } });
+  const { params } = useSelectedNode();
+  const { data, isLoading, error } = useGetRuntime(params, { query: { refetchInterval: POLL_MS } });
   const [series, setSeries] = useState<Point[]>([]);
   const colors = SERIES_COLORS[useThemeType()];
 

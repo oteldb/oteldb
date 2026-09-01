@@ -1,5 +1,6 @@
 import { Flex, Text } from "@gravity-ui/uikit";
 import { useGetHealth } from "../api/admin";
+import { useSelectedNode } from "../lib/node";
 import { Panel, QueryState, StatusLabel } from "../components/ui";
 import type { ComponentHealth } from "../api/model";
 
@@ -32,7 +33,8 @@ export function ComponentList({ components }: { components: ComponentHealth[] })
 }
 
 export function Health() {
-  const health = useGetHealth({ query: { refetchInterval: 5_000 } });
+  const { params } = useSelectedNode();
+  const health = useGetHealth(params, { query: { refetchInterval: 5_000 } });
 
   return (
     <Panel

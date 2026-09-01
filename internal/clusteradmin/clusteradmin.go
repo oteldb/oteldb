@@ -6,6 +6,11 @@
 // than failing it. Where a figure cannot be summed honestly — stored bytes, which replication counts
 // once per copy — the report carries both readings instead of picking one; see
 // [Aggregator.GetClusterStorage].
+//
+// A request can also name one member (the `node` query parameter, listed by
+// [Aggregator.GetClusterNodes]), which is forwarded to that member and answered verbatim. That is
+// what makes the per-node-only operations reachable here at all: they are refused as a fan-out and
+// ordinary once addressed.
 package clusteradmin
 
 import (
@@ -23,12 +28,17 @@ import (
 
 // NodeClient is the part of a member node's admin API the aggregator reads. *adminapi.Client
 // implements it; a test supplies a fake.
+//
+// The last two are never fanned out — see [Aggregator.GetStreamCosts] and [Aggregator.RunAction] —
+// and are here only to forward a request that named a single node.
 type NodeClient interface {
 	GetInfo(ctx context.Context) (*adminapi.InstanceInfo, error)
-	GetHealth(ctx context.Context) (*adminapi.HealthReport, error)
-	GetRuntime(ctx context.Context) (*adminapi.RuntimeStats, error)
-	GetStorage(ctx context.Context) (*adminapi.StorageStats, error)
+	GetHealth(ctx context.Context, params adminapi.GetHealthParams) (*adminapi.HealthReport, error)
+	GetRuntime(ctx context.Context, params adminapi.GetRuntimeParams) (*adminapi.RuntimeStats, error)
+	GetStorage(ctx context.Context, params adminapi.GetStorageParams) (*adminapi.StorageStats, error)
 	GetEfficiency(ctx context.Context, params adminapi.GetEfficiencyParams) (*adminapi.EfficiencyStats, error)
+	GetStreamCosts(ctx context.Context, params adminapi.GetStreamCostsParams) (*adminapi.StreamCosts, error)
+	RunAction(ctx context.Context, params adminapi.RunActionParams) (*adminapi.ActionResult, error)
 }
 
 // Peer is one member node and the admin API endpoint the aggregator reaches it on.
@@ -114,14 +124,46 @@ func New(opts Options) (*Aggregator, error) {
 // GetStreamCosts implements getStreamCosts operation. Stream cost attribution decodes every
 // accounted column of every live part, so it stays a per-node drill-down: fanned across the cluster
 // it would decode each replicated part once per replica to answer one question.
-func (a *Aggregator) GetStreamCosts(context.Context, adminapi.GetStreamCostsParams) (*adminapi.StreamCosts, error) {
-	return nil, errors.New("stream costs are a per-node drill-down: ask a storage node's admin API directly")
+//
+// Addressed to one node it is that drill-down, so it is forwarded rather than refused.
+func (a *Aggregator) GetStreamCosts(
+	ctx context.Context, params adminapi.GetStreamCostsParams,
+) (*adminapi.StreamCosts, error) {
+	node, ok := params.Node.Get()
+	if !ok {
+		return nil, errors.New("stream costs are a per-node drill-down: name a node with ?node=, or ask a storage node's admin API directly")
+	}
+
+	params.Node.Reset()
+
+	return forward(ctx, a, "storage/stream-costs", node,
+		func(ctx context.Context, p Peer) (*adminapi.StreamCosts, error) {
+			return p.Client.GetStreamCosts(ctx, params)
+		},
+	)
 }
 
 // RunAction implements runAction operation. Every action mutates the node it runs on, and one that
 // half succeeds across a cluster needs a partial-failure contract this API does not have.
-func (a *Aggregator) RunAction(_ context.Context, params adminapi.RunActionParams) (*adminapi.ActionResult, error) {
-	return nil, errors.Errorf("action %q does not run cluster-wide: ask a storage node's admin API directly", params.Action)
+//
+// That is an argument about the fan-out, not about the action: addressed to one named node there is
+// no partial failure to contract for — the action either ran on that node or reports why it did
+// not — so a request naming a node is forwarded and only an unaddressed one is refused.
+func (a *Aggregator) RunAction(
+	ctx context.Context, params adminapi.RunActionParams,
+) (*adminapi.ActionResult, error) {
+	node, ok := params.Node.Get()
+	if !ok {
+		return nil, errors.Errorf("action %q does not run cluster-wide: name a node with ?node=, or ask a storage node's admin API directly", params.Action)
+	}
+
+	params.Node.Reset()
+
+	return forward(ctx, a, "actions/"+string(params.Action), node,
+		func(ctx context.Context, p Peer) (*adminapi.ActionResult, error) {
+			return p.Client.RunAction(ctx, params)
+		},
+	)
 }
 
 // NewError creates *ErrorStatusCode from error returned by handler.

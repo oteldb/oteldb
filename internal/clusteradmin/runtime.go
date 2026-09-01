@@ -12,9 +12,19 @@ import (
 // budget is. Nothing here is deduplicated — a Go runtime counter belongs to one process — so a
 // missing node subtracts its share and the total silently shrinks; /api/v1/health is where an
 // absent node is visible.
-func (a *Aggregator) GetRuntime(ctx context.Context) (*adminapi.RuntimeStats, error) {
+//
+// A request naming a node is that node's own counters, forwarded unchanged.
+func (a *Aggregator) GetRuntime(ctx context.Context, params adminapi.GetRuntimeParams) (*adminapi.RuntimeStats, error) {
+	if node, ok := params.Node.Get(); ok {
+		return forward(ctx, a, "runtime", node, func(ctx context.Context, p Peer) (*adminapi.RuntimeStats, error) {
+			return p.Client.GetRuntime(ctx, adminapi.GetRuntimeParams{})
+		})
+	}
+
 	answers, err := fanout(ctx, a, "runtime",
-		func(ctx context.Context, p Peer) (*adminapi.RuntimeStats, error) { return p.Client.GetRuntime(ctx) },
+		func(ctx context.Context, p Peer) (*adminapi.RuntimeStats, error) {
+			return p.Client.GetRuntime(ctx, adminapi.GetRuntimeParams{})
+		},
 	)
 	if err != nil {
 		return nil, err

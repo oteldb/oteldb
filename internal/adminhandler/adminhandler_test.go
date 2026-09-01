@@ -275,6 +275,38 @@ func TestAdmin_ClusterStorageIsNotServedByANode(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 }
 
+// TestAdmin_NodeParamIsIgnored pins that a storage node answers for itself whatever the node
+// parameter says. The parameter addresses one member of a cluster, which a node has no view of;
+// the aggregator strips it before forwarding, so one arriving here was aimed at this node directly.
+func TestAdmin_NodeParamIsIgnored(t *testing.T) {
+	ts := testServer(t, Options{Engine: &fakeEngine{}})
+	defer ts.Close()
+
+	var plain, addressed adminapi.StorageStats
+	get(t, ts.URL, "/api/v1/storage", &plain)
+	get(t, ts.URL, "/api/v1/storage?node=somebody-else", &addressed)
+
+	assert.Equal(t, plain.StorageEnabled, addressed.StorageEnabled)
+	assert.True(t, addressed.StorageEnabled)
+
+	var health adminapi.HealthReport
+	get(t, ts.URL, "/api/v1/health?node=somebody-else", &health)
+	assert.Equal(t, adminapi.HealthStatusHealthy, health.Status)
+}
+
+// TestAdmin_ClusterNodesIsNotServedByANode pins that ring membership is odbadmin's answer: a node
+// knows its peers but not the admin endpoints they serve, which is the aggregator's configuration.
+func TestAdmin_ClusterNodesIsNotServedByANode(t *testing.T) {
+	ts := testServer(t, Options{Engine: &fakeEngine{}})
+	defer ts.Close()
+
+	resp, err := ts.Client().Get(ts.URL + "/api/v1/cluster/nodes")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+}
+
 func TestAdmin_Actions(t *testing.T) {
 	eng := &fakeEngine{}
 	ts := testServer(t, Options{
