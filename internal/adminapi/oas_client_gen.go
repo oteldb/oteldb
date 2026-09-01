@@ -28,6 +28,16 @@ func trimTrailingSlashes(u *url.URL) {
 
 // Invoker invokes operations described by OpenAPI v3 specification.
 type Invoker interface {
+	// GetClusterNodes invokes getClusterNodes operation.
+	//
+	// The members the aggregator fans out to, with the admin API address it reaches each on and whether it
+	// answered. This is the cheap membership query behind a node selector: /api/v1/cluster/storage carries
+	// the same list, but only as part of a storage report that reads every part of every node. Served by a
+	// cluster-wide admin (odbadmin). A storage node is a member of nothing it can see from here and
+	// answers with an error.
+	//
+	// GET /api/v1/cluster/nodes
+	GetClusterNodes(ctx context.Context) (*ClusterNodes, error)
 	// GetClusterStorage invokes getClusterStorage operation.
 	//
 	// Folds every member node's storage efficiency into one view, reporting the replicated footprint and
@@ -51,7 +61,7 @@ type Invoker interface {
 	// Health of each wired service (query APIs, collector, storage).
 	//
 	// GET /api/v1/health
-	GetHealth(ctx context.Context) (*HealthReport, error)
+	GetHealth(ctx context.Context, params GetHealthParams) (*HealthReport, error)
 	// GetInfo invokes getInfo operation.
 	//
 	// Build information, uptime and per-signal backend configuration.
@@ -63,14 +73,14 @@ type Invoker interface {
 	// Live heap, GC and goroutine counters of the running process.
 	//
 	// GET /api/v1/runtime
-	GetRuntime(ctx context.Context) (*RuntimeStats, error)
+	GetRuntime(ctx context.Context, params GetRuntimeParams) (*RuntimeStats, error)
 	// GetStorage invokes getStorage operation.
 	//
 	// Per-table statistics (rows, on-disk and uncompressed bytes, parts, min/max timestamp) collected from
 	// ClickHouse system tables. Empty when no signal is served from ClickHouse.
 	//
 	// GET /api/v1/storage
-	GetStorage(ctx context.Context) (*StorageStats, error)
+	GetStorage(ctx context.Context, params GetStorageParams) (*StorageStats, error)
 	// GetStreamCosts invokes getStreamCosts operation.
 	//
 	// Breaks a record signal's flushed parts down by stream, or by a stream label's values: rows, decoded
@@ -126,6 +136,90 @@ func (c *Client) requestURL(ctx context.Context) *url.URL {
 		return c.serverURL
 	}
 	return u
+}
+
+// GetClusterNodes invokes getClusterNodes operation.
+//
+// The members the aggregator fans out to, with the admin API address it reaches each on and whether it
+// answered. This is the cheap membership query behind a node selector: /api/v1/cluster/storage carries
+// the same list, but only as part of a storage report that reads every part of every node. Served by a
+// cluster-wide admin (odbadmin). A storage node is a member of nothing it can see from here and
+// answers with an error.
+//
+// GET /api/v1/cluster/nodes
+func (c *Client) GetClusterNodes(ctx context.Context) (*ClusterNodes, error) {
+	res, err := c.sendGetClusterNodes(ctx)
+	return res, err
+}
+
+func (c *Client) sendGetClusterNodes(ctx context.Context) (res *ClusterNodes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getClusterNodes"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/api/v1/cluster/nodes"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetClusterNodesOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/api/v1/cluster/nodes"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetClusterNodesResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
 }
 
 // GetClusterStorage invokes getClusterStorage operation.
@@ -268,6 +362,23 @@ func (c *Client) sendGetEfficiency(ctx context.Context, params GetEfficiencyPara
 	stage = "EncodeQueryParams"
 	q := uri.NewQueryEncoder()
 	{
+		// Encode "node" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "node",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Node.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
 		// Encode "parts" parameter.
 		cfg := uri.QueryParameterEncodingConfig{
 			Name:    "parts",
@@ -320,12 +431,12 @@ func (c *Client) sendGetEfficiency(ctx context.Context, params GetEfficiencyPara
 // Health of each wired service (query APIs, collector, storage).
 //
 // GET /api/v1/health
-func (c *Client) GetHealth(ctx context.Context) (*HealthReport, error) {
-	res, err := c.sendGetHealth(ctx)
+func (c *Client) GetHealth(ctx context.Context, params GetHealthParams) (*HealthReport, error) {
+	res, err := c.sendGetHealth(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendGetHealth(ctx context.Context) (res *HealthReport, err error) {
+func (c *Client) sendGetHealth(ctx context.Context, params GetHealthParams) (res *HealthReport, err error) {
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getHealth"),
 		semconv.HTTPRequestMethodKey.String("GET"),
@@ -365,6 +476,27 @@ func (c *Client) sendGetHealth(ctx context.Context) (res *HealthReport, err erro
 	var pathParts [1]string
 	pathParts[0] = "/api/v1/health"
 	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "node" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "node",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Node.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
 
 	stage = "EncodeRequest"
 	r, err := ht.NewRequest(ctx, "GET", u)
@@ -480,12 +612,12 @@ func (c *Client) sendGetInfo(ctx context.Context) (res *InstanceInfo, err error)
 // Live heap, GC and goroutine counters of the running process.
 //
 // GET /api/v1/runtime
-func (c *Client) GetRuntime(ctx context.Context) (*RuntimeStats, error) {
-	res, err := c.sendGetRuntime(ctx)
+func (c *Client) GetRuntime(ctx context.Context, params GetRuntimeParams) (*RuntimeStats, error) {
+	res, err := c.sendGetRuntime(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendGetRuntime(ctx context.Context) (res *RuntimeStats, err error) {
+func (c *Client) sendGetRuntime(ctx context.Context, params GetRuntimeParams) (res *RuntimeStats, err error) {
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getRuntime"),
 		semconv.HTTPRequestMethodKey.String("GET"),
@@ -526,6 +658,27 @@ func (c *Client) sendGetRuntime(ctx context.Context) (res *RuntimeStats, err err
 	pathParts[0] = "/api/v1/runtime"
 	uri.AddPathParts(u, pathParts[:]...)
 
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "node" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "node",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Node.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
 	stage = "EncodeRequest"
 	r, err := ht.NewRequest(ctx, "GET", u)
 	if err != nil {
@@ -561,12 +714,12 @@ func (c *Client) sendGetRuntime(ctx context.Context) (res *RuntimeStats, err err
 // ClickHouse system tables. Empty when no signal is served from ClickHouse.
 //
 // GET /api/v1/storage
-func (c *Client) GetStorage(ctx context.Context) (*StorageStats, error) {
-	res, err := c.sendGetStorage(ctx)
+func (c *Client) GetStorage(ctx context.Context, params GetStorageParams) (*StorageStats, error) {
+	res, err := c.sendGetStorage(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendGetStorage(ctx context.Context) (res *StorageStats, err error) {
+func (c *Client) sendGetStorage(ctx context.Context, params GetStorageParams) (res *StorageStats, err error) {
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getStorage"),
 		semconv.HTTPRequestMethodKey.String("GET"),
@@ -606,6 +759,27 @@ func (c *Client) sendGetStorage(ctx context.Context) (res *StorageStats, err err
 	var pathParts [1]string
 	pathParts[0] = "/api/v1/storage"
 	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "node" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "node",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Node.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
 
 	stage = "EncodeRequest"
 	r, err := ht.NewRequest(ctx, "GET", u)
@@ -693,6 +867,23 @@ func (c *Client) sendGetStreamCosts(ctx context.Context, params GetStreamCostsPa
 
 	stage = "EncodeQueryParams"
 	q := uri.NewQueryEncoder()
+	{
+		// Encode "node" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "node",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Node.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
 	{
 		// Encode "signal" parameter.
 		cfg := uri.QueryParameterEncodingConfig{
@@ -883,6 +1074,27 @@ func (c *Client) sendRunAction(ctx context.Context, params RunActionParams) (res
 		pathParts[1] = encoded
 	}
 	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "node" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "node",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Node.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
 
 	stage = "EncodeRequest"
 	r, err := ht.NewRequest(ctx, "POST", u)

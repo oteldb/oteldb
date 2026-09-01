@@ -16,6 +16,13 @@ import (
 
 // GetEfficiencyParams is parameters of getEfficiency operation.
 type GetEfficiencyParams struct {
+	// Addresses one member node by its ring id instead of the whole cluster. A cluster-wide admin forwards
+	// the request to that member and returns its answer verbatim; unset, it aggregates every member as
+	// usual. Names come from /api/v1/cluster/nodes. This is what makes the per-node-only operations
+	// reachable from the cluster panel: stream cost attribution and the maintenance actions are refused
+	// cluster-wide, but are ordinary requests once addressed to a node. A storage node ignores the
+	// parameter -- it is the only node it can answer for.
+	Node OptString `json:",omitempty,omitzero"`
 	// Lists each signal's parts individually in `parts_detail`. A cluster-wide aggregator needs part
 	// identities to count a replicated part once instead of once per replica; a single-node dashboard does
 	// not, and the list grows with the part count, so it is off by default.
@@ -23,6 +30,15 @@ type GetEfficiencyParams struct {
 }
 
 func unpackGetEfficiencyParams(packed middleware.Parameters) (params GetEfficiencyParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "node",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Node = v.(OptString)
+		}
+	}
 	{
 		key := middleware.ParameterKey{
 			Name: "parts",
@@ -37,6 +53,47 @@ func unpackGetEfficiencyParams(packed middleware.Parameters) (params GetEfficien
 
 func decodeGetEfficiencyParams(args [0]string, argsEscaped bool, r *http.Request) (params GetEfficiencyParams, _ error) {
 	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode query: node.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "node",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotNodeVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotNodeVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Node.SetTo(paramsDotNodeVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "node",
+			In:   "query",
+			Err:  err,
+		}
+	}
 	// Set default value for query: parts.
 	{
 		val := bool(false)
@@ -86,8 +143,225 @@ func decodeGetEfficiencyParams(args [0]string, argsEscaped bool, r *http.Request
 	return params, nil
 }
 
+// GetHealthParams is parameters of getHealth operation.
+type GetHealthParams struct {
+	// Addresses one member node by its ring id instead of the whole cluster. A cluster-wide admin forwards
+	// the request to that member and returns its answer verbatim; unset, it aggregates every member as
+	// usual. Names come from /api/v1/cluster/nodes. This is what makes the per-node-only operations
+	// reachable from the cluster panel: stream cost attribution and the maintenance actions are refused
+	// cluster-wide, but are ordinary requests once addressed to a node. A storage node ignores the
+	// parameter -- it is the only node it can answer for.
+	Node OptString `json:",omitempty,omitzero"`
+}
+
+func unpackGetHealthParams(packed middleware.Parameters) (params GetHealthParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "node",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Node = v.(OptString)
+		}
+	}
+	return params
+}
+
+func decodeGetHealthParams(args [0]string, argsEscaped bool, r *http.Request) (params GetHealthParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode query: node.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "node",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotNodeVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotNodeVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Node.SetTo(paramsDotNodeVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "node",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// GetRuntimeParams is parameters of getRuntime operation.
+type GetRuntimeParams struct {
+	// Addresses one member node by its ring id instead of the whole cluster. A cluster-wide admin forwards
+	// the request to that member and returns its answer verbatim; unset, it aggregates every member as
+	// usual. Names come from /api/v1/cluster/nodes. This is what makes the per-node-only operations
+	// reachable from the cluster panel: stream cost attribution and the maintenance actions are refused
+	// cluster-wide, but are ordinary requests once addressed to a node. A storage node ignores the
+	// parameter -- it is the only node it can answer for.
+	Node OptString `json:",omitempty,omitzero"`
+}
+
+func unpackGetRuntimeParams(packed middleware.Parameters) (params GetRuntimeParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "node",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Node = v.(OptString)
+		}
+	}
+	return params
+}
+
+func decodeGetRuntimeParams(args [0]string, argsEscaped bool, r *http.Request) (params GetRuntimeParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode query: node.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "node",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotNodeVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotNodeVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Node.SetTo(paramsDotNodeVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "node",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// GetStorageParams is parameters of getStorage operation.
+type GetStorageParams struct {
+	// Addresses one member node by its ring id instead of the whole cluster. A cluster-wide admin forwards
+	// the request to that member and returns its answer verbatim; unset, it aggregates every member as
+	// usual. Names come from /api/v1/cluster/nodes. This is what makes the per-node-only operations
+	// reachable from the cluster panel: stream cost attribution and the maintenance actions are refused
+	// cluster-wide, but are ordinary requests once addressed to a node. A storage node ignores the
+	// parameter -- it is the only node it can answer for.
+	Node OptString `json:",omitempty,omitzero"`
+}
+
+func unpackGetStorageParams(packed middleware.Parameters) (params GetStorageParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "node",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Node = v.(OptString)
+		}
+	}
+	return params
+}
+
+func decodeGetStorageParams(args [0]string, argsEscaped bool, r *http.Request) (params GetStorageParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode query: node.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "node",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotNodeVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotNodeVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Node.SetTo(paramsDotNodeVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "node",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // GetStreamCostsParams is parameters of getStreamCosts operation.
 type GetStreamCostsParams struct {
+	// Addresses one member node by its ring id instead of the whole cluster. A cluster-wide admin forwards
+	// the request to that member and returns its answer verbatim; unset, it aggregates every member as
+	// usual. Names come from /api/v1/cluster/nodes. This is what makes the per-node-only operations
+	// reachable from the cluster panel: stream cost attribution and the maintenance actions are refused
+	// cluster-wide, but are ordinary requests once addressed to a node. A storage node ignores the
+	// parameter -- it is the only node it can answer for.
+	Node OptString `json:",omitempty,omitzero"`
 	// Signal to attribute. Metrics carry no per-record columns, so they are not attributable.
 	Signal RecordSignal
 	// Tenant to inspect. Empty selects the instance's default tenant.
@@ -102,6 +376,15 @@ type GetStreamCostsParams struct {
 }
 
 func unpackGetStreamCostsParams(packed middleware.Parameters) (params GetStreamCostsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "node",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Node = v.(OptString)
+		}
+	}
 	{
 		key := middleware.ParameterKey{
 			Name: "signal",
@@ -150,6 +433,47 @@ func unpackGetStreamCostsParams(packed middleware.Parameters) (params GetStreamC
 
 func decodeGetStreamCostsParams(args [0]string, argsEscaped bool, r *http.Request) (params GetStreamCostsParams, _ error) {
 	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode query: node.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "node",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotNodeVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotNodeVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Node.SetTo(paramsDotNodeVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "node",
+			In:   "query",
+			Err:  err,
+		}
+	}
 	// Decode query: signal.
 	if err := func() error {
 		cfg := uri.QueryParameterDecodingConfig{
@@ -371,11 +695,27 @@ func decodeGetStreamCostsParams(args [0]string, argsEscaped bool, r *http.Reques
 
 // RunActionParams is parameters of runAction operation.
 type RunActionParams struct {
+	// Addresses one member node by its ring id instead of the whole cluster. A cluster-wide admin forwards
+	// the request to that member and returns its answer verbatim; unset, it aggregates every member as
+	// usual. Names come from /api/v1/cluster/nodes. This is what makes the per-node-only operations
+	// reachable from the cluster panel: stream cost attribution and the maintenance actions are refused
+	// cluster-wide, but are ordinary requests once addressed to a node. A storage node ignores the
+	// parameter -- it is the only node it can answer for.
+	Node OptString `json:",omitempty,omitzero"`
 	// Action to run.
 	Action ActionName
 }
 
 func unpackRunActionParams(packed middleware.Parameters) (params RunActionParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "node",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Node = v.(OptString)
+		}
+	}
 	{
 		key := middleware.ParameterKey{
 			Name: "action",
@@ -387,6 +727,48 @@ func unpackRunActionParams(packed middleware.Parameters) (params RunActionParams
 }
 
 func decodeRunActionParams(args [1]string, argsEscaped bool, r *http.Request) (params RunActionParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode query: node.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "node",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotNodeVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotNodeVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Node.SetTo(paramsDotNodeVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "node",
+			In:   "query",
+			Err:  err,
+		}
+	}
 	// Decode path: action.
 	if err := func() error {
 		param := args[0]

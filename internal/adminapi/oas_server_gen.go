@@ -8,6 +8,16 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// GetClusterNodes implements getClusterNodes operation.
+	//
+	// The members the aggregator fans out to, with the admin API address it reaches each on and whether it
+	// answered. This is the cheap membership query behind a node selector: /api/v1/cluster/storage carries
+	// the same list, but only as part of a storage report that reads every part of every node. Served by a
+	// cluster-wide admin (odbadmin). A storage node is a member of nothing it can see from here and
+	// answers with an error.
+	//
+	// GET /api/v1/cluster/nodes
+	GetClusterNodes(ctx context.Context) (*ClusterNodes, error)
 	// GetClusterStorage implements getClusterStorage operation.
 	//
 	// Folds every member node's storage efficiency into one view, reporting the replicated footprint and
@@ -31,7 +41,7 @@ type Handler interface {
 	// Health of each wired service (query APIs, collector, storage).
 	//
 	// GET /api/v1/health
-	GetHealth(ctx context.Context) (*HealthReport, error)
+	GetHealth(ctx context.Context, params GetHealthParams) (*HealthReport, error)
 	// GetInfo implements getInfo operation.
 	//
 	// Build information, uptime and per-signal backend configuration.
@@ -43,14 +53,14 @@ type Handler interface {
 	// Live heap, GC and goroutine counters of the running process.
 	//
 	// GET /api/v1/runtime
-	GetRuntime(ctx context.Context) (*RuntimeStats, error)
+	GetRuntime(ctx context.Context, params GetRuntimeParams) (*RuntimeStats, error)
 	// GetStorage implements getStorage operation.
 	//
 	// Per-table statistics (rows, on-disk and uncompressed bytes, parts, min/max timestamp) collected from
 	// ClickHouse system tables. Empty when no signal is served from ClickHouse.
 	//
 	// GET /api/v1/storage
-	GetStorage(ctx context.Context) (*StorageStats, error)
+	GetStorage(ctx context.Context, params GetStorageParams) (*StorageStats, error)
 	// GetStreamCosts implements getStreamCosts operation.
 	//
 	// Breaks a record signal's flushed parts down by stream, or by a stream label's values: rows, decoded

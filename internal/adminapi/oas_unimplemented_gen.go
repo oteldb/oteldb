@@ -13,6 +13,19 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// GetClusterNodes implements getClusterNodes operation.
+//
+// The members the aggregator fans out to, with the admin API address it reaches each on and whether it
+// answered. This is the cheap membership query behind a node selector: /api/v1/cluster/storage carries
+// the same list, but only as part of a storage report that reads every part of every node. Served by a
+// cluster-wide admin (odbadmin). A storage node is a member of nothing it can see from here and
+// answers with an error.
+//
+// GET /api/v1/cluster/nodes
+func (UnimplementedHandler) GetClusterNodes(ctx context.Context) (r *ClusterNodes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetClusterStorage implements getClusterStorage operation.
 //
 // Folds every member node's storage efficiency into one view, reporting the replicated footprint and
@@ -42,7 +55,7 @@ func (UnimplementedHandler) GetEfficiency(ctx context.Context, params GetEfficie
 // Health of each wired service (query APIs, collector, storage).
 //
 // GET /api/v1/health
-func (UnimplementedHandler) GetHealth(ctx context.Context) (r *HealthReport, _ error) {
+func (UnimplementedHandler) GetHealth(ctx context.Context, params GetHealthParams) (r *HealthReport, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -60,7 +73,7 @@ func (UnimplementedHandler) GetInfo(ctx context.Context) (r *InstanceInfo, _ err
 // Live heap, GC and goroutine counters of the running process.
 //
 // GET /api/v1/runtime
-func (UnimplementedHandler) GetRuntime(ctx context.Context) (r *RuntimeStats, _ error) {
+func (UnimplementedHandler) GetRuntime(ctx context.Context, params GetRuntimeParams) (r *RuntimeStats, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -70,7 +83,7 @@ func (UnimplementedHandler) GetRuntime(ctx context.Context) (r *RuntimeStats, _ 
 // ClickHouse system tables. Empty when no signal is served from ClickHouse.
 //
 // GET /api/v1/storage
-func (UnimplementedHandler) GetStorage(ctx context.Context) (r *StorageStats, _ error) {
+func (UnimplementedHandler) GetStorage(ctx context.Context, params GetStorageParams) (r *StorageStats, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

@@ -97,29 +97,68 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
-			case 'c': // Prefix: "cluster/storage"
+			case 'c': // Prefix: "cluster/"
 
-				if l := len("cluster/storage"); len(elem) >= l && elem[0:l] == "cluster/storage" {
+				if l := len("cluster/"); len(elem) >= l && elem[0:l] == "cluster/" {
 					elem = elem[l:]
 				} else {
 					break
 				}
 
 				if len(elem) == 0 {
-					// Leaf node.
-					switch r.Method {
-					case "GET":
-						s.handleGetClusterStorageRequest([0]string{}, elemIsEscaped, w, r)
-					default:
-						s.notAllowed(w, r, notAllowedParams{
-							allowedMethods: "GET",
-							allowedHeaders: nil,
-							acceptPost:     "",
-							acceptPatch:    "",
-						})
+					break
+				}
+				switch elem[0] {
+				case 'n': // Prefix: "nodes"
+
+					if l := len("nodes"); len(elem) >= l && elem[0:l] == "nodes" {
+						elem = elem[l:]
+					} else {
+						break
 					}
 
-					return
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "GET":
+							s.handleGetClusterNodesRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "GET",
+								allowedHeaders: nil,
+								acceptPost:     "",
+								acceptPatch:    "",
+							})
+						}
+
+						return
+					}
+
+				case 's': // Prefix: "storage"
+
+					if l := len("storage"); len(elem) >= l && elem[0:l] == "storage" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "GET":
+							s.handleGetClusterStorageRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "GET",
+								allowedHeaders: nil,
+								acceptPost:     "",
+								acceptPatch:    "",
+							})
+						}
+
+						return
+					}
+
 				}
 
 			case 'h': // Prefix: "health"
@@ -421,29 +460,68 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					}
 				}
 
-			case 'c': // Prefix: "cluster/storage"
+			case 'c': // Prefix: "cluster/"
 
-				if l := len("cluster/storage"); len(elem) >= l && elem[0:l] == "cluster/storage" {
+				if l := len("cluster/"); len(elem) >= l && elem[0:l] == "cluster/" {
 					elem = elem[l:]
 				} else {
 					break
 				}
 
 				if len(elem) == 0 {
-					// Leaf node.
-					switch method {
-					case "GET":
-						r.name = GetClusterStorageOperation
-						r.summary = "Cluster-wide storage footprint"
-						r.operationID = "getClusterStorage"
-						r.operationGroup = ""
-						r.pathPattern = "/api/v1/cluster/storage"
-						r.args = args
-						r.count = 0
-						return r, true
-					default:
-						return
+					break
+				}
+				switch elem[0] {
+				case 'n': // Prefix: "nodes"
+
+					if l := len("nodes"); len(elem) >= l && elem[0:l] == "nodes" {
+						elem = elem[l:]
+					} else {
+						break
 					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "GET":
+							r.name = GetClusterNodesOperation
+							r.summary = "Cluster ring membership"
+							r.operationID = "getClusterNodes"
+							r.operationGroup = ""
+							r.pathPattern = "/api/v1/cluster/nodes"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
+				case 's': // Prefix: "storage"
+
+					if l := len("storage"); len(elem) >= l && elem[0:l] == "storage" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "GET":
+							r.name = GetClusterStorageOperation
+							r.summary = "Cluster-wide storage footprint"
+							r.operationID = "getClusterStorage"
+							r.operationGroup = ""
+							r.pathPattern = "/api/v1/cluster/storage"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
 				}
 
 			case 'h': // Prefix: "health"

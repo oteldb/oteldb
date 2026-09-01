@@ -6,6 +6,7 @@ package adminapi
 type OperationName = string
 
 const (
+	GetClusterNodesOperation   OperationName = "GetClusterNodes"
 	GetClusterStorageOperation OperationName = "GetClusterStorage"
 	GetEfficiencyOperation     OperationName = "GetEfficiency"
 	GetHealthOperation         OperationName = "GetHealth"
