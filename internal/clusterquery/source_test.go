@@ -367,7 +367,7 @@ func TestTraceKeysEnumeratesTraceSignal(t *testing.T) {
 		{Key: []byte("db.system"), Scope: uint8(4)},
 	}
 
-	src := clusterquery.New(openRouter(t, endpoint, 1, shards))
+	src := clusterquery.New(openRouter(t, endpoint, 1, shards), 0)
 
 	got, err := src.TraceKeys(t.Context(), "", 1, 100)
 	require.NoError(t, err)
