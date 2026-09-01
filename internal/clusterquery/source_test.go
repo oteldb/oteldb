@@ -211,7 +211,7 @@ func TestFetcherGathersEveryShard(t *testing.T) {
 
 	startNode(t, endpoint, "node-a", held)
 
-	src := clusterquery.New(openRouter(t, endpoint, 1, shards))
+	src := clusterquery.New(openRouter(t, endpoint, 1, shards), 0)
 
 	assert.Equal(t, []string{"a", "b", "c", "d"}, drainNames(t, src.Fetcher(""), nil))
 
@@ -239,7 +239,7 @@ func TestFetcherReappliesMatchers(t *testing.T) {
 		string(cluster.DefaultTenant): {"kept", "dropped"},
 	})
 
-	src := clusterquery.New(openRouter(t, endpoint, 1, 1))
+	src := clusterquery.New(openRouter(t, endpoint, 1, 1), 0)
 
 	// No Spec, so nothing about this matcher reaches the peer.
 	matchers := []fetch.Matcher{{
@@ -272,7 +272,7 @@ func TestSeriesFailsOverAbsentOwner(t *testing.T) {
 	require.Eventually(t, func() bool { return len(rt.Members()) == 2 },
 		10*time.Second, 10*time.Millisecond, "router sees both nodes")
 
-	src := clusterquery.New(rt)
+	src := clusterquery.New(rt, 0)
 
 	got, err := src.MetricSeries(t.Context(), "", nil, 1, 100)
 	require.NoError(t, err)
@@ -290,7 +290,7 @@ func TestSeriesEmptyWhenEveryOwnerDisclaims(t *testing.T) {
 	endpoint := etcdtest.Start(t)
 	startNode(t, endpoint, "node-a", map[string][]string{})
 
-	src := clusterquery.New(openRouter(t, endpoint, 1, 1))
+	src := clusterquery.New(openRouter(t, endpoint, 1, 1), 0)
 
 	got, err := src.MetricSeries(t.Context(), "", nil, 1, 100)
 	require.NoError(t, err)
@@ -316,7 +316,7 @@ func TestLogKeysUnionsShards(t *testing.T) {
 	}
 	node.keys[keys[1]] = []cluster.KeyInfo{{Key: []byte("host"), Scope: uint8(4)}}
 
-	src := clusterquery.New(openRouter(t, endpoint, 1, shards))
+	src := clusterquery.New(openRouter(t, endpoint, 1, shards), 0)
 
 	got, err := src.LogKeys(t.Context(), "", 1, 100)
 	require.NoError(t, err)
@@ -372,7 +372,7 @@ func TestTraceByIDNarrowsToOneTrace(t *testing.T) {
 		string(cluster.DefaultTenant): {"aaa", "bbb", "aaa", "ccc"},
 	}
 
-	src := clusterquery.New(openRouter(t, endpoint, 1, 1))
+	src := clusterquery.New(openRouter(t, endpoint, 1, 1), 0)
 
 	rows := func(id string) []string {
 		t.Helper()

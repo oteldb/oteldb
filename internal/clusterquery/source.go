@@ -13,8 +13,11 @@
 package clusterquery
 
 import (
+	"context"
+
 	"github.com/oteldb/storage/cluster"
 	"github.com/oteldb/storage/cluster/router"
+	"github.com/oteldb/storage/readbudget"
 	"github.com/oteldb/storage/signal"
 
 	"github.com/oteldb/oteldb/internal/storagebackend"
@@ -23,13 +26,31 @@ import (
 // Source is a read-only view of a storage cluster, resolved through the ring.
 type Source struct {
 	rt *router.Router
+	// maxQueryBytes bounds one query's read memory on this process. An aggregator needs its own
+	// bound: it holds every owner's answer at once to merge them, so the owners' individual limits
+	// do not add up to one here.
+	maxQueryBytes int64
 }
 
 var _ storagebackend.Source = (*Source)(nil)
 
-// New returns a Source over rt.
-func New(rt *router.Router) *Source {
-	return &Source{rt: rt}
+// New returns a Source over rt, bounding each query to maxQueryBytes of read memory. Zero sizes the
+// bound from the detected process budget; negative leaves reads unbounded.
+func New(rt *router.Router, maxQueryBytes int64) *Source {
+	return &Source{rt: rt, maxQueryBytes: readbudget.ProcessShare(maxQueryBytes)}
+}
+
+// WithQueryBudget implements [storagebackend.Source].
+//
+// The allowance installed here is also what the fan-out declares to each owner, so a shard stops
+// serializing an answer this process has no room to accept. Owners may only use it to tighten their
+// own limit, never to raise it.
+func (s *Source) WithQueryBudget(ctx context.Context) context.Context {
+	if readbudget.From(ctx) != nil {
+		return ctx
+	}
+
+	return readbudget.With(ctx, readbudget.New(s.maxQueryBytes))
 }
 
 // shardKeys returns the shard keys a tenant's reads fan out across, in index order.

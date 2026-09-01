@@ -68,6 +68,12 @@ type Source interface {
 	) ([]signal.Series, error)
 	// ProfileResolver resolves a tenant's content-addressed stack ids to frames.
 	ProfileResolver(ctx context.Context, tenant signal.TenantID) (*sigprofile.Resolver, error)
+
+	// WithQueryBudget returns ctx carrying one read-memory allowance for the query about to run, so
+	// the several fetches a single query makes share one bound instead of taking a fresh one each.
+	// It is idempotent: a ctx that already carries a budget is returned unchanged, since a nested
+	// install would hand the inner call a new allowance and uncap the query it was meant to bound.
+	WithQueryBudget(ctx context.Context) context.Context
 }
 
 var _ Source = (*storage.Storage)(nil)

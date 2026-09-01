@@ -142,8 +142,8 @@ github.com/aws/aws-msk-iam-sasl-signer-go v1.0.4/go.mod h1:MVYeeOhILFFemC/XlYTCl
 github.com/aws/aws-sdk-go v1.55.8 h1:JRmEUbU52aJQZ2AjX4q4Wu7t4uZjOu71uyNmaWlUkJQ=
 github.com/aws/aws-sdk-go v1.55.8/go.mod h1:ZkViS9AqA6otK+JBBNH2++sx1sgxrPKcSzPPvQkUtXk=
 github.com/aws/aws-sdk-go-v2 v1.9.2/go.mod h1:cK/D0BBs0b/oWPIcX/Z/obahJK1TT7IPVjy53i/mX/4=
-github.com/aws/aws-sdk-go-v2 v1.45.0 h1:Fjxm4nBOZtZu9ba/E0txJMGMysAEhLonbWptbqAxKx0=
-github.com/aws/aws-sdk-go-v2 v1.45.0/go.mod h1:bttEH6JqnUL8LepvDVfdrds/fZ5bCIxzpe3abyUrhDU=
+github.com/aws/aws-sdk-go-v2 v1.45.1 h1:iIoG3NaLhV6UZpPXyPXlDj2I9oS8tV/nMcMnITCC6Ks=
+github.com/aws/aws-sdk-go-v2 v1.45.1/go.mod h1:bttEH6JqnUL8LepvDVfdrds/fZ5bCIxzpe3abyUrhDU=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.18 h1:LAfOuhAH331fmOjTQpAaOlH+Ftn7RzSDJ2VFwjdMMy4=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.18/go.mod h1:4e5xhuXHx1e4U9EthvbPP1r/DIMp5c2823OL8karzcM=
 github.com/aws/aws-sdk-go-v2/config v1.8.3/go.mod h1:4AEiLtAb8kLs7vgw2ZV3p2VZ1+hBavOc84hqxVNpCyw=
@@ -1029,8 +1029,8 @@ github.com/openzipkin/zipkin-go v0.4.3/go.mod h1:M9wCJZFWCo2RiY+o1eBCEMe0Dp2S5LD
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
 github.com/oteldb/promql-engine v0.10.0 h1:CT3ffpna47gbih3Mff8moOHS4J9UVDP3gUf20ylNWIE=
 github.com/oteldb/promql-engine v0.10.0/go.mod h1:1zs5GoXb9XmZf+AC9TmsHgIg8VKVhQLxoORuM9JptiY=
-github.com/oteldb/storage v0.42.1-0.20260830154456-8fbc4a8d372a h1:HR6J03rfRQUWmichTtjVDoUFSVFPvRe+zTqa4OurLIk=
-github.com/oteldb/storage v0.42.1-0.20260830154456-8fbc4a8d372a/go.mod h1:QG9F3+Wsc7QQC55ckoIMKIYyfeupMDWVVFmFm0QK9WQ=
+github.com/oteldb/storage v0.43.0 h1:fYOiPbo6MChM9ZvhAk4VbzDFrwaN8oF482L6ld0sflk=
+github.com/oteldb/storage v0.43.0/go.mod h1:yEwwy2qOjuKxJ5ZjnOHQJfSrldDNhTLWSz/jMd2gHCM=
 github.com/outscale/osc-sdk-go/v2 v2.34.0 h1:hHH5W9Fmgt6b8nGUmDyu4vVP+zqJ+W0zflzjgsGEGUQ=
 github.com/outscale/osc-sdk-go/v2 v2.34.0/go.mod h1:6J8WRznaSIEXXVHhhTXisGJQgvE5fYzbf8hAw7YIGfQ=
 github.com/ovh/go-ovh v1.9.0 h1:6K8VoL3BYjVV3In9tPJUdT7qMx9h0GExN9EXx1r2kKE=

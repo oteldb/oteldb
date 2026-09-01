@@ -42,6 +42,16 @@ type Config struct {
 	// concurrency cannot drive the live heap past the process memory limit. Enabled by default,
 	// fitted to the detected memory limit minus the caches and headroom; set to 0 to disable.
 	DecodeMemoryBytes *xbytes.Bytes `json:"decode_memory_bytes" yaml:"decode_memory_bytes"`
+	// MaxQueryBytes caps what a single query may hold before it is refused. It is the bound
+	// DecodeMemoryBytes leaves open: that budget queues concurrent metric queries behind a shared
+	// ceiling but admits an over-budget query alone rather than refusing it, and the record engines
+	// (logs, traces, profiles) were not covered by it at all — so one unselective read had nothing
+	// between it and the process memory. Unset ⇒ the library default (a share of the detected
+	// process budget); 0 ⇒ unbounded, restoring the pre-0.43.0 behavior.
+	//
+	// It covers record fetches. The enumeration reads (tag values, series and key lookups) are not
+	// admitted, because a distinct set's size is not predictable from part metadata.
+	MaxQueryBytes *xbytes.Bytes `json:"max_query_bytes" yaml:"max_query_bytes"`
 	// MergeMemoryBytes caps the memory all concurrent merges together may hold, and through that the
 	// size a merged part reaches before it is sealed. It is the write-side counterpart of
 	// DecodeMemoryBytes: on a backend that takes objects whole a merge holds its output part encoded

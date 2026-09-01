@@ -60,7 +60,7 @@ func (n *bucketSamplingNode) EvalSample(ctx context.Context, params logqlengine.
 // per output step in [params.Start, params.End], each holding the per-group sampled total over the
 // trailing window (step-window, step].
 func (n *bucketSamplingNode) EvalBucketedSample(ctx context.Context, params logqlengine.EvalParams, window time.Duration) (logqlengine.StepIterator, error) {
-	ctx = queryScope(ctx)
+	ctx = n.src.q.b.queryContext(ctx)
 
 	step := params.Step
 	if step <= 0 {
