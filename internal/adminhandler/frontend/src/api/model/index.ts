@@ -34,6 +34,7 @@ export * from './getStreamCostsParams';
 export * from './healthReport';
 export * from './healthStatus';
 export * from './instanceInfo';
+export * from './instanceMode';
 export * from './maintenanceStats';
 export * from './partEfficiency';
 export * from './partSyncStats';

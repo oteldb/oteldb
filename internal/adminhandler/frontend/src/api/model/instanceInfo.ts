@@ -7,6 +7,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SignalInfo } from './signalInfo';
+import type { InstanceMode } from './instanceMode';
 
 /**
  * Instance build info, uptime and per-signal configuration.
@@ -32,4 +33,5 @@ export interface InstanceInfo {
   clickhouse_enabled: boolean;
   /** Per-signal configuration. */
   signals: SignalInfo[];
+  mode?: InstanceMode;
 }
