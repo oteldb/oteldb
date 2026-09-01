@@ -5,6 +5,7 @@ import { BroomMotion, Layers3Diagonal, TrashBin, Wrench } from "@gravity-ui/icon
 import type { IconData } from "@gravity-ui/uikit";
 import { useGetInfo, useRunAction } from "../api/admin";
 import { Panel } from "../components/ui";
+import { NodeOnly } from "../components/NodeOnly";
 import { fmtBytes } from "../lib/format";
 import type { ActionName } from "../api/model";
 
@@ -44,6 +45,14 @@ const ACTIONS: {
 ];
 
 export function Maintenance() {
+  return (
+    <NodeOnly what="Maintenance">
+      <MaintenancePage />
+    </NodeOnly>
+  );
+}
+
+function MaintenancePage() {
   const info = useGetInfo();
   const qc = useQueryClient();
   const toaster = useToaster();

@@ -35,13 +35,14 @@ const StreamCosts = lazy(() =>
   import("./pages/StreamCosts").then((m) => ({ default: m.StreamCosts })),
 );
 
+// nodeOnly entries drive operations the cluster aggregator refuses; see components/NodeOnly.
 const NAV = [
   { id: "/", title: "Overview", icon: ChartMixed },
   { id: "/runtime", title: "Runtime", icon: Cpu },
   { id: "/health", title: "Health", icon: HeartPulse },
   { id: "/storage", title: "Storage", icon: Database },
-  { id: "/stream-costs", title: "Stream costs", icon: Layers3Diagonal },
-  { id: "/maintenance", title: "Maintenance", icon: Wrench },
+  { id: "/stream-costs", title: "Stream costs", icon: Layers3Diagonal, nodeOnly: true },
+  { id: "/maintenance", title: "Maintenance", icon: Wrench, nodeOnly: true },
 ];
 
 const THEME_CYCLE: { next: Theme; icon: typeof Sun; hint: string }[] = [
@@ -89,17 +90,18 @@ export default function App() {
   const { pathname } = useLocation();
   const [compact, setCompact] = useState(false);
   const info = useGetInfo({ query: { refetchInterval: 10_000 } });
+  const isCluster = info.data?.mode === "cluster";
 
   const menuItems = useMemo<AsideHeaderItem[]>(
     () =>
-      NAV.map((item) => ({
+      NAV.filter((item) => !(item.nodeOnly && isCluster)).map((item) => ({
         id: item.id,
         title: item.title,
         icon: item.icon,
         current: pathname === item.id,
         onItemClick: () => navigate(item.id),
       })),
-    [pathname, navigate],
+    [pathname, navigate, isCluster],
   );
 
   const section = NAV.find((item) => item.id === pathname)?.title ?? "Overview";

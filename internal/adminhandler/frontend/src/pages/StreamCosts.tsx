@@ -4,6 +4,7 @@ import type { TableColumnConfig } from "@gravity-ui/uikit";
 import { Magnifier } from "@gravity-ui/icons";
 import { useGetStreamCosts } from "../api/admin";
 import { Chip, ErrorAlert, head, Mono, Panel, Rule } from "../components/ui";
+import { NodeOnly } from "../components/NodeOnly";
 import { fmtBytes, fmtNum } from "../lib/format";
 import type { ColumnCost, RecordSignal, StreamCost } from "../api/model";
 
@@ -60,6 +61,14 @@ function Group({ g, groupBy }: { g: StreamCost; groupBy: string }) {
 }
 
 export function StreamCosts() {
+  return (
+    <NodeOnly what="Stream costs">
+      <StreamCostsPage />
+    </NodeOnly>
+  );
+}
+
+function StreamCostsPage() {
   const [signal, setSignal] = useState<RecordSignal>("logs");
   const [groupBy, setGroupBy] = useState("service.name");
   // Draft state is what the form edits; the query runs against the values committed by Analyze.
