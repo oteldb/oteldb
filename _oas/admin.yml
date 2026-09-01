@@ -254,6 +254,24 @@ components:
           description: "Per-signal configuration."
           items:
             $ref: "#/components/schemas/SignalInfo"
+        mode:
+          $ref: "#/components/schemas/InstanceMode"
+    InstanceMode:
+      type: string
+      description: >
+        What is answering: one storage node, or a cluster aggregator standing in front of several.
+        The two serve the same API but not the same operations -- stream cost attribution and the
+        maintenance actions are per-node only, because attribution would decode each replicated part
+        once per replica and an action that half-succeeds across a cluster has no partial-failure
+        contract here. A client that cannot tell them apart can only offer those controls and let
+        them fail.
+
+        Optional rather than required so a newer aggregator can still read an older node's info
+        during a rolling upgrade; absent means the same thing as "node".
+      enum:
+        - node
+        - cluster
+      example: "node"
     SignalInfo:
       type: object
       required:

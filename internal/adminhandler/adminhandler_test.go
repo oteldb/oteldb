@@ -92,6 +92,8 @@ func TestAdmin_InfoRuntimeUI(t *testing.T) {
 	assert.True(t, info.StorageEnabled)
 	assert.Equal(t, "file", info.StorageBackend.Value)
 	assert.GreaterOrEqual(t, info.UptimeSeconds, 89.0)
+	assert.Equal(t, adminapi.InstanceModeNode, info.Mode.Or(""),
+		"a storage node serves the per-node-only operations, and says which it is")
 
 	var rt adminapi.RuntimeStats
 	get(t, ts.URL, "/api/v1/runtime", &rt)

@@ -15,6 +15,10 @@ import (
 // The build and uptime fields describe the aggregator process — it is the one answering, and a
 // cluster has no single version to report. Everything below them is the cluster's: a capability is
 // enabled when any member has it, and the signal list is the union of what the members serve.
+//
+// Mode marks the answer as the aggregator's, which is what lets a client hide the per-node-only
+// operations this type refuses ([Aggregator.GetStreamCosts], [Aggregator.RunAction]) instead of
+// offering them and failing.
 func (a *Aggregator) GetInfo(ctx context.Context) (*adminapi.InstanceInfo, error) {
 	answers, err := fanout(ctx, a, "info",
 		func(ctx context.Context, p Peer) (*adminapi.InstanceInfo, error) { return p.Client.GetInfo(ctx) },
@@ -32,6 +36,7 @@ func (a *Aggregator) GetInfo(ctx context.Context) (*adminapi.InstanceInfo, error
 		StartTime:     a.opts.StartTime,
 		UptimeSeconds: time.Since(a.opts.StartTime).Seconds(),
 		Signals:       []adminapi.SignalInfo{},
+		Mode:          adminapi.NewOptInstanceMode(adminapi.InstanceModeCluster),
 	}
 
 	signals := map[adminapi.Signal]adminapi.SignalInfo{}

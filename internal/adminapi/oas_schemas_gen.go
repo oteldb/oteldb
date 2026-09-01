@@ -1380,7 +1380,8 @@ type InstanceInfo struct {
 	// Whether the (deprecated) ClickHouse storage is active.
 	ClickhouseEnabled bool `json:"clickhouse_enabled"`
 	// Per-signal configuration.
-	Signals []SignalInfo `json:"signals"`
+	Signals []SignalInfo    `json:"signals"`
+	Mode    OptInstanceMode `json:"mode"`
 }
 
 // GetVersion returns the value of Version.
@@ -1438,6 +1439,11 @@ func (s *InstanceInfo) GetSignals() []SignalInfo {
 	return s.Signals
 }
 
+// GetMode returns the value of Mode.
+func (s *InstanceInfo) GetMode() OptInstanceMode {
+	return s.Mode
+}
+
 // SetVersion sets the value of Version.
 func (s *InstanceInfo) SetVersion(val string) {
 	s.Version = val
@@ -1491,6 +1497,60 @@ func (s *InstanceInfo) SetClickhouseEnabled(val bool) {
 // SetSignals sets the value of Signals.
 func (s *InstanceInfo) SetSignals(val []SignalInfo) {
 	s.Signals = val
+}
+
+// SetMode sets the value of Mode.
+func (s *InstanceInfo) SetMode(val OptInstanceMode) {
+	s.Mode = val
+}
+
+// What is answering: one storage node, or a cluster aggregator standing in front of several. The two
+// serve the same API but not the same operations -- stream cost attribution and the maintenance
+// actions are per-node only, because attribution would decode each replicated part once per replica
+// and an action that half-succeeds across a cluster has no partial-failure contract here. A client
+// that cannot tell them apart can only offer those controls and let them fail. Optional rather than
+// required so a newer aggregator can still read an older node's info during a rolling upgrade; absent
+// means the same thing as "node".
+// Ref: #/components/schemas/InstanceMode
+type InstanceMode string
+
+const (
+	InstanceModeNode    InstanceMode = "node"
+	InstanceModeCluster InstanceMode = "cluster"
+)
+
+// AllValues returns all InstanceMode values.
+func (InstanceMode) AllValues() []InstanceMode {
+	return []InstanceMode{
+		InstanceModeNode,
+		InstanceModeCluster,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s InstanceMode) MarshalText() ([]byte, error) {
+	switch s {
+	case InstanceModeNode:
+		return []byte(s), nil
+	case InstanceModeCluster:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *InstanceMode) UnmarshalText(data []byte) error {
+	switch InstanceMode(data) {
+	case InstanceModeNode:
+		*s = InstanceModeNode
+		return nil
+	case InstanceModeCluster:
+		*s = InstanceModeCluster
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
 }
 
 // Background maintenance loop liveness and recency. A growing cycle duration means compaction is
@@ -1863,6 +1923,52 @@ func (o OptFloat64) Get() (v float64, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptFloat64) Or(d float64) float64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptInstanceMode returns new OptInstanceMode with value set to v.
+func NewOptInstanceMode(v InstanceMode) OptInstanceMode {
+	return OptInstanceMode{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptInstanceMode is optional InstanceMode.
+type OptInstanceMode struct {
+	Value InstanceMode
+	Set   bool
+}
+
+// IsSet returns true if OptInstanceMode was set.
+func (o OptInstanceMode) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptInstanceMode) Reset() {
+	var v InstanceMode
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptInstanceMode) SetTo(v InstanceMode) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptInstanceMode) Get() (v InstanceMode, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptInstanceMode) Or(d InstanceMode) InstanceMode {
 	if v, ok := o.Get(); ok {
 		return v
 	}
