@@ -62,17 +62,31 @@ func (s *Source) series(
 	return all, nil
 }
 
-// LogKeys implements [storagebackend.Source]. A key can appear on streams in more than one shard,
-// so the shards' answers are unioned with their scope bits OR-ed per distinct key.
+// LogKeys implements [storagebackend.Source].
 func (s *Source) LogKeys(
 	ctx context.Context, tenant signal.TenantID, start, end int64,
+) ([]storage.KeyInfo, error) {
+	return s.keys(ctx, signal.Log, tenant, start, end)
+}
+
+// TraceKeys implements [storagebackend.Source].
+func (s *Source) TraceKeys(
+	ctx context.Context, tenant signal.TenantID, start, end int64,
+) ([]storage.KeyInfo, error) {
+	return s.keys(ctx, signal.Trace, tenant, start, end)
+}
+
+// keys enumerates a tenant's distinct attribute keys across every shard. A key can appear on streams
+// in more than one shard, so the shards' answers are unioned with their scope bits OR-ed per key.
+func (s *Source) keys(
+	ctx context.Context, sig signal.Signal, tenant signal.TenantID, start, end int64,
 ) ([]storage.KeyInfo, error) {
 	scopes := map[string]uint8{}
 
 	for _, sk := range s.shardKeys(tenant) {
-		got, err := s.rt.Keys(ctx, signal.Log, sk, start, end)
+		got, err := s.rt.Keys(ctx, sig, sk, start, end)
 		if err != nil {
-			return nil, errors.Wrapf(err, "list log keys of shard %q", sk)
+			return nil, errors.Wrapf(err, "list %s keys of shard %q", sig, sk)
 		}
 
 		for _, k := range got {

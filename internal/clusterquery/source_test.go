@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -56,6 +57,10 @@ type fakeNode struct {
 	// traceIDs maps a shard key to the trace id of each span row the node holds for it. When set,
 	// a read of that shard answers with those rows instead of the metric-shaped streams.
 	traceIDs map[string][]string
+
+	mu sync.Mutex
+	// keySignals records the signal of every key enumeration the node served.
+	keySignals []signal.Signal
 }
 
 func startNode(t *testing.T, endpoint, id string, held map[string][]string) *fakeNode {
@@ -137,8 +142,12 @@ func (n *fakeNode) series(
 }
 
 func (n *fakeNode) keyList(
-	_ context.Context, _ signal.Signal, shardKey string, _, _ int64,
+	_ context.Context, sig signal.Signal, shardKey string, _, _ int64,
 ) ([]cluster.KeyInfo, error) {
+	n.mu.Lock()
+	n.keySignals = append(n.keySignals, sig)
+	n.mu.Unlock()
+
 	if _, ok := n.held[shardKey]; !ok {
 		return nil, cluster.ErrShardAbsent
 	}
@@ -333,6 +342,50 @@ func TestLogKeysUnionsShards(t *testing.T) {
 	assert.Equal(t, []string{"host", "level"}, names)
 	assert.Equal(t, uint8(5), scopes["host"], "the scope bits of both shards")
 	assert.Equal(t, uint8(4), scopes["level"])
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
+	assert.Equal(t, []signal.Signal{signal.Log, signal.Log}, node.keySignals)
+}
+
+// TestTraceKeysEnumeratesTraceSignal pins that the traces twin routes the enumeration under
+// [signal.Trace]: it shares the shard union with LogKeys, so only the signal tells the peers which
+// engine to read.
+func TestTraceKeysEnumeratesTraceSignal(t *testing.T) {
+	t.Parallel()
+
+	const shards = 2
+
+	endpoint := etcdtest.Start(t)
+
+	keys := shardKeys(shards)
+
+	node := startNode(t, endpoint, "node-a", map[string][]string{keys[0]: nil, keys[1]: nil})
+	node.keys[keys[0]] = []cluster.KeyInfo{{Key: []byte("http.method"), Scope: uint8(4)}}
+	node.keys[keys[1]] = []cluster.KeyInfo{
+		{Key: []byte("http.method"), Scope: uint8(1)},
+		{Key: []byte("db.system"), Scope: uint8(4)},
+	}
+
+	src := clusterquery.New(openRouter(t, endpoint, 1, shards), 0)
+
+	got, err := src.TraceKeys(t.Context(), "", 1, 100)
+	require.NoError(t, err)
+
+	names := make([]string, 0, len(got))
+	scopes := map[string]uint8{}
+
+	for _, k := range got {
+		names = append(names, string(k.Key))
+		scopes[string(k.Key)] = uint8(k.Scope)
+	}
+
+	assert.Equal(t, []string{"db.system", "http.method"}, names, "unioned and sorted")
+	assert.Equal(t, uint8(5), scopes["http.method"], "the scope bits of both shards")
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
+	assert.Equal(t, []signal.Signal{signal.Trace, signal.Trace}, node.keySignals)
 }
 
 // spanBatch answers a trace read with one span row per trace id. The conditions a trace-by-id read
