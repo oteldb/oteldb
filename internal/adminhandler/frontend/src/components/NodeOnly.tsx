@@ -35,10 +35,10 @@ export function NodeOnly({ what, children }: { what: string; children: ReactNode
     <Alert
       theme="info"
       view="outlined"
-      title={`${what} is a per-node view`}
+      title="Per-node view"
       message={
-        `This is the cluster panel, which aggregates every member and holds no parts of its own. ` +
-        `Open a storage node's own admin panel to use it.`
+        `${what} reads one node's own parts, and this is the cluster panel — it aggregates every ` +
+        `member and holds no parts of its own. Open a storage node's admin panel to use it.`
       }
     />
   );
