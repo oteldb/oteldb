@@ -28,13 +28,18 @@ import type {
 import type {
   ActionName,
   ActionResult,
+  ClusterNodes,
   ClusterStorage,
   EfficiencyStats,
   ErrorResponse,
   GetEfficiencyParams,
+  GetHealthParams,
+  GetRuntimeParams,
+  GetStorageParams,
   GetStreamCostsParams,
   HealthReport,
   InstanceInfo,
+  RunActionParams,
   RuntimeStats,
   StorageStats,
   StreamCosts
@@ -144,13 +149,14 @@ export function useGetInfo<TData = Awaited<ReturnType<typeof getInfo>>, TError =
  * @summary Component health
  */
 export const getHealth = (
-    
+    params?: GetHealthParams,
  signal?: AbortSignal
 ) => {
       
       
       return customFetch<HealthReport>(
-      {url: `/api/v1/health`, method: 'GET', signal
+      {url: `/api/v1/health`, method: 'GET',
+        params, signal
     },
       );
     }
@@ -158,23 +164,23 @@ export const getHealth = (
 
 
 
-export const getGetHealthQueryKey = () => {
+export const getGetHealthQueryKey = (params?: GetHealthParams,) => {
     return [
-    `/api/v1/health`
+    `/api/v1/health`, ...(params ? [params]: [])
     ] as const;
     }
 
     
-export const getGetHealthQueryOptions = <TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, }
+export const getGetHealthQueryOptions = <TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorResponse>(params?: GetHealthParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, }
 ) => {
 
 const {query: queryOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetHealthQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetHealthQueryKey(params);
 
   
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHealth>>> = ({ signal }) => getHealth(signal);
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHealth>>> = ({ signal }) => getHealth(params, signal);
 
       
 
@@ -188,7 +194,7 @@ export type GetHealthQueryError = ErrorResponse
 
 
 export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorResponse>(
-  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> & Pick<
+ params: undefined |  GetHealthParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getHealth>>,
           TError,
@@ -198,7 +204,7 @@ export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TErr
  , queryClient?: QueryClient
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> & Pick<
+ params?: GetHealthParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getHealth>>,
           TError,
@@ -208,7 +214,7 @@ export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TErr
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, }
+ params?: GetHealthParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, }
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
@@ -216,11 +222,11 @@ export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TErr
  */
 
 export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, }
+ params?: GetHealthParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, }
  , queryClient?: QueryClient 
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
-  const queryOptions = getGetHealthQueryOptions(options)
+  const queryOptions = getGetHealthQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -238,13 +244,14 @@ export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TErr
  * @summary Go runtime statistics
  */
 export const getRuntime = (
-    
+    params?: GetRuntimeParams,
  signal?: AbortSignal
 ) => {
       
       
       return customFetch<RuntimeStats>(
-      {url: `/api/v1/runtime`, method: 'GET', signal
+      {url: `/api/v1/runtime`, method: 'GET',
+        params, signal
     },
       );
     }
@@ -252,23 +259,23 @@ export const getRuntime = (
 
 
 
-export const getGetRuntimeQueryKey = () => {
+export const getGetRuntimeQueryKey = (params?: GetRuntimeParams,) => {
     return [
-    `/api/v1/runtime`
+    `/api/v1/runtime`, ...(params ? [params]: [])
     ] as const;
     }
 
     
-export const getGetRuntimeQueryOptions = <TData = Awaited<ReturnType<typeof getRuntime>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRuntime>>, TError, TData>>, }
+export const getGetRuntimeQueryOptions = <TData = Awaited<ReturnType<typeof getRuntime>>, TError = ErrorResponse>(params?: GetRuntimeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRuntime>>, TError, TData>>, }
 ) => {
 
 const {query: queryOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetRuntimeQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetRuntimeQueryKey(params);
 
   
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRuntime>>> = ({ signal }) => getRuntime(signal);
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRuntime>>> = ({ signal }) => getRuntime(params, signal);
 
       
 
@@ -282,7 +289,7 @@ export type GetRuntimeQueryError = ErrorResponse
 
 
 export function useGetRuntime<TData = Awaited<ReturnType<typeof getRuntime>>, TError = ErrorResponse>(
-  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRuntime>>, TError, TData>> & Pick<
+ params: undefined |  GetRuntimeParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRuntime>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getRuntime>>,
           TError,
@@ -292,7 +299,7 @@ export function useGetRuntime<TData = Awaited<ReturnType<typeof getRuntime>>, TE
  , queryClient?: QueryClient
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetRuntime<TData = Awaited<ReturnType<typeof getRuntime>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRuntime>>, TError, TData>> & Pick<
+ params?: GetRuntimeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRuntime>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getRuntime>>,
           TError,
@@ -302,7 +309,7 @@ export function useGetRuntime<TData = Awaited<ReturnType<typeof getRuntime>>, TE
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetRuntime<TData = Awaited<ReturnType<typeof getRuntime>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRuntime>>, TError, TData>>, }
+ params?: GetRuntimeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRuntime>>, TError, TData>>, }
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
@@ -310,11 +317,11 @@ export function useGetRuntime<TData = Awaited<ReturnType<typeof getRuntime>>, TE
  */
 
 export function useGetRuntime<TData = Awaited<ReturnType<typeof getRuntime>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRuntime>>, TError, TData>>, }
+ params?: GetRuntimeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRuntime>>, TError, TData>>, }
  , queryClient?: QueryClient 
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
-  const queryOptions = getGetRuntimeQueryOptions(options)
+  const queryOptions = getGetRuntimeQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -333,13 +340,14 @@ export function useGetRuntime<TData = Awaited<ReturnType<typeof getRuntime>>, TE
  * @summary ClickHouse storage statistics
  */
 export const getStorage = (
-    
+    params?: GetStorageParams,
  signal?: AbortSignal
 ) => {
       
       
       return customFetch<StorageStats>(
-      {url: `/api/v1/storage`, method: 'GET', signal
+      {url: `/api/v1/storage`, method: 'GET',
+        params, signal
     },
       );
     }
@@ -347,23 +355,23 @@ export const getStorage = (
 
 
 
-export const getGetStorageQueryKey = () => {
+export const getGetStorageQueryKey = (params?: GetStorageParams,) => {
     return [
-    `/api/v1/storage`
+    `/api/v1/storage`, ...(params ? [params]: [])
     ] as const;
     }
 
     
-export const getGetStorageQueryOptions = <TData = Awaited<ReturnType<typeof getStorage>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStorage>>, TError, TData>>, }
+export const getGetStorageQueryOptions = <TData = Awaited<ReturnType<typeof getStorage>>, TError = ErrorResponse>(params?: GetStorageParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStorage>>, TError, TData>>, }
 ) => {
 
 const {query: queryOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetStorageQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetStorageQueryKey(params);
 
   
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStorage>>> = ({ signal }) => getStorage(signal);
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStorage>>> = ({ signal }) => getStorage(params, signal);
 
       
 
@@ -377,7 +385,7 @@ export type GetStorageQueryError = ErrorResponse
 
 
 export function useGetStorage<TData = Awaited<ReturnType<typeof getStorage>>, TError = ErrorResponse>(
-  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStorage>>, TError, TData>> & Pick<
+ params: undefined |  GetStorageParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStorage>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getStorage>>,
           TError,
@@ -387,7 +395,7 @@ export function useGetStorage<TData = Awaited<ReturnType<typeof getStorage>>, TE
  , queryClient?: QueryClient
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetStorage<TData = Awaited<ReturnType<typeof getStorage>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStorage>>, TError, TData>> & Pick<
+ params?: GetStorageParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStorage>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getStorage>>,
           TError,
@@ -397,7 +405,7 @@ export function useGetStorage<TData = Awaited<ReturnType<typeof getStorage>>, TE
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetStorage<TData = Awaited<ReturnType<typeof getStorage>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStorage>>, TError, TData>>, }
+ params?: GetStorageParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStorage>>, TError, TData>>, }
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
@@ -405,11 +413,11 @@ export function useGetStorage<TData = Awaited<ReturnType<typeof getStorage>>, TE
  */
 
 export function useGetStorage<TData = Awaited<ReturnType<typeof getStorage>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStorage>>, TError, TData>>, }
+ params?: GetStorageParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStorage>>, TError, TData>>, }
  , queryClient?: QueryClient 
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
-  const queryOptions = getGetStorageQueryOptions(options)
+  const queryOptions = getGetStorageQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -615,6 +623,102 @@ export function useGetClusterStorage<TData = Awaited<ReturnType<typeof getCluste
 
 
 /**
+ * The members the aggregator fans out to, with the admin API address it reaches each on and whether it answered. This is the cheap membership query behind a node selector: /api/v1/cluster/storage carries the same list, but only as part of a storage report that reads every part of every node.
+Served by a cluster-wide admin (odbadmin). A storage node is a member of nothing it can see from here and answers with an error.
+
+ * @summary Cluster ring membership
+ */
+export const getClusterNodes = (
+    
+ signal?: AbortSignal
+) => {
+      
+      
+      return customFetch<ClusterNodes>(
+      {url: `/api/v1/cluster/nodes`, method: 'GET', signal
+    },
+      );
+    }
+  
+
+
+
+export const getGetClusterNodesQueryKey = () => {
+    return [
+    `/api/v1/cluster/nodes`
+    ] as const;
+    }
+
+    
+export const getGetClusterNodesQueryOptions = <TData = Awaited<ReturnType<typeof getClusterNodes>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClusterNodes>>, TError, TData>>, }
+) => {
+
+const {query: queryOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetClusterNodesQueryKey();
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getClusterNodes>>> = ({ signal }) => getClusterNodes(signal);
+
+      
+
+      
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getClusterNodes>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetClusterNodesQueryResult = NonNullable<Awaited<ReturnType<typeof getClusterNodes>>>
+export type GetClusterNodesQueryError = ErrorResponse
+
+
+export function useGetClusterNodes<TData = Awaited<ReturnType<typeof getClusterNodes>>, TError = ErrorResponse>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClusterNodes>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getClusterNodes>>,
+          TError,
+          Awaited<ReturnType<typeof getClusterNodes>>
+        > , 'initialData'
+      >, }
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetClusterNodes<TData = Awaited<ReturnType<typeof getClusterNodes>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClusterNodes>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getClusterNodes>>,
+          TError,
+          Awaited<ReturnType<typeof getClusterNodes>>
+        > , 'initialData'
+      >, }
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetClusterNodes<TData = Awaited<ReturnType<typeof getClusterNodes>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClusterNodes>>, TError, TData>>, }
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Cluster ring membership
+ */
+
+export function useGetClusterNodes<TData = Awaited<ReturnType<typeof getClusterNodes>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClusterNodes>>, TError, TData>>, }
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetClusterNodesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+
+
+/**
  * Breaks a record signal's flushed parts down by stream, or by a stream label's values: rows, decoded bytes, an approximate compressed share, and per-column distinct estimates. This is the heaviest call the storage engine exposes — every accounted byte column of every live part is read and decoded once — so it is an on-demand drill-down, not something to poll. Narrow it with `columns` when only one column is in question.
 
  * @summary Attribute a signal's stored bytes to streams
@@ -716,12 +820,14 @@ export function useGetStreamCosts<TData = Awaited<ReturnType<typeof getStreamCos
  */
 export const runAction = (
     action: ActionName,
+    params?: RunActionParams,
  signal?: AbortSignal
 ) => {
       
       
       return customFetch<ActionResult>(
-      {url: `/api/v1/actions/${action}`, method: 'POST', signal
+      {url: `/api/v1/actions/${action}`, method: 'POST',
+        params, signal
     },
       );
     }
@@ -729,8 +835,8 @@ export const runAction = (
 
 
 export const getRunActionMutationOptions = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAction>>, TError,{action: ActionName}, TContext>, }
-): UseMutationOptions<Awaited<ReturnType<typeof runAction>>, TError,{action: ActionName}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAction>>, TError,{action: ActionName;params?: RunActionParams}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof runAction>>, TError,{action: ActionName;params?: RunActionParams}, TContext> => {
 
 const mutationKey = ['runAction'];
 const {mutation: mutationOptions} = options ?
@@ -742,10 +848,10 @@ const {mutation: mutationOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runAction>>, {action: ActionName}> = (props) => {
-          const {action} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runAction>>, {action: ActionName;params?: RunActionParams}> = (props) => {
+          const {action,params} = props ?? {};
 
-          return  runAction(action,)
+          return  runAction(action,params,)
         }
 
         
@@ -761,11 +867,11 @@ const {mutation: mutationOptions} = options ?
  * @summary Run a runtime control action
  */
 export const useRunAction = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAction>>, TError,{action: ActionName}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAction>>, TError,{action: ActionName;params?: RunActionParams}, TContext>, }
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof runAction>>,
         TError,
-        {action: ActionName},
+        {action: ActionName;params?: RunActionParams},
         TContext
       > => {
 

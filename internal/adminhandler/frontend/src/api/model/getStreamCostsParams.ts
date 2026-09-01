@@ -6,9 +6,16 @@
 
  * OpenAPI spec version: 0.1.0
  */
+import type { NodeParamParameter } from './nodeParamParameter';
 import type { RecordSignal } from './recordSignal';
 
 export type GetStreamCostsParams = {
+/**
+ * Addresses one member node by its ring id instead of the whole cluster. A cluster-wide admin forwards the request to that member and returns its answer verbatim; unset, it aggregates every member as usual. Names come from /api/v1/cluster/nodes.
+This is what makes the per-node-only operations reachable from the cluster panel: stream cost attribution and the maintenance actions are refused cluster-wide, but are ordinary requests once addressed to a node. A storage node ignores the parameter -- it is the only node it can answer for.
+
+ */
+node?: NodeParamParameter;
 /**
  * Signal to attribute. Metrics carry no per-record columns, so they are not attributable.
  */
