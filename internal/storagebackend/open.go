@@ -105,7 +105,7 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 	caches := resolveCacheSettings(cfg)
 	opts = append(opts, cacheOptions(caches)...)
 
-	store, err := storage.Open(ctx, storage.Options{}, opts...)
+	store, err := storage.Open(ctx, storage.Options{MaxQueryBytes: caches.MaxQuery}, opts...)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "open storage")
 	}
@@ -223,6 +223,7 @@ type cacheSettings struct {
 	DecodeCache    int64
 	DecodeMemory   int64
 	MergeMemory    int64
+	MaxQuery       int64
 	AggregateStats bool
 }
 
@@ -244,6 +245,13 @@ func resolveCacheSettings(cfg Config) cacheSettings {
 	// Merge memory has no oteldb-side default: unset stays 0, which the library resolves from the
 	// same memory limit this file's defaults are derived from.
 	s.MergeMemory = resolveCacheBytes(cfg.MergeMemoryBytes, func() int64 { return 0 })
+	// The per-query read bound inverts the polarity the library uses, to match the caches above:
+	// unset means "let the library size it from the memory limit" (0), and an explicit 0 means
+	// "disable", which the library spells as a negative.
+	s.MaxQuery = resolveCacheBytes(cfg.MaxQueryBytes, func() int64 { return 0 })
+	if cfg.MaxQueryBytes != nil && s.MaxQuery == 0 {
+		s.MaxQuery = -1
+	}
 	return s
 }
 

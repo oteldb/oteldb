@@ -29,3 +29,11 @@ func queryScope(ctx context.Context) context.Context {
 	}
 	return fetch.WithScope(ctx, fetch.NewScope())
 }
+
+// queryContext is the per-query boundary every engine call opens: a [fetch.Scope] so the query's
+// reads are admitted against the decode budget once, and a read-memory budget so the query is
+// refused before it materializes more than the process can hold. Both are idempotent, so a nested
+// call inherits the outer query's allowance instead of starting a fresh one.
+func (b *Backend) queryContext(ctx context.Context) context.Context {
+	return b.src.WithQueryBudget(queryScope(ctx))
+}

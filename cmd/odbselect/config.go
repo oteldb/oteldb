@@ -7,6 +7,7 @@ import (
 	"github.com/go-faster/errors"
 
 	"github.com/oteldb/oteldb/internal/config"
+	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
 // Config is the odbselect configuration.
@@ -23,8 +24,27 @@ type Config struct {
 	Pyroscope config.Pyroscope `json:"pyroscope" yaml:"pyroscope"`
 	// Health configures the health/readiness listener.
 	Health config.HealthCheck `json:"health" yaml:"health"`
+	// MaxQueryBytes caps what one query may hold before it is refused. An aggregator needs its own
+	// bound: it holds every shard owner's answer at once to merge them, so the owners' limits do not
+	// add up to one here. Unset ⇒ a share of the detected process budget; 0 ⇒ unbounded.
+	MaxQueryBytes *xbytes.Bytes `json:"max_query_bytes" yaml:"max_query_bytes"`
 	// ShutdownTimeout bounds how long in-flight queries are given to finish. Zero ⇒ 30s.
 	ShutdownTimeout time.Duration `json:"shutdown_timeout" yaml:"shutdown_timeout"`
+}
+
+// maxQueryBytes resolves the per-query read bound for [clusterquery.New], inverting the polarity of
+// the config so it reads like the storage engine's cache settings: unset means "size it from the
+// process budget" (0) and an explicit 0 means "unbounded" (negative).
+func (cfg *Config) maxQueryBytes() int64 {
+	if cfg.MaxQueryBytes == nil {
+		return 0
+	}
+
+	if n := int64(*cfg.MaxQueryBytes); n > 0 {
+		return n
+	}
+
+	return -1
 }
 
 // enabled reports whether an API with this bind should be served. A bind of "-" disables it, which

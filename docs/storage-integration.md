@@ -120,9 +120,20 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
   a merge buffers its output part encoded in RAM, so free space alone cannot bound it. Unlike the
   caches oteldb adds no default — unset passes 0 through and the library derives a share of
   `GOMEMLIMIT`; negative is unbounded.
-- **Decode scope:** the record queriers install a `fetch.Scope` on the context
-  (`internal/storagebackend/scope.go`) so the reads of one engine call are admitted against the
-  decode budget once. The metrics path threads a `Scope` through `fetch.Request` directly. The
+- **Query read budget:** `storage.max_query_bytes` (→ `storage.Options.MaxQueryBytes`) caps what a
+  single query may hold before it is refused with `readbudget.ErrExceeded`. It closes the gap
+  `decode_memory_bytes` leaves: that budget queues concurrent metric queries behind a shared ceiling
+  but admits an over-budget query *alone* rather than refusing it, and it never covered the record
+  engines at all. Polarity follows the caches, not the library: unset defers to the library default
+  (a share of the detected process budget), an explicit `0` disables the bound. The record engines
+  reserve an estimate from part metadata before reading and release it when the iterator closes;
+  enumeration reads (tag values, series and key lookups) are *not* admitted, because a distinct
+  set's size is not predictable up front. `cmd/odbselect` carries its own `max_query_bytes`: an
+  aggregator holds every owner's answer at once to merge them, so the owners' limits do not add up
+  to one there, and its allowance is what the fan-out declares to each owner.
+- **Decode scope:** the record queriers install a `fetch.Scope` and the query's read budget on the
+  context (`internal/storagebackend/scope.go`, `Backend.queryContext`) so the reads of one engine
+  call are admitted against the decode budget once and bounded by one allowance. The metrics path threads a `Scope` through `fetch.Request` directly. The
   boundary is one engine call, not one HTTP request: the LogQL/TraceQL engines own the per-request
   boundary above the querier, so a query evaluating several pipeline nodes still opens a scope per
   node.
