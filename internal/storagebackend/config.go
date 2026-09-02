@@ -68,6 +68,12 @@ type Config struct {
 	// Policy configures the per-tenant merge-time storage policy: age-tiered lossy float precision,
 	// downsampling, and cold-data recompression. Empty ⇒ the library default (lossless, no rollup).
 	Policy *PolicyConfig `json:"policy" yaml:"policy"`
+	// ReadOnly opens the engine for reading only: no WAL (so no recovery of an unflushed head, and
+	// no checkpoint that discards segments), no maintenance loop (so no flush, merge or retention),
+	// and no cluster membership. It is set by a tool, never by a config file, which is why it has no
+	// serialized name: odbbackup opens the data directory this way so that reading a node's data
+	// does not write to it.
+	ReadOnly bool `json:"-" yaml:"-"`
 	// Cluster, when set with a non-empty Etcd endpoint list, joins this node to a storage cluster:
 	// nodes coordinate through etcd, form a rendezvous-hash ring, and replicate writes across each
 	// other's local backends. Unset (or empty Etcd) ⇒ a single-node engine.

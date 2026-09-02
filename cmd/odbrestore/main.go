@@ -7,6 +7,10 @@
 // the *destination's* configuration, so the same tool covers disaster recovery, a
 // shards_per_tenant change, and moving a tenant between clusters.
 //
+// A restore writes: it needs the destination engine to itself, and must not be pointed at the data
+// directory of a running node, which would put two writers on one backend. Restore into a stopped
+// node (or a fresh directory) and start it afterwards.
+//
 // See internal/storagebackup for the layout and the fidelity contract.
 package main
 
@@ -35,7 +39,7 @@ func run(ctx context.Context) error {
 		dsn = flag.String("dsn", "clickhouse://localhost:9000", "Clickhouse connection URL (clickhouse backend)")
 
 		storageConfig = flag.String("storage-config", "", "oteldb config file whose storage block describes the destination engine (storage backend)")
-		storageDir    = flag.String("storage-dir", "", "Data directory of a single-node file backend, instead of -storage-config (storage backend)")
+		storageDir    = flag.String("storage-dir", "", "Data directory of a single-node file backend, instead of -storage-config; must not be a running node's (storage backend)")
 		signals       = flag.String("signals", "", "Comma-separated signals to restore: log, trace, metric (default: all, storage backend)")
 		tenant        = flag.String("tenant", "", "Restore only this logical tenant from the backup (default: all)")
 		batch         = flag.Int("batch", storagebackup.DefaultRestoreBatchSize, "Records, spans or samples buffered per write")

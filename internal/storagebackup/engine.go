@@ -20,6 +20,10 @@ type EngineConfig struct {
 	// Dir is the shorthand for a single-node file backend rooted there, for an offline engine that
 	// needs no other configuration. Ignored when Path is set.
 	Dir string
+	// ReadOnly opens the engine without anything that writes: no WAL recovery (and so no checkpoint
+	// discarding segments), no flush, no merges, no retention, no cluster membership. A backup sets
+	// it, because "back up" must not mean "modify". See the package documentation.
+	ReadOnly bool
 }
 
 // engineFile is the "storage" block of an oteldb config file.
@@ -45,6 +49,7 @@ func OpenEngine(
 		return nil, nil, errors.New("one of -storage-config or -storage-dir is required")
 	}
 	scfg.SetDefaults()
+	scfg.ReadOnly = cfg.ReadOnly
 
 	// The telemetry is only a provider holder here; its zero value falls back to the global
 	// providers, which a one-shot command has no reason to configure.
