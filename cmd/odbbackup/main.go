@@ -5,6 +5,11 @@
 // read seam. The two are separate formats — a backup restores into the backend it came from — but
 // they are one command so an operator has one tool to learn.
 //
+// The storage backend is opened read-only: no WAL recovery, no flush, no merges, no retention and
+// no cluster membership, so backing up a data directory does not modify it. The cost is that data
+// still in the unflushed head (the WAL) is not backed up; keep -lag at or above the engine's flush
+// interval so the window ends behind whatever the head holds.
+//
 // See internal/storagebackup for the storage backend's layout and its fidelity contract.
 package main
 
@@ -32,7 +37,7 @@ func run(ctx context.Context) error {
 		dsn = flag.String("dsn", "clickhouse://localhost:9000", "Clickhouse connection URL (clickhouse backend)")
 
 		storageConfig = flag.String("storage-config", "", "oteldb config file whose storage block describes the engine (storage backend)")
-		storageDir    = flag.String("storage-dir", "", "Data directory of a single-node file backend, instead of -storage-config (storage backend)")
+		storageDir    = flag.String("storage-dir", "", "Data directory of a single-node file backend, instead of -storage-config; opened read-only (storage backend)")
 		signals       = flag.String("signals", "", "Comma-separated signals to back up: log, trace, metric (default: all, storage backend)")
 		from          = flag.String("from", "", "Back up data at or after this time (RFC3339 or YYYY-MM-DD, UTC); empty starts at the oldest retained")
 		to            = flag.String("to", "", "Back up data before this time (RFC3339 or YYYY-MM-DD, UTC); empty ends at now minus -lag")
@@ -75,8 +80,9 @@ func run(ctx context.Context) error {
 		}
 
 		back, stop, err := storagebackup.OpenEngine(ctx, storagebackup.EngineConfig{
-			Path: *storageConfig,
-			Dir:  *storageDir,
+			Path:     *storageConfig,
+			Dir:      *storageDir,
+			ReadOnly: true,
 		}, lg)
 		if err != nil {
 			return err

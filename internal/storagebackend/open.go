@@ -3,6 +3,7 @@ package storagebackend
 import (
 	"cmp"
 	"context"
+	"io/fs"
 	"math"
 	"net"
 	"os"
@@ -54,12 +55,15 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "open file backend")
 		}
+		opts = append(opts, storage.WithBackend(fb))
 		// Keep the WAL alongside the parts so the unflushed head survives a restart, not just the
 		// flushed parts.
-		opts = append(opts,
-			storage.WithBackend(fb),
-			storage.WithWALDir(filepath.Join(cfg.Dir, "wal")),
-		)
+		walDir := filepath.Join(cfg.Dir, "wal")
+		if cfg.ReadOnly {
+			warnUnflushedWAL(walDir, lg)
+		} else {
+			opts = append(opts, storage.WithWALDir(walDir))
+		}
 		if cfg.FlushInterval > 0 {
 			opts = append(opts, storage.WithFlushInterval(int64(cfg.FlushInterval)))
 		}
@@ -72,13 +76,29 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		// The object store is stateless; keep an optional local WAL so the unflushed head survives a
 		// restart rather than only the flushed objects.
 		if cfg.WALDir != "" {
-			opts = append(opts, storage.WithWALDir(cfg.WALDir))
+			if cfg.ReadOnly {
+				warnUnflushedWAL(cfg.WALDir, lg)
+			} else {
+				opts = append(opts, storage.WithWALDir(cfg.WALDir))
+			}
 		}
 		if cfg.FlushInterval > 0 {
 			opts = append(opts, storage.WithFlushInterval(int64(cfg.FlushInterval)))
 		}
 	default:
 		return nil, nil, errors.Errorf("unknown storage backend %q", cfg.Backend)
+	}
+
+	if cfg.ReadOnly {
+		// A durable store with no explicit interval flushes periodically by default, and the loop
+		// that does it also merges parts and applies retention. A negative interval opts out, which
+		// is what read-only means here: the engine only reads.
+		opts = append(opts, storage.WithFlushInterval(-1))
+		if cfg.Cluster != nil && len(cfg.Cluster.Etcd) > 0 {
+			lg.Warn("Not joining the storage cluster: the engine is open read-only, " +
+				"so it serves only the data this node holds locally")
+			cfg.Cluster = nil
+		}
 	}
 
 	if clusterOpt, err := clusterOption(cfg.Cluster, lg); err != nil {
@@ -112,6 +132,7 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 
 	lg.Info("Using embedded storage engine for metrics",
 		zap.String("backend", cmp.Or(cfg.Backend, "memory")),
+		zap.Bool("read_only", cfg.ReadOnly),
 		zap.Int("log_query_parallelism", cfg.LogQueryParallelism),
 		zap.Int64("read_cache_bytes", caches.ReadCache),
 		zap.Int64("decode_cache_bytes", caches.DecodeCache),
@@ -123,6 +144,37 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		WithLogParallelism(cfg.LogQueryParallelism),
 	)
 	return b, store.Close, nil
+}
+
+// warnUnflushedWAL reports the one thing a read-only open gives up: whatever the engine has
+// ingested but not yet flushed lives in the WAL, and replaying it is a write — it re-attaches a
+// writable WAL, and the close that follows flushes the recovered head into a new part and
+// checkpoints the segments away, out from under the node that owns them. So a read-only open skips
+// it, and reads the flushed parts only.
+func warnUnflushedWAL(dir string, lg *zap.Logger) {
+	if !hasFiles(dir) {
+		return
+	}
+	lg.Warn("Read-only engine: the write-ahead log is not replayed, so unflushed data is not visible",
+		zap.String("wal_dir", dir),
+	)
+}
+
+// hasFiles reports whether dir holds any regular file, at any depth. An unreadable or absent tree
+// answers false: this only decides whether to warn.
+func hasFiles(dir string) bool {
+	found := false
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return nil
+		case d.IsDir():
+			return nil
+		}
+		found = true
+		return fs.SkipAll
+	})
+	return found
 }
 
 // clusterOption builds the storage cluster option from the config, or returns (nil, nil) when

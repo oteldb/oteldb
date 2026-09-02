@@ -54,6 +54,23 @@
 // that day was scanned are not in the backup. Use [BackupOptions.Lag] (or an explicit To) to keep
 // the window behind the ingest edge.
 //
+// # Backup does not write to the data directory
+//
+// [EngineConfig.ReadOnly] — which odbbackup always sets — opens the engine with everything that
+// writes turned off: no WAL recovery, no flush, no merges, no retention, and no cluster membership.
+// Without it, opening a data directory is a write: recovery replays the WAL into a head, the close
+// that follows flushes that head into a new part, and the WAL is checkpointed, discarding
+// segments. Against a running node that makes the backup a second writer, discarding segments the
+// node still owns — "back up" would mean "modify".
+//
+// The cost is the unflushed head: a read-only open sees the flushed parts only, and whatever the
+// engine has ingested but not yet flushed is not backed up (it logs a warning when the WAL is
+// non-empty). With the default [BackupOptions.Lag] that data is outside the window anyway, since
+// the head holds the newest writes; keep Lag at or above the engine's flush interval.
+//
+// A restore is the other way round: it writes, so it needs the destination to itself. Do not point
+// odbrestore at a running node's data directory — restore into a stopped node, then start it.
+//
 // # Fidelity contract
 //
 // A backup can only carry what the engine stores. What the engine drops at ingest is already gone
