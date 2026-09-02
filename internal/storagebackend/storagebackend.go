@@ -116,6 +116,12 @@ func NewQuery(src Source, opts ...Option) *Backend {
 	return b
 }
 
+// Store returns the local storage engine, or nil when this Backend was built with [NewQuery] over a
+// bare [Source] and has none. It is the escape hatch for the few tools that need the engine itself
+// rather than a query API — the backup driver enumerates tenants and reads through the raw fetch
+// seam, which no query interface exposes.
+func (b *Backend) Store() *storage.Storage { return b.store }
+
 // Inspect returns an in-memory snapshot of engine statistics (tenants, per-signal series/parts/head
 // and WAL state, caches, and cluster membership when clustered). It performs no backend I/O and is
 // safe to poll at a seconds cadence; it is the admin panel's primary storage view.
