@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -184,4 +185,29 @@ func FuzzDecodeChunk(f *testing.F) {
 		}
 		require.True(t, c.Series.Equal(again.Series))
 	})
+}
+
+// The chunk codec writes a column by asking which of [fetch.NamedColumn]'s typed slices is
+// populated, so a slice added upstream would fall through to colEmpty: the column would be backed
+// up as present-but-empty, silently, with nothing failing to build and no test noticing. This is
+// that notice. A failure here means the codec needs the new kind, not that this test needs the new
+// count.
+func TestNamedColumnKindsAreCovered(t *testing.T) {
+	t.Parallel()
+
+	want := map[string]string{
+		"Name":    "string",
+		"Int64":   "[]int64",
+		"Float64": "[]float64",
+		"Bytes":   "[][]uint8",
+	}
+
+	got := map[string]string{}
+	for f := range reflect.TypeFor[fetch.NamedColumn]().Fields() {
+		got[f.Name] = f.Type.String()
+	}
+
+	require.Equal(t, want, got,
+		"fetch.NamedColumn changed shape: teach appendChunk and decodeChunk the new column kind, "+
+			"and give it a byte in the colEmpty/colInt64/... block, before updating this test")
 }
