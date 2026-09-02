@@ -29,8 +29,14 @@
 // file's header, not the one in the path. One file holds one UTC day of one (tenant, signal),
 // which is the same day-at-a-time slicing chstorage's backup uses.
 //
-// A file is a zstd stream of: the magic, a JSON header, then length-delimited chunks. One chunk is
-// one fetch batch: a stream (or metric series) identity plus its rows. See [Chunk].
+// A file is a zstd stream of: the magic, a JSON header, then length-delimited chunks. See [Chunk].
+//
+// A chunk is a stream (or metric series) identity plus a run of its rows. A fetch batch is one
+// stream's whole day, which on a busy tenant is hundreds of megabytes, so a batch larger than
+// [BackupOptions.MaxChunkBytes] is split by row over as many chunks as it needs, each repeating
+// the identity. Every chunk therefore decodes on its own, and restore sees a split batch as
+// several writes of the same stream — the shape live ingest already produces when one stream's
+// records arrive in more than one export.
 //
 // manifest.json is written last and is informational — it records the window, the files and their
 // row counts for an operator. Restore walks the tree and trusts each file's own header, so a
@@ -43,10 +49,10 @@
 // skipped, which makes an interrupted run restartable at (tenant, signal, day) granularity — the
 // same granularity ch2storagebackend's checkpoint journal uses. There is no mid-file resume.
 //
-// The scan reads the head and the flushed parts through the ordinary fetch seam, so concurrent
-// ingest is safe and no flush or downtime is needed. It does mean the newest day is a moving
-// target: records that arrive after that day was scanned are not in the backup. Use
-// [BackupOptions.Lag] (or an explicit To) to keep the window behind the ingest edge.
+// The scan reads through the ordinary fetch seam, so concurrent ingest is safe and no flush or
+// downtime is needed. It does mean the newest day is a moving target: records that arrive after
+// that day was scanned are not in the backup. Use [BackupOptions.Lag] (or an explicit To) to keep
+// the window behind the ingest edge.
 //
 // # Fidelity contract
 //

@@ -81,7 +81,7 @@ func TestChunkFile(t *testing.T) {
 	rel := "log/default/2024-01-02" + fileExt
 	header := FileHeader{Version: FormatVersion, Signal: "log", Tenant: "default", Day: "2024-01-02"}
 
-	w, err := createChunkWriter(dir, rel, header)
+	w, err := createChunkWriter(dir, rel, header, 0)
 	require.NoError(t, err)
 
 	want := testChunks()
@@ -117,7 +117,7 @@ func TestChunkFileAbort(t *testing.T) {
 	dir := t.TempDir()
 	rel := "log/default/2024-01-02" + fileExt
 
-	w, err := createChunkWriter(dir, rel, FileHeader{Version: FormatVersion, Signal: "log"})
+	w, err := createChunkWriter(dir, rel, FileHeader{Version: FormatVersion, Signal: "log"}, 0)
 	require.NoError(t, err)
 	c := testChunks()["Samples"]
 	require.NoError(t, w.Write(&c))
@@ -153,6 +153,13 @@ func requireSameFloats(tb testing.TB, want, got []float64) {
 func FuzzDecodeChunk(f *testing.F) {
 	for _, c := range testChunks() {
 		f.Add(appendChunk(nil, &c))
+	}
+	// The pieces an oversized batch is split into are ordinary chunks, so the split's boundary is
+	// in the corpus like any other shape.
+	big := bigChunk(4, 8)
+	for _, r := range [][2]int{{0, 0}, {0, 2}, {2, 4}} {
+		part := sliceChunk(&big, r[0], r[1])
+		f.Add(appendChunk(nil, &part))
 	}
 	f.Add([]byte{})
 	f.Add([]byte{0xff, 0xff, 0xff, 0xff})
