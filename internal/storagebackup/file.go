@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 
 	"github.com/go-faster/errors"
 	"github.com/klauspost/compress/zstd"
@@ -26,6 +27,10 @@ const maxChunkBytes = 512 << 20
 // megabytes; splitting keeps the encoder's buffer bounded rather than proportional to the busiest
 // day. It is well under [maxChunkBytes] so a file stays readable by any build.
 const DefaultMaxChunkBytes = 64 << 20
+
+// frameReadStep bounds how much of a frame is allocated before any of it has been read, so the
+// buffer tracks bytes actually delivered rather than the length the stream claims.
+const frameReadStep = 1 << 20
 
 // filePath returns a chunk file's path relative to the backup root. The tenant element is escaped
 // because a cluster shard key contains a slash and a tenant id is otherwise unconstrained; the
@@ -186,28 +191,21 @@ func (w *chunkWriter) Abort() {
 	_ = os.Remove(w.tmp)
 }
 
-// chunkReader reads a chunk file written by [chunkWriter].
+// chunkReader reads a chunk stream written by [chunkWriter].
 type chunkReader struct {
-	f   *os.File
-	dec *zstd.Decoder
-	r   *bufio.Reader
-	buf []byte
+	closer io.Closer
+	dec    *zstd.Decoder
+	r      *bufio.Reader
+	buf    []byte
 }
 
-func openChunkReader(name string) (_ *chunkReader, _ FileHeader, rerr error) {
+// newChunkReader reads the magic and header off rd and returns a reader positioned at the first
+// chunk. It takes an [io.Reader] rather than a name so the stream can come from somewhere other
+// than a file, which is what lets the tests drive it through short and failing reads.
+func newChunkReader(rd io.Reader) (_ *chunkReader, _ FileHeader, rerr error) {
 	var h FileHeader
 
-	f, err := os.Open(filepath.Clean(name))
-	if err != nil {
-		return nil, h, errors.Wrap(err, "open chunk file")
-	}
-	defer func() {
-		if rerr != nil {
-			_ = f.Close()
-		}
-	}()
-
-	dec, err := zstd.NewReader(f)
+	dec, err := zstd.NewReader(rd)
 	if err != nil {
 		return nil, h, errors.Wrap(err, "make zstd decoder")
 	}
@@ -226,7 +224,7 @@ func openChunkReader(name string) (_ *chunkReader, _ FileHeader, rerr error) {
 		return nil, h, errors.New("not an oteldb storage backup file")
 	}
 
-	cr := &chunkReader{f: f, dec: dec, r: r}
+	cr := &chunkReader{dec: dec, r: r}
 	raw, err := cr.readFrame()
 	if err != nil {
 		return nil, h, errors.Wrap(err, "read header")
@@ -237,6 +235,28 @@ func openChunkReader(name string) (_ *chunkReader, _ FileHeader, rerr error) {
 	if err := h.Validate(); err != nil {
 		return nil, h, err
 	}
+	return cr, h, nil
+}
+
+func openChunkReader(name string) (_ *chunkReader, _ FileHeader, rerr error) {
+	var h FileHeader
+
+	f, err := os.Open(filepath.Clean(name))
+	if err != nil {
+		return nil, h, errors.Wrap(err, "open chunk file")
+	}
+	defer func() {
+		if rerr != nil {
+			_ = f.Close()
+		}
+	}()
+
+	cr, h, err := newChunkReader(f)
+	if err != nil {
+		return nil, h, err
+	}
+	cr.closer = f
+
 	return cr, h, nil
 }
 
@@ -255,6 +275,11 @@ func (r *chunkReader) Next() (Chunk, error) {
 }
 
 // readFrame reads one length-delimited frame into the reader's buffer.
+//
+// The frame is read in bounded steps rather than allocating the announced length up front: the
+// length comes out of the decompressed stream, so a few bytes of a corrupt or hostile file can
+// announce a frame far larger than the file could hold, and a length that lies then costs only
+// what the stream actually delivers.
 func (r *chunkReader) readFrame() ([]byte, error) {
 	n, err := binary.ReadUvarint(r.r)
 	switch {
@@ -267,20 +292,33 @@ func (r *chunkReader) readFrame() ([]byte, error) {
 		return nil, errors.Errorf("frame of %d bytes exceeds the %d byte limit", n, maxChunkBytes)
 	}
 
-	if uint64(cap(r.buf)) < n {
-		r.buf = make([]byte, n)
-	}
-	r.buf = r.buf[:n]
-	if _, err := io.ReadFull(r.r, r.buf); err != nil {
-		return nil, errors.Wrap(err, "read frame")
+	r.buf = r.buf[:0]
+	for uint64(len(r.buf)) < n {
+		want := int(min(n-uint64(len(r.buf)), frameReadStep))
+		r.buf = slices.Grow(r.buf, want)
+		at := len(r.buf)
+		r.buf = r.buf[:at+want]
+		if _, err := io.ReadFull(r.r, r.buf[at:]); err != nil {
+			// A frame that ends early is a truncated file, not the end of one: [io.ReadFull]
+			// reports io.EOF when it read nothing at all, and passing that up would make restore
+			// stop and report success over however much of the file survived.
+			if errors.Is(err, io.EOF) {
+				err = io.ErrUnexpectedEOF
+			}
+			return nil, errors.Wrap(err, "read frame")
+		}
 	}
 	return r.buf, nil
 }
 
-// Close releases the file.
+// Close releases the underlying stream. A reader over a plain [io.Reader] has nothing to release
+// beyond the decoder.
 func (r *chunkReader) Close() error {
 	r.dec.Close()
-	if err := r.f.Close(); err != nil {
+	if r.closer == nil {
+		return nil
+	}
+	if err := r.closer.Close(); err != nil {
 		return errors.Wrap(err, "close chunk file")
 	}
 	return nil
