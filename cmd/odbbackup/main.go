@@ -98,6 +98,7 @@ func run(ctx context.Context) error {
 			zap.Int("files", stats.Files),
 			zap.Int("skipped", stats.Skipped),
 			zap.Int("streams", stats.Streams),
+			zap.Int("chunks", stats.Chunks),
 			zap.Int("rows", stats.Rows),
 		)
 		return nil

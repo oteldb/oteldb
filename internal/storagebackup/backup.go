@@ -49,6 +49,9 @@ type BackupOptions struct {
 	// Resume skips a (tenant, signal, day) whose file already exists, making an interrupted run
 	// restartable. Off by default so a plain re-run rewrites the window.
 	Resume bool
+	// MaxChunkBytes is the size a fetch batch is split at, bounding the encoder's buffer. Zero ⇒
+	// [DefaultMaxChunkBytes]; a larger value than a reader accepts is clamped down to it.
+	MaxChunkBytes int
 	// Now overrides the clock, for tests.
 	Now func() time.Time
 }
@@ -61,6 +64,7 @@ type BackupStats struct {
 	Files   int
 	Skipped int
 	Streams int
+	Chunks  int
 	Rows    int
 }
 
@@ -83,6 +87,7 @@ func NewBackup(store Store, lg *zap.Logger, opts BackupOptions) *Backup {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
+	opts.MaxChunkBytes = clampChunkLimit(opts.MaxChunkBytes)
 	return &Backup{store: store, lg: lg, opts: opts}
 }
 
@@ -135,6 +140,7 @@ func (b *Backup) Create(ctx context.Context, dir string) (BackupStats, error) {
 				manifest.Files = append(manifest.Files, *info)
 				stats.Files++
 				stats.Streams += info.Streams
+				stats.Chunks += info.Chunks
 				stats.Rows += info.Rows
 			}
 		}
@@ -175,7 +181,7 @@ func (b *Backup) day(
 		Day:     day.Format(dayLayout),
 		Start:   start,
 		End:     end,
-	})
+	}, b.opts.MaxChunkBytes)
 	if err != nil {
 		return nil, false, err
 	}
@@ -205,6 +211,7 @@ func (b *Backup) day(
 		Tenant:  string(tenant),
 		Day:     day.Format(dayLayout),
 		Streams: w.streams,
+		Chunks:  w.chunks,
 		Rows:    w.rows,
 	}
 	if err := w.Close(); err != nil {
@@ -215,6 +222,7 @@ func (b *Backup) day(
 		zap.String("tenant", string(tenant)),
 		zap.String("day", info.Day),
 		zap.Int("streams", info.Streams),
+		zap.Int("chunks", info.Chunks),
 		zap.Int("rows", info.Rows),
 	)
 	return info, false, nil

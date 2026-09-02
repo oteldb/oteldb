@@ -66,7 +66,10 @@ type FileInfo struct {
 	Tenant  string `json:"tenant"`
 	Day     string `json:"day"`
 	Streams int    `json:"streams"`
-	Rows    int    `json:"rows"`
+	// Chunks is how many chunks the file holds: one per stream, plus one for each split an
+	// oversized batch needed.
+	Chunks int `json:"chunks"`
+	Rows   int `json:"rows"`
 }
 
 // Chunk is one fetch batch as stored: a stream (or metric series) identity plus its rows. It
@@ -119,6 +122,89 @@ func appendChunk(dst []byte, c *Chunk) []byte {
 		}
 	}
 	return dst
+}
+
+// chunkOverhead is an upper bound on what [appendChunk] writes for a chunk of c's shape before any
+// row: the stream identity and the per-slice and per-column counts.
+func chunkOverhead(c *Chunk) int {
+	// The identity is encoded rather than estimated: it is the one part with no size bound, and
+	// getting it wrong is what would let a chunk overrun the limit.
+	n := binary.MaxVarintLen64 + len(c.Series.AppendHashInput(nil))
+	n += 3 * binary.MaxVarintLen64
+	for i := range c.Columns {
+		n += binary.MaxVarintLen64 + len(c.Columns[i].Name) + 1 + binary.MaxVarintLen64
+	}
+	return n
+}
+
+// rowsFitting returns how many of c's rows from i on fit in budget bytes, at least one. It sums an
+// upper bound per row, so the range it picks encodes to no more than the caller's limit; a caller
+// that oversteps anyway (a zero or negative budget) falls back to halving the range.
+func rowsFitting(c *Chunk, i, budget int) int {
+	n := 0
+	for j := i; j < len(c.Timestamps); j++ {
+		if n > 0 && n+rowSize(c, j) > budget {
+			return j - i
+		}
+		n += rowSize(c, j)
+	}
+	return len(c.Timestamps) - i
+}
+
+// rowSize bounds the bytes row i of c contributes to its chunk.
+func rowSize(c *Chunk, i int) int {
+	n := binary.MaxVarintLen64
+	if i < len(c.Values) {
+		n += 8
+	}
+	for k := range c.Columns {
+		col := &c.Columns[k]
+		switch {
+		case col.Int64 != nil:
+			n += binary.MaxVarintLen64
+		case col.Float64 != nil:
+			n += 8
+		case col.Bytes != nil:
+			n++
+			if i < len(col.Bytes) {
+				n += binary.MaxVarintLen64 + len(col.Bytes[i])
+			}
+		}
+	}
+	return n
+}
+
+// sliceChunk returns c restricted to rows [i, j), keeping the identity and the columns' kinds.
+func sliceChunk(c *Chunk, i, j int) Chunk {
+	out := Chunk{
+		Series:     c.Series,
+		Timestamps: sliceRows(c.Timestamps, i, j),
+		Values:     sliceRows(c.Values, i, j),
+	}
+	if c.Columns == nil {
+		return out
+	}
+
+	out.Columns = make([]fetch.NamedColumn, len(c.Columns))
+	for k := range c.Columns {
+		col := &c.Columns[k]
+		out.Columns[k] = fetch.NamedColumn{
+			Name:    col.Name,
+			Int64:   sliceRows(col.Int64, i, j),
+			Float64: sliceRows(col.Float64, i, j),
+			Bytes:   sliceRows(col.Bytes, i, j),
+		}
+	}
+	return out
+}
+
+// sliceRows takes rows [i, j) of a column, tolerating a slice shorter than the batch claims and
+// keeping a nil slice nil — for a column an empty slice and an absent one encode differently.
+func sliceRows[T any](vs []T, i, j int) []T {
+	if vs == nil {
+		return nil
+	}
+	return vs[min(i, len(vs)):min(j, len(vs))]
 }
 
 // decodeChunk decodes a chunk payload. The returned chunk owns no memory from src beyond what

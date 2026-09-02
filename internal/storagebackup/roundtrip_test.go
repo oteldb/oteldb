@@ -224,3 +224,32 @@ func TestBackupResume(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, collectLogs(t, src, "default"), collectLogs(t, dst, "default"))
 }
+
+// TestRoundTripSplitChunks runs the same round trip with a chunk limit small enough to split every
+// batch, since a busy day's batch is far larger than the limit a real backup runs with. A split is
+// invisible to restore: it sees the same stream written more than once.
+func TestRoundTripSplitChunks(t *testing.T) {
+	t.Parallel()
+
+	lg := zaptest.NewLogger(t)
+	src := newStore(t, nil)
+	writeSample(t, src)
+
+	opts := backupOptions()
+	opts.MaxChunkBytes = 512
+	dir := t.TempDir()
+	stats, err := storagebackup.NewBackup(src, lg, opts).Create(t.Context(), dir)
+	require.NoError(t, err)
+	require.Greater(t, stats.Chunks, stats.Streams, "the limit must have split at least one batch")
+
+	dst := newStore(t, nil)
+	rstats, err := storagebackup.NewRestore(storagebackend.New(dst), lg, storagebackup.RestoreOptions{}).
+		Restore(t.Context(), dir)
+	require.NoError(t, err)
+	require.Equal(t, stats.Rows, rstats.Rows)
+
+	const tenant = signal.TenantID("default")
+	require.Equal(t, collectLogs(t, src, tenant), collectLogs(t, dst, tenant))
+	require.Equal(t, collectSpans(t, src, tenant), collectSpans(t, dst, tenant))
+	require.Equal(t, collectSeries(t, src, tenant), collectSeries(t, dst, tenant))
+}

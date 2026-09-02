@@ -17,8 +17,15 @@ import (
 )
 
 // maxChunkBytes bounds one decoded chunk. A corrupt or hostile length prefix would otherwise ask
-// for an arbitrary allocation before anything has been validated.
+// for an arbitrary allocation before anything has been validated. It is the reader's hard bound,
+// and the ceiling on what a writer may be configured to emit.
 const maxChunkBytes = 512 << 20
+
+// DefaultMaxChunkBytes is the default size a backup splits a fetch batch at. A batch is whatever
+// the fetch seam returns for one stream over one day, which on a busy tenant runs to hundreds of
+// megabytes; splitting keeps the encoder's buffer bounded rather than proportional to the busiest
+// day. It is well under [maxChunkBytes] so a file stays readable by any build.
+const DefaultMaxChunkBytes = 64 << 20
 
 // filePath returns a chunk file's path relative to the backup root. The tenant element is escaped
 // because a cluster shard key contains a slash and a tenant id is otherwise unconstrained; the
@@ -36,12 +43,14 @@ type chunkWriter struct {
 	tmp   string
 	final string
 	buf   []byte
+	limit int
 
 	streams int
+	chunks  int
 	rows    int
 }
 
-func createChunkWriter(root, rel string, h FileHeader) (_ *chunkWriter, rerr error) {
+func createChunkWriter(root, rel string, h FileHeader, limit int) (_ *chunkWriter, rerr error) {
 	final := filepath.Join(root, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(final), 0o750); err != nil {
 		return nil, errors.Wrap(err, "create backup directory")
@@ -80,14 +89,61 @@ func createChunkWriter(root, rel string, h FileHeader) (_ *chunkWriter, rerr err
 		return nil, errors.Wrap(err, "write header")
 	}
 
-	return &chunkWriter{f: f, enc: enc, tmp: tmp, final: final}, nil
+	return &chunkWriter{f: f, enc: enc, tmp: tmp, final: final, limit: clampChunkLimit(limit)}, nil
 }
 
-// Write appends one chunk.
+// clampChunkLimit resolves a writer's chunk size: unset takes [DefaultMaxChunkBytes], and no
+// setting may exceed [maxChunkBytes], which is what a reader will accept.
+func clampChunkLimit(limit int) int {
+	if limit <= 0 {
+		limit = DefaultMaxChunkBytes
+	}
+	return min(limit, maxChunkBytes)
+}
+
+// Write appends one fetch batch, splitting it over as many chunks as its size needs.
+//
+// The split is by row, and every chunk repeats the batch's stream identity, so each one stays
+// independently decodable — the reader needs no notion of a continuation, and restore sees a split
+// batch as several writes of the same stream. That is a shape live ingest already produces, when
+// one stream's records arrive in more than one export, and the per-batch approximations (span
+// structural ids) are the same either way.
 func (w *chunkWriter) Write(c *Chunk) error {
-	w.buf = appendChunk(w.buf[:0], c)
-	if len(w.buf) > maxChunkBytes {
-		return errors.Errorf("chunk of %d bytes exceeds the %d byte limit", len(w.buf), maxChunkBytes)
+	w.streams++
+	w.rows += len(c.Timestamps)
+
+	rows := len(c.Timestamps)
+	if rows == 0 {
+		// An identity-only batch still carries its columns' shape; write it whole.
+		return w.writeRange(c, 0, 0)
+	}
+
+	budget := w.limit - chunkOverhead(c)
+	for i := 0; i < rows; {
+		j := min(i+rowsFitting(c, i, budget), rows)
+		if err := w.writeRange(c, i, j); err != nil {
+			return err
+		}
+		i = j
+	}
+	return nil
+}
+
+// writeRange writes rows [i, j) of c as one chunk, halving the range if the size estimate that
+// chose it turned out to be optimistic.
+func (w *chunkWriter) writeRange(c *Chunk, i, j int) error {
+	part := sliceChunk(c, i, j)
+	w.buf = appendChunk(w.buf[:0], &part)
+	if len(w.buf) > w.limit {
+		if j-i <= 1 {
+			return errors.Errorf("chunk of %d bytes exceeds the %d byte limit and holds a single row",
+				len(w.buf), w.limit)
+		}
+		mid := i + (j-i)/2
+		if err := w.writeRange(c, i, mid); err != nil {
+			return err
+		}
+		return w.writeRange(c, mid, j)
 	}
 
 	var frame [binary.MaxVarintLen64]byte
@@ -98,9 +154,7 @@ func (w *chunkWriter) Write(c *Chunk) error {
 	if _, err := w.enc.Write(w.buf); err != nil {
 		return errors.Wrap(err, "write chunk")
 	}
-
-	w.streams++
-	w.rows += len(c.Timestamps)
+	w.chunks++
 	return nil
 }
 
