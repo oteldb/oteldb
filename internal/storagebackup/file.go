@@ -114,6 +114,10 @@ func clampChunkLimit(limit int) int {
 // one stream's records arrive in more than one export, and the per-batch approximations (span
 // structural ids) are the same either way.
 func (w *chunkWriter) Write(c *Chunk) error {
+	if err := validateColumns(c.Columns); err != nil {
+		return err
+	}
+
 	w.streams++
 	w.rows += len(c.Timestamps)
 

@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/oteldb/storage/query/fetch"
@@ -34,10 +35,12 @@ func testChunks() map[string]Chunk {
 		"Columns": {
 			Timestamps: []int64{1, 2},
 			Columns: []fetch.NamedColumn{
-				{Name: "severity", Int64: []int64{9, 17}},
+				fetch.Int64Column("severity", []int64{9, 17}),
 				// A nil element is not an empty one: an unset trace id must not come back as "".
-				{Name: "trace_id", Bytes: [][]byte{nil, []byte("x")}},
-				{Name: "ratio", Float64: []float64{0.25, 0.5}},
+				fetch.BytesColumn("trace_id", [][]byte{nil, []byte("x")}),
+				fetch.Float64Column("ratio", []float64{0.25, 0.5}),
+				// A column with neither kind nor rows: what an archive written before the engine
+				// carried a kind holds, and it must stay readable.
 				{Name: "absent"},
 			},
 		},
@@ -197,6 +200,7 @@ func TestNamedColumnKindsAreCovered(t *testing.T) {
 
 	want := map[string]string{
 		"Name":    "string",
+		"Kind":    "fetch.ColumnKind",
 		"Int64":   "[]int64",
 		"Float64": "[]float64",
 		"Bytes":   "[][]uint8",
@@ -209,5 +213,59 @@ func TestNamedColumnKindsAreCovered(t *testing.T) {
 
 	require.Equal(t, want, got,
 		"fetch.NamedColumn changed shape: teach appendChunk and decodeChunk the new column kind, "+
-			"and give it a byte in the colEmpty/colInt64/... block, before updating this test")
+			"and give it a byte in the colEmpty/colInt64/... block — the existing bytes are the archive "+
+			"format and must keep their meaning — before updating this test")
+}
+
+// The engine's column kind is what the codec writes, so it has to come back — a restored column
+// that lost its kind would be fed to the write path as kindless and rejected there instead.
+func TestChunkRoundTripKeepsColumnKind(t *testing.T) {
+	t.Parallel()
+
+	c := Chunk{
+		Timestamps: []int64{1, 2},
+		Columns: []fetch.NamedColumn{
+			fetch.Int64Column("severity", []int64{9, 17}),
+			fetch.Float64Column("ratio", []float64{0.25, 0.5}),
+			fetch.BytesColumn("trace_id", [][]byte{nil, []byte("x")}),
+			// Empty but kinded: distinguishable from absent only because the kind is carried.
+			fetch.BytesColumn("empty", nil),
+			{Name: "absent"},
+		},
+	}
+
+	got, err := decodeChunk(appendChunk(nil, &c))
+	require.NoError(t, err)
+	require.Len(t, got.Columns, len(c.Columns))
+
+	for i := range c.Columns {
+		assert.Equal(t, c.Columns[i].Kind, got.Columns[i].Kind, "column %q", c.Columns[i].Name)
+	}
+
+	assert.Equal(t, fetch.KindBytes, got.Columns[3].Kind, "an empty bytes column is still a bytes column")
+	assert.False(t, got.Columns[4].Kind.Valid(), "a column with no kind stays kindless")
+}
+
+// A column carrying rows under no kind is the silent-loss case the engine's kind exists to prevent:
+// the codec would write it as empty and the rows would be gone with nothing failing. A backup is a
+// bad place to find that out, so the writer refuses it.
+func TestWriteRejectsKindlessColumnWithRows(t *testing.T) {
+	t.Parallel()
+
+	w, err := createChunkWriter(t.TempDir(), "log/default/2024-01-02"+fileExt,
+		FileHeader{Version: FormatVersion, Signal: "log"}, 0)
+	require.NoError(t, err)
+	defer w.Abort()
+
+	err = w.Write(&Chunk{
+		Timestamps: []int64{1, 2},
+		Columns:    []fetch.NamedColumn{{Name: "severity", Int64: []int64{9, 17}}},
+	})
+	require.ErrorContains(t, err, "no column kind")
+
+	// An absent column carries nothing, so nothing is lost by writing it: it stays legal.
+	require.NoError(t, w.Write(&Chunk{
+		Timestamps: []int64{1},
+		Columns:    []fetch.NamedColumn{{Name: "absent"}},
+	}))
 }

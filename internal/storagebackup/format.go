@@ -84,14 +84,37 @@ type Chunk struct {
 	Columns []fetch.NamedColumn
 }
 
-// Column kinds, as written into a chunk. They name which typed slice of a
-// [fetch.NamedColumn] is populated.
+// Column kinds, as written into a chunk. The values are the archive format and never change: a
+// backup written by an older build must still restore. They are mapped to and from
+// [fetch.ColumnKind] rather than being it, so an upstream renumbering cannot silently reinterpret
+// files already on disk.
+//
+// colEmpty is a column carrying no kind and no data. It is what an archive from before the engine
+// carried a kind holds, so it stays readable rather than becoming an error.
 const (
 	colEmpty   byte = 0
 	colInt64   byte = 1
 	colFloat64 byte = 2
 	colBytes   byte = 3
 )
+
+// validateColumns rejects a column whose kind does not account for the rows it carries. Writing it
+// would encode as colEmpty and lose those rows silently, which is the whole failure the engine's
+// kind exists to prevent — a backup is the wrong place to discover it.
+func validateColumns(cols []fetch.NamedColumn) error {
+	for i := range cols {
+		col := &cols[i]
+		if col.Kind.Valid() {
+			continue
+		}
+
+		if n := len(col.Int64) + len(col.Float64) + len(col.Bytes); n > 0 {
+			return errors.Errorf("column %q carries %d values with no column kind (%s)", col.Name, n, col.Kind)
+		}
+	}
+
+	return nil
+}
 
 // appendChunk appends c's encoding to dst.
 //
@@ -107,14 +130,18 @@ func appendChunk(dst []byte, c *Chunk) []byte {
 	for i := range c.Columns {
 		col := &c.Columns[i]
 		dst = appendBlob(dst, []byte(col.Name))
-		switch {
-		case col.Int64 != nil:
+		// The engine's own kind decides what is written, rather than which slice happens to be
+		// non-nil: a nil-check cannot tell an absent column from an empty one, and answers wrongly
+		// for a kind it has not been taught. [validateColumns] has already rejected the case where
+		// the two disagree.
+		switch col.Kind {
+		case fetch.KindInt64:
 			dst = append(dst, colInt64)
 			dst = appendInt64s(dst, col.Int64)
-		case col.Float64 != nil:
+		case fetch.KindFloat64:
 			dst = append(dst, colFloat64)
 			dst = appendFloat64s(dst, col.Float64)
-		case col.Bytes != nil:
+		case fetch.KindBytes:
 			dst = append(dst, colBytes)
 			dst = appendBlobs(dst, col.Bytes)
 		default:
@@ -190,6 +217,7 @@ func sliceChunk(c *Chunk, i, j int) Chunk {
 		col := &c.Columns[k]
 		out.Columns[k] = fetch.NamedColumn{
 			Name:    col.Name,
+			Kind:    col.Kind,
 			Int64:   sliceRows(col.Int64, i, j),
 			Float64: sliceRows(col.Float64, i, j),
 			Bytes:   sliceRows(col.Bytes, i, j),
@@ -251,14 +279,17 @@ func decodeChunk(src []byte) (c Chunk, _ error) {
 		col := fetch.NamedColumn{Name: string(name)}
 		switch kind {
 		case colInt64:
+			col.Kind = fetch.KindInt64
 			if col.Int64, rest, err = readInt64s(rest); err != nil {
 				return c, errors.Wrapf(err, "column %q", col.Name)
 			}
 		case colFloat64:
+			col.Kind = fetch.KindFloat64
 			if col.Float64, rest, err = readFloat64s(rest); err != nil {
 				return c, errors.Wrapf(err, "column %q", col.Name)
 			}
 		case colBytes:
+			col.Kind = fetch.KindBytes
 			if col.Bytes, rest, err = readBlobs(rest); err != nil {
 				return c, errors.Wrapf(err, "column %q", col.Name)
 			}

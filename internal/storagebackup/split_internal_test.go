@@ -27,9 +27,9 @@ func bigChunk(rows, bodyLen int) Chunk {
 			Scope: signal.Scope{Name: []byte("scope"), Version: []byte("v1")},
 		},
 		Columns: []fetch.NamedColumn{
-			{Name: "severity", Int64: make([]int64, 0, rows)},
-			{Name: "body", Bytes: make([][]byte, 0, rows)},
-			{Name: "ratio", Float64: make([]float64, 0, rows)},
+			fetch.Int64Column("severity", make([]int64, 0, rows)),
+			fetch.BytesColumn("body", make([][]byte, 0, rows)),
+			fetch.Float64Column("ratio", make([]float64, 0, rows)),
 			{Name: "absent"},
 		},
 	}
