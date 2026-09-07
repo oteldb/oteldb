@@ -31,10 +31,16 @@ import (
 // index-safe subset and re-checks the rest; that re-check belongs behind this interface, so the
 // engine can treat what it gets back as final.
 
-// Aggregate is a fold of one series' samples over one window. A zero Count means the series had
+// Aggregate is a fold of one series' samples over one window. A zero Rows means the series had
 // no sample in that window, which PromQL renders as a gap rather than a zero.
+//
+// Count and Sum are weighted by each sample's lossy-sampling factor, so a sampled tenant's
+// count/sum/avg estimate the originals rather than the rows that survived; Min and Max are not, an
+// extremum being independent of multiplicity. Rows is the unweighted sample count, and is what
+// decides presence: weights are floats, so only an integer answers "was there anything here".
 type Aggregate struct {
-	Count int64
+	Count float64
+	Rows  int64
 	Sum   float64
 	Min   float64
 	Max   float64

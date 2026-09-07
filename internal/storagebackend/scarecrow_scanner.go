@@ -114,6 +114,7 @@ func (s *scarecrowScanner) AggregateGrid(
 
 			windows[step] = scarecrow.Aggregate{
 				Count: w.Count,
+				Rows:  w.Rows,
 				Sum:   w.Sum,
 				Min:   w.Min,
 				Max:   w.Max,
@@ -162,6 +163,7 @@ func (s *scarecrowScanner) AggregateOverTime(
 			Labels: lset,
 			Aggregate: scarecrow.Aggregate{
 				Count: la.Count,
+				Rows:  la.Rows,
 				Sum:   la.Sum,
 				Min:   la.Min,
 				Max:   la.Max,
