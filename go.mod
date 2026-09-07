@@ -38,7 +38,7 @@ require (
 	github.com/grafana/loki/pkg/push v0.0.0-20241223090937-bf7301470453
 	github.com/grafana/pyroscope-go v1.4.2
 	github.com/grafana/pyroscope/api v1.5.0
-	github.com/klauspost/compress v1.19.2
+	github.com/klauspost/compress v1.20.0
 	github.com/kr/logfmt v0.0.0-20210122060352-19f9bcb100e6
 	github.com/mattn/go-isatty v0.0.24
 	github.com/maypok86/otter v1.2.4
@@ -86,7 +86,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/webhookeventreceiver v0.159.0
 	github.com/oteldb/promql-engine v0.10.0
-	github.com/oteldb/storage v0.45.0
+	github.com/oteldb/storage v0.45.1
 	github.com/pierrec/lz4/v4 v4.1.29
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.70.1
@@ -126,7 +126,7 @@ require (
 	go.opentelemetry.io/collector/extension v1.65.0
 	go.opentelemetry.io/collector/extension/zpagesextension v0.159.0
 	go.opentelemetry.io/collector/otelcol v0.159.0
-	go.opentelemetry.io/collector/pdata v1.65.0
+	go.opentelemetry.io/collector/pdata v1.66.0
 	go.opentelemetry.io/collector/pipeline v1.65.0
 	go.opentelemetry.io/collector/processor v1.65.0
 	go.opentelemetry.io/collector/processor/batchprocessor v0.159.0
@@ -577,14 +577,14 @@ require (
 	go.opentelemetry.io/collector/extension/extensionmiddleware v0.159.0 // indirect
 	go.opentelemetry.io/collector/extension/extensiontest v0.159.0 // indirect
 	go.opentelemetry.io/collector/extension/xextension v0.159.0
-	go.opentelemetry.io/collector/featuregate v1.65.0
+	go.opentelemetry.io/collector/featuregate v1.66.0
 	go.opentelemetry.io/collector/filter v0.159.0 // indirect
 	go.opentelemetry.io/collector/internal/componentalias v0.159.0 // indirect
 	go.opentelemetry.io/collector/internal/fanoutconsumer v0.159.0 // indirect
 	go.opentelemetry.io/collector/internal/memorylimiter v0.159.0 // indirect
 	go.opentelemetry.io/collector/internal/sharedcomponent v0.159.0 // indirect
 	go.opentelemetry.io/collector/internal/telemetry v0.159.0 // indirect
-	go.opentelemetry.io/collector/pdata/pprofile v0.159.0
+	go.opentelemetry.io/collector/pdata/pprofile v0.160.0
 	go.opentelemetry.io/collector/pdata/testdata v0.159.0 // indirect
 	go.opentelemetry.io/collector/pdata/xpdata v0.159.0 // indirect
 	go.opentelemetry.io/collector/pipeline/xpipeline v0.159.0 // indirect
