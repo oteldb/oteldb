@@ -146,12 +146,14 @@ func TestScarecrowScannerPushdowns(t *testing.T) {
 			byFoo[a.Labels.Get("foo")] = a
 		}
 
-		require.Equal(t, int64(3), byFoo["a"].Count)
+		require.InDelta(t, 3, byFoo["a"].Count, 0)
+		require.Equal(t, int64(3), byFoo["a"].Rows)
 		require.Equal(t, 6.0, byFoo["a"].Sum)
 		require.Equal(t, 1.0, byFoo["a"].Min)
 		require.Equal(t, 3.0, byFoo["a"].Max)
 
-		require.Equal(t, int64(2), byFoo["b"].Count)
+		require.InDelta(t, 2, byFoo["b"].Count, 0)
+		require.Equal(t, int64(2), byFoo["b"].Rows)
 		require.Equal(t, 30.0, byFoo["b"].Sum)
 	})
 

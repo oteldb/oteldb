@@ -160,7 +160,7 @@ func (o *aggregateOverTime) collectGrid(
 
 	for i := range series {
 		for step, w := range series[i].Windows {
-			if w.Count == 0 {
+			if w.Rows == 0 {
 				continue
 			}
 
@@ -219,7 +219,7 @@ func (o *aggregateOverTime) load(ctx context.Context) error {
 	for step, aggs := range perStep {
 		for j := range aggs {
 			a := &aggs[j]
-			if a.Count == 0 {
+			if a.Rows == 0 {
 				continue // No sample in the window: PromQL emits nothing at this step.
 			}
 

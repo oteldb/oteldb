@@ -188,6 +188,7 @@ func (s *pushdownScanner) window(
 
 			v := smp.V[i]
 			a.Count++
+			a.Rows++
 			a.Sum += v
 			a.Min = math.Min(a.Min, v)
 			a.Max = math.Max(a.Max, v)

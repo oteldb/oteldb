@@ -141,7 +141,7 @@ func (o *countSeries) countGrid(ctx context.Context, grid WindowGrid) error {
 	counts := make([]float64, grid.NumSteps)
 	for i := range series {
 		for step, w := range series[i].Windows {
-			if w.Count > 0 {
+			if w.Rows > 0 {
 				counts[step]++
 			}
 		}
@@ -283,7 +283,7 @@ func (o *countSeriesBy) collectGrid(ctx context.Context, grid WindowGrid) ([]map
 		groups[v] = struct{}{}
 
 		for step, w := range series[i].Windows {
-			if w.Count > 0 {
+			if w.Rows > 0 {
 				perStep[step][v]++
 			}
 		}

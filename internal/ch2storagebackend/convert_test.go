@@ -316,6 +316,9 @@ func TestConvertValueTypes(t *testing.T) {
 	var want siglog.Logs
 	ld := plog.NewLogs()
 	rec := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+	// A record with neither event nor observed time is refused by pdataconv (storage #485), and
+	// this test is about value types, not timestamps.
+	rec.SetTimestamp(pcommon.Timestamp(1))
 	m.CopyTo(rec.Attributes())
 	pdataconv.AppendLogs(&want, ld)
 

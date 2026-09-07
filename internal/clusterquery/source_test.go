@@ -397,8 +397,8 @@ func (n *fakeNode) spanBatch(start int64, ids []string) *fetch.Batch {
 		ID:     s.Hash(),
 		Series: s,
 		Columns: []fetch.NamedColumn{
-			{Name: sigtrace.ColTraceID},
-			{Name: sigtrace.ColName},
+			fetch.BytesColumn(sigtrace.ColTraceID, nil),
+			fetch.BytesColumn(sigtrace.ColName, nil),
 		},
 	}
 	for i, id := range ids {
