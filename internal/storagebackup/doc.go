@@ -54,10 +54,11 @@
 // that day was scanned are not in the backup. Use [BackupOptions.Lag] (or an explicit To) to keep
 // the window behind the ingest edge.
 //
-// # Backup does not write to the data directory
+// # Backup suppresses every write it can, but the open itself still sweeps
 //
 // [EngineConfig.ReadOnly] — which odbbackup always sets — opens the engine with everything that
-// writes turned off: no WAL recovery, no flush, no merges, no retention, and no cluster membership.
+// writes turned off *that the storage API exposes*: no WAL recovery, no flush, no merges, no
+// retention, and no cluster membership.
 // Without it, opening a data directory is a write: recovery replays the WAL into a head, the close
 // that follows flushes that head into a new part, and the WAL is checkpointed, discarding
 // segments. Against a running node that makes the backup a second writer, discarding segments the
@@ -67,6 +68,21 @@
 // engine has ingested but not yet flushed is not backed up (it logs a warning when the WAL is
 // non-empty). With the default [BackupOptions.Lag] that data is outside the window anyway, since
 // the head holds the newest writes; keep Lag at or above the engine's flush interval.
+//
+// One write is left, and it cannot be suppressed from here. Opening an engine sweeps the part
+// objects the bucket index does not name, and both load modes storage.Storage can select do it
+// (the mode that sweeps nothing is internal to the engine). So a backup of a directory holding
+// orphans — which a long-running node accumulates, since that sweep is the only thing that
+// reclaims them — deletes those objects as it opens.
+//
+// Measured against a real node's data directory: 87 objects across six orphaned parts, deleted on
+// the first open, deterministically. It is not data loss — two consecutive backups of the same
+// directory returned identical stream and row counts, because an orphan is by definition
+// unreferenced — and the tree is stable from the second open on. But it means a copy diverges from
+// its original the first time it is backed up, so a bit-for-bit comparison against the source will
+// not hold, and it is one more reason never to point this at a live node's directory.
+//
+// oteldb/storage#583 tracks exposing the read-only load that would close this.
 //
 // A restore is the other way round: it writes, so it needs the destination to itself. Do not point
 // odbrestore at a running node's data directory — restore into a stopped node, then start it.

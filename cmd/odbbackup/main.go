@@ -37,7 +37,7 @@ func run(ctx context.Context) error {
 		dsn = flag.String("dsn", "clickhouse://localhost:9000", "Clickhouse connection URL (clickhouse backend)")
 
 		storageConfig = flag.String("storage-config", "", "oteldb config file whose storage block describes the engine (storage backend)")
-		storageDir    = flag.String("storage-dir", "", "Data directory of a single-node file backend, instead of -storage-config; opened read-only (storage backend)")
+		storageDir    = flag.String("storage-dir", "", "Data directory of a single-node file backend, instead of -storage-config; must not be a running node's — the open sweeps orphaned part objects (storage backend)")
 		signals       = flag.String("signals", "", "Comma-separated signals to back up: log, trace, metric (default: all, storage backend)")
 		from          = flag.String("from", "", "Back up data at or after this time (RFC3339 or YYYY-MM-DD, UTC); empty starts at the oldest retained")
 		to            = flag.String("to", "", "Back up data before this time (RFC3339 or YYYY-MM-DD, UTC); empty ends at now minus -lag")
