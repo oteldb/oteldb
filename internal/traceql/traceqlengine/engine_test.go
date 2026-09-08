@@ -12,6 +12,9 @@ import (
 	"github.com/oteldb/oteldb/internal/tempoapi"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestEngine(t *testing.T) {
@@ -364,6 +367,33 @@ func TestTimeRange(t *testing.T) {
 				tt.start.AsTime(),
 				tt.end.AsTime(),
 			))
+		})
+	}
+}
+
+func TestEvalMarksSpanFailed(t *testing.T) {
+	tests := []struct {
+		name  string
+		query string
+	}{
+		{"ParseError", `{ .a = }`},
+		{"UnsupportedAttribute", `{nestedSetParent<0}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := tracetest.NewSpanRecorder()
+			tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(rec))
+			engine := NewEngine(&MemoryQuerier{}, Options{TracerProvider: tp})
+
+			_, err := engine.Eval(context.Background(), tt.query, EvalParams{Limit: 100})
+			require.Error(t, err)
+
+			spans := rec.Ended()
+			require.Len(t, spans, 1)
+			// A span that only records the exception event keeps an unset status, so an error-filtered
+			// trace view hides the one span that carries the cause.
+			require.Equal(t, codes.Error, spans[0].Status().Code)
+			require.Equal(t, err.Error(), spans[0].Status().Description)
 		})
 	}
 }

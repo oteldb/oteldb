@@ -9,6 +9,8 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // countSeries answers `count(selector)` from a [SeriesCounter] without reading a sample.
@@ -112,7 +114,7 @@ func (o *countSeries) count(ctx context.Context, refs []int64, lookback int64) e
 	for step, maxt := range refs {
 		n, err := o.counter.CountSeries(ctx, maxt-lookback, maxt, o.matchers)
 		if err != nil {
-			span.RecordError(err)
+			xspan.Fail(span, err)
 
 			return errors.Wrapf(err, "count series at %d", maxt)
 		}
@@ -245,7 +247,7 @@ func (o *countSeriesBy) collect(ctx context.Context, refs []int64) ([]map[string
 	for i, maxt := range refs {
 		counts, err := o.counter.CountSeriesBy(ctx, maxt-lookback, maxt, o.by, o.matchers)
 		if err != nil {
-			span.RecordError(err)
+			xspan.Fail(span, err)
 
 			return nil, errors.Wrapf(err, "count series by %s at %d", o.by, maxt)
 		}

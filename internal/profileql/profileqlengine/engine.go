@@ -18,6 +18,7 @@ import (
 	"github.com/oteldb/oteldb/internal/profilestorage"
 	"github.com/oteldb/oteldb/internal/pyroscopeapi"
 	"github.com/oteldb/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // Engine is a ProfileQL evaluation engine.
@@ -83,10 +84,7 @@ func (e *Engine) Select(ctx context.Context, query string, params EvalParams) (r
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	expr, err := profileql.Parse(query)

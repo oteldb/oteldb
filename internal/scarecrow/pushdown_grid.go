@@ -6,6 +6,8 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // gridFor derives the [WindowGrid] covering refs, or ok=false when refs are not a multi-step,
@@ -56,7 +58,7 @@ func aggregateGrid(
 
 	out, err := scanner.AggregateGrid(ctx, grid, matchers)
 	if err != nil {
-		span.RecordError(err)
+		xspan.Fail(span, err)
 
 		return nil, errors.Wrap(err, "aggregate grid")
 	}

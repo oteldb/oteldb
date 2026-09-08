@@ -13,6 +13,7 @@ import (
 	"github.com/oteldb/oteldb/internal/logql"
 	"github.com/oteldb/oteldb/internal/lokiapi"
 	"github.com/oteldb/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // LogQuery represents a log query.
@@ -73,10 +74,7 @@ func (q *LogQuery) eval(ctx context.Context, params EvalParams) (data lokiapi.St
 	))
 	defer func() {
 		q.stats.QueryDuration.Record(ctx, time.Since(start).Seconds())
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	iter, err := q.Root.EvalPipeline(ctx, params)

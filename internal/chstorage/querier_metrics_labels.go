@@ -16,6 +16,7 @@ import (
 	"github.com/oteldb/oteldb/internal/metricstorage"
 	"github.com/oteldb/oteldb/internal/otelstorage"
 	"github.com/oteldb/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // LabelValues returns all potential values for a label name.
@@ -38,7 +39,7 @@ func (p *promQuerier) LabelValues(ctx context.Context, labelName string, hints *
 	)
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 		} else {
 			span.AddEvent("values_fetched", trace.WithAttributes(
 				attribute.Int("chstorage.total_values", len(result)),
@@ -77,10 +78,7 @@ func (p *promQuerier) getLabelValues(ctx context.Context, labelName string, matc
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (
@@ -137,10 +135,7 @@ func (p *promQuerier) getMatchingLabelValues(ctx context.Context, labelName stri
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (
@@ -229,7 +224,7 @@ func (p *promQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints,
 	)
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 		} else {
 			span.AddEvent("names_fetched", trace.WithAttributes(
 				attribute.Int("chstorage.total_names", len(result)),
@@ -263,10 +258,7 @@ func (p *promQuerier) getLabelNames(ctx context.Context) (result []string, rerr 
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (
@@ -303,10 +295,7 @@ func (p *promQuerier) getMatchingLabelNames(ctx context.Context, matchers []*lab
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (

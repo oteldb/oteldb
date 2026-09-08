@@ -13,6 +13,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // Opts configures an [Engine].
@@ -272,7 +274,7 @@ func (q *query) Exec(ctx context.Context) *promql.Result {
 		// mapping) cannot tell the two engines apart.
 		err = queryContextErr(ctx, err)
 
-		span.RecordError(err)
+		xspan.Fail(span, err)
 		span.SetStatus(codes.Error, err.Error())
 
 		return &promql.Result{Err: err}

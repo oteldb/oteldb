@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/oteldb/oteldb/internal/adminapi"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // forward answers a request addressed to one named member, by asking that member and returning its
@@ -30,7 +31,7 @@ func forward[T any](
 	)
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 			span.SetStatus(codes.Error, rerr.Error())
 		}
 		span.End()

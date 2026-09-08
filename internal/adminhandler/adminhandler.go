@@ -19,6 +19,7 @@ import (
 	"github.com/oteldb/storage/signal"
 
 	"github.com/oteldb/oteldb/internal/adminapi"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // Component describes a wired oteldb service for the health report.
@@ -208,7 +209,7 @@ func (a *AdminAPI) collectCHStats(ctx context.Context) (_ []adminapi.TableStats,
 	ctx, span := a.tracer.Start(ctx, "adminhandler.storage.clickhouse")
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 			span.SetStatus(codes.Error, rerr.Error())
 		}
 		span.End()
@@ -232,7 +233,7 @@ func (a *AdminAPI) GetEfficiency(
 	)
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 			span.SetStatus(codes.Error, rerr.Error())
 		}
 		span.End()
@@ -274,7 +275,7 @@ func (a *AdminAPI) attachParts(
 	)
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 			span.SetStatus(codes.Error, rerr.Error())
 		}
 		span.End()

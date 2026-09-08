@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/oteldb/oteldb/internal/adminapi"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // nodeAnswer is what one member contributed to a fan-out: its value, or why it has none.
@@ -47,7 +48,7 @@ func fanout[T any](
 	)
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 			span.SetStatus(codes.Error, rerr.Error())
 		}
 		span.End()
@@ -84,7 +85,7 @@ func fanout[T any](
 			out[i] = nodeAnswer[T]{Peer: p, Value: v, Err: err, Took: time.Since(started)}
 
 			if err != nil {
-				nodeSpan.RecordError(err)
+				xspan.Fail(nodeSpan, err)
 				nodeSpan.SetStatus(codes.Error, err.Error())
 
 				a.opts.Logger.Warn("Node did not answer",

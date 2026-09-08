@@ -25,6 +25,7 @@ import (
 	"github.com/oteldb/oteldb/internal/metricscache"
 	"github.com/oteldb/oteldb/internal/promapi"
 	"github.com/oteldb/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 var _ storage.Queryable = (*Querier)(nil)
@@ -219,7 +220,7 @@ func (p *promQuerier) Select(ctx context.Context, sortSeries bool, hints *storag
 	)
 	defer func() {
 		if resultSet != nil && resultSet.Err() != nil {
-			span.RecordError(resultSet.Err())
+			xspan.Fail(span, resultSet.Err())
 		}
 		span.End()
 	}()
@@ -364,10 +365,7 @@ func (p *promQuerier) querySeriesSingleflight(ctx context.Context, samplePoints 
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (
@@ -380,10 +378,7 @@ func (p *promQuerier) querySeriesSingleflight(ctx context.Context, samplePoints 
 			trace.WithLinks(parentLink),
 		)
 		defer func() {
-			if rerr != nil {
-				span.RecordError(rerr)
-			}
-			span.End()
+			xspan.End(span, rerr)
 		}()
 		parentSpan.AddLink(trace.LinkFromContext(ctx))
 		return p.querySeries(ctx, samplePoints, params)
@@ -542,10 +537,7 @@ func (p *promQuerier) queryPointsCached(ctx context.Context, table string, start
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	fetch := func(ctx context.Context, fetchStart, fetchEnd time.Time) (map[[16]byte]*series[pointData], error) {
@@ -589,10 +581,7 @@ func (p *promQuerier) querySampledPointsCached(
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	fetch := func(ctx context.Context, fetchStart, fetchEnd time.Time) (map[[16]byte]*series[pointData], error) {
@@ -823,10 +812,7 @@ func (p *promQuerier) queryPoints(ctx context.Context, table string, start, end 
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (
@@ -996,10 +982,7 @@ func (p *promQuerier) querySampledPointsPerSeries(
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (
@@ -1343,10 +1326,7 @@ func (p *promQuerier) queryExpHistograms(ctx context.Context, table string, star
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (

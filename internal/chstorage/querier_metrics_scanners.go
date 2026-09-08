@@ -30,6 +30,7 @@ import (
 	"github.com/oteldb/oteldb/internal/metricstorage"
 	"github.com/oteldb/oteldb/internal/promql"
 	"github.com/oteldb/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 type promScanners struct {
@@ -433,10 +434,7 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 			xattribute.StringerSlice("promql.selector.filter", o.filter.Matchers()),
 		))
 		defer func() {
-			if err != nil {
-				span.RecordError(err)
-			}
-			span.End()
+			xspan.End(span, err)
 		}()
 
 		r, queryErr := o.querier.querySeriesSingleflight(ctx, true, o.params)

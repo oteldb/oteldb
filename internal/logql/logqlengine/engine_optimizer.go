@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/go-faster/errors"
+
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // Optimizer defines an interface for optimizer.
@@ -21,10 +23,7 @@ func DefaultOptimizers() []Optimizer {
 func (e *Engine) applyOptimizers(ctx context.Context, q Query) (_ Query, rerr error) {
 	ctx, span := e.tracer.Start(ctx, "logql.Engine.applyOptimizers")
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var err error

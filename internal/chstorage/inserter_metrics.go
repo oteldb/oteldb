@@ -21,13 +21,14 @@ import (
 
 	"github.com/oteldb/oteldb/internal/metricstorage"
 	"github.com/oteldb/oteldb/internal/semconv"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 func (i *Inserter) insertBatch(ctx context.Context, b *metricsBatch) (rerr error) {
 	ctx, span := i.tracer.Start(ctx, "chstorage.metrics.insertBatch")
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 		} else {
 			i.stats.InsertedSeries.Add(ctx, int64(b.timeseries.name.Rows()))
 			i.stats.InsertedPoints.Add(ctx, int64(b.points.value.Rows()))

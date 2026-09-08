@@ -20,6 +20,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/chstorage/chsql"
 	"github.com/oteldb/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 const promStaleNaNBits uint64 = 0x7ff0000000000002
@@ -257,10 +258,7 @@ func (o *rateSelector) loadSeries(ctx context.Context) error {
 			xattribute.StringerSlice("promql.selector.filter", o.filter.Matchers()),
 		))
 		defer func() {
-			if err != nil {
-				span.RecordError(err)
-			}
-			span.End()
+			xspan.End(span, err)
 		}()
 
 		r, queryErr := o.querier.querySeriesSingleflight(ctx, true, o.params)
@@ -333,10 +331,7 @@ func (p *promQuerier) queryRatePointsCached(
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	fetch := func(ctx context.Context, fetchStart, fetchEnd time.Time) (map[[16]byte]*series[pointData], error) {
@@ -387,10 +382,7 @@ func (p *promQuerier) queryRatePointsByHash(
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	if len(timeseries) == 0 || start.IsZero() || end.IsZero() || window <= 0 {
