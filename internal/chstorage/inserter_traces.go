@@ -13,6 +13,7 @@ import (
 	"github.com/oteldb/oteldb/internal/semconv"
 	"github.com/oteldb/oteldb/internal/traceql"
 	"github.com/oteldb/oteldb/internal/tracestorage"
+	"github.com/oteldb/oteldb/internal/xspan"
 	"github.com/oteldb/oteldb/internal/xsync"
 )
 
@@ -69,7 +70,7 @@ func (i *Inserter) submitTraces(
 
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 		} else {
 			i.stats.Inserts.Add(ctx, 1,
 				metric.WithAttributes(semconv.Signal(semconv.SignalTraces)),

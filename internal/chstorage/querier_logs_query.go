@@ -26,6 +26,7 @@ import (
 	"github.com/oteldb/oteldb/internal/logstorage"
 	"github.com/oteldb/oteldb/internal/xattribute"
 	"github.com/oteldb/oteldb/internal/xregexp"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // ErrLogsTooManySamples means that a LogQL sample query (e.g. count_over_time,
@@ -64,10 +65,7 @@ func (v *LogsQuery[E]) Execute(ctx context.Context, q *Querier) (_ iterators.Ite
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	mapping, err := q.getLabelMapping(ctx, v.Sel.mappingLabels())
@@ -232,10 +230,7 @@ func (v *SampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlengine.Sa
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	// Gather all labels for mapping fetch.
@@ -406,10 +401,7 @@ func (v *BucketedSampleQuery) Execute(ctx context.Context, q *Querier) (_ logqlm
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	if v.Range <= 0 {

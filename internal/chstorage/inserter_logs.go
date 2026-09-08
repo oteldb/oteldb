@@ -11,6 +11,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/logstorage"
 	"github.com/oteldb/oteldb/internal/semconv"
+	"github.com/oteldb/oteldb/internal/xspan"
 	"github.com/oteldb/oteldb/internal/xsync"
 )
 
@@ -64,7 +65,7 @@ func (i *Inserter) submitLogs(ctx context.Context, logs *logColumns, attrs *logA
 	))
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 		} else {
 			i.stats.Inserts.Add(ctx, 1,
 				metric.WithAttributes(semconv.Signal(semconv.SignalLogs)),

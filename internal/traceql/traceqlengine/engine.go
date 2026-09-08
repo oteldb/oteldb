@@ -15,6 +15,7 @@ import (
 	"github.com/oteldb/oteldb/internal/traceql"
 	"github.com/oteldb/oteldb/internal/tracestorage"
 	"github.com/oteldb/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // Engine is a TraceQL evaluation engine.
@@ -71,7 +72,7 @@ func (e *Engine) Eval(ctx context.Context, query string, params EvalParams) (tra
 	)
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 		} else if traces != nil {
 			var spans int
 			for _, m := range traces.Traces {

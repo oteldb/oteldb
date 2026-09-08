@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
 	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // vectorSelect folds a series' raw samples onto the step grid using PromQL lookback: step t
@@ -120,7 +122,7 @@ func (o *vectorSelect) Schema(ctx context.Context) (*Schema, error) {
 
 	series, err := o.scanner.Series(ctx, mint, maxt, o.matchers)
 	if err != nil {
-		span.RecordError(err)
+		xspan.Fail(span, err)
 
 		return nil, errors.Wrap(err, "enumerate series")
 	}
@@ -170,7 +172,7 @@ func (o *vectorSelect) Next(ctx context.Context) (*Column, error) {
 		span.End()
 
 		if err != nil {
-			span.RecordError(err)
+			xspan.Fail(span, err)
 
 			return nil, errors.Wrap(err, "scan series")
 		}

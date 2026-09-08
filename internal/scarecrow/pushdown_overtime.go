@@ -9,6 +9,8 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // aggregateOverTime answers a reducer `*_over_time` from an [AggregateScanner] instead of folding
@@ -127,7 +129,7 @@ func (o *aggregateOverTime) collect(
 
 		aggs, err := o.scanner.AggregateOverTime(ctx, maxt-rngMs, maxt, o.matchers)
 		if err != nil {
-			span.RecordError(err)
+			xspan.Fail(span, err)
 
 			return errors.Wrapf(err, "aggregate over time at %d", maxt)
 		}

@@ -19,6 +19,7 @@ import (
 	"github.com/oteldb/oteldb/internal/logstorage"
 	"github.com/oteldb/oteldb/internal/otelstorage"
 	"github.com/oteldb/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 var (
@@ -42,7 +43,7 @@ func (q *Querier) LabelNames(ctx context.Context, opts logstorage.LabelsOptions)
 	)
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 		} else {
 			span.AddEvent("names_fetched", trace.WithAttributes(
 				attribute.Int("chstorage.total_names", len(result)),
@@ -153,10 +154,7 @@ func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logsto
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	limit := q.labelLimit
@@ -258,10 +256,7 @@ func (q *Querier) DetectedLabels(ctx context.Context, opts logstorage.LabelsOpti
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	limit := q.labelLimit
@@ -373,10 +368,7 @@ func (q *Querier) DetectedFields(ctx context.Context, opts logstorage.LabelsOpti
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	limit := q.labelLimit
@@ -492,10 +484,7 @@ func (q *Querier) getLabelMapping(ctx context.Context, labels []string) (_ map[s
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (
@@ -591,7 +580,7 @@ func (q *Querier) Series(ctx context.Context, opts logstorage.SeriesOptions) (re
 	)
 	defer func() {
 		if rerr != nil {
-			span.RecordError(rerr)
+			xspan.Fail(span, rerr)
 		} else {
 			span.AddEvent("series_fetched", trace.WithAttributes(
 				attribute.Int("chstorage.total_series", len(result)),

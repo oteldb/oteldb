@@ -11,6 +11,7 @@ import (
 	"github.com/oteldb/oteldb/internal/logql"
 	"github.com/oteldb/oteldb/internal/lokiapi"
 	"github.com/oteldb/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // LiteralQuery is simple literal expression query.
@@ -44,10 +45,7 @@ func (q *LiteralQuery) Eval(ctx context.Context, params EvalParams) (data lokiap
 	))
 	defer func() {
 		q.stats.QueryDuration.Record(ctx, time.Since(start).Seconds())
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	if params.IsInstant() {

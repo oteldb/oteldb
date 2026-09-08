@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/oteldb/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // Tracker is a query tracker.
@@ -58,8 +59,7 @@ func (t *Tracker[Q]) Track(ctx context.Context, meta Q, cb func(context.Context,
 
 		defer func() {
 			if rerr != nil {
-				span.RecordError(rerr)
-				span.SetStatus(codes.Error, rerr.Error())
+				xspan.Fail(span, rerr)
 			} else {
 				span.SetStatus(codes.Ok, "")
 			}

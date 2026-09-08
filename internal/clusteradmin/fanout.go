@@ -9,11 +9,11 @@ import (
 
 	"github.com/go-faster/errors"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/oteldb/oteldb/internal/adminapi"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // nodeAnswer is what one member contributed to a fan-out: its value, or why it has none.
@@ -46,11 +46,7 @@ func fanout[T any](
 		trace.WithAttributes(attribute.String("clusteradmin.op", name)),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-			span.SetStatus(codes.Error, rerr.Error())
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	peers, err := a.opts.Peers.Peers()
@@ -84,8 +80,7 @@ func fanout[T any](
 			out[i] = nodeAnswer[T]{Peer: p, Value: v, Err: err, Took: time.Since(started)}
 
 			if err != nil {
-				nodeSpan.RecordError(err)
-				nodeSpan.SetStatus(codes.Error, err.Error())
+				xspan.Fail(nodeSpan, err)
 
 				a.opts.Logger.Warn("Node did not answer",
 					zap.String("op", name), zap.String("node", p.Node), zap.String("addr", p.Addr),

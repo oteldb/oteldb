@@ -20,6 +20,7 @@ import (
 	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
 	"github.com/oteldb/oteldb/internal/tracestorage"
 	"github.com/oteldb/oteldb/internal/xattribute"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // SearchTags performs search by given tags.
@@ -38,10 +39,7 @@ func (q *Querier) SearchTags(ctx context.Context, tags map[string]string, opts t
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	subquery := chsql.Select(table, chsql.Column("trace_id", nil)).
@@ -122,10 +120,7 @@ func (q *Querier) TagNames(ctx context.Context, opts tracestorage.TagNamesOption
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (
@@ -192,10 +187,7 @@ func (q *Querier) TagValues(ctx context.Context, tag traceql.Attribute, opts tra
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	switch tag.Prop {
@@ -254,10 +246,7 @@ func (q *Querier) spanNames(ctx context.Context, tag traceql.Attribute, opts tra
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (
@@ -323,10 +312,7 @@ func (q *Querier) attributeValues(ctx context.Context, tag traceql.Attribute, op
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	// FIXME(tdakkota): respect time range parameters.
@@ -402,10 +388,7 @@ func (q *Querier) TraceByID(ctx context.Context, id otelstorage.TraceID, opts tr
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (
@@ -458,10 +441,7 @@ func (q *Querier) SelectSpansets(ctx context.Context, params traceqlengine.Selec
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (

@@ -20,6 +20,7 @@ import (
 	"github.com/oteldb/oteldb/internal/chstorage/chsql"
 	"github.com/oteldb/oteldb/internal/metricstorage"
 	"github.com/oteldb/oteldb/internal/promapi"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 type timeseriesQuerier struct {
@@ -104,10 +105,7 @@ func hashPrometheusMatchers(h *xxh3.Hasher, sets [][]*labels.Matcher) {
 func (q *timeseriesQuerier) Query(ctx context.Context, start, end time.Time, matcherSets [][]*labels.Matcher) (_ map[[16]byte]labels.Labels, rerr error) {
 	ctx, span := q.tracer.Start(ctx, "chstorage.metrics.timeseries.Query")
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (
@@ -155,10 +153,7 @@ func (q *timeseriesQuerier) queryTimeseries(ctx context.Context, parentSpan trac
 		trace.WithLinks(parentLink),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 	if parentSpan != nil {
 		parentSpan.AddLink(trace.LinkFromContext(ctx))
@@ -276,10 +271,7 @@ func (q *timeseriesQuerier) QueryMetadata(ctx context.Context, params metricstor
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var (
@@ -333,10 +325,7 @@ func (q *timeseriesQuerier) queryMetadata(
 		trace.WithLinks(parentLink),
 	)
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 	if parentSpan != nil {
 		parentSpan.AddLink(trace.LinkFromContext(ctx))

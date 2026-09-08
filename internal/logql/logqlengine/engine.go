@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/oteldb/oteldb/internal/logql"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 // Engine is a LogQL evaluation engine.
@@ -105,10 +106,7 @@ func (e *Engine) NewQuery(ctx context.Context, query string) (q Query, rerr erro
 		attribute.String("logql.query", query),
 	))
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	expr, err := logql.Parse(query, e.parseOpts)
@@ -125,10 +123,7 @@ func (e *Engine) NewQueryFromExpr(ctx context.Context, expr logql.Expr) (q Query
 		attribute.String("logql.query", "<query>"),
 	))
 	defer func() {
-		if rerr != nil {
-			span.RecordError(rerr)
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 	return e.newQuery(ctx, expr)
 }
