@@ -12,7 +12,6 @@ import (
 	"github.com/go-faster/errors"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/oteldb/storage"
@@ -208,11 +207,7 @@ func (a *AdminAPI) GetStorage(ctx context.Context, _ adminapi.GetStorageParams) 
 func (a *AdminAPI) collectCHStats(ctx context.Context) (_ []adminapi.TableStats, rerr error) {
 	ctx, span := a.tracer.Start(ctx, "adminhandler.storage.clickhouse")
 	defer func() {
-		if rerr != nil {
-			xspan.Fail(span, rerr)
-			span.SetStatus(codes.Error, rerr.Error())
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	tables, err := a.opts.CHStorage.CollectStorageStats(ctx)
@@ -232,11 +227,7 @@ func (a *AdminAPI) GetEfficiency(
 		trace.WithAttributes(attribute.Bool("adminhandler.parts", params.Parts.Or(false))),
 	)
 	defer func() {
-		if rerr != nil {
-			xspan.Fail(span, rerr)
-			span.SetStatus(codes.Error, rerr.Error())
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	stats := &adminapi.EfficiencyStats{
@@ -274,11 +265,7 @@ func (a *AdminAPI) attachParts(
 		trace.WithAttributes(attribute.String("adminhandler.tenant", string(tenant))),
 	)
 	defer func() {
-		if rerr != nil {
-			xspan.Fail(span, rerr)
-			span.SetStatus(codes.Error, rerr.Error())
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var total int

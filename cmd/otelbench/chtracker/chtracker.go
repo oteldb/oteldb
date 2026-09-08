@@ -60,7 +60,6 @@ func (t *Tracker[Q]) Track(ctx context.Context, meta Q, cb func(context.Context,
 		defer func() {
 			if rerr != nil {
 				xspan.Fail(span, rerr)
-				span.SetStatus(codes.Error, rerr.Error())
 			} else {
 				span.SetStatus(codes.Ok, "")
 			}

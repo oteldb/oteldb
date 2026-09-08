@@ -275,7 +275,6 @@ func (q *query) Exec(ctx context.Context) *promql.Result {
 		err = queryContextErr(ctx, err)
 
 		xspan.Fail(span, err)
-		span.SetStatus(codes.Error, err.Error())
 
 		return &promql.Result{Err: err}
 	}

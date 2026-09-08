@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-faster/errors"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/oteldb/oteldb/internal/adminapi"
@@ -30,11 +29,7 @@ func forward[T any](
 		),
 	)
 	defer func() {
-		if rerr != nil {
-			xspan.Fail(span, rerr)
-			span.SetStatus(codes.Error, rerr.Error())
-		}
-		span.End()
+		xspan.End(span, rerr)
 	}()
 
 	var zero T

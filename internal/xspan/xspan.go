@@ -19,6 +19,13 @@ func Fail(span trace.Span, err error) {
 }
 
 // End marks span as failed if err is non-nil, then ends it.
+//
+// Call it from a deferred closure:
+//
+//	defer func() { xspan.End(span, rerr) }()
+//
+// A plain defer evaluates rerr where the defer statement is, while it is still nil, so every span
+// would report success.
 func End(span trace.Span, err error) {
 	Fail(span, err)
 	span.End()
