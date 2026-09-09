@@ -6,6 +6,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 
+	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlabels"
 	"github.com/oteldb/oteldb/internal/logstorage"
 	"github.com/oteldb/oteldb/internal/otelstorage"
 )
@@ -36,25 +37,6 @@ func NewBatchSet() *BatchSet {
 	} {
 		s.Labels[v] = []logstorage.Label{}
 	}
-	for _, i := range []plog.SeverityNumber{
-		plog.SeverityNumberUnspecified,
-		plog.SeverityNumberTrace,
-		plog.SeverityNumberDebug,
-		plog.SeverityNumberInfo,
-		plog.SeverityNumberWarn,
-		plog.SeverityNumberError,
-		plog.SeverityNumberFatal,
-	} {
-		s.addLabel(logstorage.Label{
-			Name:  logstorage.LabelSeverity,
-			Value: i.String(),
-		})
-		s.addLabel(logstorage.Label{
-			Name:  logstorage.LabelDetectedLevel,
-			Value: i.String(),
-		})
-	}
-
 	return s
 }
 
@@ -85,6 +67,14 @@ func (s *BatchSet) Append(raw plog.Logs) error {
 
 func (s *BatchSet) addRecord(record plog.LogRecord) error {
 	ts := record.Timestamp()
+
+	// The level labels are enumerated from the records that carry a severity, not from the enum:
+	// both backends answer with the levels the window holds, so seeding every severity plog can name
+	// would expect values nothing was ingested with.
+	if level := logqlabels.Level(record.SeverityNumber(), record.SeverityText()); level != "" {
+		s.addLabel(logstorage.Label{Name: logstorage.LabelSeverity, Value: level})
+		s.addLabel(logstorage.Label{Name: logstorage.LabelDetectedLevel, Value: level})
+	}
 
 	if _, ok := s.Records[ts]; ok {
 		return errors.Errorf("duplicate record with timestamp %v", ts)
