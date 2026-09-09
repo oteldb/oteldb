@@ -3,7 +3,9 @@ package storagebackend
 import (
 	"cmp"
 	"context"
+	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -499,11 +501,51 @@ func (c logColumns) recordInto(batch *fetch.Batch, i int, attrBuf *signal.Attrib
 func matchSelector(set logqlabels.LabelSet, matchers []logql.LabelMatcher) bool {
 	for _, m := range matchers {
 		value, _ := set.GetString(m.Label)
+		if isLevelLabelName(string(m.Label)) {
+			if !matchLevel(m, value) {
+				return false
+			}
+
+			continue
+		}
 		if !matchLabel(m, value) {
 			return false
 		}
 	}
 	return true
+}
+
+// matchLevel evaluates a severity-derived matcher case-insensitively, so {level="ERROR"},
+// {level="Error"} and {level="error"} select the same records however the label is spelled here.
+// chstorage does the same by resolving the matcher to a severity number instead of comparing text,
+// and one selector must not mean two things on the two backends.
+func matchLevel(m logql.LabelMatcher, value string) bool {
+	switch m.Op {
+	case logql.OpEq:
+		return strings.EqualFold(value, m.Value)
+	case logql.OpNotEq:
+		return !strings.EqualFold(value, m.Value)
+	case logql.OpRe:
+		return m.Re != nil && matchAnyCase(m.Re, value)
+	case logql.OpNotRe:
+		return m.Re != nil && !matchAnyCase(m.Re, value)
+	default:
+		return false
+	}
+}
+
+// matchAnyCase reports whether re matches value in any of the three spellings a level is written in
+// — lower ("error"), upper ("ERROR") and plog's title case ("Error") — mirroring the casings
+// chstorage tries when it turns a regexp level matcher into a set of severity numbers.
+func matchAnyCase(re *regexp.Regexp, value string) bool {
+	if value == "" {
+		return re.MatchString(value)
+	}
+	lower := strings.ToLower(value)
+
+	return re.MatchString(lower) ||
+		re.MatchString(strings.ToUpper(lower)) ||
+		re.MatchString(strings.ToUpper(lower[:1])+lower[1:])
 }
 
 // matchLabel evaluates one LogQL label matcher against a value.
@@ -547,6 +589,19 @@ func (q *LogQuerier) LabelNames(ctx context.Context, opts logstorage.LabelsOptio
 			}
 		}
 	}
+	// Severity is a record column, so neither enumeration above reaches it. Report the level labels
+	// only when the window holds records that set one, which costs the same projected read that
+	// answers their values.
+	levels, err := q.levelValues(ctx, opts)
+	if err != nil {
+		return nil, errors.Wrap(err, "level values")
+	}
+	if len(levels) > 0 {
+		for _, name := range []string{logstorage.LabelSeverity, logstorage.LabelDetectedLevel} {
+			names[name] = struct{}{}
+		}
+	}
+
 	out := sortedKeys(names)
 	if opts.Limit > 0 && len(out) > opts.Limit {
 		out = out[:opts.Limit]
@@ -561,6 +616,19 @@ func (q *LogQuerier) LabelNames(ctx context.Context, opts logstorage.LabelsOptio
 // The record half mirrors [LogQuerier.LabelNames], which advertises those attribute keys: a name it
 // offers whose values endpoint always answers empty is worse than one it never offered.
 func (q *LogQuerier) LabelValues(ctx context.Context, labelName string, opts logstorage.LabelsOptions) (iterators.Iterator[logstorage.Label], error) {
+	if isLevelLabelName(labelName) {
+		levels, err := q.levelValues(ctx, opts)
+		if err != nil {
+			return nil, errors.Wrap(err, "level values")
+		}
+		out := make([]logstorage.Label, len(levels))
+		for i, v := range levels {
+			out[i] = logstorage.Label{Name: labelName, Value: v}
+		}
+
+		return iterators.Slice(out), nil
+	}
+
 	values := map[string]struct{}{}
 	if err := q.forEachLogStreamLabel(ctx, opts.Start, opts.End, opts.Query.Matchers, func(name, value string) {
 		if name == labelName {
@@ -664,7 +732,9 @@ func (q *LogQuerier) Series(ctx context.Context, opts logstorage.SeriesOptions) 
 	return out, nil
 }
 
-// DetectedLabels implements [logstorage.Querier]. It returns the cardinality of each stream label.
+// DetectedLabels implements [logstorage.Querier]. It returns the cardinality of each stream label,
+// plus the severity-derived labels — which are what Grafana's Logs Drilldown builds its level filter
+// from, and which no stream carries.
 func (q *LogQuerier) DetectedLabels(ctx context.Context, opts logstorage.LabelsOptions) ([]logstorage.DetectedLabel, error) {
 	values := map[string]map[string]struct{}{}
 	if err := q.forEachLogStreamLabel(ctx, opts.Start, opts.End, opts.Query.Matchers, func(name, value string) {
@@ -676,6 +746,19 @@ func (q *LogQuerier) DetectedLabels(ctx context.Context, opts logstorage.LabelsO
 		set[value] = struct{}{}
 	}); err != nil {
 		return nil, err
+	}
+
+	levels, err := q.levelValues(ctx, opts)
+	if err != nil {
+		return nil, errors.Wrap(err, "level values")
+	}
+	if len(levels) > 0 {
+		set := make(map[string]struct{}, len(levels))
+		for _, v := range levels {
+			set[v] = struct{}{}
+		}
+		values[logstorage.LabelSeverity] = set
+		values[logstorage.LabelDetectedLevel] = set
 	}
 
 	out := make([]logstorage.DetectedLabel, 0, len(values))

@@ -439,3 +439,73 @@ func drainLabels(
 
 	return out
 }
+
+// TestBackendLogLevels pins Grafana Logs Drilldown's level filter. Severity is a record column, so
+// it is neither stream identity nor an attribute and neither enumeration reaches it: the filter used
+// to be offered no values at all. The values must be the levels the data holds — not the fourteen
+// the enum can name — and must be spelled the way a query result labels a record, or picking one
+// selects nothing.
+func TestBackendLogLevels(t *testing.T) {
+	b, ctx := newBackend(t)
+
+	ts := time.Now().Truncate(time.Second)
+
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", "api")
+	sl := rl.ScopeLogs().AppendEmpty()
+	for _, severity := range []plog.SeverityNumber{
+		plog.SeverityNumberInfo,
+		plog.SeverityNumberError,
+		plog.SeverityNumberInfo,
+	} {
+		rec := sl.LogRecords().AppendEmpty()
+		rec.SetTimestamp(pcommon.Timestamp(ts.UnixNano()))
+		rec.Body().SetStr("request served")
+		rec.SetSeverityNumber(severity)
+	}
+	// A record with no severity number falls back to its text, lower-cased like the rest.
+	rec := sl.LogRecords().AppendEmpty()
+	rec.SetTimestamp(pcommon.Timestamp(ts.UnixNano()))
+	rec.Body().SetStr("odd one")
+	rec.SetSeverityText("NOTICE")
+	require.NoError(t, b.ConsumeLogs(ctx, ld))
+
+	var (
+		lq         = b.Logs()
+		start, end = ts.Add(-time.Hour), ts.Add(time.Hour)
+		opts       = logstorage.LabelsOptions{Start: start, End: end}
+		want       = []string{"error", "info", "notice"}
+	)
+
+	names, err := lq.LabelNames(ctx, opts)
+	require.NoError(t, err)
+	require.Contains(t, names, "level")
+	require.Contains(t, names, "detected_level")
+
+	require.Equal(t, want, drainLabels(ctx, t, lq, "detected_level", opts), "levels come from the data")
+	require.Equal(t, want, drainLabels(ctx, t, lq, "level", opts), "both spellings answer alike")
+
+	detected, err := lq.DetectedLabels(ctx, opts)
+	require.NoError(t, err)
+	var cardinality int
+	for _, l := range detected {
+		if l.Name == "detected_level" {
+			cardinality = l.Cardinality
+		}
+	}
+	require.Equal(t, len(want), cardinality, "Drilldown sizes its filter from this")
+
+	// Whatever case the selector is written in, it selects the same records: chstorage resolves a
+	// level matcher to a severity number rather than comparing text, and the two backends must not
+	// disagree about what a query means.
+	for _, value := range []string{"error", "ERROR", "Error"} {
+		node, err := lq.Query(ctx, []logql.LabelMatcher{
+			{Label: "detected_level", Op: logql.OpEq, Value: value},
+		})
+		require.NoError(t, err)
+		it, err := node.EvalPipeline(ctx, logqlengine.EvalParams{Start: start, End: end, Limit: -1})
+		require.NoError(t, err)
+		require.Len(t, drain(t, it), 1, value)
+	}
+}
