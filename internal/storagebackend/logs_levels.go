@@ -53,12 +53,12 @@ func (q *LogQuerier) levelValues(ctx context.Context, opts logstorage.LabelsOpti
 
 	// A level matcher is never pushed into the fetch (severity is not an attribute key), so apply it
 	// here: `label_values(detected_level, {detected_level=~"e.*"})` should narrow the answer.
-	for _, m := range opts.Query.Matchers {
-		if !isLevelLabelName(string(m.Label)) {
+	for _, m := range prepareSelector(opts.Query.Matchers) {
+		if !m.level {
 			continue
 		}
 		for v := range values {
-			if !matchLevel(m, v) {
+			if !m.matches(v) {
 				delete(values, v)
 			}
 		}

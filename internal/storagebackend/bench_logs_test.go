@@ -89,6 +89,11 @@ func BenchmarkLogsQuery(b *testing.B) {
 		{"select_service", `{service_name="api"}`, false},
 		{"line_filter", `{service_name="api"} |= "GET"`, false},
 		{"json_status", `{service_name="api"} | json | status>=400`, false},
+		// A level selector is resolved case-insensitively and cannot be pushed into the fetch
+		// (severity is a column, not an attribute key), so every materialized record is re-checked
+		// against it — which is where any per-record work in that check shows up.
+		{"select_level", `{service_name="api", level="error"}`, false},
+		{"select_level_regexp", `{service_name="api", level=~"e.+"}`, false},
 		{"metric_count_by_level", `sum by (level) (count_over_time({service_name="api"}[1m]))`, true},
 		{"metric_rate_by_level", `sum by (level) (rate({service_name="api"}[1m]))`, true},
 	}
