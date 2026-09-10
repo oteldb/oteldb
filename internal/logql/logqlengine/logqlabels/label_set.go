@@ -120,11 +120,11 @@ var severityStrings = func() (r map[plog.SeverityNumber]pcommon.Value) {
 		plog.SeverityNumberFatal3,
 		plog.SeverityNumberFatal4,
 	} {
-		// Canonical OTel SeverityText is upper-case ("ERROR", "WARN", …). plog's
-		// String() is title-case ("Error"); normalize so the conventional
-		// {level="ERROR"} selector matches (and so the embedded engine agrees with
-		// chstorage, which resolves level matchers case-foldedly).
-		r[n] = pcommon.NewValueStr(strings.ToUpper(n.String()))
+		// Loki spells a level lower-case ("error", "warn", …), and Grafana's Logs
+		// Drilldown offers exactly those values; plog's String() is title-case
+		// ("Error"). Both backends resolve a level matcher case-insensitively, so a
+		// selector written any of the three ways still matches.
+		r[n] = pcommon.NewValueStr(strings.ToLower(n.String()))
 	}
 	return r
 }()
@@ -144,7 +144,7 @@ func (l *LabelSet) SetFromRecord(record logstorage.Record) {
 		l.Set(logstorage.LabelSeverity, s)
 		l.Set(logstorage.LabelDetectedLevel, s)
 	} else if severityText := record.SeverityText; severityText != "" {
-		s := pcommon.NewValueStr(strings.ToUpper(severityText))
+		s := pcommon.NewValueStr(strings.ToLower(severityText))
 		l.Set(logstorage.LabelSeverity, s)
 		l.Set(logstorage.LabelDetectedLevel, s)
 	}
@@ -246,4 +246,22 @@ func (l *LabelSet) SetError(typ string, err error) {
 // GetError returns error label.
 func (l *LabelSet) GetError() (string, bool) {
 	return l.GetString(logql.ErrorLabel)
+}
+
+// Level returns the level a record's severity is labeled with, exactly as [LabelSet.SetFromRecord]
+// writes it: the severity number's name when it is set, else the raw severity text, both
+// lower-cased. Empty when the record carries neither.
+//
+// It is the one place the rule lives, so a backend enumerating levels straight from its severity
+// columns offers the values its own query results are labeled with.
+func Level(number plog.SeverityNumber, text string) string {
+	if number != plog.SeverityNumberUnspecified {
+		if s, ok := severityStrings[number]; ok {
+			return s.Str()
+		}
+
+		return strings.ToLower(number.String())
+	}
+
+	return strings.ToLower(text)
 }

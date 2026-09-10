@@ -2,7 +2,6 @@ package storagebackend
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -202,19 +201,20 @@ func (n *bucketSamplingNode) groupLabels(key string) map[string]string {
 	return m
 }
 
-// levelValue mirrors logqlabels.SetFromRecord's level label: the upper-cased severity number's name,
-// or the upper-cased raw severity text when the number is unspecified. The casing must match
-// SetFromRecord (which upper-cases both) so the bucketed and generic paths agree on the series key.
+// levelValue mirrors logqlabels.SetFromRecord's level label: the lower-cased severity number's name,
+// or the lower-cased raw severity text when the number is unspecified. The casing must match
+// SetFromRecord (which lower-cases both) so the bucketed and generic paths agree on the series key.
 func levelValue(severity []int64, text [][]byte, i int) string {
+	var number plog.SeverityNumber
 	if i < len(severity) {
-		if s := severity[i]; s != int64(plog.SeverityNumberUnspecified) {
-			return strings.ToUpper(plog.SeverityNumber(s).String())
-		}
+		number = plog.SeverityNumber(severity[i])
 	}
+	var raw string
 	if i < len(text) {
-		return strings.ToUpper(string(text[i]))
+		raw = string(text[i])
 	}
-	return ""
+
+	return logqlabels.Level(number, raw)
 }
 
 // isLevelLabel reports whether a grouping label is one of the severity-derived labels the bucketed

@@ -46,19 +46,19 @@ func TestSetFromRecord_ServiceNameDefault(t *testing.T) {
 	assert.Equal(t, "api", v)
 }
 
-func TestSetFromRecord_LevelUppercase(t *testing.T) {
-	// SeverityNumber path.
+func TestSetFromRecord_LevelLowercase(t *testing.T) {
+	// SeverityNumber path: plog spells it "Error", Loki spells it "error".
 	l := NewLabelSet()
 	l.SetFromRecord(logstorage.Record{SeverityNumber: plog.SeverityNumberError})
 	for _, label := range []string{logstorage.LabelSeverity, logstorage.LabelDetectedLevel} {
 		v, ok := getStr(t, &l, label)
 		require.True(t, ok, label)
-		assert.Equal(t, "ERROR", v, label)
+		assert.Equal(t, "error", v, label)
 	}
 
-	// SeverityText path (number unspecified) is also normalized to upper-case.
-	l.SetFromRecord(logstorage.Record{SeverityText: "warn"})
+	// SeverityText path (number unspecified) is normalized the same way.
+	l.SetFromRecord(logstorage.Record{SeverityText: "WARN"})
 	v, ok := getStr(t, &l, logstorage.LabelSeverity)
 	require.True(t, ok)
-	assert.Equal(t, "WARN", v)
+	assert.Equal(t, "warn", v)
 }

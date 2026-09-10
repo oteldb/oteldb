@@ -8,7 +8,6 @@ import (
 
 	"github.com/ClickHouse/ch-go/proto"
 	"github.com/go-faster/errors"
-	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/maps"
@@ -168,18 +167,11 @@ func (q *Querier) LabelValues(ctx context.Context, labelName string, opts logsto
 	switch labelName {
 	case logstorage.LabelBody, logstorage.LabelSpanID, logstorage.LabelTraceID:
 	case logstorage.LabelSeverity, logstorage.LabelDetectedLevel:
-		// FIXME(tdakkota): do a proper query with filtering
-		values = []string{
-			plog.SeverityNumberUnspecified.String(),
-			plog.SeverityNumberTrace.String(),
-			plog.SeverityNumberDebug.String(),
-			plog.SeverityNumberInfo.String(),
-			plog.SeverityNumberWarn.String(),
-			plog.SeverityNumberError.String(),
-			plog.SeverityNumberFatal.String(),
+		got, err := q.levelValues(ctx, opts, limit)
+		if err != nil {
+			return nil, errors.Wrap(err, "level values")
 		}
-		values = values[:min(len(values), limit)]
-		slices.Sort(values)
+		values = got
 	default:
 		queryLabels := make([]string, 0, 1+len(opts.Query.Matchers))
 		queryLabels = append(queryLabels, labelName)

@@ -3,7 +3,9 @@ package storagebackend
 import (
 	"cmp"
 	"context"
+	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -179,9 +181,10 @@ func (n *logStreamNode) materialize(ctx context.Context, batches []*fetch.Batch)
 	}
 	offsets[len(batches)] = total
 
+	selector := prepareSelector(n.selector)
 	workers := n.q.b.logParallelism
 	if workers <= 1 || total < logMaterializeThreshold {
-		return n.materializeRange(batches, offsets, 0, total), nil
+		return n.materializeRange(selector, batches, offsets, 0, total), nil
 	}
 	if workers > total {
 		workers = total
@@ -201,7 +204,7 @@ func (n *logStreamNode) materialize(ctx context.Context, batches []*fetch.Batch)
 			if err := grpCtx.Err(); err != nil {
 				return err
 			}
-			results[w] = n.materializeRange(batches, offsets, lo, hi)
+			results[w] = n.materializeRange(selector, batches, offsets, lo, hi)
 			return nil
 		})
 	}
@@ -221,7 +224,7 @@ func (n *logStreamNode) materialize(ctx context.Context, batches []*fetch.Batch)
 // single materialization primitive shared by the sequential and parallel paths, so both produce the
 // same entries in the same order for a given range. It reads only immutable batch state and builds a
 // fresh label set per record, so it is safe to call concurrently over disjoint ranges.
-func (n *logStreamNode) materializeRange(batches []*fetch.Batch, offsets []int, lo, hi int) []logqlengine.Entry {
+func (n *logStreamNode) materializeRange(selector preparedSelector, batches []*fetch.Batch, offsets []int, lo, hi int) []logqlengine.Entry {
 	out := make([]logqlengine.Entry, 0, max(hi-lo, 0))
 	// Per-call scratch (safe: each concurrent range owns its own). A record dropped by the selector
 	// reuses the scratch label set and attribute map; a kept record hands them off into the entry and
@@ -242,7 +245,7 @@ func (n *logStreamNode) materializeRange(batches []*fetch.Batch, offsets []int, 
 			set.Reset()
 			record := cols.recordInto(batch, i, &attrBuf, attrMap)
 			set.SetFromRecord(record)
-			if !matchSelector(set, n.selector) {
+			if !selector.match(set) {
 				attrMap.Clear() // reuse the map for the next dropped row
 				continue
 			}
@@ -496,14 +499,76 @@ func (c logColumns) recordInto(batch *fetch.Batch, i int, attrBuf *signal.Attrib
 
 // matchSelector reports whether the label set satisfies every selector matcher, treating an absent
 // label as the empty string (Loki semantics).
-func matchSelector(set logqlabels.LabelSet, matchers []logql.LabelMatcher) bool {
-	for _, m := range matchers {
+type preparedSelector []preparedMatcher
+
+// preparedMatcher is one selector matcher with its per-record work hoisted out. A severity-derived
+// matcher is resolved case-insensitively — chstorage resolves one to a severity number rather than
+// comparing text, and a selector must not mean two things on the two backends — and that folding is
+// compiled in here, once per query, instead of being redone for every record materialized.
+type preparedMatcher struct {
+	logql.LabelMatcher
+	// level marks a severity-derived label, tested once here rather than per record.
+	level bool
+	// foldRe is a level regexp recompiled case-insensitively, so matching is one pass over the
+	// record's own spelling instead of a pass per casing it might have been written in.
+	foldRe *regexp.Regexp
+}
+
+// prepareSelector compiles matchers for repeated evaluation. It is called once per query; [match]
+// is called once per record.
+func prepareSelector(matchers []logql.LabelMatcher) preparedSelector {
+	if len(matchers) == 0 {
+		return nil
+	}
+
+	out := make(preparedSelector, len(matchers))
+	for i, m := range matchers {
+		p := preparedMatcher{LabelMatcher: m, level: isLevelLabelName(string(m.Label))}
+		if p.level && m.Re != nil {
+			// A pattern anchored by the parser stays anchored: the flag group only sets case
+			// folding for what follows it. A pattern that will not recompile keeps its own casing
+			// rather than failing the query.
+			if re, err := regexp.Compile("(?i)" + m.Re.String()); err == nil {
+				p.foldRe = re
+			}
+		}
+		out[i] = p
+	}
+
+	return out
+}
+
+// match reports whether set satisfies every matcher.
+func (p preparedSelector) match(set logqlabels.LabelSet) bool {
+	for _, m := range p {
 		value, _ := set.GetString(m.Label)
-		if !matchLabel(m, value) {
+		if !m.matches(value) {
 			return false
 		}
 	}
+
 	return true
+}
+
+func (m preparedMatcher) matches(value string) bool {
+	if !m.level {
+		return matchLabel(m.LabelMatcher, value)
+	}
+
+	switch m.Op {
+	case logql.OpEq:
+		return strings.EqualFold(value, m.Value)
+	case logql.OpNotEq:
+		return !strings.EqualFold(value, m.Value)
+	case logql.OpRe:
+		re := cmp.Or(m.foldRe, m.Re)
+		return re != nil && re.MatchString(value)
+	case logql.OpNotRe:
+		re := cmp.Or(m.foldRe, m.Re)
+		return re != nil && !re.MatchString(value)
+	default:
+		return false
+	}
 }
 
 // matchLabel evaluates one LogQL label matcher against a value.
@@ -547,6 +612,19 @@ func (q *LogQuerier) LabelNames(ctx context.Context, opts logstorage.LabelsOptio
 			}
 		}
 	}
+	// Severity is a record column, so neither enumeration above reaches it. Report the level labels
+	// only when the window holds records that set one, which costs the same projected read that
+	// answers their values.
+	levels, err := q.levelValues(ctx, opts)
+	if err != nil {
+		return nil, errors.Wrap(err, "level values")
+	}
+	if len(levels) > 0 {
+		for _, name := range []string{logstorage.LabelSeverity, logstorage.LabelDetectedLevel} {
+			names[name] = struct{}{}
+		}
+	}
+
 	out := sortedKeys(names)
 	if opts.Limit > 0 && len(out) > opts.Limit {
 		out = out[:opts.Limit]
@@ -561,6 +639,19 @@ func (q *LogQuerier) LabelNames(ctx context.Context, opts logstorage.LabelsOptio
 // The record half mirrors [LogQuerier.LabelNames], which advertises those attribute keys: a name it
 // offers whose values endpoint always answers empty is worse than one it never offered.
 func (q *LogQuerier) LabelValues(ctx context.Context, labelName string, opts logstorage.LabelsOptions) (iterators.Iterator[logstorage.Label], error) {
+	if isLevelLabelName(labelName) {
+		levels, err := q.levelValues(ctx, opts)
+		if err != nil {
+			return nil, errors.Wrap(err, "level values")
+		}
+		out := make([]logstorage.Label, len(levels))
+		for i, v := range levels {
+			out[i] = logstorage.Label{Name: labelName, Value: v}
+		}
+
+		return iterators.Slice(out), nil
+	}
+
 	values := map[string]struct{}{}
 	if err := q.forEachLogStreamLabel(ctx, opts.Start, opts.End, opts.Query.Matchers, func(name, value string) {
 		if name == labelName {
@@ -664,7 +755,9 @@ func (q *LogQuerier) Series(ctx context.Context, opts logstorage.SeriesOptions) 
 	return out, nil
 }
 
-// DetectedLabels implements [logstorage.Querier]. It returns the cardinality of each stream label.
+// DetectedLabels implements [logstorage.Querier]. It returns the cardinality of each stream label,
+// plus the severity-derived labels — which are what Grafana's Logs Drilldown builds its level filter
+// from, and which no stream carries.
 func (q *LogQuerier) DetectedLabels(ctx context.Context, opts logstorage.LabelsOptions) ([]logstorage.DetectedLabel, error) {
 	values := map[string]map[string]struct{}{}
 	if err := q.forEachLogStreamLabel(ctx, opts.Start, opts.End, opts.Query.Matchers, func(name, value string) {
@@ -676,6 +769,19 @@ func (q *LogQuerier) DetectedLabels(ctx context.Context, opts logstorage.LabelsO
 		set[value] = struct{}{}
 	}); err != nil {
 		return nil, err
+	}
+
+	levels, err := q.levelValues(ctx, opts)
+	if err != nil {
+		return nil, errors.Wrap(err, "level values")
+	}
+	if len(levels) > 0 {
+		set := make(map[string]struct{}, len(levels))
+		for _, v := range levels {
+			set[v] = struct{}{}
+		}
+		values[logstorage.LabelSeverity] = set
+		values[logstorage.LabelDetectedLevel] = set
 	}
 
 	out := make([]logstorage.DetectedLabel, 0, len(values))
@@ -719,11 +825,12 @@ func (q *LogQuerier) logStreams(ctx context.Context, start, end time.Time, match
 		return nil, errors.Wrap(err, "log series")
 	}
 
+	selector := prepareSelector(matchers)
 	var out []logqlabels.LabelSet
 	for _, s := range series {
 		set := logqlabels.NewLabelSet()
 		set.SetAttrs(otelAttrs(s.Resource.Attributes), otelAttrs(s.Scope.Attributes))
-		if !matchSelector(set, matchers) {
+		if !selector.match(set) {
 			continue
 		}
 		out = append(out, set)
