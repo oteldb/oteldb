@@ -187,8 +187,8 @@ func TestChunkStreamTruncated(t *testing.T) {
 // frame of any size up to the reader's bound. Allocating that up front turns a corrupt file into
 // an out-of-memory kill, which is the one failure a restore cannot report.
 func TestChunkStreamFrameLengthLie(t *testing.T) {
-	t.Parallel()
-
+	// Deliberately not parallel: MemStats.TotalAlloc counts the whole process, so a sibling test
+	// allocating inside the measurement window is charged to this one.
 	raw := lyingFrameFile(t, maxChunkBytes-1)
 
 	var before, after runtime.MemStats
