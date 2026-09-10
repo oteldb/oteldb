@@ -9,6 +9,9 @@ import (
 	"github.com/oteldb/storage/readbudget"
 
 	"github.com/oteldb/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/traceql"
+	"github.com/oteldb/oteldb/internal/traceql/lexer"
+	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
 )
 
 func validationErr(ctx context.Context, err error, msg string) error {
@@ -31,8 +34,29 @@ func executionErr(ctx context.Context, err error, msg string) error {
 		}
 	}
 
+	// [traceqlengine.Engine.Eval] parses the query itself, so a malformed query comes back as an
+	// execution failure. It is the client's text that is wrong, not the server.
+	_, isLexerErr := errors.Into[*lexer.Error](err)
+	_, isSyntaxErr := errors.Into[*traceql.SyntaxError](err)
+	_, isTypeErr := errors.Into[*traceql.TypeError](err)
+	if isLexerErr || isSyntaxErr || isTypeErr {
+		return queryErr(ctx, http.StatusBadRequest, err, msg)
+	}
+
+	// A query the engine does not implement yet is valid TraceQL the server cannot answer.
+	if _, ok := errors.Into[*traceqlengine.UnsupportedError](err); ok {
+		return queryErr(ctx, http.StatusNotImplemented, err, msg)
+	}
+
 	return &tempoapi.ErrorStatusCode{
 		StatusCode: http.StatusInternalServerError,
+		Response:   tempoapi.Error(appendTrace(ctx, fmt.Sprintf("%s: %s", msg, err))),
+	}
+}
+
+func queryErr(ctx context.Context, code int, err error, msg string) error {
+	return &tempoapi.ErrorStatusCode{
+		StatusCode: code,
 		Response:   tempoapi.Error(appendTrace(ctx, fmt.Sprintf("%s: %s", msg, err))),
 	}
 }
