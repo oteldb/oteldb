@@ -142,6 +142,7 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 	)
 	b := New(store,
 		WithLogParallelism(cfg.LogQueryParallelism),
+		WithMeterProvider(m.MeterProvider()),
 	)
 	return b, store.Close, nil
 }

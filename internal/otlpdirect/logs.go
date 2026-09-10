@@ -48,30 +48,34 @@ type LogsConverter struct {
 	kvScratch [][]byte
 }
 
-// Convert decodes a serialized ExportLogsServiceRequest.
+// Convert decodes a serialized ExportLogsServiceRequest, returning how many records it could not
+// represent (a record carrying no usable time — see [LogsConverter.record]).
 //
 // The returned batch aliases src: every key, string value, body and id is a sub-slice of it. It
 // stays valid until the next Convert on this converter, and src must not be recycled until the
 // write consuming the batch has returned.
-func (c *LogsConverter) Convert(src []byte) (*log.Logs, error) {
+func (c *LogsConverter) Convert(src []byte) (_ *log.Logs, dropped int, _ error) {
 	c.batch.Reset()
 	c.dec.reset()
 
 	resources, err := collect(src, fieldExportResourceLogs, "resource logs")
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	for _, data := range resources {
-		if err := c.resourceLogs(data); err != nil {
-			return nil, err
+		n, err := c.resourceLogs(data)
+		if err != nil {
+			return nil, 0, err
 		}
+
+		dropped += n
 	}
 
-	return &c.batch, nil
+	return &c.batch, dropped, nil
 }
 
-func (c *LogsConverter) resourceLogs(src []byte) error {
+func (c *LogsConverter) resourceLogs(src []byte) (dropped int, _ error) {
 	var (
 		fc     easyproto.FieldContext
 		res    signal.Resource
@@ -81,30 +85,30 @@ func (c *LogsConverter) resourceLogs(src []byte) error {
 
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
-			return errors.Wrap(err, "read resource logs field")
+			return 0, errors.Wrap(err, "read resource logs field")
 		}
 
 		switch fc.FieldNum {
 		case fieldResourceLogsResource:
 			data, ok := fc.MessageData()
 			if !ok {
-				return errors.New("read resource")
+				return 0, errors.New("read resource")
 			}
 
 			if res.Attributes, err = c.dec.resource(data); err != nil {
-				return err
+				return 0, err
 			}
 		case fieldResourceLogsScope:
 			data, ok := fc.MessageData()
 			if !ok {
-				return errors.New("read scope logs")
+				return 0, errors.New("read scope logs")
 			}
 
 			scopes = append(scopes, data)
 		case fieldResourceLogsSchemaURL:
 			v, ok := fc.Bytes()
 			if !ok {
-				return errors.New("read resource schema url")
+				return 0, errors.New("read resource schema url")
 			}
 
 			res.SchemaURL = v
@@ -115,15 +119,18 @@ func (c *LogsConverter) resourceLogs(src []byte) error {
 	rl.Resource = res
 
 	for _, data := range scopes {
-		if err := c.scopeLogs(rl, data); err != nil {
-			return err
+		n, err := c.scopeLogs(rl, data)
+		if err != nil {
+			return dropped, err
 		}
+
+		dropped += n
 	}
 
-	return nil
+	return dropped, nil
 }
 
-func (c *LogsConverter) scopeLogs(rl *log.ResourceLogs, src []byte) error {
+func (c *LogsConverter) scopeLogs(rl *log.ResourceLogs, src []byte) (dropped int, _ error) {
 	var (
 		fc        easyproto.FieldContext
 		scopeData []byte
@@ -138,28 +145,28 @@ func (c *LogsConverter) scopeLogs(rl *log.ResourceLogs, src []byte) error {
 	// place would overwrite a schema_url already read.
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
-			return errors.Wrap(err, "read scope logs field")
+			return 0, errors.Wrap(err, "read scope logs field")
 		}
 
 		switch fc.FieldNum {
 		case fieldScopeLogsScope:
 			data, ok := fc.MessageData()
 			if !ok {
-				return errors.New("read scope")
+				return 0, errors.New("read scope")
 			}
 
 			scopeData = data
 		case fieldScopeLogsRecords:
 			data, ok := fc.MessageData()
 			if !ok {
-				return errors.New("read log record")
+				return 0, errors.New("read log record")
 			}
 
 			records = append(records, data)
 		case fieldScopeLogsSchemaURL:
 			v, ok := fc.Bytes()
 			if !ok {
-				return errors.New("read scope schema url")
+				return 0, errors.New("read scope schema url")
 			}
 
 			schemaURL = v
@@ -168,7 +175,7 @@ func (c *LogsConverter) scopeLogs(rl *log.ResourceLogs, src []byte) error {
 
 	sc, err := c.dec.scope(scopeData)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	sc.SchemaURL = schemaURL
@@ -177,15 +184,25 @@ func (c *LogsConverter) scopeLogs(rl *log.ResourceLogs, src []byte) error {
 	sl.Scope = sc
 
 	for _, data := range records {
-		if err := c.record(sl, data); err != nil {
-			return err
+		n, err := c.record(sl, data)
+		if err != nil {
+			return dropped, err
 		}
+
+		dropped += n
 	}
 
-	return nil
+	return dropped, nil
 }
 
-func (c *LogsConverter) record(sl *log.ScopeLogs, src []byte) error {
+// record appends one log record, returning 1 when it had to be dropped. time_unix_nano is optional
+// in OTLP — a receiver tailing files or journald with no timestamp parser leaves it unset — so an
+// unset event time falls back to the observed time, as the spec prescribes. Without the fallback
+// such a record sorts at the unix epoch, which no query window covers and which retention then
+// collects as ancient. A record with neither time has nothing to sort or query by and is refused
+// here, where the caller can still report it to the sender. This is the rule pdataconv applies on
+// the collector ingest path.
+func (c *LogsConverter) record(sl *log.ScopeLogs, src []byte) (dropped int, _ error) {
 	var (
 		fc  easyproto.FieldContext
 		rec log.Record
@@ -196,47 +213,47 @@ func (c *LogsConverter) record(sl *log.ScopeLogs, src []byte) error {
 
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
-			return errors.Wrap(err, "read log record field")
+			return 0, errors.Wrap(err, "read log record field")
 		}
 
 		switch fc.FieldNum {
 		case fieldLogTime:
 			v, ok := fc.Fixed64()
 			if !ok {
-				return errors.New("read log timestamp")
+				return 0, errors.New("read log timestamp")
 			}
 
 			rec.Timestamp = int64(v)
 		case fieldLogObservedTime:
 			v, ok := fc.Fixed64()
 			if !ok {
-				return errors.New("read log observed timestamp")
+				return 0, errors.New("read log observed timestamp")
 			}
 
 			rec.ObservedTimestamp = int64(v)
 		case fieldLogSeverityNum:
 			v, ok := fc.Enum()
 			if !ok {
-				return errors.New("read log severity number")
+				return 0, errors.New("read log severity number")
 			}
 
 			rec.SeverityNumber = v
 		case fieldLogSeverityText:
 			v, ok := fc.Bytes()
 			if !ok {
-				return errors.New("read log severity text")
+				return 0, errors.New("read log severity text")
 			}
 
 			rec.SeverityText = v
 		case fieldLogBody:
 			data, ok := fc.MessageData()
 			if !ok {
-				return errors.New("read log body")
+				return 0, errors.New("read log body")
 			}
 
 			body, err := c.dec.anyValue(data)
 			if err != nil {
-				return err
+				return 0, err
 			}
 
 			// The model stores a body as text, so a non-string body is rendered the way the pdata
@@ -245,35 +262,35 @@ func (c *LogsConverter) record(sl *log.ScopeLogs, src []byte) error {
 		case fieldLogAttributes:
 			data, ok := fc.MessageData()
 			if !ok {
-				return errors.New("read log attribute")
+				return 0, errors.New("read log attribute")
 			}
 
 			kvs = append(kvs, data)
 		case fieldLogDropped:
 			v, ok := fc.Uint32()
 			if !ok {
-				return errors.New("read log dropped count")
+				return 0, errors.New("read log dropped count")
 			}
 
 			rec.Dropped = v
 		case fieldLogFlags:
 			v, ok := fc.Fixed32()
 			if !ok {
-				return errors.New("read log flags")
+				return 0, errors.New("read log flags")
 			}
 
 			rec.Flags = v
 		case fieldLogTraceID:
 			v, ok := fc.Bytes()
 			if !ok {
-				return errors.New("read log trace id")
+				return 0, errors.New("read log trace id")
 			}
 
 			rec.TraceID = v
 		case fieldLogSpanID:
 			v, ok := fc.Bytes()
 			if !ok {
-				return errors.New("read log span id")
+				return 0, errors.New("read log span id")
 			}
 
 			rec.SpanID = v
@@ -282,11 +299,19 @@ func (c *LogsConverter) record(sl *log.ScopeLogs, src []byte) error {
 
 	c.kvScratch = kvs // keep the grown capacity for the next record
 
+	if rec.Timestamp == 0 {
+		rec.Timestamp = rec.ObservedTimestamp
+	}
+
+	if rec.Timestamp == 0 {
+		return 1, nil
+	}
+
 	if rec.Attributes, err = c.dec.attributes(kvs); err != nil {
-		return err
+		return 0, err
 	}
 
 	*sl.AddRecord() = rec
 
-	return nil
+	return 0, nil
 }

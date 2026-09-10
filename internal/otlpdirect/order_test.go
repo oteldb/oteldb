@@ -81,10 +81,10 @@ func TestConvertLogsIsFieldOrderIndependent(t *testing.T) {
 
 	var asc, desc otlpdirect.LogsConverter
 
-	up, err := asc.Convert(encodeScopeLogs(true))
+	up, _, err := asc.Convert(encodeScopeLogs(true))
 	require.NoError(t, err)
 
-	down, err := desc.Convert(encodeScopeLogs(false))
+	down, _, err := desc.Convert(encodeScopeLogs(false))
 	require.NoError(t, err)
 
 	require.Equal(t, canonical(down), canonical(up))

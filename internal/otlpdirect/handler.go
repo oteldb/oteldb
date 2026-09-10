@@ -136,7 +136,7 @@ func (h *Handler) ingestLogs(ctx context.Context, src []byte) (items, rejected i
 	c, _ := h.logs.Get().(*LogsConverter)
 	defer h.logs.Put(c)
 
-	batch, err := c.Convert(src)
+	batch, dropped, err := c.Convert(src)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -145,7 +145,7 @@ func (h *Handler) ingestLogs(ctx context.Context, src []byte) (items, rejected i
 		return 0, 0, writeError{err: err}
 	}
 
-	return countRecords(batch), 0, nil
+	return countRecords(batch), dropped, nil
 }
 
 func (h *Handler) Traces() http.Handler { return h.serve(signal.Trace, h.ingestTraces) }
