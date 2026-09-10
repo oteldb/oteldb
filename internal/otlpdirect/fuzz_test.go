@@ -65,7 +65,7 @@ func FuzzConvertLogs(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		var c otlpdirect.LogsConverter
 
-		got, err := c.Convert(data)
+		got, _, err := c.Convert(data)
 		if err != nil {
 			return
 		}
@@ -88,7 +88,7 @@ func FuzzConvertLogs(f *testing.F) {
 		}
 
 		// Reuse must not corrupt the previous batch's scratch into the next one.
-		if _, err := c.Convert(data); err != nil {
+		if _, _, err := c.Convert(data); err != nil {
 			t.Fatalf("second convert of the same input failed: %v", err)
 		}
 	})

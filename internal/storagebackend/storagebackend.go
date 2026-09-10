@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	promstorage "github.com/prometheus/prometheus/storage"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	otelmetric "go.opentelemetry.io/otel/metric"
 
 	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/otlp/pdataconv"
@@ -64,6 +65,8 @@ type Backend struct {
 	// re-scanned by GC every query. The cache is keyed by content-addressed series id, so an entry is
 	// valid for the life of the series; it is bounded by resident cardinality.
 	labels *storagepromql.LabelCache
+	// dropped counts records the OTLP conversion refused. Nil unless [WithMeterProvider] was given.
+	dropped otelmetric.Int64Counter
 }
 
 // Option configures a [Backend].

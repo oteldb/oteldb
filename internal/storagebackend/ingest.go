@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	"github.com/oteldb/storage/otlp/pdataconv"
+	"github.com/oteldb/storage/signal"
 	siglog "github.com/oteldb/storage/signal/log"
 	sigmetric "github.com/oteldb/storage/signal/metric"
 	sigprofile "github.com/oteldb/storage/signal/profile"
@@ -34,7 +35,7 @@ func (b *Backend) ConsumeTraces(ctx context.Context, td ptrace.Traces) error {
 // used when the storage backend serves logs.
 func (b *Backend) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 	var batch siglog.Logs
-	pdataconv.AppendLogs(&batch, ld)
+	b.countDropped(ctx, signal.Log, reasonNoTimestamp, pdataconv.AppendLogs(&batch, ld))
 
 	if b.store == nil {
 		return ErrNoEngine

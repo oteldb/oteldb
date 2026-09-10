@@ -26,16 +26,17 @@ func marshal(tb testing.TB, ld plog.Logs) []byte {
 }
 
 // convertBoth decodes src directly and via the pdata path, returning both batches for comparison.
+// The two paths must also agree on how many records they refused.
 func convertBoth(tb testing.TB, ld plog.Logs) (direct, viaPdata *log.Logs) {
 	tb.Helper()
 
 	var c otlpdirect.LogsConverter
 
-	direct, err := c.Convert(marshal(tb, ld))
+	direct, dropped, err := c.Convert(marshal(tb, ld))
 	require.NoError(tb, err)
 
 	viaPdata = &log.Logs{}
-	require.Zero(tb, pdataconv.AppendLogs(viaPdata, ld))
+	require.Equal(tb, pdataconv.AppendLogs(viaPdata, ld), dropped)
 
 	return canonical(direct), canonical(viaPdata)
 }
@@ -181,9 +182,10 @@ func TestConvertLogsEmpty(t *testing.T) {
 
 	var c otlpdirect.LogsConverter
 
-	got, err := c.Convert(nil)
+	got, dropped, err := c.Convert(nil)
 	require.NoError(t, err)
 	assert.Empty(t, got.Resources)
+	assert.Zero(t, dropped)
 
 	direct, viaPdata := convertBoth(t, plog.NewLogs())
 	assert.Equal(t, viaPdata, direct)
@@ -208,10 +210,10 @@ func TestConvertLogsReuseIsIsolated(t *testing.T) {
 	sr.Body().SetStr("second")
 	sr.Attributes().PutStr("b", "2")
 
-	_, err := c.Convert(marshal(t, first))
+	_, _, err := c.Convert(marshal(t, first))
 	require.NoError(t, err)
 
-	got, err := c.Convert(marshal(t, second))
+	got, _, err := c.Convert(marshal(t, second))
 	require.NoError(t, err)
 
 	want := &log.Logs{}
@@ -247,7 +249,7 @@ func BenchmarkConvertLogs(b *testing.B) {
 		b.SetBytes(int64(len(raw)))
 
 		for b.Loop() {
-			if _, err := c.Convert(raw); err != nil {
+			if _, _, err := c.Convert(raw); err != nil {
 				b.Fatal(err)
 			}
 		}
