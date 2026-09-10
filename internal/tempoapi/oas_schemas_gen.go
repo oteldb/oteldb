@@ -1827,7 +1827,33 @@ func (s TraceByID) Read(p []byte) (n int, err error) {
 	return s.Data.Read(p)
 }
 
-func (*TraceByID) traceByIDRes() {}
+// TraceByIDHeaders wraps TraceByID with response headers.
+type TraceByIDHeaders struct {
+	ContentType string
+	Response    TraceByID
+}
+
+// GetContentType returns the value of ContentType.
+func (s *TraceByIDHeaders) GetContentType() string {
+	return s.ContentType
+}
+
+// GetResponse returns the value of Response.
+func (s *TraceByIDHeaders) GetResponse() TraceByID {
+	return s.Response
+}
+
+// SetContentType sets the value of ContentType.
+func (s *TraceByIDHeaders) SetContentType(val string) {
+	s.ContentType = val
+}
+
+// SetResponse sets the value of Response.
+func (s *TraceByIDHeaders) SetResponse(val TraceByID) {
+	s.Response = val
+}
+
+func (*TraceByIDHeaders) traceByIDRes() {}
 
 // Ref: #/components/responses/TraceByIDNotFound
 type TraceByIDNotFound struct{}
