@@ -509,11 +509,14 @@ func runTest(
 			for traceID, trace := range set.Traces {
 				uid := uuid.UUID(traceID)
 
-				r, err := c.TraceByID(ctx, tempoapi.TraceByIDParams{TraceID: otelstorage.TraceID(traceID).Hex()})
+				r, err := c.TraceByID(ctx, tempoapi.TraceByIDParams{
+					TraceID: otelstorage.TraceID(traceID).Hex(),
+					Accept:  tempoapi.NewOptString("application/protobuf"),
+				})
 				a.NoError(err)
-				a.IsType(&tempoapi.TraceByID{}, r)
+				a.IsType(&tempoapi.TraceByIDHeaders{}, r)
 
-				data, err := io.ReadAll(r.(*tempoapi.TraceByID))
+				data, err := io.ReadAll(r.(*tempoapi.TraceByIDHeaders).Response)
 				a.NoError(err)
 
 				var u ptrace.ProtoUnmarshaler

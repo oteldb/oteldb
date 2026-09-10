@@ -76,7 +76,6 @@ paths:
 
         - name: Accept
           in: header
-          required: true
           schema:
             type: string
       responses:
@@ -553,7 +552,7 @@ components:
     TraceByID:
       description: Query by trace ID result
       content:
-        "application/protobuf":
+        "*/*":
           schema:
             type: string
             format: binary
