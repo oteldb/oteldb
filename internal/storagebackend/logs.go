@@ -311,14 +311,20 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 	}
 	add(n.selector)       // stream selector labels
 	add(n.pipelineLabels) // offloaded pipeline label filters (| L="v")
+
+	// A level matcher resolves through no attribute key — severity is a record column — so it is
+	// pushed separately, as the superset condition [levelCondition] builds.
+	if c, ok := levelCondition(n.selector); ok {
+		conditions = append(conditions, c)
+	}
 	if len(wanted) == 0 {
 		// Nothing to push: fully pushed only when the selector is empty (match-all).
-		return nil, nil, len(n.selector) == 0
+		return nil, conditions, len(n.selector) == 0
 	}
 
 	keys, err := n.q.b.src.LogKeys(ctx, n.q.b.tenant, lo, hi)
 	if err != nil {
-		return nil, nil, false // best effort: fall back to in-memory filtering.
+		return nil, conditions, false // best effort: fall back to in-memory filtering.
 	}
 
 	// Resolve each wanted normalized label to its raw attribute key(s) and their merged scope. A
