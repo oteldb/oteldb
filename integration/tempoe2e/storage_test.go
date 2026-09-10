@@ -56,11 +56,12 @@ func TestStorageBackend(t *testing.T) {
 		for traceID, trace := range set.Traces {
 			r, err := c.TraceByID(ctx, tempoapi.TraceByIDParams{
 				TraceID: otelstorage.TraceID(traceID).Hex(),
+				Accept:  tempoapi.NewOptString("application/protobuf"),
 			})
 			require.NoError(t, err)
-			require.IsType(t, &tempoapi.TraceByID{}, r)
+			require.IsType(t, &tempoapi.TraceByIDHeaders{}, r)
 
-			data, err := io.ReadAll(r.(*tempoapi.TraceByID))
+			data, err := io.ReadAll(r.(*tempoapi.TraceByIDHeaders).Response)
 			require.NoError(t, err)
 
 			var u ptrace.ProtoUnmarshaler

@@ -2503,7 +2503,7 @@ type TraceByIDParams struct {
 	//
 	// Default is the last 1 hour.
 	Since  OptPrometheusDuration `json:",omitempty,omitzero"`
-	Accept string
+	Accept OptString             `json:",omitempty,omitzero"`
 }
 
 func unpackTraceByIDParams(packed middleware.Parameters) (params TraceByIDParams) {
@@ -2546,7 +2546,9 @@ func unpackTraceByIDParams(packed middleware.Parameters) (params TraceByIDParams
 			Name: "Accept",
 			In:   "header",
 		}
-		params.Accept = packed[key].(string)
+		if v, ok := packed[key]; ok {
+			params.Accept = v.(OptString)
+		}
 	}
 	return params
 }
@@ -2766,23 +2768,28 @@ func decodeTraceByIDParams(args [1]string, argsEscaped bool, r *http.Request) (p
 		}
 		if err := h.HasParam(cfg); err == nil {
 			if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
-				val, err := d.DecodeValue()
-				if err != nil {
+				var paramsDotAcceptVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotAcceptVal = c
+					return nil
+				}(); err != nil {
 					return err
 				}
-
-				c, err := conv.ToString(val)
-				if err != nil {
-					return err
-				}
-
-				params.Accept = c
+				params.Accept.SetTo(paramsDotAcceptVal)
 				return nil
 			}); err != nil {
 				return err
 			}
-		} else {
-			return err
 		}
 		return nil
 	}(); err != nil {

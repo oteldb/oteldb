@@ -793,7 +793,7 @@ func decodeTraceByIDResponse(resp *http.Response) (res TraceByIDRes, _ error) {
 			return res, errors.Wrap(err, "parse media type")
 		}
 		switch {
-		case ct == "application/protobuf":
+		case ht.MatchContentType("*/*", ct):
 			reader := resp.Body
 			b, err := io.ReadAll(reader)
 			if err != nil {
@@ -801,7 +801,42 @@ func decodeTraceByIDResponse(resp *http.Response) (res TraceByIDRes, _ error) {
 			}
 
 			response := TraceByID{Data: bytes.NewReader(b)}
-			return &response, nil
+			var wrapper TraceByIDHeaders
+			wrapper.Response = response
+			h := uri.NewHeaderDecoder(resp.Header)
+			// Parse "Content-Type" header.
+			{
+				cfg := uri.HeaderParameterDecodingConfig{
+					Name:    "Content-Type",
+					Explode: false,
+				}
+				if err := func() error {
+					if err := h.HasParam(cfg); err == nil {
+						if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
+							val, err := d.DecodeValue()
+							if err != nil {
+								return err
+							}
+
+							c, err := conv.ToString(val)
+							if err != nil {
+								return err
+							}
+
+							wrapper.ContentType = c
+							return nil
+						}); err != nil {
+							return err
+						}
+					} else {
+						return err
+					}
+					return nil
+				}(); err != nil {
+					return res, errors.Wrap(err, "parse Content-Type header")
+				}
+			}
+			return &wrapper, nil
 		default:
 			return res, validate.InvalidContentType(ct)
 		}

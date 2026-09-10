@@ -136,15 +136,30 @@ func encodeSearchTagsV2Response(response *TagNamesV2, w http.ResponseWriter, spa
 
 func encodeTraceByIDResponse(response TraceByIDRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *TraceByID:
-		w.Header().Set("Content-Type", "application/protobuf")
+	case *TraceByIDHeaders:
+		// Encoding response headers.
+		{
+			h := uri.NewHeaderEncoder(w.Header())
+			// Encode "Content-Type" header.
+			{
+				cfg := uri.HeaderParameterEncodingConfig{
+					Name:    "Content-Type",
+					Explode: false,
+				}
+				if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+					return e.EncodeValue(conv.StringToString(response.ContentType))
+				}); err != nil {
+					return errors.Wrap(err, "encode Content-Type header")
+				}
+			}
+		}
 		w.WriteHeader(200)
 
 		writer := w
-		if closer, ok := response.Data.(io.Closer); ok {
+		if closer, ok := response.Response.Data.(io.Closer); ok {
 			defer closer.Close()
 		}
-		if _, err := io.Copy(writer, response); err != nil {
+		if _, err := io.Copy(writer, response.Response); err != nil {
 			return errors.Wrap(err, "write")
 		}
 

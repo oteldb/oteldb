@@ -4,9 +4,7 @@ package tempohandler
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"mime"
 	"net/http"
 	"runtime"
 	"strings"
@@ -18,13 +16,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/exp/maps"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/oteldb/oteldb/internal/iterators"
 	"github.com/oteldb/oteldb/internal/otelstorage"
 	"github.com/oteldb/oteldb/internal/tempoapi"
-	"github.com/oteldb/oteldb/internal/tempopb"
 	"github.com/oteldb/oteldb/internal/traceql"
 	"github.com/oteldb/oteldb/internal/traceql/traceqlengine"
 	"github.com/oteldb/oteldb/internal/tracestorage"
@@ -538,6 +533,11 @@ func (h *TempoAPI) SearchTagsV2(ctx context.Context, params tempoapi.SearchTagsV
 func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParams) (resp tempoapi.TraceByIDRes, _ error) {
 	lg := zctx.From(ctx)
 
+	ct, encoder, err := negotiateTraceEncoding(ctx, params.Accept.Or(""))
+	if err != nil {
+		return nil, err
+	}
+
 	traceID, err := otelstorage.ParseTraceID(params.TraceID)
 	if err != nil {
 		return nil, validationErr(ctx, err, fmt.Sprintf("invalid traceID %q", params.TraceID))
@@ -577,11 +577,16 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 		return &tempoapi.TraceByIDNotFound{}, nil
 	}
 
-	data, err := proto.Marshal(c.ResultExport())
+	data, err := encoder(c.ResultExport())
 	if err != nil {
-		return resp, executionErr(ctx, err, "marshal traces")
+		return resp, executionErr(ctx, err, "encode traces")
 	}
-	return &tempoapi.TraceByID{Data: bytes.NewReader(data)}, nil
+	return &tempoapi.TraceByIDHeaders{
+		ContentType: ct,
+		Response: tempoapi.TraceByID{
+			Data: bytes.NewReader(data),
+		},
+	}, nil
 }
 
 // TraceByIDv2 implements traceByIDv2 operation.
@@ -592,35 +597,9 @@ func (h *TempoAPI) TraceByID(ctx context.Context, params tempoapi.TraceByIDParam
 func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2Params) (tempoapi.TraceByIDv2Res, error) {
 	lg := zctx.From(ctx)
 
-	accept := params.Accept.Or("")
-	if accept == "" {
-		// Default to JSON if Accept header is not set.
-		accept = "application/json; charset=utf-8"
-	}
-	ct, ctParams, err := mime.ParseMediaType(accept)
+	ct, encoder, err := negotiateTraceEncoding(ctx, params.Accept.Or(""))
 	if err != nil {
-		return nil, validationErr(ctx, err, fmt.Sprintf("invalid Accept header %q", accept))
-	}
-
-	var encoder encoderFunc
-	switch ct {
-	case "application/x-protobuf", "application/protobuf":
-		encoder = protoEncoder
-	case "", "application/json", "text/json":
-		if !strings.EqualFold(ctParams["charset"], "utf-8") {
-			return nil, &tempoapi.ErrorStatusCode{
-				StatusCode: http.StatusBadRequest,
-				Response:   tempoapi.Error(appendTrace(ctx, fmt.Sprintf("unsupported charset %q in Accept header", ctParams["charset"]))),
-			}
-		}
-		encoder = jsonEncoder
-	case "application/vnd.grafana.llm+json":
-		encoder = llmEncoder
-	default:
-		return nil, &tempoapi.ErrorStatusCode{
-			StatusCode: http.StatusBadRequest,
-			Response:   tempoapi.Error(appendTrace(ctx, fmt.Sprintf("unknown or invalid Content-Type %q in Accept header", accept))),
-		}
+		return nil, err
 	}
 
 	traceID, err := otelstorage.ParseTraceID(params.TraceID)
@@ -671,20 +650,6 @@ func (h *TempoAPI) TraceByIDv2(ctx context.Context, params tempoapi.TraceByIDv2P
 			Data: bytes.NewReader(data),
 		},
 	}, nil
-}
-
-type encoderFunc func(td *tempopb.TraceByIDResponse) ([]byte, error)
-
-func protoEncoder(td *tempopb.TraceByIDResponse) ([]byte, error) {
-	return proto.Marshal(td)
-}
-
-func jsonEncoder(td *tempopb.TraceByIDResponse) ([]byte, error) {
-	return protojson.Marshal(td)
-}
-
-func llmEncoder(*tempopb.TraceByIDResponse) ([]byte, error) {
-	return nil, errors.New("LLM encoder is not implemented yet")
 }
 
 // NewError creates *ErrorStatusCode from error returned by handler.
