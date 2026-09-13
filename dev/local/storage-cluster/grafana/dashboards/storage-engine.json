@@ -2744,7 +2744,7 @@
         "type": "prometheus",
         "uid": "${ds}"
       },
-      "description": "storage.rpc.shard_absent: this node owns the shard in the ring but holds no data, so the read failed over \u2014 the ring and the data disagree. storage.rpc.shard_incomplete: it holds the shard but came back without the unflushed head, so the window is only on another owner. A sustained incomplete rate means nobody is flushing.",
+      "description": "storage.rpc.shard_absent: this node owns the shard in the ring but holds no data, so the read failed over \u2014 the ring and the data disagree. storage.rpc.shard_incomplete: it holds the shard but came back without the unflushed head, so the window is only on another owner. A sustained incomplete rate means nobody is flushing. Both are failovers the query survives. storage.rpc.read_incomplete is not: every owner disclaimed and at least one knew it was short, so the query failed. Any non-zero rate is user-visible unavailability and the direct measure of what repair owes.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2795,7 +2795,31 @@
           },
           "unit": "cps"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/^unanswered .*/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 20
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -2840,9 +2864,20 @@
           "legendFormat": "incomplete {{op}} @ {{host.name}}",
           "range": true,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (op, \"host.name\") (rate({\"storage.rpc.read_incomplete\", \"host.name\"=~\"$node\"}[$__rate_interval]))",
+          "legendFormat": "unanswered {{op}} @ {{host.name}}",
+          "range": true,
+          "refId": "C"
         }
       ],
-      "title": "Shard failover/s",
+      "title": "Shard failover & unanswered reads/s",
       "type": "timeseries"
     },
     {
