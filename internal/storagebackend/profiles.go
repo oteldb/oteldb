@@ -31,8 +31,13 @@ var reservedProfileLabels = map[string]struct{}{
 // ProfileTypes implements [profilestorage.Querier]. It enumerates the distinct profile types of the
 // tenant's streams in the window, reading the type out of each series' reserved labels.
 func (q *ProfileQuerier) ProfileTypes(ctx context.Context, opts profilestorage.ProfileTypesOptions) ([]profileql.ProfileType, error) {
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	start, end := seriesWindow(opts.Start, opts.End)
-	series, err := q.b.src.ProfileSeries(ctx, q.b.tenant, nil, start, end)
+	series, err := q.b.src.ProfileSeries(ctx, tenant, nil, start, end)
 	if err != nil {
 		return nil, errors.Wrap(err, "profile series")
 	}
@@ -58,8 +63,13 @@ func (q *ProfileQuerier) LabelNames(ctx context.Context, opts profilestorage.Lab
 	if err != nil {
 		return nil, err
 	}
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	start, end := seriesWindow(opts.Start, opts.End)
-	series, err := q.b.src.ProfileSeries(ctx, q.b.tenant, matchers, start, end)
+	series, err := q.b.src.ProfileSeries(ctx, tenant, matchers, start, end)
 	if err != nil {
 		return nil, errors.Wrap(err, "profile series")
 	}
@@ -78,8 +88,13 @@ func (q *ProfileQuerier) LabelValues(ctx context.Context, label string, opts pro
 	if err != nil {
 		return nil, err
 	}
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	start, end := seriesWindow(opts.Start, opts.End)
-	series, err := q.b.src.ProfileSeries(ctx, q.b.tenant, matchers, start, end)
+	series, err := q.b.src.ProfileSeries(ctx, tenant, matchers, start, end)
 	if err != nil {
 		return nil, errors.Wrap(err, "profile series")
 	}
@@ -104,14 +119,19 @@ func (q *ProfileQuerier) SelectMergeProfile(ctx context.Context, params profiles
 		return nil, err
 	}
 
-	resolver, err := q.b.src.ProfileResolver(ctx, q.b.tenant)
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	resolver, err := q.b.src.ProfileResolver(ctx, tenant)
 	if err != nil {
 		return nil, errors.Wrap(err, "profile resolver")
 	}
 
 	lo, hi := fetchWindow(params.Start, params.End)
 	req := fetch.Request{
-		Tenant:     q.b.tenant,
+		Tenant:     tenant,
 		Signal:     signal.Profile,
 		Start:      lo,
 		End:        hi,
@@ -119,7 +139,7 @@ func (q *ProfileQuerier) SelectMergeProfile(ctx context.Context, params profiles
 		Projection: []string{sigprofile.ColStackID, sigprofile.ColValue},
 	}
 
-	it, err := q.b.src.ProfileFetcher(q.b.tenant).Fetch(ctx, req)
+	it, err := q.b.src.ProfileFetcher(tenant).Fetch(ctx, req)
 	if err != nil {
 		return nil, errors.Wrap(err, "fetch profiles")
 	}

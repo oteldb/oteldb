@@ -80,7 +80,12 @@ func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.
 
 // TraceByID implements [tracestorage.Querier]. It fetches every span of one trace by id.
 func (q *TraceQuerier) TraceByID(ctx context.Context, id otelstorage.TraceID, _ tracestorage.TraceByIDOptions) (iterators.Iterator[tracestorage.Span], error) {
-	batches, err := q.b.src.Trace(ctx, q.b.tenant, id[:])
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	batches, err := q.b.src.Trace(ctx, tenant, id[:])
 	if err != nil {
 		return nil, errors.Wrap(err, "trace by id")
 	}
@@ -140,7 +145,12 @@ func (q *TraceQuerier) TagNames(ctx context.Context, opts tracestorage.TagNamesO
 	}
 
 	if opts.Scope == traceql.ScopeNone || opts.Scope == traceql.ScopeSpan {
-		keys, err := q.b.src.TraceKeys(ctx, q.b.tenant, lo, hi)
+		tenant, err := q.b.tenantFor(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		keys, err := q.b.src.TraceKeys(ctx, tenant, lo, hi)
 		if err != nil {
 			return nil, errors.Wrap(err, "trace keys")
 		}
@@ -279,7 +289,12 @@ func (q *TraceQuerier) forEachStreamTag(
 func (q *TraceQuerier) forEachStreamAttr(
 	ctx context.Context, lo, hi int64, fn func(scope traceql.AttributeScope, name, value string),
 ) error {
-	series, err := q.b.src.TraceSeries(ctx, q.b.tenant, nil, lo, hi)
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return err
+	}
+
+	series, err := q.b.src.TraceSeries(ctx, tenant, nil, lo, hi)
 	if err != nil {
 		return errors.Wrap(err, "trace series")
 	}
@@ -369,7 +384,12 @@ func (q *TraceQuerier) scopeTagValues(
 ) (iterators.Iterator[tracestorage.Tag], error) {
 	lo, hi := seriesWindow(opts.Start, opts.End)
 
-	series, err := q.b.src.TraceSeries(ctx, q.b.tenant, nil, lo, hi)
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	series, err := q.b.src.TraceSeries(ctx, tenant, nil, lo, hi)
 	if err != nil {
 		return nil, errors.Wrap(err, "trace series")
 	}
@@ -414,7 +434,12 @@ func (q *TraceQuerier) columnTagValues(
 	ctx context.Context, attr traceql.Attribute, column string, opts tracestorage.TagValuesOptions,
 ) (iterators.Iterator[tracestorage.Tag], error) {
 	lo, hi := seriesWindow(opts.Start, opts.End)
-	values, err := q.b.src.ColumnValues(ctx, q.b.tenant, storage.ValuesRequest{
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	values, err := q.b.src.ColumnValues(ctx, tenant, storage.ValuesRequest{
 		Signal: signal.Trace,
 		Column: column,
 		Start:  lo,
@@ -439,7 +464,12 @@ func (q *TraceQuerier) attrTagValues(
 	ctx context.Context, attr traceql.Attribute, opts tracestorage.TagValuesOptions,
 ) (iterators.Iterator[tracestorage.Tag], error) {
 	lo, hi := seriesWindow(opts.Start, opts.End)
-	values, err := q.b.src.ColumnValues(ctx, q.b.tenant, storage.ValuesRequest{
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	values, err := q.b.src.ColumnValues(ctx, tenant, storage.ValuesRequest{
 		Signal:  signal.Trace,
 		AttrKey: []byte(attr.Name),
 		Start:   lo,
@@ -576,8 +606,13 @@ func (q *TraceQuerier) candidateTraces(
 func (q *TraceQuerier) collectTraceIDs(
 	ctx context.Context, lo, hi int64, group traceFilter, ids map[otelstorage.TraceID]struct{},
 ) error {
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return err
+	}
+
 	req := fetch.Request{
-		Tenant:   q.b.tenant,
+		Tenant:   tenant,
 		Signal:   signal.Trace,
 		Start:    lo,
 		End:      hi,
@@ -591,7 +626,7 @@ func (q *TraceQuerier) collectTraceIDs(
 		req.AllConditions = true
 	}
 
-	it, err := q.b.src.TraceFetcher(q.b.tenant).Fetch(ctx, req)
+	it, err := q.b.src.TraceFetcher(tenant).Fetch(ctx, req)
 	if err != nil {
 		return errors.Wrap(err, "fetch candidate traces")
 	}
@@ -616,9 +651,14 @@ func (q *TraceQuerier) collectTraceIDs(
 func (q *TraceQuerier) scanSpans(
 	ctx context.Context, start, end time.Time, traceIDs map[otelstorage.TraceID]struct{},
 ) ([]tracestorage.Span, error) {
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	lo, hi := fetchWindow(start, end)
 	req := fetch.Request{
-		Tenant: q.b.tenant,
+		Tenant: tenant,
 		Signal: signal.Trace,
 		Start:  lo,
 		End:    hi,
@@ -628,7 +668,7 @@ func (q *TraceQuerier) scanSpans(
 		req.AllConditions = true
 	}
 
-	it, err := q.b.src.TraceFetcher(q.b.tenant).Fetch(ctx, req)
+	it, err := q.b.src.TraceFetcher(tenant).Fetch(ctx, req)
 	if err != nil {
 		return nil, errors.Wrap(err, "fetch spans")
 	}

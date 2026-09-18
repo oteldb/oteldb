@@ -101,7 +101,7 @@ func TestTenancyOption(t *testing.T) {
 	})
 
 	t.Run("ResolvesPolicyForEveryTenant", func(t *testing.T) {
-		opt, err := tenancyOption(&PolicyConfig{
+		opt, err := tenancyOption(&PolicyConfig{PolicyRules: PolicyRules{
 			Precision: []PrecisionTierConfig{
 				{After: 7 * 24 * time.Hour, Bits: 32},
 				{After: 30 * 24 * time.Hour, Bits: 16},
@@ -121,7 +121,7 @@ func TestTenancyOption(t *testing.T) {
 				MaxPartSize:          32 << 20,
 				MaxMergePartSize:     512 << 20,
 			},
-		})
+		}})
 		require.NoError(t, err)
 		o := applyOption(t, opt)
 		require.NotNil(t, o.Tenancy)
@@ -163,9 +163,9 @@ func TestTenancyOption(t *testing.T) {
 	})
 
 	t.Run("RetentionOnlyInstallsResolver", func(t *testing.T) {
-		opt, err := tenancyOption(&PolicyConfig{
+		opt, err := tenancyOption(&PolicyConfig{PolicyRules: PolicyRules{
 			Retention: &RetentionConfig{MaxAge: 14 * 24 * time.Hour},
-		})
+		}})
 		require.NoError(t, err)
 		o := applyOption(t, opt)
 		require.NotNil(t, o.Tenancy, "a retention-only policy must still install a resolver")
@@ -173,9 +173,9 @@ func TestTenancyOption(t *testing.T) {
 	})
 
 	t.Run("LimitsOnlyInstallsResolver", func(t *testing.T) {
-		opt, err := tenancyOption(&PolicyConfig{
+		opt, err := tenancyOption(&PolicyConfig{PolicyRules: PolicyRules{
 			Limits: &LimitsConfig{MaxSeries: 1000},
-		})
+		}})
 		require.NoError(t, err)
 		o := applyOption(t, opt)
 		require.NotNil(t, o.Tenancy)
@@ -183,9 +183,9 @@ func TestTenancyOption(t *testing.T) {
 	})
 
 	t.Run("ECOnlyInstallsResolver", func(t *testing.T) {
-		opt, err := tenancyOption(&PolicyConfig{
+		opt, err := tenancyOption(&PolicyConfig{PolicyRules: PolicyRules{
 			EC: &ECConfig{Data: 6, Parity: 3},
-		})
+		}})
 		require.NoError(t, err)
 		o := applyOption(t, opt)
 		require.NotNil(t, o.Tenancy, "an EC-only policy must still install a resolver")
@@ -206,30 +206,30 @@ func TestTenancyOption(t *testing.T) {
 			"NegativeAfter": {Data: 4, Parity: 2, After: -time.Hour},
 		} {
 			t.Run(name, func(t *testing.T) {
-				_, err := tenancyOption(&PolicyConfig{EC: cfg})
+				_, err := tenancyOption(&PolicyConfig{PolicyRules: PolicyRules{EC: cfg}})
 				require.Error(t, err)
 			})
 		}
 	})
 
 	t.Run("UnknownAggIsAnError", func(t *testing.T) {
-		_, err := tenancyOption(&PolicyConfig{
+		_, err := tenancyOption(&PolicyConfig{PolicyRules: PolicyRules{
 			Downsample: []DownsampleTierConfig{{Interval: time.Minute, Agg: "median"}},
-		})
+		}})
 		require.Error(t, err)
 	})
 
 	t.Run("NegativeRetentionIsAnError", func(t *testing.T) {
-		_, err := tenancyOption(&PolicyConfig{
+		_, err := tenancyOption(&PolicyConfig{PolicyRules: PolicyRules{
 			Retention: &RetentionConfig{MaxAge: -time.Hour},
-		})
+		}})
 		require.Error(t, err)
 	})
 
 	t.Run("SoftSeriesAboveHardIsAnError", func(t *testing.T) {
-		_, err := tenancyOption(&PolicyConfig{
+		_, err := tenancyOption(&PolicyConfig{PolicyRules: PolicyRules{
 			Limits: &LimitsConfig{MaxSeries: 100, MaxSeriesSoft: 200},
-		})
+		}})
 		require.Error(t, err)
 	})
 }
@@ -237,7 +237,7 @@ func TestTenancyOption(t *testing.T) {
 func TestWarnECInert(t *testing.T) {
 	sharedNothing := &ClusterConfig{Etcd: []string{"http://etcd:2379"}, PrivateBackend: true}
 	sharedStore := &ClusterConfig{Etcd: []string{"http://etcd:2379"}}
-	ecPolicy := &PolicyConfig{EC: &ECConfig{Data: 4, Parity: 2}}
+	ecPolicy := &PolicyConfig{PolicyRules: PolicyRules{EC: &ECConfig{Data: 4, Parity: 2}}}
 
 	for name, tt := range map[string]struct {
 		cluster *ClusterConfig
@@ -248,7 +248,7 @@ func TestWarnECInert(t *testing.T) {
 		"SharedStore":        {sharedStore, ecPolicy, true},
 		"SingleNode":         {nil, ecPolicy, true},
 		"ClusterWithoutEtcd": {&ClusterConfig{ID: "n1"}, ecPolicy, true},
-		"NoECPolicy":         {sharedStore, &PolicyConfig{Retention: &RetentionConfig{}}, false},
+		"NoECPolicy":         {sharedStore, &PolicyConfig{PolicyRules: PolicyRules{Retention: &RetentionConfig{}}}, false},
 		"NoPolicy":           {sharedStore, nil, false},
 	} {
 		t.Run(name, func(t *testing.T) {

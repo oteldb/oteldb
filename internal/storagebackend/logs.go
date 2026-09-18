@@ -124,11 +124,16 @@ type fetchOptions struct {
 // batches for [lo, hi]. Shared by the entry-materialization path (EvalPipeline) and the bucketed
 // sampling path (bucketSamplingNode.EvalBucketedSample).
 func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, opts fetchOptions) (_ []*fetch.Batch, selectorPushed bool, _ error) {
+	tenant, err := n.q.b.tenantFor(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+
 	// Offload equality matchers: resource/scope labels prune streams via the postings index, clean
 	// record-attribute labels drop records via a per-record condition — both before materialization.
-	matchers, selConds, selectorPushed := n.streamFilters(ctx, lo, hi)
+	matchers, selConds, selectorPushed := n.streamFilters(ctx, tenant, lo, hi)
 	req := fetch.Request{
-		Tenant:     n.q.b.tenant,
+		Tenant:     tenant,
 		Signal:     signal.Log,
 		Start:      lo,
 		End:        hi,
@@ -151,7 +156,7 @@ func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, opts fet
 		req.AllConditions = true
 	}
 
-	it, err := n.q.b.src.LogFetcher(n.q.b.tenant).Fetch(ctx, req)
+	it, err := n.q.b.src.LogFetcher(tenant).Fetch(ctx, req)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "fetch logs")
 	}
@@ -291,7 +296,9 @@ func (n *logStreamNode) materializeRange(selector preparedSelector, batches []*f
 // selectorPushed reports whether every selector matcher is applied exactly by the returned filters,
 // so a fetched record needs no in-memory matchSelector re-check (used by the bucketed sampling fast
 // path). It shares the single LogKeys lookup.
-func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matchers []fetch.Matcher, conditions []fetch.Condition, selectorPushed bool) {
+func (n *logStreamNode) streamFilters(
+	ctx context.Context, tenant signal.TenantID, lo, hi int64,
+) (matchers []fetch.Matcher, conditions []fetch.Condition, selectorPushed bool) {
 	var (
 		// wanted holds the pushable matchers per label; a label may carry several, which AND.
 		wanted = map[string][]logql.LabelMatcher{}
@@ -322,7 +329,7 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 		return nil, conditions, len(n.selector) == 0
 	}
 
-	keys, err := n.q.b.src.LogKeys(ctx, n.q.b.tenant, lo, hi)
+	keys, err := n.q.b.src.LogKeys(ctx, tenant, lo, hi)
 	if err != nil {
 		return nil, conditions, false // best effort: fall back to in-memory filtering.
 	}
@@ -607,8 +614,13 @@ func (q *LogQuerier) LabelNames(ctx context.Context, opts logstorage.LabelsOptio
 	// rather than stream-scoped, so only fold them in for an unfiltered listing — a stream selector
 	// can't soundly restrict them.
 	if len(opts.Query.Matchers) == 0 {
+		tenant, err := q.b.tenantFor(ctx)
+		if err != nil {
+			return nil, err
+		}
+
 		lo, hi := seriesWindow(opts.Start, opts.End)
-		keys, err := q.b.src.LogKeys(ctx, q.b.tenant, lo, hi)
+		keys, err := q.b.src.LogKeys(ctx, tenant, lo, hi)
 		if err != nil {
 			return nil, errors.Wrap(err, "log keys")
 		}
@@ -701,7 +713,12 @@ func (q *LogQuerier) recordAttrValues(
 ) error {
 	lo, hi := seriesWindow(opts.Start, opts.End)
 
-	keys, err := q.b.src.LogKeys(ctx, q.b.tenant, lo, hi)
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return err
+	}
+
+	keys, err := q.b.src.LogKeys(ctx, tenant, lo, hi)
 	if err != nil {
 		return errors.Wrap(err, "log keys")
 	}
@@ -714,7 +731,7 @@ func (q *LogQuerier) recordAttrValues(
 			continue
 		}
 
-		got, err := q.b.src.ColumnValues(ctx, q.b.tenant, storage.ValuesRequest{
+		got, err := q.b.src.ColumnValues(ctx, tenant, storage.ValuesRequest{
 			Signal:  signal.Log,
 			AttrKey: ki.Key,
 			Start:   lo,
@@ -825,8 +842,13 @@ func (q *LogQuerier) DetectedFields(ctx context.Context, opts logstorage.LabelsO
 
 // logStreams returns the label sets of the streams matching the selector within [start, end].
 func (q *LogQuerier) logStreams(ctx context.Context, start, end time.Time, matchers []logql.LabelMatcher) ([]logqlabels.LabelSet, error) {
+	tenant, err := q.b.tenantFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	lo, hi := seriesWindow(start, end)
-	series, err := q.b.src.LogSeries(ctx, q.b.tenant, nil, lo, hi)
+	series, err := q.b.src.LogSeries(ctx, tenant, nil, lo, hi)
 	if err != nil {
 		return nil, errors.Wrap(err, "log series")
 	}
