@@ -33,7 +33,8 @@ func convertBothMetrics(tb testing.TB, md pmetric.Metrics) (direct, viaPdata *me
 	require.NoError(tb, err)
 
 	viaPdata = &metric.Metrics{}
-	pdataDropped = pdataconv.AppendMetrics(viaPdata, md)
+	// The direct converter does not decode exemplars, so only the dropped *points* are comparable.
+	pdataDropped = pdataconv.AppendMetrics(viaPdata, md).Points
 
 	return canonicalMetrics(direct), canonicalMetrics(viaPdata), dropped, pdataDropped
 }
