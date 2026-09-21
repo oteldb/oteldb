@@ -2084,6 +2084,52 @@ func (o OptInt64) Or(d int64) int64 {
 	return d
 }
 
+// NewOptPartEfficiencyOtherBytes returns new OptPartEfficiencyOtherBytes with value set to v.
+func NewOptPartEfficiencyOtherBytes(v PartEfficiencyOtherBytes) OptPartEfficiencyOtherBytes {
+	return OptPartEfficiencyOtherBytes{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptPartEfficiencyOtherBytes is optional PartEfficiencyOtherBytes.
+type OptPartEfficiencyOtherBytes struct {
+	Value PartEfficiencyOtherBytes
+	Set   bool
+}
+
+// IsSet returns true if OptPartEfficiencyOtherBytes was set.
+func (o OptPartEfficiencyOtherBytes) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptPartEfficiencyOtherBytes) Reset() {
+	var v PartEfficiencyOtherBytes
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptPartEfficiencyOtherBytes) SetTo(v PartEfficiencyOtherBytes) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptPartEfficiencyOtherBytes) Get() (v PartEfficiencyOtherBytes, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptPartEfficiencyOtherBytes) Or(d PartEfficiencyOtherBytes) PartEfficiencyOtherBytes {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptPartSyncStats returns new OptPartSyncStats with value set to v.
 func NewOptPartSyncStats(v PartSyncStats) OptPartSyncStats {
 	return OptPartSyncStats{
@@ -2268,6 +2314,84 @@ func (o OptTraceID) Or(d TraceID) TraceID {
 	return d
 }
 
+// One part column's physical description and the size it takes on the backend.
+// Ref: #/components/schemas/PartColumn
+type PartColumn struct {
+	// Column name.
+	Name string `json:"name"`
+	// Physical type of the column's values.
+	Kind string `json:"kind"`
+	// Value codec the column is encoded with.
+	Codec string `json:"codec"`
+	// Block-compression algorithm applied on top of the codec.
+	Compress string `json:"compress"`
+	// Block-compression level the column was written at; 0 means the algorithm default or an uncompressed
+	// column. Merged metric parts climb a size-graduated ladder, so it varies from part to part.
+	Level OptInt `json:"level"`
+	// Size of the column's object; 0 for a constant-collapsed column, which has none.
+	Bytes int64 `json:"bytes"`
+}
+
+// GetName returns the value of Name.
+func (s *PartColumn) GetName() string {
+	return s.Name
+}
+
+// GetKind returns the value of Kind.
+func (s *PartColumn) GetKind() string {
+	return s.Kind
+}
+
+// GetCodec returns the value of Codec.
+func (s *PartColumn) GetCodec() string {
+	return s.Codec
+}
+
+// GetCompress returns the value of Compress.
+func (s *PartColumn) GetCompress() string {
+	return s.Compress
+}
+
+// GetLevel returns the value of Level.
+func (s *PartColumn) GetLevel() OptInt {
+	return s.Level
+}
+
+// GetBytes returns the value of Bytes.
+func (s *PartColumn) GetBytes() int64 {
+	return s.Bytes
+}
+
+// SetName sets the value of Name.
+func (s *PartColumn) SetName(val string) {
+	s.Name = val
+}
+
+// SetKind sets the value of Kind.
+func (s *PartColumn) SetKind(val string) {
+	s.Kind = val
+}
+
+// SetCodec sets the value of Codec.
+func (s *PartColumn) SetCodec(val string) {
+	s.Codec = val
+}
+
+// SetCompress sets the value of Compress.
+func (s *PartColumn) SetCompress(val string) {
+	s.Compress = val
+}
+
+// SetLevel sets the value of Level.
+func (s *PartColumn) SetLevel(val OptInt) {
+	s.Level = val
+}
+
+// SetBytes sets the value of Bytes.
+func (s *PartColumn) SetBytes(val int64) {
+	s.Bytes = val
+}
+
 // One flushed part's identity and size.
 // Ref: #/components/schemas/PartEfficiency
 type PartEfficiency struct {
@@ -2281,6 +2405,16 @@ type PartEfficiency struct {
 	Rows int64 `json:"rows"`
 	// Distinct series/streams in the part.
 	Series int64 `json:"series"`
+	// The part's columns, each with its physical layout and the size of its object. Present only when the
+	// part was read in enough detail to know them; a column whose values all collapsed to a constant has
+	// no object and so reports 0 bytes. Together with `other_bytes` the column sizes sum to `bytes`, which
+	// is what makes a single column's share of a store — the metric timestamp column's, say —
+	// measurable from the API.
+	Columns []PartColumn `json:"columns"`
+	// Every non-column object in the part, keyed by its name under the part prefix (`manifest`, `marks`,
+	// and the engine's own indexes, e.g. `identity`, `sidx`, `stats`, `blooms`). With the `columns` sizes
+	// it sums to `bytes`.
+	OtherBytes OptPartEfficiencyOtherBytes `json:"other_bytes"`
 }
 
 // GetID returns the value of ID.
@@ -2303,6 +2437,16 @@ func (s *PartEfficiency) GetSeries() int64 {
 	return s.Series
 }
 
+// GetColumns returns the value of Columns.
+func (s *PartEfficiency) GetColumns() []PartColumn {
+	return s.Columns
+}
+
+// GetOtherBytes returns the value of OtherBytes.
+func (s *PartEfficiency) GetOtherBytes() OptPartEfficiencyOtherBytes {
+	return s.OtherBytes
+}
+
 // SetID sets the value of ID.
 func (s *PartEfficiency) SetID(val string) {
 	s.ID = val
@@ -2321,6 +2465,30 @@ func (s *PartEfficiency) SetRows(val int64) {
 // SetSeries sets the value of Series.
 func (s *PartEfficiency) SetSeries(val int64) {
 	s.Series = val
+}
+
+// SetColumns sets the value of Columns.
+func (s *PartEfficiency) SetColumns(val []PartColumn) {
+	s.Columns = val
+}
+
+// SetOtherBytes sets the value of OtherBytes.
+func (s *PartEfficiency) SetOtherBytes(val OptPartEfficiencyOtherBytes) {
+	s.OtherBytes = val
+}
+
+// Every non-column object in the part, keyed by its name under the part prefix (`manifest`, `marks`,
+// and the engine's own indexes, e.g. `identity`, `sidx`, `stats`, `blooms`). With the `columns` sizes
+// it sums to `bytes`.
+type PartEfficiencyOtherBytes map[string]int64
+
+func (s *PartEfficiencyOtherBytes) init() PartEfficiencyOtherBytes {
+	m := *s
+	if m == nil {
+		m = map[string]int64{}
+		*s = m
+	}
+	return m
 }
 
 // Cumulative shared-nothing part-mirroring activity of this node, present only when the cluster runs

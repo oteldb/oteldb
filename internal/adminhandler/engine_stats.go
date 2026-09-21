@@ -177,13 +177,43 @@ func mapParts(parts []storage.PartDetail) []adminapi.PartEfficiency {
 	out := make([]adminapi.PartEfficiency, 0, len(parts))
 	for _, p := range parts {
 		out = append(out, adminapi.PartEfficiency{
-			ID:     p.ID,
-			Bytes:  p.Bytes,
-			Rows:   p.Rows,
-			Series: int64(p.Series),
+			ID:         p.ID,
+			Bytes:      p.Bytes,
+			Rows:       p.Rows,
+			Series:     int64(p.Series),
+			Columns:    mapPartColumns(p.Columns),
+			OtherBytes: mapOtherBytes(p.OtherBytes),
 		})
 	}
 	return out
+}
+
+func mapPartColumns(columns []storage.ColumnInfo) []adminapi.PartColumn {
+	if len(columns) == 0 {
+		return nil
+	}
+	out := make([]adminapi.PartColumn, 0, len(columns))
+	for _, c := range columns {
+		pc := adminapi.PartColumn{
+			Name:     c.Name,
+			Kind:     c.Kind,
+			Codec:    c.Codec,
+			Compress: c.Compress,
+			Bytes:    c.Bytes,
+		}
+		if c.Level != 0 {
+			pc.Level = adminapi.NewOptInt(c.Level)
+		}
+		out = append(out, pc)
+	}
+	return out
+}
+
+func mapOtherBytes(other map[string]int64) adminapi.OptPartEfficiencyOtherBytes {
+	if len(other) == 0 {
+		return adminapi.OptPartEfficiencyOtherBytes{}
+	}
+	return adminapi.NewOptPartEfficiencyOtherBytes(other)
 }
 
 // engineSignal is the inverse of [mapSignal].
