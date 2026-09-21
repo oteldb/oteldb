@@ -17,6 +17,13 @@ const (
 	// reasonNoTimestamp is a log record carrying neither time_unix_nano nor
 	// observed_time_unix_nano: nothing to sort or query it by.
 	reasonNoTimestamp = "no_timestamp"
+	// reasonNoValue is a number data point carrying neither as_double nor as_int: there is
+	// nothing to store, and a zero would be a different reading.
+	reasonNoValue = "no_value"
+	// reasonExemplar is an exemplar with no series to hang off — one on a histogram,
+	// exponential-histogram or summary point, which are stored by classic decomposition into
+	// several series, or one on a point that was itself dropped.
+	reasonExemplar = "exemplar"
 )
 
 const (

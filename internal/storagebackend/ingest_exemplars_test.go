@@ -13,6 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/oteldb/oteldb/internal/otlpdirect"
 	"github.com/oteldb/oteldb/internal/promapi"
@@ -93,10 +96,24 @@ func exemplarsViaCollector(t *testing.T, md pmetric.Metrics) []exemplar.QueryRes
 func exemplarsViaOTLPDirect(t *testing.T, md pmetric.Metrics) []exemplar.QueryResult {
 	t.Helper()
 
+	b, ctx, _ := postOTLPMetrics(t, md)
+
+	return storedExemplars(ctx, t, b)
+}
+
+// postOTLPMetrics posts md to the [otlpdirect] handler odbingest serves, returning the backend it
+// wrote to and the stats the handler reported.
+func postOTLPMetrics(t *testing.T, md pmetric.Metrics) (*storagebackend.Backend, context.Context, otlpdirect.Stats) {
+	t.Helper()
+
 	b, ctx := backendWithMeter(t, nil)
 
+	var stats []otlpdirect.Stats
+
 	mux := http.NewServeMux()
-	otlpdirect.NewHandler(backendSink{b}, otlpdirect.HandlerConfig{}).Register(mux)
+	otlpdirect.NewHandler(backendSink{b}, otlpdirect.HandlerConfig{
+		Observer: func(s otlpdirect.Stats) { stats = append(stats, s) },
+	}).Register(mux)
 
 	raw, err := (&pmetric.ProtoMarshaler{}).MarshalMetrics(md)
 	require.NoError(t, err)
@@ -107,8 +124,106 @@ func exemplarsViaOTLPDirect(t *testing.T, md pmetric.Metrics) []exemplar.QueryRe
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body)
+	require.Len(t, stats, 1)
 
-	return storedExemplars(ctx, t, b)
+	return b, ctx, stats[0]
+}
+
+// undroppableExemplars builds a batch whose exemplars cannot be stored: two on a histogram point,
+// which classic decomposition leaves no series to hang off, and one on a value-less number point,
+// which is dropped and takes its exemplar with it.
+func undroppableExemplars(ts time.Time) pmetric.Metrics {
+	md := pmetric.NewMetrics()
+
+	rm := md.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("service.name", "api")
+
+	sm := rm.ScopeMetrics().AppendEmpty()
+
+	h := sm.Metrics().AppendEmpty()
+	h.SetName("request_duration")
+
+	hist := h.SetEmptyHistogram()
+	hist.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+
+	hp := hist.DataPoints().AppendEmpty()
+	hp.SetTimestamp(pcommon.Timestamp(ts.UnixNano()))
+	hp.SetCount(2)
+	hp.ExplicitBounds().FromRaw([]float64{1})
+	hp.BucketCounts().FromRaw([]uint64{1, 1})
+
+	for range 2 {
+		e := hp.Exemplars().AppendEmpty()
+		e.SetTimestamp(pcommon.Timestamp(ts.UnixNano()))
+		e.SetDoubleValue(1)
+		e.SetTraceID(testTraceID)
+	}
+
+	g := sm.Metrics().AppendEmpty()
+	g.SetName("request_count")
+
+	gp := g.SetEmptyGauge().DataPoints().AppendEmpty()
+	gp.SetTimestamp(pcommon.Timestamp(ts.UnixNano())) // no value
+
+	ge := gp.Exemplars().AppendEmpty()
+	ge.SetTimestamp(pcommon.Timestamp(ts.UnixNano()))
+	ge.SetDoubleValue(1)
+
+	return md
+}
+
+// TestConsumeMetricsCountsDropped pins that the collector sink reports what it could not store.
+// Its signature returns only an error, so this counter is the only place those become visible.
+func TestConsumeMetricsCountsDropped(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	b, ctx := backendWithMeter(t, sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
+
+	require.NoError(t, b.ConsumeMetrics(ctx, undroppableExemplars(time.Now().Truncate(time.Second))))
+
+	require.Equal(t, map[string]int64{"exemplar": 3, "no_value": 1}, droppedByReason(ctx, t, reader))
+}
+
+// TestOTLPDirectReportsDroppedExemplars pins that the odbingest path reports the same drops through
+// its ingest stats, which is where cmd/odbingest's counters come from.
+func TestOTLPDirectReportsDroppedExemplars(t *testing.T) {
+	_, _, stats := postOTLPMetrics(t, undroppableExemplars(time.Now().Truncate(time.Second)))
+
+	require.Equal(t, 3, stats.DroppedExemplars)
+	// Partial success stays a point count: a lost exemplar is not a refused data point.
+	require.Equal(t, 1, stats.Rejected)
+}
+
+// droppedByReason sums oteldb.storage.dropped_records for the metrics signal, keyed by reason.
+func droppedByReason(ctx context.Context, t *testing.T, reader *sdkmetric.ManualReader) map[string]int64 {
+	t.Helper()
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(ctx, &rm))
+
+	out := map[string]int64{}
+
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "oteldb.storage.dropped_records" {
+				continue
+			}
+
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok)
+
+			for _, dp := range sum.DataPoints {
+				sig, _ := dp.Attributes.Value(attribute.Key("signal"))
+				if sig.AsString() != "metric" {
+					continue
+				}
+
+				reason, _ := dp.Attributes.Value(attribute.Key("reason"))
+				out[reason.AsString()] += dp.Value
+			}
+		}
+	}
+
+	return out
 }
 
 func storedExemplars(ctx context.Context, t *testing.T, b *storagebackend.Backend) []exemplar.QueryResult {

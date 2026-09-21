@@ -263,8 +263,9 @@ func (b *Backend) MetricMetadata(context.Context, metricstorage.MetadataParams) 
 //
 // Histogram, exponential-histogram and summary points are stored by classic decomposition into
 // float series; a value-less number point has nothing to store and is dropped, as is any exemplar
-// the decomposition leaves without an unambiguous series. The conversion counts both, but nothing
-// here reports them yet.
+// the decomposition leaves without an unambiguous series. Both are counted on
+// oteldb.storage.dropped_records, which is the only report this sink has — its signature returns
+// only an error.
 func (b *Backend) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
 	// A fresh batch is used (not pooled) because the engine may retain projected series
 	// bytes; pdataconv already copies out of pdata, so this allocates regardless.
@@ -273,7 +274,10 @@ func (b *Backend) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error 
 	}
 
 	var batch metric.Metrics
-	pdataconv.AppendMetrics(&batch, md)
+
+	dropped := pdataconv.AppendMetrics(&batch, md)
+	b.countDropped(ctx, signal.Metric, reasonNoValue, dropped.Points)
+	b.countDropped(ctx, signal.Metric, reasonExemplar, dropped.Exemplars)
 
 	if _, err := b.store.WriteMetrics(ctx, batch); err != nil {
 		return errors.Wrap(err, "write metrics")

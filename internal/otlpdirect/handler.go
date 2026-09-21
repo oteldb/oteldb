@@ -59,6 +59,11 @@ type Stats struct {
 	Items int
 	// Rejected is the number the request carried that were not stored.
 	Rejected int
+	// DroppedExemplars is the number of exemplars the request carried that had no series to hang
+	// off (metrics only). It is deliberately not part of Rejected: OTLP partial success counts
+	// data points, and a lost exemplar degrades trace correlation without losing a reading — but
+	// nothing else reports it, so it would otherwise be invisible.
+	DroppedExemplars int
 }
 
 // HandlerConfig configures a [Handler].
@@ -132,81 +137,93 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 func (h *Handler) Logs() http.Handler { return h.serve(signal.Log, h.ingestLogs) }
 
-func (h *Handler) ingestLogs(ctx context.Context, src []byte) (items, rejected int, _ error) {
+func (h *Handler) ingestLogs(ctx context.Context, src []byte) (ingested, error) {
 	c, _ := h.logs.Get().(*LogsConverter)
 	defer h.logs.Put(c)
 
 	batch, dropped, err := c.Convert(src)
 	if err != nil {
-		return 0, 0, err
+		return ingested{}, err
 	}
 
 	if err := h.sink.WriteLogs(ctx, *batch); err != nil {
-		return 0, 0, writeError{err: err}
+		return ingested{}, writeError{err: err}
 	}
 
-	return countRecords(batch), dropped, nil
+	return ingested{items: countRecords(batch), rejected: dropped}, nil
 }
 
 func (h *Handler) Traces() http.Handler { return h.serve(signal.Trace, h.ingestTraces) }
 
-func (h *Handler) ingestTraces(ctx context.Context, src []byte) (items, rejected int, _ error) {
+func (h *Handler) ingestTraces(ctx context.Context, src []byte) (ingested, error) {
 	c, _ := h.traces.Get().(*TracesConverter)
 	defer h.traces.Put(c)
 
 	batch, err := c.Convert(src)
 	if err != nil {
-		return 0, 0, err
+		return ingested{}, err
 	}
 
 	if err := h.sink.WriteTraces(ctx, *batch); err != nil {
-		return 0, 0, writeError{err: err}
+		return ingested{}, writeError{err: err}
 	}
 
-	return countSpans(batch), 0, nil
+	return ingested{items: countSpans(batch)}, nil
 }
 
 func (h *Handler) Metrics() http.Handler { return h.serve(signal.Metric, h.ingestMetrics) }
 
-func (h *Handler) ingestMetrics(ctx context.Context, src []byte) (items, rejected int, _ error) {
+func (h *Handler) ingestMetrics(ctx context.Context, src []byte) (ingested, error) {
 	c, _ := h.metrics.Get().(*MetricsConverter)
 	defer h.metrics.Put(c)
 
 	batch, dropped, err := c.Convert(src)
 	if err != nil {
-		return 0, 0, err
+		return ingested{}, err
 	}
 
 	if err := h.sink.WriteMetrics(ctx, *batch); err != nil {
-		return 0, 0, writeError{err: err}
+		return ingested{}, writeError{err: err}
 	}
 
 	// Only the points are rejected data: OTLP partial success counts data points, and an exemplar
-	// the conversion could not place degrades trace correlation without losing a series.
-	return countPoints(batch), dropped.Points, nil
+	// the conversion could not place degrades trace correlation without losing a series. The
+	// exemplars still ride along in the stats, which is the only place they become visible.
+	return ingested{
+		items:     countPoints(batch),
+		rejected:  dropped.Points,
+		exemplars: dropped.Exemplars,
+	}, nil
 }
 
 func (h *Handler) Profiles() http.Handler { return h.serve(signal.Profile, h.ingestProfiles) }
 
-func (h *Handler) ingestProfiles(ctx context.Context, src []byte) (items, rejected int, _ error) {
+func (h *Handler) ingestProfiles(ctx context.Context, src []byte) (ingested, error) {
 	c, _ := h.profiles.Get().(*ProfilesConverter)
 	defer h.profiles.Put(c)
 
 	batch, err := c.Convert(src)
 	if err != nil {
-		return 0, 0, err
+		return ingested{}, err
 	}
 
 	if err := h.sink.WriteProfiles(ctx, batch); err != nil {
-		return 0, 0, writeError{err: err}
+		return ingested{}, writeError{err: err}
 	}
 
-	return countSamples(batch), 0, nil
+	return ingested{items: countSamples(batch)}, nil
+}
+
+// ingested is what one decoded request yielded: see the [Stats] fields of the same names.
+type ingested struct {
+	items     int
+	rejected  int
+	exemplars int
 }
 
 // ingestFunc decodes one request body and writes it, returning what it ingested and what it could
 // not represent.
-type ingestFunc func(ctx context.Context, src []byte) (items, rejected int, _ error)
+type ingestFunc func(ctx context.Context, src []byte) (ingested, error)
 
 // writeError marks a sink failure, answered with 5xx so the client retries rather than drops the
 // batch. Everything else is the request's own fault and answered with 4xx.
@@ -230,11 +247,11 @@ func (h *Handler) serve(sig signal.Signal, ingest ingestFunc) http.Handler {
 
 		src, err := b.read(r, h.maxBody, h.maxDecoded)
 		if err == nil {
-			var items, rejected int
+			var in ingested
 
-			items, rejected, err = ingest(r.Context(), src)
+			in, err = ingest(r.Context(), src)
 			if err == nil {
-				h.respond(w, sig, len(src), items, rejected)
+				h.respond(w, sig, len(src), in)
 
 				return
 			}
@@ -254,19 +271,25 @@ func (h *Handler) serve(sig signal.Signal, ingest ingestFunc) http.Handler {
 // respond answers a successful export. OTLP wants a serialized ExportXServiceResponse, and an
 // empty message is the full-success form for every signal — the partial-success submessage is
 // simply absent, which is what a rejected count of zero means.
-func (h *Handler) respond(w http.ResponseWriter, sig signal.Signal, size, items, rejected int) {
+func (h *Handler) respond(w http.ResponseWriter, sig signal.Signal, size int, in ingested) {
 	if h.observe != nil {
-		h.observe(Stats{Signal: sig, Bytes: size, Items: items, Rejected: rejected})
+		h.observe(Stats{
+			Signal:           sig,
+			Bytes:            size,
+			Items:            in.items,
+			Rejected:         in.rejected,
+			DroppedExemplars: in.exemplars,
+		})
 	}
 
 	w.Header().Set("Content-Type", protobufContentType)
 	w.WriteHeader(http.StatusOK)
 
-	if rejected == 0 {
+	if in.rejected == 0 {
 		return
 	}
 
-	_, _ = w.Write(encodePartialSuccess(sig, rejected))
+	_, _ = w.Write(encodePartialSuccess(sig, in.rejected))
 }
 
 // body is the per-request read buffer, recycled across requests.
