@@ -147,7 +147,8 @@ type LimitsConfig struct {
 	MaxPartSize xbytes.Bytes `json:"max_part_size" yaml:"max_part_size"`
 	// MaxMergePartSize caps a merged part's size on disk, in compressed bytes rather than
 	// MaxPartSize's uncompressed estimate. Zero derives it from the backend's free space, which is
-	// the default and lets part size track the deployment; negative never seals.
+	// the default and lets part size track the deployment. The library never seals on a negative,
+	// but a size cannot be written negative, so that opt-out is not expressible here.
 	//
 	// Merges are sized separately from flushes because they answer a different question: a flush is
 	// bounded so rows land promptly, a merge so part *count* stays low. Under a byte constant the
@@ -155,11 +156,6 @@ type LimitsConfig struct {
 	// more parts the larger the tenant gets.
 	MaxMergePartSize xbytes.Bytes `json:"max_merge_part_size" yaml:"max_merge_part_size"`
 }
-
-// errNegativeBytes reports a byte budget that arrived negative. A size is parsed as uint64 and
-// stored as int64, so anything in [2^63, 2^64) wraps without a decode error — and the library reads
-// a negative budget as unset, which would turn a huge cap into unlimited retention.
-var errNegativeBytes = errors.New("must not be negative; sizes at or above 8EiB overflow")
 
 // retentionSignalNames lists the accepted per-signal budget keys, for the error a typo produces.
 const retentionSignalNames = `"metric", "log", "trace", "profile", "exemplar"`
@@ -317,8 +313,8 @@ func (cfg *PolicyConfig) policy() (tenant.Policy, error) {
 		if r.MaxAge < 0 {
 			return tenant.Policy{}, errors.New("retention: max_age must not be negative")
 		}
-		if r.MaxBytes < 0 {
-			return tenant.Policy{}, errors.Wrap(errNegativeBytes, "retention: max_bytes")
+		if err := checkBytes(namedBytes{"max_bytes", r.MaxBytes}); err != nil {
+			return tenant.Policy{}, errors.Wrap(err, "retention")
 		}
 		perSignal, err := retentionPerSignal(r.MaxBytesPerSignal)
 		if err != nil {
@@ -332,6 +328,14 @@ func (cfg *PolicyConfig) policy() (tenant.Policy, error) {
 	}
 
 	if l := cfg.Limits; l != nil {
+		if err := checkBytes(
+			namedBytes{"ingest_bytes_per_second", l.IngestBytesPerSecond},
+			namedBytes{"max_in_flight_bytes", l.MaxInFlightBytes},
+			namedBytes{"max_part_size", l.MaxPartSize},
+			namedBytes{"max_merge_part_size", l.MaxMergePartSize},
+		); err != nil {
+			return tenant.Policy{}, errors.Wrap(err, "limits")
+		}
 		if l.MaxSeriesSoft > 0 && l.MaxSeries > 0 && l.MaxSeriesSoft > l.MaxSeries {
 			return tenant.Policy{}, errors.Errorf("limits: max_series_soft (%d) must not exceed max_series (%d)",
 				l.MaxSeriesSoft, l.MaxSeries)

@@ -35,6 +35,10 @@ import (
 // oteldb's metric query and ingestion interfaces. The returned close func stops and flushes
 // the engine. It is used when [Config.MetricsBackend] is [MetricsBackendStorage].
 func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*Backend, func(context.Context) error, error) {
+	if err := cfg.validate(); err != nil {
+		return nil, nil, errors.Wrap(err, "storage")
+	}
+
 	// The engine logs, traces, and meters through the injected providers (no-op if absent).
 	opts := []storage.Option{
 		storage.WithLogger(lg),

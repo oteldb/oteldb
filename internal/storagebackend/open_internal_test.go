@@ -18,12 +18,15 @@ import (
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
-// mustBytes decodes a humanized size the way the YAML config loader does, so a test exercises the
-// values an operator can actually produce.
-func mustBytes(t *testing.T, s string) xbytes.Bytes {
+// overflowBytes returns what an operator's "10EB" decodes to, through the same text path the YAML
+// and JSON loaders take: a size is parsed as uint64 and kept as int64, so it arrives wrapped
+// negative with no decode error. It is the only way a negative reaches a byte setting — the size
+// parser rejects a leading "-" — which is what makes these the values worth testing.
+func overflowBytes(t *testing.T) xbytes.Bytes {
 	t.Helper()
 	var b xbytes.Bytes
-	require.NoError(t, b.UnmarshalText([]byte(s)))
+	require.NoError(t, b.UnmarshalText([]byte("10EB")))
+	require.Negative(t, b, "10EB must overflow, or the overflow tests prove nothing")
 	return b
 }
 
@@ -226,9 +229,7 @@ func TestTenancyOption(t *testing.T) {
 	// negative with no decode error. The library reads a negative budget as unset, so without a
 	// guard an operator asking for a huge cap silently gets unlimited retention.
 	t.Run("OverflowingSignalBudgetIsAnError", func(t *testing.T) {
-		budget := mustBytes(t, "10EB")
-		require.Negative(t, budget, "10EB must overflow, or this test proves nothing")
-
+		budget := overflowBytes(t)
 		_, err := tenancyOption(&PolicyConfig{
 			Retention: &RetentionConfig{MaxBytesPerSignal: map[string]xbytes.Bytes{"log": budget}},
 		})
@@ -237,7 +238,7 @@ func TestTenancyOption(t *testing.T) {
 
 	t.Run("OverflowingMaxBytesIsAnError", func(t *testing.T) {
 		_, err := tenancyOption(&PolicyConfig{
-			Retention: &RetentionConfig{MaxBytes: mustBytes(t, "10EB")},
+			Retention: &RetentionConfig{MaxBytes: overflowBytes(t)},
 		})
 		require.Error(t, err)
 	})
@@ -250,6 +251,24 @@ func TestTenancyOption(t *testing.T) {
 			"trace": 1 << 30,
 		}}
 		require.Equal(t, 1, retentionSignalBudgets(cfg))
+	})
+
+	// Every byte-valued limit wraps negative at or above 8EiB, and the library reads each negative
+	// as "off": an unlimited ingest rate, no in-flight backpressure, the default part size, and a
+	// merge that never seals. All four are the opposite of the bound that was asked for.
+	t.Run("OverflowingLimitIsAnError", func(t *testing.T) {
+		overflow := overflowBytes(t)
+		for name, cfg := range map[string]*LimitsConfig{
+			"IngestBytesPerSecond": {IngestBytesPerSecond: overflow},
+			"MaxInFlightBytes":     {MaxInFlightBytes: overflow},
+			"MaxPartSize":          {MaxPartSize: overflow},
+			"MaxMergePartSize":     {MaxMergePartSize: overflow},
+		} {
+			t.Run(name, func(t *testing.T) {
+				_, err := tenancyOption(&PolicyConfig{Limits: cfg})
+				require.ErrorIs(t, err, errNegativeBytes)
+			})
+		}
 	})
 
 	t.Run("LimitsOnlyInstallsResolver", func(t *testing.T) {
@@ -381,6 +400,31 @@ func TestS3Backend(t *testing.T) {
 			require.NoError(t, err, "profile %q", profile)
 			require.NotNil(t, b)
 		}
+	})
+}
+
+// TestConfigValidate covers the top-level byte settings, which wrap the same way the policy ones
+// do. Each reads a negative as "off", so an overflow turns a large cache or budget into none at
+// all — decode_memory_bytes most sharply, since losing it removes the memory ceiling that keeps
+// query concurrency from driving the heap past GOMEMLIMIT.
+func TestConfigValidate(t *testing.T) {
+	overflow := overflowBytes(t)
+	for name, cfg := range map[string]Config{
+		"ReadCacheBytes":    {ReadCacheBytes: &overflow},
+		"DecodeCacheBytes":  {DecodeCacheBytes: &overflow},
+		"DecodeMemoryBytes": {DecodeMemoryBytes: &overflow},
+		"MaxQueryBytes":     {MaxQueryBytes: &overflow},
+		"MergeMemoryBytes":  {MergeMemoryBytes: &overflow},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorIs(t, cfg.validate(), errNegativeBytes)
+		})
+	}
+
+	t.Run("UnsetAndZeroAreValid", func(t *testing.T) {
+		require.NoError(t, (&Config{}).validate())
+		require.NoError(t, (&Config{ReadCacheBytes: new(xbytes.Bytes)}).validate(),
+			"an explicit 0 disables the cache and is not an overflow")
 	})
 }
 
