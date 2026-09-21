@@ -524,11 +524,11 @@ func (c *ProfilesConverter) link(dict *profile.Dictionary, src []byte) error {
 
 		switch fc.FieldNum {
 		case fieldProfileLinkTraceID:
-			if l.TraceID, err = takeBytes(&fc, "link trace id"); err != nil {
+			if l.TraceID, err = takeID(&fc, traceIDLen, "link trace id"); err != nil {
 				return err
 			}
 		case fieldProfileLinkSpanID:
-			if l.SpanID, err = takeBytes(&fc, "link span id"); err != nil {
+			if l.SpanID, err = takeID(&fc, spanIDLen, "link span id"); err != nil {
 				return err
 			}
 		}
@@ -711,7 +711,7 @@ func (c *ProfilesConverter) profile(sp *profile.ScopeProfiles, src []byte) error
 				return err
 			}
 		case fieldProfileID:
-			if pr.ProfileID, err = takeBytes(&fc, "profile id"); err != nil {
+			if pr.ProfileID, err = takeID(&fc, profileIDLen, "profile id"); err != nil {
 				return err
 			}
 		case fieldProfileDropped:

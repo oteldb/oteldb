@@ -96,6 +96,10 @@ func FuzzConvertTraces(f *testing.F) {
 		}
 	})
 
+	// Wrong-width ids, which pdata cannot marshal and so no seed above can carry.
+	f.Add(encodeSpanIDs(spanIDs{trace: make([]byte, 3), span: make([]byte, 9)}))
+	f.Add(encodeSpanIDs(spanIDs{parent: make([]byte, 16), linkTrace: make([]byte, 8)}))
+
 	f.Add([]byte{})
 	f.Add([]byte{0xff, 0xff, 0xff, 0xff})
 

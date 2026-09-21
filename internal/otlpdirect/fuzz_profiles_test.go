@@ -60,6 +60,10 @@ func FuzzConvertProfiles(f *testing.F) {
 		}
 	})
 
+	// Wrong-width ids, which pdata cannot marshal and so no seed above can carry.
+	f.Add(encodeProfileIDs(profileIDs{profile: make([]byte, 3)}))
+	f.Add(encodeProfileIDs(profileIDs{linkTrace: make([]byte, 8), linkSpan: make([]byte, 16)}))
+
 	f.Add([]byte{})
 	f.Add([]byte{0xff, 0xff, 0xff, 0xff})
 
