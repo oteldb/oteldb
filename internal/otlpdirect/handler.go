@@ -181,7 +181,9 @@ func (h *Handler) ingestMetrics(ctx context.Context, src []byte) (items, rejecte
 		return 0, 0, writeError{err: err}
 	}
 
-	return countPoints(batch), dropped, nil
+	// Only the points are rejected data: OTLP partial success counts data points, and an exemplar
+	// the conversion could not place degrades trace correlation without losing a series.
+	return countPoints(batch), dropped.Points, nil
 }
 
 func (h *Handler) Profiles() http.Handler { return h.serve(signal.Profile, h.ingestProfiles) }
