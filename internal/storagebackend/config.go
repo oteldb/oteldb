@@ -140,9 +140,10 @@ type S3Config struct {
 	Retry string `json:"retry" yaml:"retry"`
 }
 
-// validate reports a byte setting that overflowed. Every one of these reads a negative as "off" —
-// no cache, no admission control, no bound — so an operator asking for a huge budget would
-// otherwise silently get none.
+// validate reports a byte setting that arrived negative. Every one of these reads a negative as
+// "off" — no cache, no admission control, no bound — so one would silently remove the bound it
+// names, decode_memory_bytes most sharply: losing it removes the ceiling that keeps query
+// concurrency from driving the heap past GOMEMLIMIT.
 func (cfg *Config) validate() error {
 	return checkBytes(
 		optionalBytes("read_cache_bytes", cfg.ReadCacheBytes),

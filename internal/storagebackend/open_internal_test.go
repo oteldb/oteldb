@@ -18,17 +18,10 @@ import (
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
-// overflowBytes returns what an operator's "10EB" decodes to, through the same text path the YAML
-// and JSON loaders take: a size is parsed as uint64 and kept as int64, so it arrives wrapped
-// negative with no decode error. It is the only way a negative reaches a byte setting — the size
-// parser rejects a leading "-" — which is what makes these the values worth testing.
-func overflowBytes(t *testing.T) xbytes.Bytes {
-	t.Helper()
-	var b xbytes.Bytes
-	require.NoError(t, b.UnmarshalText([]byte("10EB")))
-	require.Negative(t, b, "10EB must overflow, or the overflow tests prove nothing")
-	return b
-}
+// negativeBytes is a byte setting that arrived negative. A decoded config cannot hold one —
+// [xbytes.Bytes] rejects both an oversized size and a leading "-", which internal/xbytes covers —
+// so this is what a config built in Go can still carry past the guards.
+const negativeBytes xbytes.Bytes = -1
 
 // applyOption applies a storage.Option to a fresh Options and returns it, so tests can inspect what
 // clusterOption configured.
@@ -225,20 +218,18 @@ func TestTenancyOption(t *testing.T) {
 		require.ErrorIs(t, err, signal.ErrUnknownSignal)
 	})
 
-	// A byte size is parsed as uint64 and stored as int64, so anything in [2^63, 2^64) arrives
-	// negative with no decode error. The library reads a negative budget as unset, so without a
-	// guard an operator asking for a huge cap silently gets unlimited retention.
-	t.Run("OverflowingSignalBudgetIsAnError", func(t *testing.T) {
-		budget := overflowBytes(t)
+	// The library reads a negative budget as unset, so without a guard a cap becomes unlimited
+	// retention — the opposite of what the setting names.
+	t.Run("NegativeSignalBudgetIsAnError", func(t *testing.T) {
 		_, err := tenancyOption(&PolicyConfig{
-			Retention: &RetentionConfig{MaxBytesPerSignal: map[string]xbytes.Bytes{"log": budget}},
+			Retention: &RetentionConfig{MaxBytesPerSignal: map[string]xbytes.Bytes{"log": negativeBytes}},
 		})
 		require.Error(t, err)
 	})
 
-	t.Run("OverflowingMaxBytesIsAnError", func(t *testing.T) {
+	t.Run("NegativeMaxBytesIsAnError", func(t *testing.T) {
 		_, err := tenancyOption(&PolicyConfig{
-			Retention: &RetentionConfig{MaxBytes: overflowBytes(t)},
+			Retention: &RetentionConfig{MaxBytes: negativeBytes},
 		})
 		require.Error(t, err)
 	})
@@ -253,16 +244,15 @@ func TestTenancyOption(t *testing.T) {
 		require.Equal(t, 1, retentionSignalBudgets(cfg))
 	})
 
-	// Every byte-valued limit wraps negative at or above 8EiB, and the library reads each negative
-	// as "off": an unlimited ingest rate, no in-flight backpressure, the default part size, and a
-	// merge that never seals. All four are the opposite of the bound that was asked for.
-	t.Run("OverflowingLimitIsAnError", func(t *testing.T) {
-		overflow := overflowBytes(t)
+	// The library reads each negative limit as "off": an unlimited ingest rate, no in-flight
+	// backpressure, the default part size, and a merge that never seals. All four are the opposite
+	// of the bound that was asked for.
+	t.Run("NegativeLimitIsAnError", func(t *testing.T) {
 		for name, cfg := range map[string]*LimitsConfig{
-			"IngestBytesPerSecond": {IngestBytesPerSecond: overflow},
-			"MaxInFlightBytes":     {MaxInFlightBytes: overflow},
-			"MaxPartSize":          {MaxPartSize: overflow},
-			"MaxMergePartSize":     {MaxMergePartSize: overflow},
+			"IngestBytesPerSecond": {IngestBytesPerSecond: negativeBytes},
+			"MaxInFlightBytes":     {MaxInFlightBytes: negativeBytes},
+			"MaxPartSize":          {MaxPartSize: negativeBytes},
+			"MaxMergePartSize":     {MaxMergePartSize: negativeBytes},
 		} {
 			t.Run(name, func(t *testing.T) {
 				_, err := tenancyOption(&PolicyConfig{Limits: cfg})
@@ -403,18 +393,18 @@ func TestS3Backend(t *testing.T) {
 	})
 }
 
-// TestConfigValidate covers the top-level byte settings, which wrap the same way the policy ones
-// do. Each reads a negative as "off", so an overflow turns a large cache or budget into none at
-// all — decode_memory_bytes most sharply, since losing it removes the memory ceiling that keeps
-// query concurrency from driving the heap past GOMEMLIMIT.
+// TestConfigValidate covers the top-level byte settings, which read a negative the same way the
+// policy ones do: as "off", turning a large cache or budget into none at all — decode_memory_bytes
+// most sharply, since losing it removes the memory ceiling that keeps query concurrency from
+// driving the heap past GOMEMLIMIT.
 func TestConfigValidate(t *testing.T) {
-	overflow := overflowBytes(t)
+	negative := negativeBytes
 	for name, cfg := range map[string]Config{
-		"ReadCacheBytes":    {ReadCacheBytes: &overflow},
-		"DecodeCacheBytes":  {DecodeCacheBytes: &overflow},
-		"DecodeMemoryBytes": {DecodeMemoryBytes: &overflow},
-		"MaxQueryBytes":     {MaxQueryBytes: &overflow},
-		"MergeMemoryBytes":  {MergeMemoryBytes: &overflow},
+		"ReadCacheBytes":    {ReadCacheBytes: &negative},
+		"DecodeCacheBytes":  {DecodeCacheBytes: &negative},
+		"DecodeMemoryBytes": {DecodeMemoryBytes: &negative},
+		"MaxQueryBytes":     {MaxQueryBytes: &negative},
+		"MergeMemoryBytes":  {MergeMemoryBytes: &negative},
 	} {
 		t.Run(name, func(t *testing.T) {
 			require.ErrorIs(t, cfg.validate(), errNegativeBytes)
@@ -424,7 +414,7 @@ func TestConfigValidate(t *testing.T) {
 	t.Run("UnsetAndZeroAreValid", func(t *testing.T) {
 		require.NoError(t, (&Config{}).validate())
 		require.NoError(t, (&Config{ReadCacheBytes: new(xbytes.Bytes)}).validate(),
-			"an explicit 0 disables the cache and is not an overflow")
+			"an explicit 0 disables the cache and is not a negative")
 	})
 }
 
