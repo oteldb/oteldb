@@ -355,6 +355,19 @@ func TestLoadConfig(t *testing.T) {
 	assert.Equal(t, 15*time.Second, cfg.RemoteWrite.ShutdownTimeout)
 }
 
+// TestLoadConfigRejectsOversizedBytes pins that a body limit too large for [xbytes.Bytes] fails the
+// load instead of wrapping negative, which a limit check reads as "reject everything".
+func TestLoadConfigRejectsOversizedBytes(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "odbingest.yml")
+	require.NoError(t, os.WriteFile(path, []byte("otlp:\n  max_body_bytes: 10EB\n"), 0o600))
+
+	_, err := loadConfig(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "10EB")
+}
+
 // TestValidateRequiresCluster pins that odbingest refuses to start without somewhere to write,
 // rather than accepting traffic it can only drop.
 func TestValidateRequiresCluster(t *testing.T) {

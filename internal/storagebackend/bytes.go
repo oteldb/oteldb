@@ -6,12 +6,15 @@ import (
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
-// errNegativeBytes reports a byte setting that arrived negative. A size is parsed as uint64 and
-// kept as int64, so any value at or above 8EiB wraps with no decode error, and every setting that
-// takes one reads a negative as "off" — unlimited, disabled, or the library default. The size
-// parser rejects a leading "-" in YAML and JSON alike, so a negative is always that overflow and
-// never something an operator wrote.
-var errNegativeBytes = errors.New("must not be negative; sizes at or above 8EiB overflow")
+// errNegativeBytes reports a byte setting that arrived negative. Every setting that takes one reads
+// a negative as "off" — unlimited, disabled, or the library default — so it inverts the bound that
+// was asked for rather than tightening it.
+//
+// Config can no longer produce one: [xbytes.Bytes] rejects a size above [xbytes.MaxBytes] instead
+// of wrapping, and its parser rejects a leading "-". This guards the remaining source, a config
+// built in Go rather than decoded (see internal/storagebackup), since past the checks below a
+// negative is indistinguishable from the sentinel [resolveCacheSettings] writes on purpose.
+var errNegativeBytes = errors.New("must not be negative")
 
 // namedBytes pairs a byte setting with the config key an operator would fix.
 type namedBytes struct {

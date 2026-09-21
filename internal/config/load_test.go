@@ -66,6 +66,19 @@ func TestLoadFallback(t *testing.T) {
 	})
 }
 
+// TestLoadRejectsOversizedBytes pins that a size too large for xbytes.Bytes fails the load
+// rather than wrapping negative, which every consumer reads as "no limit".
+func TestLoadRejectsOversizedBytes(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "test.yml")
+	require.NoError(t, os.WriteFile(path, []byte("prometheus:\n  cache:\n    max_bytes: 10EB\n"), 0o600))
+
+	_, err := config.Load[testConfig](path, config.LoadOptions{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "10EB")
+}
+
 func TestSetDefaults(t *testing.T) {
 	t.Parallel()
 
