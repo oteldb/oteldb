@@ -38,8 +38,8 @@ type PolicyConfig struct {
 	// of storing RF full copies. Like Recompress it is an age tier, so recent data stays full-copy
 	// for fast local reads. Nil ⇒ full-copy replication.
 	EC *ECConfig `json:"ec" yaml:"ec"`
-	// Retention bounds how long data is kept: parts older than MaxAge are dropped whole at merge.
-	// Nil ⇒ retain forever.
+	// Retention bounds how much data is kept, by age and by size: at merge, parts past the age
+	// cutoff or over a byte budget — pooled or per-signal — are dropped whole. Nil ⇒ retain forever.
 	Retention *RetentionConfig `json:"retention" yaml:"retention"`
 	// Limits are the operational admission-control limits: over-budget writes are shed and reported
 	// as OTLP partial success rather than buffered. Nil ⇒ unlimited.
@@ -113,8 +113,9 @@ type RetentionConfig struct {
 	MaxBytes xbytes.Bytes `json:"max_bytes" yaml:"max_bytes"`
 	// MaxBytesPerSignal bounds each signal independently, in the same stored bytes MaxBytes counts.
 	// It is keyed by the stable signal names — "metric", "log", "trace", "profile", "exemplar" — and
-	// an unknown name is a startup error. A signal with no entry is bounded only by MaxBytes;
-	// empty ⇒ no per-signal budgets.
+	// an unknown name is a startup error. A signal with no entry — or with an entry of zero, which
+	// the library ignores like any non-positive budget — is bounded only by MaxBytes, so "log: 0"
+	// means "no budget for logs", never "drop the logs"; empty ⇒ no per-signal budgets.
 	//
 	// It exists because a pooled budget has no isolation: on a deployment whose metrics dwarf its
 	// logs, metric growth alone moves the shared cutoff and evicts log history that never grew.
@@ -155,6 +156,11 @@ type LimitsConfig struct {
 	MaxMergePartSize xbytes.Bytes `json:"max_merge_part_size" yaml:"max_merge_part_size"`
 }
 
+// errNegativeBytes reports a byte budget that arrived negative. A size is parsed as uint64 and
+// stored as int64, so anything in [2^63, 2^64) wraps without a decode error — and the library reads
+// a negative budget as unset, which would turn a huge cap into unlimited retention.
+var errNegativeBytes = errors.New("must not be negative; sizes at or above 8EiB overflow")
+
 // retentionSignalNames lists the accepted per-signal budget keys, for the error a typo produces.
 const retentionSignalNames = `"metric", "log", "trace", "profile", "exemplar"`
 
@@ -172,7 +178,7 @@ func retentionPerSignal(cfg map[string]xbytes.Bytes) (map[signal.Signal]int64, e
 			return nil, errors.Wrapf(err, "max_bytes_per_signal: expected one of %s", retentionSignalNames)
 		}
 		if b < 0 {
-			return nil, errors.Errorf("max_bytes_per_signal[%q]: must not be negative", name)
+			return nil, errors.Errorf("max_bytes_per_signal[%q]: %s", name, errNegativeBytes)
 		}
 		budgets[sig] = int64(b)
 	}
@@ -187,12 +193,20 @@ func retentionMaxAge(cfg *RetentionConfig) time.Duration {
 	return cfg.MaxAge
 }
 
-// retentionSignalBudgets reports how many signals carry their own byte budget.
+// retentionSignalBudgets reports how many signals carry their own byte budget. A zero entry is
+// inert in the library, so it is not counted: the startup log reports what is enforced.
 func retentionSignalBudgets(cfg *RetentionConfig) int {
 	if cfg == nil {
 		return 0
 	}
-	return len(cfg.MaxBytesPerSignal)
+
+	var n int
+	for _, b := range cfg.MaxBytesPerSignal {
+		if b > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // warnECInert warns when an EC policy is configured but cannot take effect, because the engine
@@ -302,6 +316,9 @@ func (cfg *PolicyConfig) policy() (tenant.Policy, error) {
 	if r := cfg.Retention; r != nil {
 		if r.MaxAge < 0 {
 			return tenant.Policy{}, errors.New("retention: max_age must not be negative")
+		}
+		if r.MaxBytes < 0 {
+			return tenant.Policy{}, errors.Wrap(errNegativeBytes, "retention: max_bytes")
 		}
 		perSignal, err := retentionPerSignal(r.MaxBytesPerSignal)
 		if err != nil {

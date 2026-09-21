@@ -18,6 +18,15 @@ import (
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
+// mustBytes decodes a humanized size the way the YAML config loader does, so a test exercises the
+// values an operator can actually produce.
+func mustBytes(t *testing.T, s string) xbytes.Bytes {
+	t.Helper()
+	var b xbytes.Bytes
+	require.NoError(t, b.UnmarshalText([]byte(s)))
+	return b
+}
+
 // applyOption applies a storage.Option to a fresh Options and returns it, so tests can inspect what
 // clusterOption configured.
 func applyOption(t *testing.T, opt storage.Option) storage.Options {
@@ -213,11 +222,34 @@ func TestTenancyOption(t *testing.T) {
 		require.ErrorIs(t, err, signal.ErrUnknownSignal)
 	})
 
-	t.Run("NegativeSignalBudgetIsAnError", func(t *testing.T) {
+	// A byte size is parsed as uint64 and stored as int64, so anything in [2^63, 2^64) arrives
+	// negative with no decode error. The library reads a negative budget as unset, so without a
+	// guard an operator asking for a huge cap silently gets unlimited retention.
+	t.Run("OverflowingSignalBudgetIsAnError", func(t *testing.T) {
+		budget := mustBytes(t, "10EB")
+		require.Negative(t, budget, "10EB must overflow, or this test proves nothing")
+
 		_, err := tenancyOption(&PolicyConfig{
-			Retention: &RetentionConfig{MaxBytesPerSignal: map[string]xbytes.Bytes{"log": -1}},
+			Retention: &RetentionConfig{MaxBytesPerSignal: map[string]xbytes.Bytes{"log": budget}},
 		})
 		require.Error(t, err)
+	})
+
+	t.Run("OverflowingMaxBytesIsAnError", func(t *testing.T) {
+		_, err := tenancyOption(&PolicyConfig{
+			Retention: &RetentionConfig{MaxBytes: mustBytes(t, "10EB")},
+		})
+		require.Error(t, err)
+	})
+
+	// A present-but-zero budget is inert in the library (it ignores non-positive budgets), so the
+	// startup log must not report it as a configured budget.
+	t.Run("ZeroSignalBudgetIsNotCounted", func(t *testing.T) {
+		cfg := &RetentionConfig{MaxBytesPerSignal: map[string]xbytes.Bytes{
+			"log":   0,
+			"trace": 1 << 30,
+		}}
+		require.Equal(t, 1, retentionSignalBudgets(cfg))
 	})
 
 	t.Run("LimitsOnlyInstallsResolver", func(t *testing.T) {
