@@ -34,6 +34,32 @@ max_result_bytes: 1GB
 	assert.True(t, cfg.Prometheus.DisableMetricOffloading)
 }
 
+// TestLoadConfigRejectsOversizedBytes pins that a size too large for [xbytes.Bytes] fails the load
+// instead of wrapping negative, for every layer a size reaches: the binary's own config, a shared
+// block, and the embedded storage policy. A negative reads as "off" downstream, so the operator
+// would otherwise get no bound at all.
+func TestLoadConfigRejectsOversizedBytes(t *testing.T) {
+	for name, data := range map[string]string{
+		"MaxResultBytes":    "max_result_bytes: 10EB\n",
+		"MetricsCache":      "prometheus:\n  cache:\n    max_bytes: 10EB\n",
+		"RetentionMaxBytes": "storage:\n  policy:\n    retention:\n      max_bytes: 10EB\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, err := os.CreateTemp("", "oteldb.yml")
+			require.NoError(t, err)
+			defer os.Remove(f.Name())
+
+			_, err = f.WriteString(data)
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+
+			_, err = loadConfig(f.Name())
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "10EB")
+		})
+	}
+}
+
 // TestLoadConfigListeners pins the per-signal bind/auth shape, which the blocks now inherit from
 // an embedded [config.Listener]: the keys must stay where existing config files put them.
 func TestLoadConfigListeners(t *testing.T) {
