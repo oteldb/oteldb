@@ -330,6 +330,7 @@ components:
         - traces
         - logs
         - profiles
+        - exemplars
     RecordSignal:
       type: string
       description: >
@@ -339,6 +340,7 @@ components:
         - traces
         - logs
         - profiles
+        - exemplars
     HealthReport:
       type: object
       required:

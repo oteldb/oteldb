@@ -80,6 +80,8 @@ func recordSignal(s adminapi.RecordSignal) (signal.Signal, error) {
 		return signal.Trace, nil
 	case adminapi.RecordSignalProfiles:
 		return signal.Profile, nil
+	case adminapi.RecordSignalExemplars:
+		return signal.Exemplar, nil
 	default:
 		return 0, errors.Errorf("signal %q is not attributable", s)
 	}

@@ -13,6 +13,7 @@ const SIGNALS: { value: RecordSignal; content: string }[] = [
   { value: "logs", content: "Logs" },
   { value: "traces", content: "Traces" },
   { value: "profiles", content: "Profiles" },
+  { value: "exemplars", content: "Exemplars" },
 ];
 
 /**

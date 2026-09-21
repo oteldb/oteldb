@@ -227,6 +227,8 @@ func engineSignal(s adminapi.Signal) (signal.Signal, error) {
 		return signal.Trace, nil
 	case adminapi.SignalProfiles:
 		return signal.Profile, nil
+	case adminapi.SignalExemplars:
+		return signal.Exemplar, nil
 	default:
 		return 0, errors.Errorf("unknown signal %q", s)
 	}
@@ -243,6 +245,8 @@ func mapSignal(s signal.Signal) adminapi.Signal {
 		return adminapi.SignalTraces
 	case signal.Profile:
 		return adminapi.SignalProfiles
+	case signal.Exemplar:
+		return adminapi.SignalExemplars
 	default:
 		return adminapi.Signal(s.String())
 	}
