@@ -52,6 +52,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/servicegraphconnector v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/signaltometricsconnector v0.159.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/connector/spanmetricsconnector v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/connector/sumconnector v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter v0.159.0
@@ -70,6 +71,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/groupbyattrsprocessor v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v0.159.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/processor/probabilisticsamplerprocessor v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.159.0
@@ -80,7 +82,9 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/journaldreceiver v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8seventsreceiver v0.159.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sobjectsreceiver v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kafkareceiver v0.159.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/nginxreceiver v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.159.0
@@ -171,6 +175,7 @@ require (
 	github.com/hashicorp/go-metrics v0.6.0 // indirect
 	github.com/klauspost/reedsolomon v1.14.2 // indirect
 	github.com/maypok86/otter/v2 v2.3.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/kubelet v0.159.0 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
 	github.com/valyala/gozstd v1.26.0 // indirect
@@ -186,6 +191,7 @@ require (
 	go.opentelemetry.io/contrib/detectors/ibmcloud/vpc v0.17.0 // indirect
 	go.opentelemetry.io/contrib/detectors/vultr v0.17.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
+	k8s.io/kubelet v0.35.4 // indirect
 )
 
 require (
