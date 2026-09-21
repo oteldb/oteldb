@@ -281,19 +281,13 @@ func (c *LogsConverter) record(sl *log.ScopeLogs, src []byte) (dropped int, _ er
 
 			rec.Flags = v
 		case fieldLogTraceID:
-			v, ok := fc.Bytes()
-			if !ok {
-				return 0, errors.New("read log trace id")
+			if rec.TraceID, err = takeID(&fc, traceIDLen, "log trace id"); err != nil {
+				return 0, err
 			}
-
-			rec.TraceID = v
 		case fieldLogSpanID:
-			v, ok := fc.Bytes()
-			if !ok {
-				return 0, errors.New("read log span id")
+			if rec.SpanID, err = takeID(&fc, spanIDLen, "log span id"); err != nil {
+				return 0, err
 			}
-
-			rec.SpanID = v
 		}
 	}
 

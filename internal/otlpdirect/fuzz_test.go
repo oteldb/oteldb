@@ -59,6 +59,10 @@ func FuzzConvertLogs(f *testing.F) {
 		r.Attributes().PutDouble("d", 1.5)
 	})
 
+	// Wrong-width ids, which pdata cannot marshal and so no seed above can carry.
+	f.Add(encodeLogRecordIDs(make([]byte, 3), nil))
+	f.Add(encodeLogRecordIDs(nil, make([]byte, 9)))
+
 	f.Add([]byte{})
 	f.Add([]byte{0xff, 0xff, 0xff, 0xff})
 

@@ -227,15 +227,15 @@ func (c *TracesConverter) span(ss *trace.ScopeSpans, src []byte) error {
 
 		switch fc.FieldNum {
 		case fieldSpanTraceID:
-			if sp.TraceID, err = takeBytes(&fc, "span trace id"); err != nil {
+			if sp.TraceID, err = takeID(&fc, traceIDLen, "span trace id"); err != nil {
 				return err
 			}
 		case fieldSpanSpanID:
-			if sp.SpanID, err = takeBytes(&fc, "span id"); err != nil {
+			if sp.SpanID, err = takeID(&fc, spanIDLen, "span id"); err != nil {
 				return err
 			}
 		case fieldSpanParentSpanID:
-			if sp.ParentSpanID, err = takeBytes(&fc, "parent span id"); err != nil {
+			if sp.ParentSpanID, err = takeID(&fc, spanIDLen, "parent span id"); err != nil {
 				return err
 			}
 		case fieldSpanTraceState:
@@ -438,11 +438,11 @@ func (c *TracesConverter) link(sp *trace.Span, src []byte) error {
 
 		switch fc.FieldNum {
 		case fieldLinkTraceID:
-			if ln.TraceID, err = takeBytes(&fc, "link trace id"); err != nil {
+			if ln.TraceID, err = takeID(&fc, traceIDLen, "link trace id"); err != nil {
 				return err
 			}
 		case fieldLinkSpanID:
-			if ln.SpanID, err = takeBytes(&fc, "link span id"); err != nil {
+			if ln.SpanID, err = takeID(&fc, spanIDLen, "link span id"); err != nil {
 				return err
 			}
 		case fieldLinkTraceState:

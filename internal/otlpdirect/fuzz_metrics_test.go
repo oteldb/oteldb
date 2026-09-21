@@ -173,6 +173,10 @@ func FuzzConvertMetrics(f *testing.F) {
 		e.SetDoubleValue(1)
 	})
 
+	// Wrong-width ids, which pdata cannot marshal and so no seed above can carry.
+	f.Add(encodeExemplarIDs(make([]byte, 3), nil))
+	f.Add(encodeExemplarIDs(nil, make([]byte, 9)))
+
 	f.Add([]byte{})
 	f.Add([]byte{0xff, 0xff, 0xff, 0xff})
 
