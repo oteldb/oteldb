@@ -104,13 +104,25 @@ type ECConfig struct {
 	After time.Duration `json:"after" yaml:"after"`
 }
 
-// RetentionConfig configures age-based retention. Enforcement drops whole partitions at merge, so
-// data may outlive MaxAge until the partition containing it is fully expired.
+// RetentionConfig configures age- and size-based retention. Enforcement drops whole partitions at
+// merge, so data may outlive MaxAge until the partition containing it is fully expired.
 type RetentionConfig struct {
 	// MaxAge is the maximum age of retained data. Zero ⇒ retain forever.
 	MaxAge time.Duration `json:"max_age" yaml:"max_age"`
-	// MaxBytes is the maximum total retained bytes. Zero ⇒ unlimited.
+	// MaxBytes is the maximum total retained bytes, pooled across every signal. Zero ⇒ unlimited.
 	MaxBytes xbytes.Bytes `json:"max_bytes" yaml:"max_bytes"`
+	// MaxBytesPerSignal bounds each signal independently, in the same stored bytes MaxBytes counts.
+	// It is keyed by the stable signal names — "metric", "log", "trace", "profile", "exemplar" — and
+	// an unknown name is a startup error. A signal with no entry is bounded only by MaxBytes;
+	// empty ⇒ no per-signal budgets.
+	//
+	// It exists because a pooled budget has no isolation: on a deployment whose metrics dwarf its
+	// logs, metric growth alone moves the shared cutoff and evicts log history that never grew.
+	// Both budgets apply when both are set — a signal is trimmed to whichever binds first — so
+	// MaxBytes stays the outer bound. The newest part of each budgeted signal is never dropped, so
+	// the floor is one part per signal rather than one per tenant; pair it with limits.max_part_size
+	// to keep that granularity small.
+	MaxBytesPerSignal map[string]xbytes.Bytes `json:"max_bytes_per_signal" yaml:"max_bytes_per_signal"`
 }
 
 // LimitsConfig configures the per-tenant operational limits. They are lossless admission control:
@@ -143,12 +155,44 @@ type LimitsConfig struct {
 	MaxMergePartSize xbytes.Bytes `json:"max_merge_part_size" yaml:"max_merge_part_size"`
 }
 
+// retentionSignalNames lists the accepted per-signal budget keys, for the error a typo produces.
+const retentionSignalNames = `"metric", "log", "trace", "profile", "exemplar"`
+
+// retentionPerSignal decodes the per-signal byte budgets into the [signal.Signal] keys the library
+// expects. An unrecognized name would otherwise be a budget that silently never applies.
+func retentionPerSignal(cfg map[string]xbytes.Bytes) (map[signal.Signal]int64, error) {
+	if len(cfg) == 0 {
+		return nil, nil
+	}
+
+	budgets := make(map[signal.Signal]int64, len(cfg))
+	for name, b := range cfg {
+		sig, err := signal.ParseSignal(name)
+		if err != nil {
+			return nil, errors.Wrapf(err, "max_bytes_per_signal: expected one of %s", retentionSignalNames)
+		}
+		if b < 0 {
+			return nil, errors.Errorf("max_bytes_per_signal[%q]: must not be negative", name)
+		}
+		budgets[sig] = int64(b)
+	}
+	return budgets, nil
+}
+
 // retentionMaxAge reports the configured retention window, or zero when retention is disabled.
 func retentionMaxAge(cfg *RetentionConfig) time.Duration {
 	if cfg == nil {
 		return 0
 	}
 	return cfg.MaxAge
+}
+
+// retentionSignalBudgets reports how many signals carry their own byte budget.
+func retentionSignalBudgets(cfg *RetentionConfig) int {
+	if cfg == nil {
+		return 0
+	}
+	return len(cfg.MaxBytesPerSignal)
 }
 
 // warnECInert warns when an EC policy is configured but cannot take effect, because the engine
@@ -259,9 +303,14 @@ func (cfg *PolicyConfig) policy() (tenant.Policy, error) {
 		if r.MaxAge < 0 {
 			return tenant.Policy{}, errors.New("retention: max_age must not be negative")
 		}
+		perSignal, err := retentionPerSignal(r.MaxBytesPerSignal)
+		if err != nil {
+			return tenant.Policy{}, errors.Wrap(err, "retention")
+		}
 		p.Retention = tenant.Retention{
-			MaxAge:   r.MaxAge,
-			MaxBytes: int64(r.MaxBytes),
+			MaxAge:            r.MaxAge,
+			MaxBytes:          int64(r.MaxBytes),
+			MaxBytesPerSignal: perSignal,
 		}
 	}
 

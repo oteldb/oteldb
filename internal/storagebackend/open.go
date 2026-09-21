@@ -117,6 +117,7 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 			zap.Bool("recompress", cfg.Policy.Recompress != nil),
 			zap.Bool("ec", cfg.Policy.EC != nil),
 			zap.Duration("retention_max_age", retentionMaxAge(cfg.Policy.Retention)),
+			zap.Int("retention_signal_budgets", retentionSignalBudgets(cfg.Policy.Retention)),
 			zap.Bool("limits", cfg.Policy.Limits != nil),
 		)
 		warnECInert(cfg.Cluster, cfg.Policy, lg)

@@ -93,7 +93,7 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
   **Implemented** in `internal/storagebackend/policy.go` (`tenancyOption` → `storage.WithTenancy`):
   the `storage.policy` config block exposes `precision[]{after,bits}`,
   `downsample[]{after,interval,agg}`, `recompress{after,level}`, `ec{data,parity,after}`,
-  `retention{max_age,max_bytes}`
+  `retention{max_age,max_bytes,max_bytes_per_signal}`
   and `limits{ingest_bytes_per_second,max_in_flight_bytes,max_series,max_series_soft,max_part_size,
   max_merge_part_size}`. `max_part_size` bounds a *flushed* part's uncompressed estimate;
   `max_merge_part_size` bounds a *merged* part's compressed size on disk, and left at zero is
@@ -101,6 +101,11 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
   oteldb runs the embedded engine single-tenant, so a static `tenant.ResolverFunc` returns one
   policy for every tenant — retention is therefore one global window, not per-tenant.
   Both `retention.max_age` and `retention.max_bytes` are enforced by the library.
+  `retention.max_bytes_per_signal` maps a signal name (`metric`, `log`, `trace`, `profile`,
+  `exemplar`) to its own byte budget, bounding that signal from its parts alone. `max_bytes` is
+  pooled, so without it one signal's growth moves the cutoff for all of them; both apply when both
+  are set, and a signal is trimmed to whichever binds first. The newest part of each budgeted signal
+  is never dropped, so the floor is one part per signal.
   `ec` is an age tier like `recompress`, but for durability: cold parts are stored as `data`+`parity`
   Reed-Solomon shards, one per cluster node, instead of RF full copies. It applies only under
   `storage.cluster` with `private_backend` — on a shared object store the store owns durability and
