@@ -19,4 +19,5 @@ export const RecordSignal = {
   traces: 'traces',
   logs: 'logs',
   profiles: 'profiles',
+  exemplars: 'exemplars',
 } as const;

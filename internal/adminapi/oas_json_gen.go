@@ -5061,6 +5061,8 @@ func (s *RecordSignal) Decode(d *jx.Decoder) error {
 		*s = RecordSignalLogs
 	case RecordSignalProfiles:
 		*s = RecordSignalProfiles
+	case RecordSignalExemplars:
+		*s = RecordSignalExemplars
 	default:
 		*s = RecordSignal(v)
 	}
@@ -5355,6 +5357,8 @@ func (s *Signal) Decode(d *jx.Decoder) error {
 		*s = SignalLogs
 	case SignalProfiles:
 		*s = SignalProfiles
+	case SignalExemplars:
+		*s = SignalExemplars
 	default:
 		*s = Signal(v)
 	}

@@ -739,6 +739,8 @@ func (s RecordSignal) Validate() error {
 		return nil
 	case "profiles":
 		return nil
+	case "exemplars":
+		return nil
 	default:
 		return errors.Errorf("invalid value: %v", s)
 	}
@@ -753,6 +755,8 @@ func (s Signal) Validate() error {
 	case "logs":
 		return nil
 	case "profiles":
+		return nil
+	case "exemplars":
 		return nil
 	default:
 		return errors.Errorf("invalid value: %v", s)

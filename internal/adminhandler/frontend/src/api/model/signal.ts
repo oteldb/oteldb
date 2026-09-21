@@ -19,4 +19,5 @@ export const Signal = {
   traces: 'traces',
   logs: 'logs',
   profiles: 'profiles',
+  exemplars: 'exemplars',
 } as const;

@@ -2587,9 +2587,10 @@ func (s *PartSyncStats) SetLastSync(val OptDateTime) {
 type RecordSignal string
 
 const (
-	RecordSignalTraces   RecordSignal = "traces"
-	RecordSignalLogs     RecordSignal = "logs"
-	RecordSignalProfiles RecordSignal = "profiles"
+	RecordSignalTraces    RecordSignal = "traces"
+	RecordSignalLogs      RecordSignal = "logs"
+	RecordSignalProfiles  RecordSignal = "profiles"
+	RecordSignalExemplars RecordSignal = "exemplars"
 )
 
 // AllValues returns all RecordSignal values.
@@ -2598,6 +2599,7 @@ func (RecordSignal) AllValues() []RecordSignal {
 		RecordSignalTraces,
 		RecordSignalLogs,
 		RecordSignalProfiles,
+		RecordSignalExemplars,
 	}
 }
 
@@ -2609,6 +2611,8 @@ func (s RecordSignal) MarshalText() ([]byte, error) {
 	case RecordSignalLogs:
 		return []byte(s), nil
 	case RecordSignalProfiles:
+		return []byte(s), nil
+	case RecordSignalExemplars:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -2626,6 +2630,9 @@ func (s *RecordSignal) UnmarshalText(data []byte) error {
 		return nil
 	case RecordSignalProfiles:
 		*s = RecordSignalProfiles
+		return nil
+	case RecordSignalExemplars:
+		*s = RecordSignalExemplars
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -2755,10 +2762,11 @@ func (s *RuntimeStats) SetMemLimitBytes(val OptInt64) {
 type Signal string
 
 const (
-	SignalMetrics  Signal = "metrics"
-	SignalTraces   Signal = "traces"
-	SignalLogs     Signal = "logs"
-	SignalProfiles Signal = "profiles"
+	SignalMetrics   Signal = "metrics"
+	SignalTraces    Signal = "traces"
+	SignalLogs      Signal = "logs"
+	SignalProfiles  Signal = "profiles"
+	SignalExemplars Signal = "exemplars"
 )
 
 // AllValues returns all Signal values.
@@ -2768,6 +2776,7 @@ func (Signal) AllValues() []Signal {
 		SignalTraces,
 		SignalLogs,
 		SignalProfiles,
+		SignalExemplars,
 	}
 }
 
@@ -2781,6 +2790,8 @@ func (s Signal) MarshalText() ([]byte, error) {
 	case SignalLogs:
 		return []byte(s), nil
 	case SignalProfiles:
+		return []byte(s), nil
+	case SignalExemplars:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -2801,6 +2812,9 @@ func (s *Signal) UnmarshalText(data []byte) error {
 		return nil
 	case SignalProfiles:
 		*s = SignalProfiles
+		return nil
+	case SignalExemplars:
+		*s = SignalExemplars
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
