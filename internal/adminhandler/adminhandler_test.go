@@ -239,7 +239,15 @@ func TestAdmin_EfficiencyParts(t *testing.T) {
 			Signals: []storage.SignalEfficiency{{Signal: signal.Metric, Parts: 2}},
 		}},
 		parts: []storage.PartDetail{
-			{PartInfo: storage.PartInfo{ID: "default/metrics/a", Series: 3, Rows: 10}, Bytes: 100},
+			{
+				PartInfo: storage.PartInfo{ID: "default/metrics/a", Series: 3, Rows: 10},
+				Bytes:    100,
+				Columns: []storage.ColumnInfo{
+					{Name: "timestamp", Kind: "int64", Codec: "delta", Compress: "zstd", Level: 3, Bytes: 40},
+					{Name: "value", Kind: "float64", Codec: "gorilla", Compress: "none", Bytes: 50},
+				},
+				OtherBytes: map[string]int64{"manifest": 4, "marks": 6},
+			},
 			{PartInfo: storage.PartInfo{ID: "default/metrics/b", Series: 4, Rows: 20}, Bytes: 200},
 		},
 	}
@@ -259,6 +267,31 @@ func TestAdmin_EfficiencyParts(t *testing.T) {
 	assert.Equal(t, int64(10), parts[0].Rows)
 	assert.Equal(t, int64(3), parts[0].Series)
 	assert.Equal(t, "default/metrics/b", parts[1].ID)
+
+	require.Len(t, parts[0].Columns, 2)
+	assert.Equal(t, adminapi.PartColumn{
+		Name: "timestamp", Kind: "int64", Codec: "delta", Compress: "zstd",
+		Level: adminapi.NewOptInt(3), Bytes: 40,
+	}, parts[0].Columns[0])
+	assert.Equal(t, adminapi.PartColumn{
+		Name: "value", Kind: "float64", Codec: "gorilla", Compress: "none", Bytes: 50,
+	}, parts[0].Columns[1])
+
+	other, ok := parts[0].OtherBytes.Get()
+	require.True(t, ok)
+	assert.Equal(t, adminapi.PartEfficiencyOtherBytes{"manifest": 4, "marks": 6}, other)
+
+	var columnBytes int64
+	for _, c := range parts[0].Columns {
+		columnBytes += c.Bytes
+	}
+	for _, b := range other {
+		columnBytes += b
+	}
+	assert.Equal(t, parts[0].Bytes, columnBytes)
+
+	assert.Empty(t, parts[1].Columns)
+	assert.False(t, parts[1].OtherBytes.Set)
 }
 
 // TestAdmin_ClusterStorageIsNotServedByANode pins that a storage node refuses the cluster-wide

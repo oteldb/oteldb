@@ -930,6 +930,64 @@ components:
           type: integer
           format: int64
           description: "Distinct series/streams in the part."
+        columns:
+          type: array
+          description: >
+            The part's columns, each with its physical layout and the size of its object. Present
+            only when the part was read in enough detail to know them; a column whose values all
+            collapsed to a constant has no object and so reports 0 bytes. Together with
+            `other_bytes` the column sizes sum to `bytes`, which is what makes a single column's
+            share of a store — the metric timestamp column's, say — measurable from the API.
+          items:
+            $ref: "#/components/schemas/PartColumn"
+        other_bytes:
+          type: object
+          description: >
+            Every non-column object in the part, keyed by its name under the part prefix
+            (`manifest`, `marks`, and the engine's own indexes, e.g. `identity`, `sidx`, `stats`,
+            `blooms`). With the `columns` sizes it sums to `bytes`.
+          additionalProperties:
+            type: integer
+            format: int64
+          example:
+            manifest: 412
+            marks: 2048
+    PartColumn:
+      type: object
+      description: "One part column's physical description and the size it takes on the backend."
+      required:
+        - name
+        - kind
+        - codec
+        - compress
+        - bytes
+      properties:
+        name:
+          type: string
+          description: "Column name."
+          example: "timestamp"
+        kind:
+          type: string
+          description: "Physical type of the column's values."
+          example: "int64"
+        codec:
+          type: string
+          description: "Value codec the column is encoded with."
+          example: "delta"
+        compress:
+          type: string
+          description: "Block-compression algorithm applied on top of the codec."
+          example: "zstd"
+        level:
+          type: integer
+          description: >
+            Block-compression level the column was written at; 0 means the algorithm default or an
+            uncompressed column. Merged metric parts climb a size-graduated ladder, so it varies
+            from part to part.
+        bytes:
+          type: integer
+          format: int64
+          description: "Size of the column's object; 0 for a constant-collapsed column, which has none."
     ClusterStorage:
       type: object
       description: >
