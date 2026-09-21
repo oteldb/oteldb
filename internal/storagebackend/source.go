@@ -34,6 +34,10 @@ type Source interface {
 		ctx context.Context, t signal.TenantID, r fetch.Request, spec engine.WindowSpec,
 	) ([]engine.NamedWindowAgg, error)
 
+	// ExemplarFetcher returns the metric-exemplars read seam over the named tenants. An exemplar
+	// stream *is* its metric series, so the label matchers it takes are the metric's.
+	ExemplarFetcher(tenants ...signal.TenantID) fetch.Fetcher
+
 	// LogFetcher returns the logs read seam over the named tenants.
 	LogFetcher(tenants ...signal.TenantID) fetch.Fetcher
 	// LogSeries enumerates a tenant's matching log stream identities in [start, end] ns.

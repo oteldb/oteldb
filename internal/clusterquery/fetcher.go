@@ -32,6 +32,11 @@ func (s *Source) Fetcher(tenants ...signal.TenantID) fetch.Fetcher {
 	}
 }
 
+// ExemplarFetcher implements [storagebackend.Source].
+func (s *Source) ExemplarFetcher(tenants ...signal.TenantID) fetch.Fetcher {
+	return concat(s.shardFetchers(signal.Exemplar, tenants))
+}
+
 // LogFetcher implements [storagebackend.Source].
 func (s *Source) LogFetcher(tenants ...signal.TenantID) fetch.Fetcher {
 	return concat(s.shardFetchers(signal.Log, tenants))

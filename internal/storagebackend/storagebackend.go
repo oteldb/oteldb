@@ -22,7 +22,6 @@ import (
 	"github.com/oteldb/promql-engine/query"
 	enginestorage "github.com/oteldb/promql-engine/storage"
 	promscanners "github.com/oteldb/promql-engine/storage/prometheus"
-	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
 	promstorage "github.com/prometheus/prometheus/storage"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -246,18 +245,6 @@ func clampQueryMs(ms int64) int64 {
 	default:
 		return ms
 	}
-}
-
-// ExemplarQuerier implements storage.ExemplarQueryable. The storage engine does not store
-// exemplars yet, so this returns an empty querier.
-func (b *Backend) ExemplarQuerier(context.Context) (promstorage.ExemplarQuerier, error) {
-	return emptyExemplarQuerier{}, nil
-}
-
-type emptyExemplarQuerier struct{}
-
-func (emptyExemplarQuerier) Select(int64, int64, ...[]*labels.Matcher) ([]exemplar.QueryResult, error) {
-	return nil, nil
 }
 
 // MetricsScanners implements the oteldb PromQL engine's scanner seam.
