@@ -19,6 +19,7 @@ import (
 	"github.com/oteldb/storage/cluster/router"
 	"github.com/oteldb/storage/query/fetch"
 	"github.com/oteldb/storage/signal"
+	sigexemplar "github.com/oteldb/storage/signal/exemplar"
 	sigtrace "github.com/oteldb/storage/signal/trace"
 
 	"github.com/oteldb/oteldb/internal/clusterquery"
@@ -57,6 +58,9 @@ type fakeNode struct {
 	// traceIDs maps a shard key to the trace id of each span row the node holds for it. When set,
 	// a read of that shard answers with those rows instead of the metric-shaped streams.
 	traceIDs map[string][]string
+	// exemplars maps a shard key to the exemplar values the node holds for it, answered only to a
+	// read of the exemplars signal (which is record-shaped, not sample-shaped).
+	exemplars map[string][]float64
 
 	mu sync.Mutex
 	// keySignals records the signal of every key enumeration the node served.
@@ -69,7 +73,7 @@ func startNode(t *testing.T, endpoint, id string, held map[string][]string) *fak
 	n := &fakeNode{addr: etcdtest.FreeAddr(t), held: held, keys: map[string][]cluster.KeyInfo{}}
 
 	mux := http.NewServeMux()
-	mux.Handle(cluster.ReadPath, cluster.ReadHandler(n.fetch, n.fetch, n.fetch, n.fetch))
+	mux.Handle(cluster.ReadPath, cluster.NewReadHandler(n.requestFetch))
 	mux.Handle(cluster.SeriesPath, cluster.SeriesHandler(n.series))
 	mux.Handle(cluster.KeysPath, cluster.KeysHandler(n.keyList))
 
@@ -109,6 +113,48 @@ func (n *fakeNode) streams(shardKey string) ([]signal.Series, error) {
 	}
 
 	return fetch.SortSeries(out), nil
+}
+
+// requestFetch is the read RPC's signal-aware entry point: exemplars are their own vertical with a
+// record-shaped answer, everything else falls through to the sample/span-shaped [fakeNode.fetch].
+func (n *fakeNode) requestFetch(ctx context.Context, r fetch.Request) ([]*fetch.Batch, error) {
+	if r.Signal == signal.Exemplar {
+		return n.exemplarFetch(string(r.Tenant), r.Start)
+	}
+
+	return n.fetch(ctx, string(r.Tenant), r.Start, r.End, r.Matchers)
+}
+
+// exemplarFetch answers an exemplars read with the shard's rows, disclaiming a shard it does not
+// hold exactly as the sample path does.
+func (n *fakeNode) exemplarFetch(shardKey string, start int64) ([]*fetch.Batch, error) {
+	if _, err := n.streams(shardKey); err != nil {
+		return nil, err
+	}
+
+	values, ok := n.exemplars[shardKey]
+	if !ok {
+		return nil, nil
+	}
+
+	st := series("exemplars")
+
+	b := &fetch.Batch{
+		ID:     st.Hash(),
+		Series: st,
+		Columns: []fetch.NamedColumn{
+			fetch.Int64Column(sigexemplar.ColValue, nil),
+			fetch.BytesColumn(sigexemplar.ColTraceID, nil),
+		},
+	}
+
+	for i, v := range values {
+		b.Timestamps = append(b.Timestamps, start+int64(i))
+		b.Columns[0].Int64 = append(b.Columns[0].Int64, sigexemplar.EncodeValue(v))
+		b.Columns[1].Bytes = append(b.Columns[1].Bytes, fmt.Appendf(nil, "trace-%d", i))
+	}
+
+	return []*fetch.Batch{b}, nil
 }
 
 // fetch answers a read RPC with one sample per held stream. Matchers are ignored on purpose: a real
@@ -449,4 +495,84 @@ func TestTraceByIDNarrowsToOneTrace(t *testing.T) {
 	assert.Equal(t, []string{"aaa", "aaa"}, rows("aaa"))
 	assert.Equal(t, []string{"bbb"}, rows("bbb"))
 	assert.Empty(t, rows("nope"), "a trace id nothing holds must return nothing, not the window")
+}
+
+// drainExemplarValues fetches through f and returns the exemplar values it yielded.
+func drainExemplarValues(t *testing.T, f fetch.Fetcher) []float64 {
+	t.Helper()
+
+	it, err := f.Fetch(t.Context(), fetch.Request{Signal: signal.Exemplar, Start: 1, End: 100})
+	require.NoError(t, err)
+
+	batches, err := fetch.Drain(t.Context(), it)
+	require.NoError(t, err)
+
+	var out []float64
+
+	for _, b := range batches {
+		col, ok := b.Column(sigexemplar.ColValue)
+		require.True(t, ok)
+
+		for _, v := range col.Int64 {
+			out = append(out, sigexemplar.DecodeValue(v))
+		}
+	}
+
+	slices.Sort(out)
+
+	return out
+}
+
+// TestExemplarFetcherGathersEveryShard is the exemplars twin of [TestFetcherGathersEveryShard]:
+// exemplars are their own vertical with their own part lifecycle, so a read that fanned out over
+// fewer shards than the tenant is split into would answer from a fraction of them.
+func TestExemplarFetcherGathersEveryShard(t *testing.T) {
+	t.Parallel()
+
+	const shards = 4
+
+	endpoint := etcdtest.Start(t)
+
+	keys := shardKeys(shards)
+	require.Len(t, keys, shards)
+
+	var (
+		held      = map[string][]string{}
+		exemplars = map[string][]float64{}
+	)
+
+	for i, sk := range keys {
+		held[sk] = []string{string(rune('a' + i))}
+		exemplars[sk] = []float64{float64(i), float64(i) + 0.5}
+	}
+
+	node := startNode(t, endpoint, "node-a", held)
+	node.exemplars = exemplars
+
+	src := clusterquery.New(openRouter(t, endpoint, 1, shards), 0)
+
+	assert.Equal(t,
+		[]float64{0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5},
+		drainExemplarValues(t, src.ExemplarFetcher("")))
+}
+
+// TestExemplarFetcherFailsOverAbsentOwner pins that an owner disclaiming the exemplars shard is a
+// failover rather than an empty answer, the same rule the other signals follow.
+func TestExemplarFetcherFailsOverAbsentOwner(t *testing.T) {
+	t.Parallel()
+
+	endpoint := etcdtest.Start(t)
+
+	key := string(cluster.DefaultTenant)
+
+	startNode(t, endpoint, "node-a", map[string][]string{})
+
+	node := startNode(t, endpoint, "node-b", map[string][]string{key: {"exemplars"}})
+	node.exemplars = map[string][]float64{key: {7}}
+
+	rt := openRouter(t, endpoint, 2, 1)
+	require.Eventually(t, func() bool { return len(rt.Members()) == 2 },
+		10*time.Second, 10*time.Millisecond, "router sees both nodes")
+
+	assert.Equal(t, []float64{7}, drainExemplarValues(t, clusterquery.New(rt, 0).ExemplarFetcher("")))
 }

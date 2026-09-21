@@ -24,7 +24,9 @@ var (
 	quantileKey = []byte("quantile")
 )
 
-func (c *MetricsConverter) histogram(sm *metric.ScopeMetrics, name, unit, src []byte) error {
+// histogram decomposes a histogram metric, returning how many exemplars it had to drop: one
+// histogram point becomes several series, so an exemplar on it has no unambiguous home.
+func (c *MetricsConverter) histogram(sm *metric.ScopeMetrics, name, unit, src []byte) (dropped int, _ error) {
 	var (
 		fc   easyproto.FieldContext
 		temp metric.Temporality
@@ -35,21 +37,21 @@ func (c *MetricsConverter) histogram(sm *metric.ScopeMetrics, name, unit, src []
 
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
-			return errors.Wrap(err, "read histogram field")
+			return dropped, errors.Wrap(err, "read histogram field")
 		}
 
 		switch fc.FieldNum {
 		case fieldDataPoints:
 			data, ok := fc.MessageData()
 			if !ok {
-				return errors.New("read histogram data point")
+				return dropped, errors.New("read histogram data point")
 			}
 
 			points = append(points, data)
 		case fieldTemporality:
 			v, ok := fc.Enum()
 			if !ok {
-				return errors.New("read histogram temporality")
+				return dropped, errors.New("read histogram temporality")
 			}
 
 			temp = temporalityOf(v)
@@ -59,17 +61,20 @@ func (c *MetricsConverter) histogram(sm *metric.ScopeMetrics, name, unit, src []
 	c.dataPoints = points
 
 	for _, data := range points {
-		if err := c.histogramPoint(sm, name, unit, temp, data); err != nil {
-			return err
+		n, err := c.histogramPoint(sm, name, unit, temp, data)
+		if err != nil {
+			return dropped, err
 		}
+
+		dropped += n
 	}
 
-	return nil
+	return dropped, nil
 }
 
 func (c *MetricsConverter) histogramPoint(
 	sm *metric.ScopeMetrics, name, unit []byte, temp metric.Temporality, src []byte,
-) error {
+) (dropped int, _ error) {
 	var (
 		fc        easyproto.FieldContext
 		start, ts int64
@@ -85,35 +90,35 @@ func (c *MetricsConverter) histogramPoint(
 
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
-			return errors.Wrap(err, "read histogram data point field")
+			return dropped, errors.Wrap(err, "read histogram data point field")
 		}
 
 		switch fc.FieldNum {
 		case fieldHistStart:
 			v, ok := fc.Fixed64()
 			if !ok {
-				return errors.New("read histogram start")
+				return dropped, errors.New("read histogram start")
 			}
 
 			start = int64(v)
 		case fieldHistTime:
 			v, ok := fc.Fixed64()
 			if !ok {
-				return errors.New("read histogram time")
+				return dropped, errors.New("read histogram time")
 			}
 
 			ts = int64(v)
 		case fieldHistCount:
 			v, ok := fc.Fixed64()
 			if !ok {
-				return errors.New("read histogram count")
+				return dropped, errors.New("read histogram count")
 			}
 
 			count = v
 		case fieldHistSum:
 			v, ok := fc.Double()
 			if !ok {
-				return errors.New("read histogram sum")
+				return dropped, errors.New("read histogram sum")
 			}
 
 			// sum is an optional scalar, so it is on the wire only when set — which is exactly
@@ -123,21 +128,25 @@ func (c *MetricsConverter) histogramPoint(
 			// A packed repeated field may arrive as several occurrences, so each appends.
 			v, ok := fc.UnpackFixed64s(counts)
 			if !ok {
-				return errors.New("read histogram bucket counts")
+				return dropped, errors.New("read histogram bucket counts")
 			}
 
 			counts = v
 		case fieldHistBounds:
 			v, ok := fc.UnpackDoubles(bounds)
 			if !ok {
-				return errors.New("read histogram explicit bounds")
+				return dropped, errors.New("read histogram explicit bounds")
 			}
 
 			bounds = v
+		case fieldHistExemplars:
+			// The decomposition gives an exemplar no series to hang off; count it as dropped
+			// without decoding it.
+			dropped++
 		case fieldHistAttributes:
 			data, ok := fc.MessageData()
 			if !ok {
-				return errors.New("read histogram attribute")
+				return dropped, errors.New("read histogram attribute")
 			}
 
 			kvs = append(kvs, data)
@@ -148,7 +157,7 @@ func (c *MetricsConverter) histogramPoint(
 
 	base, err := c.dec.attributes(kvs)
 	if err != nil {
-		return err
+		return dropped, err
 	}
 
 	cumulative := temp == metric.TemporalityCumulative
@@ -175,7 +184,7 @@ func (c *MetricsConverter) histogramPoint(
 			c.withLabel(base, leKey, le), start, ts, float64(cum))
 	}
 
-	return nil
+	return dropped, nil
 }
 
 func (c *MetricsConverter) summary(sm *metric.ScopeMetrics, name, unit, src []byte) error {
@@ -319,7 +328,9 @@ func quantileOf(src []byte) (quantile, value float64, _ error) {
 	return quantile, value, nil
 }
 
-func (c *MetricsConverter) expHistogram(sm *metric.ScopeMetrics, name, unit, src []byte) error {
+// expHistogram is [MetricsConverter.histogram] for the exponential form; its exemplars are dropped
+// and counted for the same reason.
+func (c *MetricsConverter) expHistogram(sm *metric.ScopeMetrics, name, unit, src []byte) (dropped int, _ error) {
 	var (
 		fc   easyproto.FieldContext
 		temp metric.Temporality
@@ -330,21 +341,21 @@ func (c *MetricsConverter) expHistogram(sm *metric.ScopeMetrics, name, unit, src
 
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
-			return errors.Wrap(err, "read exponential histogram field")
+			return dropped, errors.Wrap(err, "read exponential histogram field")
 		}
 
 		switch fc.FieldNum {
 		case fieldDataPoints:
 			data, ok := fc.MessageData()
 			if !ok {
-				return errors.New("read exponential histogram data point")
+				return dropped, errors.New("read exponential histogram data point")
 			}
 
 			points = append(points, data)
 		case fieldTemporality:
 			v, ok := fc.Enum()
 			if !ok {
-				return errors.New("read exponential histogram temporality")
+				return dropped, errors.New("read exponential histogram temporality")
 			}
 
 			temp = temporalityOf(v)
@@ -354,17 +365,20 @@ func (c *MetricsConverter) expHistogram(sm *metric.ScopeMetrics, name, unit, src
 	c.dataPoints = points
 
 	for _, data := range points {
-		if err := c.expHistogramPoint(sm, name, unit, temp, data); err != nil {
-			return err
+		n, err := c.expHistogramPoint(sm, name, unit, temp, data)
+		if err != nil {
+			return dropped, err
 		}
+
+		dropped += n
 	}
 
-	return nil
+	return dropped, nil
 }
 
 func (c *MetricsConverter) expHistogramPoint(
 	sm *metric.ScopeMetrics, name, unit []byte, temp metric.Temporality, src []byte,
-) error {
+) (dropped int, _ error) {
 	var (
 		fc           easyproto.FieldContext
 		start, ts    int64
@@ -382,70 +396,72 @@ func (c *MetricsConverter) expHistogramPoint(
 
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
-			return errors.Wrap(err, "read exponential histogram point field")
+			return dropped, errors.Wrap(err, "read exponential histogram point field")
 		}
 
 		switch fc.FieldNum {
 		case fieldExpStart:
 			v, ok := fc.Fixed64()
 			if !ok {
-				return errors.New("read exponential histogram start")
+				return dropped, errors.New("read exponential histogram start")
 			}
 
 			start = int64(v)
 		case fieldExpTime:
 			v, ok := fc.Fixed64()
 			if !ok {
-				return errors.New("read exponential histogram time")
+				return dropped, errors.New("read exponential histogram time")
 			}
 
 			ts = int64(v)
 		case fieldExpCount:
 			v, ok := fc.Fixed64()
 			if !ok {
-				return errors.New("read exponential histogram count")
+				return dropped, errors.New("read exponential histogram count")
 			}
 
 			count = v
 		case fieldExpSum:
 			v, ok := fc.Double()
 			if !ok {
-				return errors.New("read exponential histogram sum")
+				return dropped, errors.New("read exponential histogram sum")
 			}
 
 			sum, hasSum = v, true
 		case fieldExpScale:
 			v, ok := fc.Sint32()
 			if !ok {
-				return errors.New("read exponential histogram scale")
+				return dropped, errors.New("read exponential histogram scale")
 			}
 
 			scale = v
 		case fieldExpZeroCount:
 			v, ok := fc.Fixed64()
 			if !ok {
-				return errors.New("read exponential histogram zero count")
+				return dropped, errors.New("read exponential histogram zero count")
 			}
 
 			zeroCount = v
 		case fieldExpPositive:
 			data, ok := fc.MessageData()
 			if !ok {
-				return errors.New("read exponential histogram positive buckets")
+				return dropped, errors.New("read exponential histogram positive buckets")
 			}
 
 			positiveData = data
 		case fieldExpNegative:
 			data, ok := fc.MessageData()
 			if !ok {
-				return errors.New("read exponential histogram negative buckets")
+				return dropped, errors.New("read exponential histogram negative buckets")
 			}
 
 			negativeData = data
+		case fieldExpExemplars:
+			dropped++
 		case fieldExpAttributes:
 			data, ok := fc.MessageData()
 			if !ok {
-				return errors.New("read exponential histogram attribute")
+				return dropped, errors.New("read exponential histogram attribute")
 			}
 
 			kvs = append(kvs, data)
@@ -456,7 +472,7 @@ func (c *MetricsConverter) expHistogramPoint(
 
 	base, err := c.dec.attributes(kvs)
 	if err != nil {
-		return err
+		return dropped, err
 	}
 
 	cumulative := temp == metric.TemporalityCumulative
@@ -469,7 +485,7 @@ func (c *MetricsConverter) expHistogramPoint(
 
 	buckets, err := c.expBuckets(scale, zeroCount, count, negativeData, positiveData)
 	if err != nil {
-		return err
+		return dropped, err
 	}
 
 	bucketName := c.suffix(name, "_bucket")
@@ -484,7 +500,7 @@ func (c *MetricsConverter) expHistogramPoint(
 			c.withLabel(base, leKey, le), start, ts, float64(b.cumulative))
 	}
 
-	return nil
+	return dropped, nil
 }
 
 // expBucket is a derived classic bucket: an upper bound and the cumulative count at or below it.

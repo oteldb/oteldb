@@ -29,10 +29,11 @@ type observer struct {
 	rejected  metric.Int64Counter
 	byteCount metric.Int64Counter
 
-	otlpRequests metric.Int64Counter
-	otlpItems    metric.Int64Counter
-	otlpRejected metric.Int64Counter
-	otlpBytes    metric.Int64Counter
+	otlpRequests  metric.Int64Counter
+	otlpItems     metric.Int64Counter
+	otlpRejected  metric.Int64Counter
+	otlpExemplars metric.Int64Counter
+	otlpBytes     metric.Int64Counter
 }
 
 func newObserver(mp metric.MeterProvider) (*observer, error) {
@@ -83,6 +84,11 @@ func newObserver(mp metric.MeterProvider) (*observer, error) {
 	); err != nil {
 		return nil, errors.Wrap(err, "create otlp rejected counter")
 	}
+	if o.otlpExemplars, err = meter.Int64Counter("odbingest.otlp.dropped_exemplars",
+		metric.WithDescription("Exemplars an OTLP request carried that had no series to hang off."),
+	); err != nil {
+		return nil, errors.Wrap(err, "create otlp dropped exemplars counter")
+	}
 	if o.otlpBytes, err = meter.Int64Counter("odbingest.otlp.decoded_bytes",
 		metric.WithDescription("Decompressed OTLP request bytes, by signal."),
 		metric.WithUnit("By"),
@@ -103,6 +109,12 @@ func (o *observer) observeOTLP(s otlpdirect.Stats) {
 
 	if s.Rejected > 0 {
 		o.otlpRejected.Add(ctx, int64(s.Rejected), attr)
+	}
+
+	// Counted apart from rejected items, which is the OTLP partial-success number: an exemplar
+	// with no series to hang off is not a refused data point.
+	if s.DroppedExemplars > 0 {
+		o.otlpExemplars.Add(ctx, int64(s.DroppedExemplars), attr)
 	}
 }
 

@@ -24,7 +24,9 @@ func marshalMetrics(tb testing.TB, md pmetric.Metrics) []byte {
 }
 
 // convertBothMetrics decodes md directly and via the pdata path, canonicalized for comparison.
-func convertBothMetrics(tb testing.TB, md pmetric.Metrics) (direct, viaPdata *metric.Metrics, dropped, pdataDropped int) {
+func convertBothMetrics(
+	tb testing.TB, md pmetric.Metrics,
+) (direct, viaPdata *metric.Metrics, dropped otlpdirect.Dropped, pdataDropped pdataconv.Dropped) {
 	tb.Helper()
 
 	var c otlpdirect.MetricsConverter
@@ -33,8 +35,7 @@ func convertBothMetrics(tb testing.TB, md pmetric.Metrics) (direct, viaPdata *me
 	require.NoError(tb, err)
 
 	viaPdata = &metric.Metrics{}
-	// The direct converter does not decode exemplars, so only the dropped *points* are comparable.
-	pdataDropped = pdataconv.AppendMetrics(viaPdata, md).Points
+	pdataDropped = pdataconv.AppendMetrics(viaPdata, md)
 
 	return canonicalMetrics(direct), canonicalMetrics(viaPdata), dropped, pdataDropped
 }
@@ -43,11 +44,21 @@ func convertBothMetrics(tb testing.TB, md pmetric.Metrics) (direct, viaPdata *me
 func requireSameMetrics(tb testing.TB, md pmetric.Metrics) *metric.Metrics {
 	tb.Helper()
 
+	got, _ := requireSameMetricsDropped(tb, md)
+
+	return got
+}
+
+// requireSameMetricsDropped is [requireSameMetrics] also handing back what was dropped.
+func requireSameMetricsDropped(tb testing.TB, md pmetric.Metrics) (*metric.Metrics, otlpdirect.Dropped) {
+	tb.Helper()
+
 	direct, viaPdata, dropped, pdataDropped := convertBothMetrics(tb, md)
 	require.Equal(tb, viaPdata, direct)
-	require.Equal(tb, pdataDropped, dropped, "dropped counts must agree")
+	require.Equal(tb, pdataDropped.Points, dropped.Points, "dropped point counts must agree")
+	require.Equal(tb, pdataDropped.Exemplars, dropped.Exemplars, "dropped exemplar counts must agree")
 
-	return direct
+	return direct, dropped
 }
 
 func newGauge(md pmetric.Metrics, name string) pmetric.Metric {
@@ -144,10 +155,239 @@ func TestConvertMetricsDropsValuelessPoint(t *testing.T) {
 
 	direct, viaPdata, dropped, pdataDropped := convertBothMetrics(t, md)
 	require.Equal(t, viaPdata, direct)
-	assert.Equal(t, 1, dropped)
-	assert.Equal(t, pdataDropped, dropped)
+	assert.Equal(t, 1, dropped.Points)
+	assert.Equal(t, pdataDropped.Points, dropped.Points)
 
 	assert.Len(t, direct.Resources[0].Scopes[0].Metrics[0].Points, 1)
+}
+
+// exemplarFixture builds one exemplar on a number data point.
+type exemplarFixture struct {
+	ts       pcommon.Timestamp
+	value    func(pmetric.Exemplar)
+	traceID  pcommon.TraceID
+	spanID   pcommon.SpanID
+	filtered map[string]string
+}
+
+func (f exemplarFixture) appendTo(exs pmetric.ExemplarSlice) {
+	e := exs.AppendEmpty()
+	e.SetTimestamp(f.ts)
+
+	if f.value != nil {
+		f.value(e)
+	}
+
+	e.SetTraceID(f.traceID)
+	e.SetSpanID(f.spanID)
+
+	for k, v := range f.filtered {
+		e.FilteredAttributes().PutStr(k, v)
+	}
+}
+
+func doubleExemplar(v float64) func(pmetric.Exemplar) {
+	return func(e pmetric.Exemplar) { e.SetDoubleValue(v) }
+}
+
+func intExemplar(v int64) func(pmetric.Exemplar) {
+	return func(e pmetric.Exemplar) { e.SetIntValue(v) }
+}
+
+var (
+	fixtureTraceID = pcommon.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+	fixtureSpanID  = pcommon.SpanID([8]byte{1, 2, 3, 4, 5, 6, 7, 8})
+)
+
+// TestConvertMetricsExemplars pins the parity of the exemplars hanging off gauge and sum points,
+// which the direct decoder must reproduce byte for byte — including which ones pdataconv refuses.
+func TestConvertMetricsExemplars(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name      string
+		exemplars []exemplarFixture
+		// wantExemplars is how many survive on the point, and wantDropped how many do not.
+		wantExemplars int
+		wantDropped   int
+	}{
+		{
+			name: "trace context",
+			exemplars: []exemplarFixture{
+				{ts: 10, value: doubleExemplar(1.5), traceID: fixtureTraceID, spanID: fixtureSpanID},
+			},
+			wantExemplars: 1,
+		},
+		{
+			name:          "no trace context",
+			exemplars:     []exemplarFixture{{ts: 11, value: doubleExemplar(2.5)}},
+			wantExemplars: 1,
+		},
+		{
+			name: "span id only",
+			exemplars: []exemplarFixture{
+				{ts: 12, value: intExemplar(7), spanID: fixtureSpanID},
+			},
+			wantExemplars: 1,
+		},
+		{
+			name: "filtered attributes",
+			exemplars: []exemplarFixture{
+				{
+					ts:       13,
+					value:    doubleExemplar(3),
+					traceID:  fixtureTraceID,
+					spanID:   fixtureSpanID,
+					filtered: map[string]string{"http.route": "/things", "cpu": "0"},
+				},
+			},
+			wantExemplars: 1,
+		},
+		{
+			name:        "value-less",
+			exemplars:   []exemplarFixture{{ts: 14, traceID: fixtureTraceID}},
+			wantDropped: 1,
+		},
+		{
+			name: "mixed",
+			exemplars: []exemplarFixture{
+				{ts: 15, value: intExemplar(1), traceID: fixtureTraceID, spanID: fixtureSpanID},
+				{ts: 16},
+				{ts: 17, value: doubleExemplar(2), filtered: map[string]string{"k": "v"}},
+			},
+			wantExemplars: 2,
+			wantDropped:   1,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, kind := range []string{"gauge", "sum"} {
+				t.Run(kind, func(t *testing.T) {
+					t.Parallel()
+
+					md := pmetric.NewMetrics()
+
+					m := newGauge(md, "requests")
+
+					var dp pmetric.NumberDataPoint
+					if kind == "gauge" {
+						dp = m.SetEmptyGauge().DataPoints().AppendEmpty()
+					} else {
+						sum := m.SetEmptySum()
+						sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+						sum.SetIsMonotonic(true)
+						dp = sum.DataPoints().AppendEmpty()
+					}
+
+					dp.SetTimestamp(100)
+					dp.SetDoubleValue(9)
+					dp.Attributes().PutStr("http.route", "/things")
+
+					for _, f := range tt.exemplars {
+						f.appendTo(dp.Exemplars())
+					}
+
+					got, dropped := requireSameMetricsDropped(t, md)
+					assert.Equal(t, tt.wantDropped, dropped.Exemplars)
+					assert.Zero(t, dropped.Points)
+
+					point := got.Resources[0].Scopes[0].Metrics[0].Points[0]
+					assert.Len(t, point.Exemplars, tt.wantExemplars)
+				})
+			}
+		})
+	}
+}
+
+// TestConvertMetricsExemplarsOnDroppedPoint pins that a value-less point takes its exemplars with
+// it: they are counted, never reattached to another point.
+func TestConvertMetricsExemplarsOnDroppedPoint(t *testing.T) {
+	t.Parallel()
+
+	md := pmetric.NewMetrics()
+
+	dps := newGauge(md, "g").SetEmptyGauge().DataPoints()
+
+	none := dps.AppendEmpty()
+	none.SetTimestamp(1)
+	exemplarFixture{ts: 1, value: doubleExemplar(1), traceID: fixtureTraceID}.appendTo(none.Exemplars())
+	exemplarFixture{ts: 2}.appendTo(none.Exemplars())
+
+	valued := dps.AppendEmpty()
+	valued.SetTimestamp(2)
+	valued.SetDoubleValue(1)
+	exemplarFixture{ts: 3, value: doubleExemplar(4), spanID: fixtureSpanID}.appendTo(valued.Exemplars())
+
+	got, dropped := requireSameMetricsDropped(t, md)
+	assert.Equal(t, 1, dropped.Points)
+	assert.Equal(t, 2, dropped.Exemplars)
+
+	points := got.Resources[0].Scopes[0].Metrics[0].Points
+	require.Len(t, points, 1)
+	assert.Len(t, points[0].Exemplars, 1)
+}
+
+// TestConvertMetricsDecomposedExemplarsDropped pins the accounting for the shapes stored by classic
+// decomposition: one point becomes several series, so its exemplars have no home.
+func TestConvertMetricsDecomposedExemplarsDropped(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name        string
+		build       func(pmetric.Metric) pmetric.ExemplarSlice
+		wantDropped int
+	}{
+		{
+			name: "histogram",
+			build: func(m pmetric.Metric) pmetric.ExemplarSlice {
+				h := m.SetEmptyHistogram()
+				h.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+
+				dp := h.DataPoints().AppendEmpty()
+				dp.SetTimestamp(1)
+				dp.SetCount(3)
+				dp.ExplicitBounds().FromRaw([]float64{1, 2})
+				dp.BucketCounts().FromRaw([]uint64{1, 1, 1})
+
+				return dp.Exemplars()
+			},
+			wantDropped: 3,
+		},
+		{
+			name: "exponential histogram",
+			build: func(m pmetric.Metric) pmetric.ExemplarSlice {
+				eh := m.SetEmptyExponentialHistogram()
+				eh.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+
+				dp := eh.DataPoints().AppendEmpty()
+				dp.SetTimestamp(1)
+				dp.SetCount(2)
+				dp.SetScale(1)
+				dp.Positive().BucketCounts().FromRaw([]uint64{1, 1})
+
+				return dp.Exemplars()
+			},
+			wantDropped: 3,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			md := pmetric.NewMetrics()
+
+			exs := tt.build(newGauge(md, "h"))
+
+			exemplarFixture{ts: 1, value: doubleExemplar(1), traceID: fixtureTraceID}.appendTo(exs)
+			exemplarFixture{ts: 2, value: intExemplar(2), spanID: fixtureSpanID}.appendTo(exs)
+			// A value-less one on a decomposed point is dropped for both reasons, counted once.
+			exemplarFixture{ts: 3}.appendTo(exs)
+
+			_, dropped := requireSameMetricsDropped(t, md)
+			assert.Equal(t, tt.wantDropped, dropped.Exemplars)
+			assert.Zero(t, dropped.Points)
+		})
+	}
 }
 
 // TestConvertMetricsHistogram covers classic decomposition into _count/_sum/_bucket{le}.

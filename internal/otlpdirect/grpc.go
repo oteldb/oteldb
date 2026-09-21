@@ -94,20 +94,26 @@ func (h *Handler) exportHandler(sig signal.Signal, ingest ingestFunc) grpc.Metho
 				return nil, status.Error(codes.Internal, "unexpected request type")
 			}
 
-			items, rejected, err := ingest(ctx, m.data)
+			in, err := ingest(ctx, m.data)
 			if err != nil {
 				return nil, h.grpcError(sig, err)
 			}
 
 			if h.observe != nil {
-				h.observe(Stats{Signal: sig, Bytes: len(m.data), Items: items, Rejected: rejected})
+				h.observe(Stats{
+					Signal:           sig,
+					Bytes:            len(m.data),
+					Items:            in.items,
+					Rejected:         in.rejected,
+					DroppedExemplars: in.exemplars,
+				})
 			}
 
-			if rejected == 0 {
+			if in.rejected == 0 {
 				return &rawMessage{}, nil
 			}
 
-			return &rawMessage{data: encodePartialSuccess(sig, rejected)}, nil
+			return &rawMessage{data: encodePartialSuccess(sig, in.rejected)}, nil
 		}
 
 		if interceptor == nil {

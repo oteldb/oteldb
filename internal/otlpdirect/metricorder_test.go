@@ -160,7 +160,19 @@ func canonicalMetrics(m *metric.Metrics) *metric.Metrics {
 				mt.Unit = canonBytes(mt.Unit)
 
 				for p := range mt.Points {
-					mt.Points[p].Attributes = canonAttrs(mt.Points[p].Attributes)
+					pt := &mt.Points[p]
+					pt.Attributes = canonAttrs(pt.Attributes)
+
+					for e := range pt.Exemplars {
+						ex := &pt.Exemplars[e]
+						ex.FilteredAttributes = canonAttrs(ex.FilteredAttributes)
+						ex.TraceID = canonBytes(ex.TraceID)
+						ex.SpanID = canonBytes(ex.SpanID)
+					}
+
+					if len(pt.Exemplars) == 0 {
+						pt.Exemplars = nil
+					}
 				}
 
 				if len(mt.Points) == 0 {

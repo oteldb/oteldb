@@ -22,7 +22,6 @@ import (
 	"github.com/oteldb/promql-engine/query"
 	enginestorage "github.com/oteldb/promql-engine/storage"
 	promscanners "github.com/oteldb/promql-engine/storage/prometheus"
-	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
 	promstorage "github.com/prometheus/prometheus/storage"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -248,18 +247,6 @@ func clampQueryMs(ms int64) int64 {
 	}
 }
 
-// ExemplarQuerier implements storage.ExemplarQueryable. The storage engine does not store
-// exemplars yet, so this returns an empty querier.
-func (b *Backend) ExemplarQuerier(context.Context) (promstorage.ExemplarQuerier, error) {
-	return emptyExemplarQuerier{}, nil
-}
-
-type emptyExemplarQuerier struct{}
-
-func (emptyExemplarQuerier) Select(int64, int64, ...[]*labels.Matcher) ([]exemplar.QueryResult, error) {
-	return nil, nil
-}
-
 // MetricsScanners implements the oteldb PromQL engine's scanner seam.
 func (b *Backend) MetricsScanners() (enginestorage.Scanners, error) {
 	return scanners{b: b}, nil
@@ -273,8 +260,12 @@ func (b *Backend) MetricMetadata(context.Context, metricstorage.MetadataParams) 
 
 // ConsumeMetrics ingests an OTLP metrics batch into the storage engine. It is the metrics
 // ingestion sink used by the oteldb collector exporter when the storage backend is selected.
-// Histogram, exponential-histogram, summary, and value-less points are not representable in
-// the storage engine yet and are silently dropped by the conversion.
+//
+// Histogram, exponential-histogram and summary points are stored by classic decomposition into
+// float series; a value-less number point has nothing to store and is dropped, as is any exemplar
+// the decomposition leaves without an unambiguous series. Both are counted on
+// oteldb.storage.dropped_records, which is the only report this sink has — its signature returns
+// only an error.
 func (b *Backend) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
 	// A fresh batch is used (not pooled) because the engine may retain projected series
 	// bytes; pdataconv already copies out of pdata, so this allocates regardless.
@@ -283,7 +274,10 @@ func (b *Backend) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error 
 	}
 
 	var batch metric.Metrics
-	pdataconv.AppendMetrics(&batch, md)
+
+	dropped := pdataconv.AppendMetrics(&batch, md)
+	b.countDropped(ctx, signal.Metric, reasonNoValue, dropped.Points)
+	b.countDropped(ctx, signal.Metric, reasonExemplar, dropped.Exemplars)
 
 	if _, err := b.store.WriteMetrics(ctx, batch); err != nil {
 		return errors.Wrap(err, "write metrics")

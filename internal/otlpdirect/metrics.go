@@ -40,8 +40,17 @@ const (
 	fieldNumberStart      = 2
 	fieldNumberTime       = 3
 	fieldNumberAsDouble   = 4
+	fieldNumberExemplars  = 5
 	fieldNumberAsInt      = 6
 	fieldNumberAttributes = 7
+
+	// opentelemetry.proto.metrics.v1.Exemplar — 3 and 6 are the arms of the `value` oneof.
+	fieldExemplarTime       = 2
+	fieldExemplarAsDouble   = 3
+	fieldExemplarSpanID     = 4
+	fieldExemplarTraceID    = 5
+	fieldExemplarAsInt      = 6
+	fieldExemplarAttributes = 7
 
 	// opentelemetry.proto.metrics.v1.HistogramDataPoint
 	fieldHistStart      = 2
@@ -50,6 +59,7 @@ const (
 	fieldHistSum        = 5
 	fieldHistBuckets    = 6
 	fieldHistBounds     = 7
+	fieldHistExemplars  = 8
 	fieldHistAttributes = 9
 
 	// opentelemetry.proto.metrics.v1.ExponentialHistogramDataPoint
@@ -62,6 +72,7 @@ const (
 	fieldExpZeroCount  = 7
 	fieldExpPositive   = 8
 	fieldExpNegative   = 9
+	fieldExpExemplars  = 11
 
 	// opentelemetry.proto.metrics.v1.ExponentialHistogramDataPoint.Buckets
 	fieldBucketsOffset = 1
@@ -86,6 +97,23 @@ const (
 	otlpTemporalityCumulative = 2
 )
 
+// Dropped counts what a metrics conversion could not represent. It mirrors
+// [github.com/oteldb/storage/otlp/pdataconv.Dropped] field for field, so the direct decoder and the
+// pdata path report the same numbers for the same request.
+type Dropped struct {
+	// Points is the number of number data points carrying neither as_double nor as_int.
+	Points int
+	// Exemplars is the number of exemplars with no home: those on histogram,
+	// exponential-histogram and summary points (stored by classic decomposition, which leaves an
+	// exemplar no unambiguous series to hang off), those on a dropped point, and value-less ones.
+	Exemplars int
+}
+
+func (d *Dropped) add(o Dropped) {
+	d.Points += o.Points
+	d.Exemplars += o.Exemplars
+}
+
 // MetricsConverter decodes an OTLP ExportMetricsServiceRequest into [metric.Metrics]. It retains
 // the batch and the scratch it is built from, so a converter reused across requests allocates
 // nothing in steady state. It is not safe for concurrent use; pool one per in-flight request.
@@ -95,41 +123,42 @@ type MetricsConverter struct {
 
 	// Scratch reused across the data points of a request; each is consumed before the next point
 	// reaches it.
-	pointAttrs [][]byte
-	dataPoints [][]byte
-	bounds     []float64
-	counts     []uint64
-	deltas     []uint64
+	pointAttrs    [][]byte
+	dataPoints    [][]byte
+	exemplars     [][]byte
+	exemplarAttrs [][]byte
+	bounds        []float64
+	counts        []uint64
+	deltas        []uint64
 }
 
-// Convert decodes a serialized ExportMetricsServiceRequest, returning how many points it could not
-// represent (a number point carrying no value — the only unrepresentable case).
+// Convert decodes a serialized ExportMetricsServiceRequest, returning what it could not represent.
 //
 // The returned batch aliases src: every attribute key, string value, metric name and unit is a
 // sub-slice of it. It stays valid until the next Convert on this converter, and src must not be
 // recycled until the write consuming the batch has returned.
-func (c *MetricsConverter) Convert(src []byte) (_ *metric.Metrics, dropped int, _ error) {
+func (c *MetricsConverter) Convert(src []byte) (_ *metric.Metrics, dropped Dropped, _ error) {
 	c.batch.Reset()
 	c.dec.reset()
 
 	resources, err := collect(src, fieldExportResourceMetrics, "resource metrics")
 	if err != nil {
-		return nil, 0, err
+		return nil, Dropped{}, err
 	}
 
 	for _, data := range resources {
 		n, err := c.resourceMetrics(data)
 		if err != nil {
-			return nil, 0, err
+			return nil, Dropped{}, err
 		}
 
-		dropped += n
+		dropped.add(n)
 	}
 
 	return &c.batch, dropped, nil
 }
 
-func (c *MetricsConverter) resourceMetrics(src []byte) (dropped int, _ error) {
+func (c *MetricsConverter) resourceMetrics(src []byte) (dropped Dropped, _ error) {
 	var (
 		fc     easyproto.FieldContext
 		res    signal.Resource
@@ -139,30 +168,30 @@ func (c *MetricsConverter) resourceMetrics(src []byte) (dropped int, _ error) {
 
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
-			return 0, errors.Wrap(err, "read resource metrics field")
+			return dropped, errors.Wrap(err, "read resource metrics field")
 		}
 
 		switch fc.FieldNum {
 		case fieldResourceMetricsResource:
 			data, ok := fc.MessageData()
 			if !ok {
-				return 0, errors.New("read resource")
+				return dropped, errors.New("read resource")
 			}
 
 			if res.Attributes, err = c.dec.resource(data); err != nil {
-				return 0, err
+				return dropped, err
 			}
 		case fieldResourceMetricsScope:
 			data, ok := fc.MessageData()
 			if !ok {
-				return 0, errors.New("read scope metrics")
+				return dropped, errors.New("read scope metrics")
 			}
 
 			scopes = append(scopes, data)
 		case fieldResourceMetricsSchemaURL:
 			v, ok := fc.Bytes()
 			if !ok {
-				return 0, errors.New("read resource schema url")
+				return dropped, errors.New("read resource schema url")
 			}
 
 			res.SchemaURL = v
@@ -178,13 +207,13 @@ func (c *MetricsConverter) resourceMetrics(src []byte) (dropped int, _ error) {
 			return dropped, err
 		}
 
-		dropped += n
+		dropped.add(n)
 	}
 
 	return dropped, nil
 }
 
-func (c *MetricsConverter) scopeMetrics(rm *metric.ResourceMetrics, src []byte) (dropped int, _ error) {
+func (c *MetricsConverter) scopeMetrics(rm *metric.ResourceMetrics, src []byte) (dropped Dropped, _ error) {
 	var (
 		fc        easyproto.FieldContext
 		scopeData []byte
@@ -198,28 +227,28 @@ func (c *MetricsConverter) scopeMetrics(rm *metric.ResourceMetrics, src []byte) 
 	// place would overwrite a schema_url already read.
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
-			return 0, errors.Wrap(err, "read scope metrics field")
+			return dropped, errors.Wrap(err, "read scope metrics field")
 		}
 
 		switch fc.FieldNum {
 		case fieldScopeMetricsScope:
 			data, ok := fc.MessageData()
 			if !ok {
-				return 0, errors.New("read scope")
+				return dropped, errors.New("read scope")
 			}
 
 			scopeData = data
 		case fieldScopeMetricsMetrics:
 			data, ok := fc.MessageData()
 			if !ok {
-				return 0, errors.New("read metric")
+				return dropped, errors.New("read metric")
 			}
 
 			metrics = append(metrics, data)
 		case fieldScopeMetricsSchemaURL:
 			v, ok := fc.Bytes()
 			if !ok {
-				return 0, errors.New("read scope schema url")
+				return dropped, errors.New("read scope schema url")
 			}
 
 			schemaURL = v
@@ -228,7 +257,7 @@ func (c *MetricsConverter) scopeMetrics(rm *metric.ResourceMetrics, src []byte) 
 
 	sc, err := c.dec.scope(scopeData)
 	if err != nil {
-		return 0, err
+		return dropped, err
 	}
 
 	sc.SchemaURL = schemaURL
@@ -242,7 +271,7 @@ func (c *MetricsConverter) scopeMetrics(rm *metric.ResourceMetrics, src []byte) 
 			return dropped, err
 		}
 
-		dropped += n
+		dropped.add(n)
 	}
 
 	return dropped, nil
@@ -250,7 +279,7 @@ func (c *MetricsConverter) scopeMetrics(rm *metric.ResourceMetrics, src []byte) 
 
 // metric dispatches on which arm of the Metric `data` oneof is present. The name and unit are
 // siblings of that arm and may arrive on either side of it, so the arm is decoded after the walk.
-func (c *MetricsConverter) metric(sm *metric.ScopeMetrics, src []byte) (dropped int, _ error) {
+func (c *MetricsConverter) metric(sm *metric.ScopeMetrics, src []byte) (dropped Dropped, _ error) {
 	var (
 		fc       easyproto.FieldContext
 		name     []byte
@@ -262,22 +291,22 @@ func (c *MetricsConverter) metric(sm *metric.ScopeMetrics, src []byte) (dropped 
 
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
-			return 0, errors.Wrap(err, "read metric field")
+			return dropped, errors.Wrap(err, "read metric field")
 		}
 
 		switch fc.FieldNum {
 		case fieldMetricName:
 			if name, err = takeBytes(&fc, "metric name"); err != nil {
-				return 0, err
+				return dropped, err
 			}
 		case fieldMetricUnit:
 			if unit, err = takeBytes(&fc, "metric unit"); err != nil {
-				return 0, err
+				return dropped, err
 			}
 		case fieldMetricGauge, fieldMetricSum, fieldMetricHist, fieldMetricExpHist, fieldMetricSummary:
 			data, ok := fc.MessageData()
 			if !ok {
-				return 0, errors.New("read metric data")
+				return dropped, errors.New("read metric data")
 			}
 
 			body, bodyKind = data, fc.FieldNum
@@ -290,18 +319,23 @@ func (c *MetricsConverter) metric(sm *metric.ScopeMetrics, src []byte) (dropped 
 	case fieldMetricSum:
 		return c.sum(sm, name, unit, body)
 	case fieldMetricHist:
-		return 0, c.histogram(sm, name, unit, body)
+		n, err := c.histogram(sm, name, unit, body)
+
+		return Dropped{Exemplars: n}, err
 	case fieldMetricExpHist:
-		return 0, c.expHistogram(sm, name, unit, body)
+		n, err := c.expHistogram(sm, name, unit, body)
+
+		return Dropped{Exemplars: n}, err
 	case fieldMetricSummary:
-		return 0, c.summary(sm, name, unit, body)
+		// Summary data points carry no exemplars in OTLP, so decomposing one drops nothing.
+		return Dropped{}, c.summary(sm, name, unit, body)
 	default: // a metric with no data arm carries no points
-		return 0, nil
+		return Dropped{}, nil
 	}
 }
 
 // sum reads the temporality and monotonicity that qualify a sum's identity, then its points.
-func (c *MetricsConverter) sum(sm *metric.ScopeMetrics, name, unit, src []byte) (dropped int, _ error) {
+func (c *MetricsConverter) sum(sm *metric.ScopeMetrics, name, unit, src []byte) (dropped Dropped, _ error) {
 	var (
 		fc        easyproto.FieldContext
 		temp      metric.Temporality
@@ -313,28 +347,28 @@ func (c *MetricsConverter) sum(sm *metric.ScopeMetrics, name, unit, src []byte) 
 
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
-			return 0, errors.Wrap(err, "read sum field")
+			return dropped, errors.Wrap(err, "read sum field")
 		}
 
 		switch fc.FieldNum {
 		case fieldDataPoints:
 			data, ok := fc.MessageData()
 			if !ok {
-				return 0, errors.New("read sum data point")
+				return dropped, errors.New("read sum data point")
 			}
 
 			points = append(points, data)
 		case fieldTemporality:
 			v, ok := fc.Enum()
 			if !ok {
-				return 0, errors.New("read sum temporality")
+				return dropped, errors.New("read sum temporality")
 			}
 
 			temp = temporalityOf(v)
 		case fieldSumIsMonotonic:
 			v, ok := fc.Bool()
 			if !ok {
-				return 0, errors.New("read sum monotonicity")
+				return dropped, errors.New("read sum monotonicity")
 			}
 
 			monotonic = v
@@ -353,7 +387,7 @@ func (c *MetricsConverter) sum(sm *metric.ScopeMetrics, name, unit, src []byte) 
 			return dropped, err
 		}
 
-		dropped += n
+		dropped.add(n)
 	}
 
 	return dropped, nil
@@ -363,10 +397,10 @@ func (c *MetricsConverter) sum(sm *metric.ScopeMetrics, name, unit, src []byte) 
 func (c *MetricsConverter) numbers(
 	sm *metric.ScopeMetrics, name, unit, src []byte,
 	kind metric.PointKind, temp metric.Temporality, monotonic bool,
-) (dropped int, _ error) {
+) (dropped Dropped, _ error) {
 	points, err := collectInto(c.dataPoints[:0], src, fieldDataPoints, "number data point")
 	if err != nil {
-		return 0, err
+		return dropped, err
 	}
 
 	c.dataPoints = points
@@ -381,15 +415,16 @@ func (c *MetricsConverter) numbers(
 			return dropped, err
 		}
 
-		dropped += n
+		dropped.add(n)
 	}
 
 	return dropped, nil
 }
 
 // numberPoint appends one gauge/sum point. A point carrying neither as_double nor as_int has no
-// value to store, so it is dropped and counted rather than stored as zero.
-func (c *MetricsConverter) numberPoint(mt *metric.Metric, src []byte) (dropped int, _ error) {
+// value to store, so it is dropped and counted rather than stored as zero — and with it go its
+// exemplars, which then have no series to hang off.
+func (c *MetricsConverter) numberPoint(mt *metric.Metric, src []byte) (dropped Dropped, _ error) {
 	var (
 		fc        easyproto.FieldContext
 		start, ts int64
@@ -399,67 +434,201 @@ func (c *MetricsConverter) numberPoint(mt *metric.Metric, src []byte) (dropped i
 	)
 
 	kvs := c.pointAttrs[:0]
+	exs := c.exemplars[:0]
 
 	for len(src) > 0 {
 		if src, err = fc.NextField(src); err != nil {
-			return 0, errors.Wrap(err, "read number data point field")
+			return dropped, errors.Wrap(err, "read number data point field")
 		}
 
 		switch fc.FieldNum {
 		case fieldNumberStart:
 			v, ok := fc.Fixed64()
 			if !ok {
-				return 0, errors.New("read point start")
+				return dropped, errors.New("read point start")
 			}
 
 			start = int64(v)
 		case fieldNumberTime:
 			v, ok := fc.Fixed64()
 			if !ok {
-				return 0, errors.New("read point time")
+				return dropped, errors.New("read point time")
 			}
 
 			ts = int64(v)
 		case fieldNumberAsDouble:
 			v, ok := fc.Double()
 			if !ok {
-				return 0, errors.New("read point double value")
+				return dropped, errors.New("read point double value")
 			}
 
 			value, hasValue = v, true
 		case fieldNumberAsInt:
 			v, ok := fc.Sfixed64()
 			if !ok {
-				return 0, errors.New("read point int value")
+				return dropped, errors.New("read point int value")
 			}
 
 			value, hasValue = float64(v), true
 		case fieldNumberAttributes:
 			data, ok := fc.MessageData()
 			if !ok {
-				return 0, errors.New("read point attribute")
+				return dropped, errors.New("read point attribute")
 			}
 
 			kvs = append(kvs, data)
+		case fieldNumberExemplars:
+			data, ok := fc.MessageData()
+			if !ok {
+				return dropped, errors.New("read point exemplar")
+			}
+
+			exs = append(exs, data)
 		}
 	}
 
-	c.pointAttrs = kvs
+	c.pointAttrs, c.exemplars = kvs, exs
 
 	if !hasValue {
-		return 1, nil
+		return Dropped{Points: 1, Exemplars: len(exs)}, nil
 	}
 
 	attrs, err := c.dec.attributes(kvs)
 	if err != nil {
-		return 0, err
+		return dropped, err
 	}
 
 	p := mt.AddPoint()
 	p.Attributes = attrs
 	p.StartTs, p.Ts, p.Value = start, ts, value
 
-	return 0, nil
+	n, err := c.pointExemplars(p, exs)
+	dropped.Exemplars += n
+
+	return dropped, err
+}
+
+// pointExemplars appends a number point's exemplars, returning how many carried no value and so
+// could not be represented.
+func (c *MetricsConverter) pointExemplars(p *metric.NumberPoint, srcs [][]byte) (dropped int, _ error) {
+	for _, src := range srcs {
+		var (
+			fc              easyproto.FieldContext
+			ts              int64
+			value           float64
+			hasValue        bool
+			traceID, spanID []byte
+			err             error
+		)
+
+		kvs := c.exemplarAttrs[:0]
+
+		for len(src) > 0 {
+			if src, err = fc.NextField(src); err != nil {
+				return dropped, errors.Wrap(err, "read exemplar field")
+			}
+
+			switch fc.FieldNum {
+			case fieldExemplarTime:
+				v, ok := fc.Fixed64()
+				if !ok {
+					return dropped, errors.New("read exemplar time")
+				}
+
+				ts = int64(v)
+			case fieldExemplarAsDouble:
+				v, ok := fc.Double()
+				if !ok {
+					return dropped, errors.New("read exemplar double value")
+				}
+
+				value, hasValue = v, true
+			case fieldExemplarAsInt:
+				v, ok := fc.Sfixed64()
+				if !ok {
+					return dropped, errors.New("read exemplar int value")
+				}
+
+				value, hasValue = float64(v), true
+			case fieldExemplarTraceID:
+				if traceID, err = takeID(&fc, traceIDLen, "exemplar trace id"); err != nil {
+					return dropped, err
+				}
+			case fieldExemplarSpanID:
+				if spanID, err = takeID(&fc, spanIDLen, "exemplar span id"); err != nil {
+					return dropped, err
+				}
+			case fieldExemplarAttributes:
+				data, ok := fc.MessageData()
+				if !ok {
+					return dropped, errors.New("read exemplar attribute")
+				}
+
+				kvs = append(kvs, data)
+			}
+		}
+
+		c.exemplarAttrs = kvs
+
+		if !hasValue {
+			dropped++
+
+			continue
+		}
+
+		attrs, err := c.dec.attributes(kvs)
+		if err != nil {
+			return dropped, err
+		}
+
+		e := p.AddExemplar()
+		e.FilteredAttributes = attrs
+		e.TraceID, e.SpanID = presentID(traceID), presentID(spanID)
+		e.Ts, e.Value = ts, value
+	}
+
+	return dropped, nil
+}
+
+// OTLP trace and span id widths.
+const (
+	traceIDLen = 16
+	spanIDLen  = 8
+)
+
+// takeID reads an exemplar's trace or span id, rejecting the request when the field is neither
+// empty nor exactly width bytes — as pdata's TraceID/SpanID UnmarshalProto do.
+//
+// This decoder's contract is to be indistinguishable from the pdata path, and the parity test
+// cannot hold it to that here: pdata can only ever emit a well-formed id. Nor is a wrong-length id
+// degraded data worth keeping. Exemplar trace correlation looks up by a 16-byte id, so one of any
+// other width could never be found, and the hex trace_id label rendered from it links nowhere.
+//
+// An empty field stays legal: it is how OTLP spells "no span context", and so does an all-zero id
+// of the correct width (see [presentID]).
+func takeID(fc *easyproto.FieldContext, width int, what string) ([]byte, error) {
+	id, err := takeBytes(fc, what)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(id) != 0 && len(id) != width {
+		return nil, errors.Errorf("read %s: got %d bytes, want %d", what, len(id), width)
+	}
+
+	return id, nil
+}
+
+// presentID drops an id that carries no span context. OTLP spells "no trace" as an all-zero id,
+// which pdata reports as empty and pdataconv leaves unset — so the two paths must agree.
+func presentID(id []byte) []byte {
+	for _, b := range id {
+		if b != 0 {
+			return id
+		}
+	}
+
+	return nil
 }
 
 func temporalityOf(v int32) metric.Temporality {

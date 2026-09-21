@@ -3,6 +3,7 @@ package otlpdirect_test
 import (
 	"testing"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
 	"github.com/oteldb/oteldb/internal/otlpdirect"
@@ -112,6 +113,66 @@ func FuzzConvertMetrics(f *testing.F) {
 		}
 	})
 
+	// Exemplars: on a gauge and a sum, with and without trace context, plus a value-less one the
+	// decoder must count rather than store, and one on a histogram (dropped by decomposition).
+	seed(func(md pmetric.Metrics) {
+		m := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+		m.SetName("g")
+
+		p := m.SetEmptyGauge().DataPoints().AppendEmpty()
+		p.SetTimestamp(1)
+		p.SetDoubleValue(1.5)
+
+		withTrace := p.Exemplars().AppendEmpty()
+		withTrace.SetTimestamp(2)
+		withTrace.SetDoubleValue(3)
+		withTrace.SetTraceID(pcommon.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}))
+		withTrace.SetSpanID(pcommon.SpanID([8]byte{1, 2, 3, 4, 5, 6, 7, 8}))
+		withTrace.FilteredAttributes().PutStr("k", "v")
+
+		bare := p.Exemplars().AppendEmpty()
+		bare.SetTimestamp(3)
+		bare.SetIntValue(4)
+
+		p.Exemplars().AppendEmpty().SetTimestamp(4) // value-less
+	})
+
+	seed(func(md pmetric.Metrics) {
+		m := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+		m.SetName("c")
+
+		sum := m.SetEmptySum()
+		sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+		sum.SetIsMonotonic(true)
+
+		p := sum.DataPoints().AppendEmpty()
+		p.SetTimestamp(1)
+		p.SetIntValue(2)
+
+		e := p.Exemplars().AppendEmpty()
+		e.SetTimestamp(2)
+		e.SetDoubleValue(1)
+		e.SetSpanID(pcommon.SpanID([8]byte{9, 8, 7, 6, 5, 4, 3, 2}))
+	})
+
+	seed(func(md pmetric.Metrics) {
+		m := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+		m.SetName("h")
+
+		h := m.SetEmptyHistogram()
+		h.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+
+		dp := h.DataPoints().AppendEmpty()
+		dp.SetTimestamp(1)
+		dp.SetCount(2)
+		dp.ExplicitBounds().FromRaw([]float64{1})
+		dp.BucketCounts().FromRaw([]uint64{1, 1})
+
+		e := dp.Exemplars().AppendEmpty()
+		e.SetTimestamp(2)
+		e.SetDoubleValue(1)
+	})
+
 	f.Add([]byte{})
 	f.Add([]byte{0xff, 0xff, 0xff, 0xff})
 
@@ -123,11 +184,12 @@ func FuzzConvertMetrics(f *testing.F) {
 			return
 		}
 
-		if dropped < 0 {
-			t.Fatalf("negative dropped count: %d", dropped)
+		if dropped.Points < 0 || dropped.Exemplars < 0 {
+			t.Fatalf("negative dropped counts: %+v", dropped)
 		}
 
 		points := 0
+		exemplars := 0
 
 		for i := range got.Resources {
 			rm := &got.Resources[i]
@@ -142,8 +204,15 @@ func FuzzConvertMetrics(f *testing.F) {
 					_ = len(mt.Name) + len(mt.Unit)
 
 					for p := range mt.Points {
-						_ = len(mt.Points[p].Attributes)
+						pt := &mt.Points[p]
+						_ = len(pt.Attributes)
 						points++
+
+						for e := range pt.Exemplars {
+							ex := &pt.Exemplars[e]
+							_ = len(ex.FilteredAttributes) + len(ex.TraceID) + len(ex.SpanID)
+							exemplars++
+						}
 					}
 				}
 			}
@@ -158,20 +227,31 @@ func FuzzConvertMetrics(f *testing.F) {
 		}
 
 		if againDropped != dropped {
-			t.Fatalf("reuse changed the dropped count: %d then %d", dropped, againDropped)
+			t.Fatalf("reuse changed the dropped counts: %+v then %+v", dropped, againDropped)
 		}
 
 		againPoints := 0
+		againExemplars := 0
+
 		for i := range again.Resources {
 			for j := range again.Resources[i].Scopes {
 				for k := range again.Resources[i].Scopes[j].Metrics {
-					againPoints += len(again.Resources[i].Scopes[j].Metrics[k].Points)
+					pts := again.Resources[i].Scopes[j].Metrics[k].Points
+					againPoints += len(pts)
+
+					for p := range pts {
+						againExemplars += len(pts[p].Exemplars)
+					}
 				}
 			}
 		}
 
 		if againPoints != points {
 			t.Fatalf("reuse changed the point count: %d then %d", points, againPoints)
+		}
+
+		if againExemplars != exemplars {
+			t.Fatalf("reuse changed the exemplar count: %d then %d", exemplars, againExemplars)
 		}
 	})
 }
