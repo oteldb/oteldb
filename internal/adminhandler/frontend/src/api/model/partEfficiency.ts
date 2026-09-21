@@ -6,6 +6,8 @@
 
  * OpenAPI spec version: 0.1.0
  */
+import type { PartColumn } from './partColumn';
+import type { PartEfficiencyOtherBytes } from './partEfficiencyOtherBytes';
 
 /**
  * One flushed part's identity and size.
@@ -20,4 +22,10 @@ export interface PartEfficiency {
   rows: number;
   /** Distinct series/streams in the part. */
   series: number;
+  /** The part's columns, each with its physical layout and the size of its object. Present only when the part was read in enough detail to know them; a column whose values all collapsed to a constant has no object and so reports 0 bytes. Together with `other_bytes` the column sizes sum to `bytes`, which is what makes a single column's share of a store — the metric timestamp column's, say — measurable from the API.
+ */
+  columns?: PartColumn[];
+  /** Every non-column object in the part, keyed by its name under the part prefix (`manifest`, `marks`, and the engine's own indexes, e.g. `identity`, `sidx`, `stats`, `blooms`). With the `columns` sizes it sums to `bytes`.
+ */
+  other_bytes?: PartEfficiencyOtherBytes;
 }
