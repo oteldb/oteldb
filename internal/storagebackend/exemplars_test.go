@@ -201,6 +201,118 @@ func TestBackendExemplarsSelect(t *testing.T) {
 	}
 }
 
+// multiExemplarRoutes are the series of [multiExemplarBackend], in an ingest order the engine
+// returns unsorted — so a result that is not sorted by label set shows up as one.
+var multiExemplarRoutes = []string{"/z", "/y", "/x", "/b", "/a"}
+
+// multiExemplarBackend ingests one series of one metric per route, each carrying one exemplar.
+func multiExemplarBackend(t *testing.T, ts time.Time) (*storagebackend.Backend, context.Context) {
+	t.Helper()
+
+	ctx := context.Background()
+
+	store, err := storage.InMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close(ctx) })
+
+	b := storagebackend.New(store)
+
+	md := pmetric.NewMetrics()
+
+	rm := md.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("service.name", "api")
+
+	m := rm.ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+	m.SetName("request_duration")
+
+	dps := m.SetEmptyGauge().DataPoints()
+
+	for i, route := range multiExemplarRoutes {
+		dp := dps.AppendEmpty()
+		dp.SetTimestamp(pcommon.Timestamp(ts.UnixNano()))
+		dp.SetDoubleValue(float64(i))
+		dp.Attributes().PutStr("http.route", route)
+
+		e := dp.Exemplars().AppendEmpty()
+		e.SetTimestamp(pcommon.Timestamp(ts.UnixNano()))
+		e.SetDoubleValue(float64(i))
+		e.SetTraceID(testTraceID)
+	}
+
+	require.NoError(t, b.ConsumeMetrics(ctx, md))
+
+	return b, ctx
+}
+
+// TestBackendExemplarsOverlappingMatcherSets pins that a series selected by more than one matcher
+// set yields one result, not one per set. PromQL reaches Select with a set per selector, so a query
+// naming the same metric twice (`a / a{x="y"}`) hits this.
+func TestBackendExemplarsOverlappingMatcherSets(t *testing.T) {
+	ts := time.Now().Truncate(time.Second)
+	b, ctx := multiExemplarBackend(t, ts)
+
+	q, err := b.ExemplarQuerier(ctx)
+	require.NoError(t, err)
+
+	res, err := q.Select(
+		ts.Add(-time.Minute).UnixMilli(), ts.Add(time.Minute).UnixMilli(),
+		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "request_duration")},
+		[]*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "request_duration"),
+			labels.MustNewMatcher(labels.MatchEqual, "service.name", "api"),
+		},
+	)
+	require.NoError(t, err)
+
+	// Every series appears once, whole, and the results are ordered by label set.
+	var routes []string
+
+	for _, qr := range res {
+		require.Len(t, qr.Exemplars, 1)
+		routes = append(routes, qr.SeriesLabels.Get("http.route"))
+	}
+
+	require.Equal(t, []string{"/a", "/b", "/x", "/y", "/z"}, routes)
+}
+
+// TestBackendExemplarsEndBoundInclusive pins that an exemplar whose reported millisecond equals the
+// requested end is returned: the fetch window is nanoseconds, but a client compares the Ts it gets
+// back, which Prometheus includes at `e.Ts == end`.
+func TestBackendExemplarsEndBoundInclusive(t *testing.T) {
+	ts := time.Now().Truncate(time.Second)
+
+	ctx := context.Background()
+
+	store, err := storage.InMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close(ctx) })
+
+	b := storagebackend.New(store)
+
+	md := pmetric.NewMetrics()
+
+	rm := md.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("service.name", "api")
+
+	m := rm.ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+	m.SetName("request_duration")
+
+	dp := m.SetEmptyGauge().DataPoints().AppendEmpty()
+	dp.SetTimestamp(pcommon.Timestamp(ts.UnixNano()))
+	dp.SetDoubleValue(1)
+
+	e := dp.Exemplars().AppendEmpty()
+	e.SetTimestamp(pcommon.Timestamp(ts.Add(500 * time.Microsecond).UnixNano()))
+	e.SetDoubleValue(2)
+
+	require.NoError(t, b.ConsumeMetrics(ctx, md))
+
+	matcher := labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "request_duration")
+
+	got := selectExemplars(ctx, t, b, ts.Add(-time.Minute).UnixMilli(), ts.UnixMilli(), matcher)
+	require.Len(t, got, 1)
+}
+
 func TestBackendExemplarsEmpty(t *testing.T) {
 	ctx := context.Background()
 

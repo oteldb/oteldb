@@ -260,8 +260,11 @@ func (b *Backend) MetricMetadata(context.Context, metricstorage.MetadataParams) 
 
 // ConsumeMetrics ingests an OTLP metrics batch into the storage engine. It is the metrics
 // ingestion sink used by the oteldb collector exporter when the storage backend is selected.
-// Histogram, exponential-histogram, summary, and value-less points are not representable in
-// the storage engine yet and are silently dropped by the conversion.
+//
+// Histogram, exponential-histogram and summary points are stored by classic decomposition into
+// float series; a value-less number point has nothing to store and is dropped, as is any exemplar
+// the decomposition leaves without an unambiguous series. The conversion counts both, but nothing
+// here reports them yet.
 func (b *Backend) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
 	// A fresh batch is used (not pooled) because the engine may retain projected series
 	// bytes; pdataconv already copies out of pdata, so this allocates regardless.
