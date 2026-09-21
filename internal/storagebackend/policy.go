@@ -38,8 +38,8 @@ type PolicyConfig struct {
 	// of storing RF full copies. Like Recompress it is an age tier, so recent data stays full-copy
 	// for fast local reads. Nil ⇒ full-copy replication.
 	EC *ECConfig `json:"ec" yaml:"ec"`
-	// Retention bounds how long data is kept: parts older than MaxAge are dropped whole at merge.
-	// Nil ⇒ retain forever.
+	// Retention bounds how much data is kept, by age and by size: at merge, parts past the age
+	// cutoff or over a byte budget — pooled or per-signal — are dropped whole. Nil ⇒ retain forever.
 	Retention *RetentionConfig `json:"retention" yaml:"retention"`
 	// Limits are the operational admission-control limits: over-budget writes are shed and reported
 	// as OTLP partial success rather than buffered. Nil ⇒ unlimited.
@@ -104,13 +104,26 @@ type ECConfig struct {
 	After time.Duration `json:"after" yaml:"after"`
 }
 
-// RetentionConfig configures age-based retention. Enforcement drops whole partitions at merge, so
-// data may outlive MaxAge until the partition containing it is fully expired.
+// RetentionConfig configures age- and size-based retention. Enforcement drops whole partitions at
+// merge, so data may outlive MaxAge until the partition containing it is fully expired.
 type RetentionConfig struct {
 	// MaxAge is the maximum age of retained data. Zero ⇒ retain forever.
 	MaxAge time.Duration `json:"max_age" yaml:"max_age"`
-	// MaxBytes is the maximum total retained bytes. Zero ⇒ unlimited.
+	// MaxBytes is the maximum total retained bytes, pooled across every signal. Zero ⇒ unlimited.
 	MaxBytes xbytes.Bytes `json:"max_bytes" yaml:"max_bytes"`
+	// MaxBytesPerSignal bounds each signal independently, in the same stored bytes MaxBytes counts.
+	// It is keyed by the stable signal names — "metric", "log", "trace", "profile", "exemplar" — and
+	// an unknown name is a startup error. A signal with no entry — or with an entry of zero, which
+	// the library ignores like any non-positive budget — is bounded only by MaxBytes, so "log: 0"
+	// means "no budget for logs", never "drop the logs"; empty ⇒ no per-signal budgets.
+	//
+	// It exists because a pooled budget has no isolation: on a deployment whose metrics dwarf its
+	// logs, metric growth alone moves the shared cutoff and evicts log history that never grew.
+	// Both budgets apply when both are set — a signal is trimmed to whichever binds first — so
+	// MaxBytes stays the outer bound. The newest part of each budgeted signal is never dropped, so
+	// the floor is one part per signal rather than one per tenant; pair it with limits.max_part_size
+	// to keep that granularity small.
+	MaxBytesPerSignal map[string]xbytes.Bytes `json:"max_bytes_per_signal" yaml:"max_bytes_per_signal"`
 }
 
 // LimitsConfig configures the per-tenant operational limits. They are lossless admission control:
@@ -134,7 +147,8 @@ type LimitsConfig struct {
 	MaxPartSize xbytes.Bytes `json:"max_part_size" yaml:"max_part_size"`
 	// MaxMergePartSize caps a merged part's size on disk, in compressed bytes rather than
 	// MaxPartSize's uncompressed estimate. Zero derives it from the backend's free space, which is
-	// the default and lets part size track the deployment; negative never seals.
+	// the default and lets part size track the deployment. The library never seals on a negative,
+	// but a size cannot be written negative, so that opt-out is not expressible here.
 	//
 	// Merges are sized separately from flushes because they answer a different question: a flush is
 	// bounded so rows land promptly, a merge so part *count* stays low. Under a byte constant the
@@ -143,12 +157,52 @@ type LimitsConfig struct {
 	MaxMergePartSize xbytes.Bytes `json:"max_merge_part_size" yaml:"max_merge_part_size"`
 }
 
+// retentionSignalNames lists the accepted per-signal budget keys, for the error a typo produces.
+const retentionSignalNames = `"metric", "log", "trace", "profile", "exemplar"`
+
+// retentionPerSignal decodes the per-signal byte budgets into the [signal.Signal] keys the library
+// expects. An unrecognized name would otherwise be a budget that silently never applies.
+func retentionPerSignal(cfg map[string]xbytes.Bytes) (map[signal.Signal]int64, error) {
+	if len(cfg) == 0 {
+		return nil, nil
+	}
+
+	budgets := make(map[signal.Signal]int64, len(cfg))
+	for name, b := range cfg {
+		sig, err := signal.ParseSignal(name)
+		if err != nil {
+			return nil, errors.Wrapf(err, "max_bytes_per_signal: expected one of %s", retentionSignalNames)
+		}
+		if b < 0 {
+			return nil, errors.Errorf("max_bytes_per_signal[%q]: %s", name, errNegativeBytes)
+		}
+		budgets[sig] = int64(b)
+	}
+	return budgets, nil
+}
+
 // retentionMaxAge reports the configured retention window, or zero when retention is disabled.
 func retentionMaxAge(cfg *RetentionConfig) time.Duration {
 	if cfg == nil {
 		return 0
 	}
 	return cfg.MaxAge
+}
+
+// retentionSignalBudgets reports how many signals carry their own byte budget. A zero entry is
+// inert in the library, so it is not counted: the startup log reports what is enforced.
+func retentionSignalBudgets(cfg *RetentionConfig) int {
+	if cfg == nil {
+		return 0
+	}
+
+	var n int
+	for _, b := range cfg.MaxBytesPerSignal {
+		if b > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // warnECInert warns when an EC policy is configured but cannot take effect, because the engine
@@ -259,13 +313,29 @@ func (cfg *PolicyConfig) policy() (tenant.Policy, error) {
 		if r.MaxAge < 0 {
 			return tenant.Policy{}, errors.New("retention: max_age must not be negative")
 		}
+		if err := checkBytes(namedBytes{"max_bytes", r.MaxBytes}); err != nil {
+			return tenant.Policy{}, errors.Wrap(err, "retention")
+		}
+		perSignal, err := retentionPerSignal(r.MaxBytesPerSignal)
+		if err != nil {
+			return tenant.Policy{}, errors.Wrap(err, "retention")
+		}
 		p.Retention = tenant.Retention{
-			MaxAge:   r.MaxAge,
-			MaxBytes: int64(r.MaxBytes),
+			MaxAge:            r.MaxAge,
+			MaxBytes:          int64(r.MaxBytes),
+			MaxBytesPerSignal: perSignal,
 		}
 	}
 
 	if l := cfg.Limits; l != nil {
+		if err := checkBytes(
+			namedBytes{"ingest_bytes_per_second", l.IngestBytesPerSecond},
+			namedBytes{"max_in_flight_bytes", l.MaxInFlightBytes},
+			namedBytes{"max_part_size", l.MaxPartSize},
+			namedBytes{"max_merge_part_size", l.MaxMergePartSize},
+		); err != nil {
+			return tenant.Policy{}, errors.Wrap(err, "limits")
+		}
 		if l.MaxSeriesSoft > 0 && l.MaxSeries > 0 && l.MaxSeriesSoft > l.MaxSeries {
 			return tenant.Policy{}, errors.Errorf("limits: max_series_soft (%d) must not exceed max_series (%d)",
 				l.MaxSeriesSoft, l.MaxSeries)

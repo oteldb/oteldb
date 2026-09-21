@@ -71,6 +71,10 @@ storage:
     retention:
       max_age: 720h
       max_bytes: 100GB
+      max_bytes_per_signal:
+        log: 40GB
+        trace: 20GB
+        metric: 30GB
     limits:
       ingest_bytes_per_second: 10MB
       max_series: 1000000
@@ -96,6 +100,11 @@ storage:
 	require.Equal(t, &storagebackend.RetentionConfig{
 		MaxAge:   720 * time.Hour,
 		MaxBytes: 100_000_000_000,
+		MaxBytesPerSignal: map[string]xbytes.Bytes{
+			"log":    40_000_000_000,
+			"trace":  20_000_000_000,
+			"metric": 30_000_000_000,
+		},
 	}, p.Retention)
 	require.Equal(t, &storagebackend.LimitsConfig{
 		IngestBytesPerSecond: 10_000_000,

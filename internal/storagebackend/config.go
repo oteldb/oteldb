@@ -56,7 +56,8 @@ type Config struct {
 	// size a merged part reaches before it is sealed. It is the write-side counterpart of
 	// DecodeMemoryBytes: on a backend that takes objects whole a merge holds its output part encoded
 	// in RAM, so free space alone cannot bound it. Unset ⇒ the library default (a share of the Go
-	// memory limit); negative ⇒ unbounded.
+	// memory limit). The library also takes a negative as "unbounded", but a size cannot be written
+	// negative, so that opt-out is not expressible here.
 	//
 	// Unlike the caches this is a pass-through: oteldb adds no default of its own, because the
 	// library already derives one from the same memory limit oteldb would read.
@@ -137,6 +138,19 @@ type S3Config struct {
 	// Retry selects the resilience profile for an unreliable endpoint (per-attempt timeouts, bounded
 	// retries, hedged GETs): "" or "none" (the AWS SDK's own retryer only), "default", or "lossy".
 	Retry string `json:"retry" yaml:"retry"`
+}
+
+// validate reports a byte setting that overflowed. Every one of these reads a negative as "off" —
+// no cache, no admission control, no bound — so an operator asking for a huge budget would
+// otherwise silently get none.
+func (cfg *Config) validate() error {
+	return checkBytes(
+		optionalBytes("read_cache_bytes", cfg.ReadCacheBytes),
+		optionalBytes("decode_cache_bytes", cfg.DecodeCacheBytes),
+		optionalBytes("decode_memory_bytes", cfg.DecodeMemoryBytes),
+		optionalBytes("max_query_bytes", cfg.MaxQueryBytes),
+		optionalBytes("merge_memory_bytes", cfg.MergeMemoryBytes),
+	)
 }
 
 // SetDefaults fills in the defaults for unset fields.
