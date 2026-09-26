@@ -11,12 +11,16 @@ import (
 type Config struct {
 	// Backend is the engine backend: "memory" (default, ephemeral), "file", or "s3".
 	Backend string `json:"backend" yaml:"backend"`
-	// Dir is the data directory for the file backend (parts and WAL).
+	// Dir is the base data directory for the file backend: parts live in <dir>/parts and the
+	// write-ahead log in <dir>/wal. A directory from before the parts subdirectory is refused at
+	// open; migrate it by stopping the node, creating <dir>/parts and moving every top-level entry
+	// except wal into it.
 	Dir string `json:"dir" yaml:"dir"`
-	// WALDir is the local directory for the write-ahead log when the backend is the (stateless) "s3"
-	// object store, so unflushed head data survives a restart. Empty ⇒ no WAL (recent, unflushed
-	// writes are lost on an unclean restart). Ignored for the "file" backend, which keeps its WAL
-	// alongside the parts in Dir.
+	// WALDir overrides where the write-ahead log lives. Empty ⇒ <dir>/wal for the file backend, and
+	// no WAL for the stateless "s3" backend (recent, unflushed writes are then lost on an unclean
+	// restart). It must not overlap the parts directory. Keep it on the same volume as the parts: the
+	// WAL holds what the parts do not yet, so the two are only consistent when kept, snapshotted and
+	// restored together.
 	WALDir string `json:"wal_dir" yaml:"wal_dir"`
 	// S3 configures the "s3" object-store backend. Required (with a non-empty Bucket) when Backend is
 	// "s3"; ignored otherwise.

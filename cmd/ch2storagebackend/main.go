@@ -33,7 +33,7 @@ import (
 func run(ctx context.Context) error {
 	var (
 		dsn        = flag.String("dsn", "clickhouse://localhost:9000", "Clickhouse connection URL")
-		storageDir = flag.String("storage-dir", "", "Directory for the embedded storage engine's file backend (empty uses an ephemeral in-memory backend)")
+		storageDir = flag.String("storage-dir", "", "Base data directory of the embedded storage engine's file backend, as storage.dir; parts go in <dir>/parts (empty uses an ephemeral in-memory backend)")
 		otlpAddr   = flag.String("otlp", "", "Export to this OTLP gRPC endpoint (host:port) instead of a local engine; use it to load a cluster through odbingest")
 		otlpMaxMsg = flag.Int("otlp-max-msg-bytes", 64<<20, "Cap on a single OTLP export message; should match the receiver's max_body_bytes")
 		batchSize  = flag.Int("batch", 5_000, "Number of records/spans to convert and ingest per batch")
@@ -265,7 +265,12 @@ func openStore(ctx context.Context, dir string, flushInterval time.Duration, max
 			storage.WithDurability(storage.DurabilityEphemeral),
 		)
 	} else {
-		fb, err := backendfile.New(dir)
+		cfg := storagebackend.Config{Backend: "file", Dir: dir}
+		layout, err := cfg.Layout()
+		if err != nil {
+			return nil, errors.Wrap(err, "resolve storage layout")
+		}
+		fb, err := backendfile.New(layout.Parts)
 		if err != nil {
 			return nil, errors.Wrap(err, "open file backend")
 		}

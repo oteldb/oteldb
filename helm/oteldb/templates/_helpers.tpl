@@ -51,8 +51,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Local state directory backed by the persistent volume: the data directory for the "file"
-backend (parts + WAL), the write-ahead log directory for the stateless "s3" backend.
+Local state directory backed by the persistent volume: the base data directory for the "file"
+backend (<dir>/parts and <dir>/wal), the write-ahead log directory for the stateless "s3" backend.
 Empty when the backend keeps nothing locally, in which case no volume is mounted.
 */}}
 {{- define "oteldb.dataDir" -}}

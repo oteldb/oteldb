@@ -15,20 +15,25 @@ import (
 	"github.com/oteldb/storage"
 	backendfile "github.com/oteldb/storage/backend/file"
 
+	"github.com/oteldb/oteldb/internal/storagebackend"
 	"github.com/oteldb/oteldb/internal/storagebackup"
 )
 
-// openFileStore opens a durable engine over dir, shaped like a node's: parts in dir, WAL beside
-// them, no maintenance loop so nothing happens on a timer.
+// openFileStore opens a durable engine over dir, laid out like a node's, with no maintenance loop
+// so nothing happens on a timer.
 func openFileStore(tb testing.TB, dir string) *storage.Storage {
 	tb.Helper()
 
-	fb, err := backendfile.New(dir)
+	cfg := storagebackend.Config{Backend: "file", Dir: dir}
+	layout, err := cfg.Layout()
+	require.NoError(tb, err)
+
+	fb, err := backendfile.New(layout.Parts)
 	require.NoError(tb, err)
 
 	store, err := storage.Open(tb.Context(), storage.Options{},
 		storage.WithBackend(fb),
-		storage.WithWALDir(filepath.Join(dir, "wal")),
+		storage.WithWALDir(layout.WAL),
 		storage.WithFlushInterval(-1),
 	)
 	require.NoError(tb, err)
@@ -128,7 +133,7 @@ func TestBackupSweepsOrphanedObjects(t *testing.T) {
 
 	// An object no bucket index names, which is what a failed flush leaves behind. A long-running
 	// node accumulates them, since this sweep is the only thing that reclaims them.
-	orphan := filepath.Join(dir, "default", "logs", "01M1FGJ51CVRFV96490N2AD7AH", "c", "0")
+	orphan := filepath.Join(dir, "parts", "default", "logs", "01M1FGJ51CVRFV96490N2AD7AH", "c", "0")
 	require.NoError(t, os.MkdirAll(filepath.Dir(orphan), 0o750))
 	require.NoError(t, os.WriteFile(orphan, []byte("unreferenced"), 0o600))
 
@@ -145,7 +150,7 @@ func TestBackupSweepsOrphanedObjects(t *testing.T) {
 	require.Positive(t, stats.Rows, "the committed data is still backed up")
 	require.NoError(t, stop(context.WithoutCancel(t.Context())))
 
-	rel := filepath.ToSlash(filepath.Join("default", "logs", "01M1FGJ51CVRFV96490N2AD7AH", "c", "0"))
+	rel := filepath.ToSlash(filepath.Join("parts", "default", "logs", "01M1FGJ51CVRFV96490N2AD7AH", "c", "0"))
 	after := treeState(t, dir)
 
 	if _, kept := after[rel]; kept {

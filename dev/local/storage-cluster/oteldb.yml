@@ -4,6 +4,8 @@
 # this one file unchanged — only their `hostname:` differs in docker-compose.yml.
 storage:
   backend: file
+  # Parts in /data/parts, the write-ahead log in /data/wal: one volume, so they stay consistent.
+  # wal_dir would override the WAL location.
   dir: /data
   cluster:
     etcd: ["http://etcd:2379"]

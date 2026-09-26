@@ -10,6 +10,8 @@
 # schema expects the receiver/exporter wiring to parse.
 storage:
   backend: file
+  # Parts in /data/parts, the write-ahead log in /data/wal: one volume, so they stay consistent.
+  # wal_dir would override the WAL location.
   dir: /data
   # 10s flush cadence — the benchmark's default. Lower ⇒ more (smaller) parts ⇒ slower merges;
   # higher ⇒ fewer (larger) parts ⇒ more head memory. Keep at the default for REPORT.md parity.

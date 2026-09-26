@@ -39,7 +39,7 @@ func run(ctx context.Context) error {
 		dsn = flag.String("dsn", "clickhouse://localhost:9000", "Clickhouse connection URL (clickhouse backend)")
 
 		storageConfig = flag.String("storage-config", "", "oteldb config file whose storage block describes the destination engine (storage backend)")
-		storageDir    = flag.String("storage-dir", "", "Data directory of a single-node file backend, instead of -storage-config; must not be a running node's (storage backend)")
+		storageDir    = flag.String("storage-dir", "", "Base data directory (storage.dir) of a single-node file backend, instead of -storage-config; must not be a running node's (storage backend)")
 		signals       = flag.String("signals", "", "Comma-separated signals to restore: log, trace, metric (default: all, storage backend)")
 		tenant        = flag.String("tenant", "", "Restore only this logical tenant from the backup (default: all)")
 		batch         = flag.Int("batch", storagebackup.DefaultRestoreBatchSize, "Records, spans or samples buffered per write")

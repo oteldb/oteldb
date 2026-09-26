@@ -17,8 +17,9 @@ type EngineConfig struct {
 	// reach a clustered engine, which is the case that matters: joining the destination cluster is
 	// what lets a restore's writes be routed and sharded by the ring rather than landing locally.
 	Path string
-	// Dir is the shorthand for a single-node file backend rooted there, for an offline engine that
-	// needs no other configuration. Ignored when Path is set.
+	// Dir is the shorthand for a single-node file backend with this base data directory (the
+	// "storage.dir" of a config file), for an offline engine that needs no other configuration.
+	// Ignored when Path is set.
 	Dir string
 	// ReadOnly opens the engine without anything that writes: no WAL recovery (and so no checkpoint
 	// discarding segments), no flush, no merges, no retention, no cluster membership. A backup sets
@@ -35,21 +36,10 @@ type engineFile struct {
 func OpenEngine(
 	ctx context.Context, cfg EngineConfig, lg *zap.Logger,
 ) (*storagebackend.Backend, func(context.Context) error, error) {
-	var scfg storagebackend.Config
-	switch {
-	case cfg.Path != "":
-		file, err := config.Load[engineFile](cfg.Path, config.LoadOptions{})
-		if err != nil {
-			return nil, nil, errors.Wrap(err, "load config")
-		}
-		scfg = file.Storage
-	case cfg.Dir != "":
-		scfg = storagebackend.Config{Backend: "file", Dir: cfg.Dir}
-	default:
-		return nil, nil, errors.New("one of -storage-config or -storage-dir is required")
+	scfg, err := storageConfig(cfg)
+	if err != nil {
+		return nil, nil, err
 	}
-	scfg.SetDefaults()
-	scfg.ReadOnly = cfg.ReadOnly
 
 	// The telemetry is only a provider holder here; its zero value falls back to the global
 	// providers, which a one-shot command has no reason to configure.
@@ -58,4 +48,23 @@ func OpenEngine(
 		return nil, nil, errors.Wrap(err, "open storage engine")
 	}
 	return back, stop, nil
+}
+
+func storageConfig(cfg EngineConfig) (storagebackend.Config, error) {
+	var scfg storagebackend.Config
+	switch {
+	case cfg.Path != "":
+		file, err := config.Load[engineFile](cfg.Path, config.LoadOptions{})
+		if err != nil {
+			return scfg, errors.Wrap(err, "load config")
+		}
+		scfg = file.Storage
+	case cfg.Dir != "":
+		scfg = storagebackend.Config{Backend: "file", Dir: cfg.Dir}
+	default:
+		return scfg, errors.New("one of -storage-config or -storage-dir is required")
+	}
+	scfg.SetDefaults()
+	scfg.ReadOnly = cfg.ReadOnly
+	return scfg, nil
 }
