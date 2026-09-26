@@ -6,7 +6,7 @@ name: "Cluster E2E"
 # cross-node routing + replication across all three signals.
 #
 # Both storage models run, because they fail differently. shared-nothing exercises partsync
-# (flushed parts mirrored node-to-node); shared-store puts every node on one MinIO bucket, where
+# (flushed parts mirrored node-to-node); shared-store puts every node on one SeaweedFS bucket, where
 # the bucket index is committed by several writers through a real conditional PUT.
 #
 # The split model changes the processes rather than the storage: ingest and query move out of the
@@ -37,10 +37,10 @@ jobs:
           # Each node on its own disk; flushed parts mirrored over partsync.
           - model: shared-nothing
             compose: "-f docker-compose.yml"
-          # Every node on one MinIO bucket; parts exchanged through the store, index committed
+          # Every node on one SeaweedFS bucket; parts exchanged through the store, index committed
           # with CompareAndSwap (S3 conditional PUT).
           - model: shared-store
-            compose: "-f docker-compose.yml -f docker-compose.shared-store.yml --profile minio"
+            compose: "-f docker-compose.yml -f docker-compose.shared-store.yml --profile seaweedfs"
           # Ingest and query as their own processes in front of the same three nodes.
           - model: split
             compose: "-f docker-compose.yml -f docker-compose.split.yml"
