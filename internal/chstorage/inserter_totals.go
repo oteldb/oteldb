@@ -11,7 +11,7 @@ import (
 func (i *Inserter) totals(ctx context.Context, tableName string) (int64, error) {
 	var totals proto.ColUInt64
 	q := ch.Query{
-		Body: fmt.Sprintf("SELECT count() as count FROM `%s`", tableName),
+		Body: fmt.Sprintf("SELECT count() as count FROM %#q", tableName),
 		Result: proto.Results{
 			{
 				Name: "count",
