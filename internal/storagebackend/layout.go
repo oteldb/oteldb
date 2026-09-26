@@ -64,7 +64,7 @@ func checkDisjoint(parts, wal string) error {
 		return errors.Wrap(err, "resolve storage.wal_dir")
 	}
 	if within(p, w) || within(w, p) {
-		return errors.Errorf("storage.wal_dir %q overlaps the parts directory %q", wal, parts)
+		return errors.Errorf("storage.wal_dir %s overlaps the parts directory %s", wal, parts)
 	}
 	return nil
 }
@@ -128,8 +128,8 @@ func checkPartsLayout(dir, wal string) error {
 				continue
 			}
 		}
-		return errors.Errorf("storage.dir %q holds data outside %q (found %q): stop the node, "+
-			"create %q and move every top-level entry of %q except %q into it",
+		return errors.Errorf("storage.dir %s holds data outside %s (found %s): stop the node, "+
+			"create %s and move every top-level entry of %s except %s into it",
 			dir, partsSubdir, name, filepath.Join(dir, partsSubdir), dir, walSubdir)
 	}
 	return nil

@@ -67,7 +67,6 @@ func TestConfigLayoutRefusesOverlappingWAL(t *testing.T) {
 		{name: "Equal", wal: parts},
 		{name: "Inside", wal: filepath.Join(parts, "wal")},
 		{name: "Unclean", wal: filepath.Join(dir, "x", "..", "parts", "wal")},
-		{name: "Relative", wal: relTo(t, parts)},
 		{name: "Contains", wal: dir},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -76,6 +75,14 @@ func TestConfigLayoutRefusesOverlappingWAL(t *testing.T) {
 			require.ErrorContains(t, err, "overlaps the parts directory")
 		})
 	}
+
+	t.Run("Relative", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Chdir(dir)
+		cfg := Config{Backend: "file", Dir: dir, WALDir: filepath.Join("parts", "wal")}
+		_, err := cfg.Layout()
+		require.ErrorContains(t, err, "overlaps the parts directory")
+	})
 
 	t.Run("Symlink", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
@@ -90,15 +97,6 @@ func TestConfigLayoutRefusesOverlappingWAL(t *testing.T) {
 		_, err := cfg.Layout()
 		require.ErrorContains(t, err, "overlaps the parts directory")
 	})
-}
-
-func relTo(t *testing.T, path string) string {
-	t.Helper()
-	wd, err := os.Getwd()
-	require.NoError(t, err)
-	rel, err := filepath.Rel(wd, path)
-	require.NoError(t, err)
-	return rel
 }
 
 func TestConfigLayoutRefusesPrePartsDir(t *testing.T) {
