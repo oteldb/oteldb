@@ -39,6 +39,11 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		return nil, nil, errors.Wrap(err, "storage")
 	}
 
+	layout, err := cfg.Layout()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "resolve storage layout")
+	}
+
 	// The engine logs, traces, and meters through the injected providers (no-op if absent).
 	opts := []storage.Option{
 		storage.WithLogger(lg),
@@ -52,45 +57,27 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 			storage.WithDurability(storage.DurabilityEphemeral),
 		)
 	case "file":
-		if cfg.Dir == "" {
-			return nil, nil, errors.New("storage.dir is required for the file backend")
-		}
-		fb, err := backendfile.New(cfg.Dir)
+		fb, err := backendfile.New(layout.Parts)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "open file backend")
 		}
 		opts = append(opts, storage.WithBackend(fb))
-		// Keep the WAL alongside the parts so the unflushed head survives a restart, not just the
-		// flushed parts.
-		walDir := filepath.Join(cfg.Dir, "wal")
-		if cfg.ReadOnly {
-			warnUnflushedWAL(walDir, lg)
-		} else {
-			opts = append(opts, storage.WithWALDir(walDir))
-		}
-		if cfg.FlushInterval > 0 {
-			opts = append(opts, storage.WithFlushInterval(int64(cfg.FlushInterval)))
-		}
 	case "s3":
 		sb, err := s3Backend(ctx, cfg.S3)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "open s3 backend")
 		}
 		opts = append(opts, storage.WithBackend(sb))
-		// The object store is stateless; keep an optional local WAL so the unflushed head survives a
-		// restart rather than only the flushed objects.
-		if cfg.WALDir != "" {
-			if cfg.ReadOnly {
-				warnUnflushedWAL(cfg.WALDir, lg)
-			} else {
-				opts = append(opts, storage.WithWALDir(cfg.WALDir))
-			}
+	}
+	if layout.WAL != "" {
+		if cfg.ReadOnly {
+			warnUnflushedWAL(layout.WAL, lg)
+		} else {
+			opts = append(opts, storage.WithWALDir(layout.WAL))
 		}
-		if cfg.FlushInterval > 0 {
-			opts = append(opts, storage.WithFlushInterval(int64(cfg.FlushInterval)))
-		}
-	default:
-		return nil, nil, errors.Errorf("unknown storage backend %q", cfg.Backend)
+	}
+	if cfg.FlushInterval > 0 && cfg.Backend != "" && cfg.Backend != "memory" {
+		opts = append(opts, storage.WithFlushInterval(int64(cfg.FlushInterval)))
 	}
 
 	if cfg.ReadOnly {
@@ -137,6 +124,8 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 
 	lg.Info("Using embedded storage engine for metrics",
 		zap.String("backend", cmp.Or(cfg.Backend, "memory")),
+		zap.String("parts_dir", layout.Parts),
+		zap.String("wal_dir", layout.WAL),
 		zap.Bool("read_only", cfg.ReadOnly),
 		zap.Int("log_query_parallelism", cfg.LogQueryParallelism),
 		zap.Int64("read_cache_bytes", caches.ReadCache),

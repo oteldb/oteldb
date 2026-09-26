@@ -49,7 +49,8 @@ service:
   type: ClusterIP
 
 # Persistence for the embedded storage engine's local state. For the "file" backend this
-# is the data directory (config.storage.dir: parts and WAL). For the "s3" backend the
+# is the base data directory (config.storage.dir: parts in <dir>/parts, the WAL in
+# <dir>/wal). For the "s3" backend the
 # durable tier lives in the object store and only the write-ahead log is local, so the
 # volume is mounted at config.storage.wal_dir instead; with no wal_dir set, the s3 backend
 # is stateless and no volume is mounted at all.
@@ -150,8 +151,15 @@ config:
   traces_backend: storage
   logs_backend: storage
   profiles_backend: storage
-  # Embedded storage engine configuration. The "file" backend persists parts and the
-  # write-ahead log under dir, which is backed by the persistent volume above.
+  # Embedded storage engine configuration. The "file" backend persists parts in
+  # <dir>/parts and the write-ahead log in <dir>/wal, both on the persistent volume
+  # mounted at dir. wal_dir overrides the WAL location; only dir is mounted, so leave it
+  # unset (or point it inside dir, but not inside <dir>/parts) to keep the WAL on the
+  # volume.
+  #
+  # A data directory written before <dir>/parts existed is refused at startup. To
+  # migrate, stop the pod, then create <dir>/parts and move every top-level entry of dir
+  # except wal into it.
   #
   # For the "s3" backend, set backend: s3, an s3 block, and a wal_dir (the local WAL is
   # the only thing keeping unflushed head data across a restart):

@@ -85,7 +85,7 @@ cluster block:
 ```yaml
 storage:
   backend: file
-  dir: /data
+  dir: /data     # parts in /data/parts, WAL in /data/wal (wal_dir overrides; keep it on this volume)
   cluster:
     etcd: ["http://etcd:2379"]
     port: 7946   # replication server port; address is <hostname>:<port>

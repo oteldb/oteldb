@@ -91,9 +91,18 @@ profiles_backend: storage
 
 storage:
   backend: file       # "memory" (default, ephemeral) or "file"
-  dir: ./oteldb-data  # data directory for the file backend
+  dir: ./oteldb-data  # base data directory: parts in <dir>/parts, write-ahead log in <dir>/wal
+  # wal_dir: ...      # overrides the WAL location; keep it on the same volume as dir
   flush_interval: 1m  # max age of unflushed head data before it is flushed to a part
 ```
+
+The WAL holds what the parts do not have yet, so keep it on the same volume as `dir` (the
+default): the two are only consistent when kept, snapshotted and restored together. `wal_dir` must
+not be inside `<dir>/parts`.
+
+A data directory written before the `parts` subdirectory existed is refused at startup. To migrate
+it, stop the node, then run `mkdir <dir>/parts` and move every top-level entry of `<dir>` except
+`wal` into `<dir>/parts/`.
 
 Any signal left unset (or set to `clickhouse`) keeps using ClickHouse, so the two backends can be
 mixed. Profiles have no ClickHouse implementation and are served only when `profiles_backend` is
