@@ -3,12 +3,12 @@
 #
 #   docker compose -f dev/local/storage-cluster/docker-compose.yml \
 #                  -f dev/local/storage-cluster/docker-compose.shared-store.yml \
-#                  --profile minio up --build
+#                  --profile seaweedfs up --build
 #
-# Swap `--profile minio` for `--profile fs` to run the same cluster against go-faster/fs instead.
-# Pick deliberately: MinIO is an independent, widely deployed implementation, so a green run is
+# Swap `--profile seaweedfs` for `--profile fs` to run the same cluster on go-faster/fs instead.
+# Pick deliberately: SeaweedFS is an independent, widely deployed implementation, so a green run is
 # evidence about oteldb. go-faster/fs is a sibling project, so a green run there says the two agree
-# — useful, but not the same claim. MinIO is the default for that reason.
+# — useful, but not the same claim. SeaweedFS is the default for that reason.
 #
 # What this exercises that the shared-nothing default cannot: several writers committing one bucket
 # index. Every node's commit goes through backend.CompareAndSwap (S3 conditional PUT, If-Match), and
@@ -30,19 +30,25 @@ x-shared-store-node: &shared-store-node
       condition: service_completed_successfully
 
 services:
-  # MinIO (default). Reaches the cluster as `objectstore`, the alias oteldb-shared.yml points at.
-  minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    profiles: ["minio"]
-    command: ["server", "/data", "--console-address", ":9001"]
+  # SeaweedFS (default). Reaches the cluster as `objectstore`, the alias oteldb-shared.yml uses.
+  # It evaluates If-Match / If-None-Match on PUT under a per-key lock; Garage ignores both, and
+  # MinIO no longer publishes images.
+  #
+  # -ip.bind: by default each server binds the container's own address and loopback, which a
+  # published port does not reach.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    profiles: ["seaweedfs"]
+    command: ["server", "-dir=/data", "-ip.bind=0.0.0.0", "-s3", "-s3.port=9000"]
     environment:
-      - MINIO_ROOT_USER=oteldb
-      - MINIO_ROOT_PASSWORD=oteldbsecret
+      # The admin identity the nodes and objectstore-init sign with.
+      - AWS_ACCESS_KEY_ID=oteldb
+      - AWS_SECRET_ACCESS_KEY=oteldbsecret
     volumes:
       - objectstore-data:/data
     ports:
       - "9000:9000" # S3 API
-      - "9001:9001" # MinIO console (browse the parts the cluster writes)
+      - "8888:8888" # filer UI: browse the parts the cluster writes under /buckets/oteldb/
     networks:
       default:
         aliases: [objectstore]
@@ -50,15 +56,15 @@ services:
   # go-faster/fs in its single-node filesystem mode: one process, no etcd, no planes. Anonymous
   # auth is fine here because nothing outside the compose network can reach it.
   #
-  # No counterpart to MinIO's console on 9001, deliberately. v0.13.1 does ship an admin dashboard,
-  # but it is not an object browser: _oas/admin.yml exposes info, access keys, cluster status and
-  # bucket *usage counters* -- nothing lists or fetches an object, so it cannot show the parts the
-  # cluster writes. It is also config-only (`admin.enabled`/`admin.addr`; no flag on `s3`), refuses
-  # to start alongside --insecure-no-auth, and needs a bearer token -- and in filesystem mode its
-  # one bucket page answers 501 "bucket usage accounting is not available on this admin listener",
-  # since the usage index lives in the cluster control plane. Trading this service's anonymous
-  # simplicity for a dashboard of version and uptime is not worth it; browse the parts with `mc`,
-  # or run --profile minio.
+  # No counterpart to the SeaweedFS filer UI on 8888, deliberately. v0.13.1 does ship an admin
+  # dashboard, but it is not an object browser: _oas/admin.yml exposes info, access keys, cluster
+  # status and bucket *usage counters* -- nothing lists or fetches an object, so it cannot show the
+  # parts the cluster writes. It is also config-only (`admin.enabled`/`admin.addr`; no flag on
+  # `s3`), refuses to start alongside --insecure-no-auth, and needs a bearer token -- and in
+  # filesystem mode its one bucket page answers 501 "bucket usage accounting is not available on
+  # this admin listener", since the usage index lives in the cluster control plane. Trading this
+  # service's anonymous simplicity for a dashboard of version and uptime is not worth it; browse the
+  # parts with the aws CLI, or run --profile seaweedfs.
   fs:
     image: ghcr.io/go-faster/fs:v0.13.1
     profiles: ["fs"]
@@ -78,28 +84,34 @@ services:
   # given run. They are still needed: without them, naming services explicitly ("up oteldb-1") pulls
   # in this init container but *not* the store it talks to, and it would poll until the deadline.
   objectstore-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    image: amazon/aws-cli:2.37.4@sha256:fdd8d1fcbea9c371678dee5a40df8b178c7a781b4586605756ee28114c97ead6
     depends_on:
-      minio:
+      seaweedfs:
         condition: service_started
         required: false
       fs:
         condition: service_started
         required: false
+    environment:
+      - AWS_ENDPOINT_URL=http://objectstore:9000
+      - AWS_ACCESS_KEY_ID=oteldb
+      - AWS_SECRET_ACCESS_KEY=oteldbsecret
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_MAX_ATTEMPTS=1
     entrypoint:
       - /bin/sh
       - -c
       - |
         for i in $$(seq 1 60); do
-          mc alias set os http://objectstore:9000 oteldb oteldbsecret && break
+          aws s3api list-buckets >/dev/null && break
           echo "waiting for the object store ($$i/60)"; sleep 1
         done
-        if ! mc alias list os >/dev/null 2>&1; then
+        if ! aws s3api list-buckets >/dev/null 2>&1; then
           echo "no object store answered on http://objectstore:9000 --"
-          echo "pass --profile minio (or --profile fs) so one of them starts."
+          echo "pass --profile seaweedfs (or --profile fs) so one of them starts."
           exit 1
         fi
-        mc mb --ignore-existing os/oteldb
+        aws s3api head-bucket --bucket oteldb 2>/dev/null || aws s3api create-bucket --bucket oteldb
 
   oteldb-1:
     <<: *shared-store-node

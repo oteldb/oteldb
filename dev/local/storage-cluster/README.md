@@ -116,14 +116,14 @@ mirror.
 ```bash
 docker compose -f dev/local/storage-cluster/docker-compose.yml \
                -f dev/local/storage-cluster/docker-compose.shared-store.yml \
-               --profile minio up --build
+               --profile seaweedfs up --build
 ```
 
 Same three nodes, same etcd, same ring; [`oteldb-shared.yml`](./oteldb-shared.yml) replaces the file
 backend with `backend: s3` and flips `private_backend` to `false`. The WAL stays on each node's own
 volume — it holds head data that has not reached the bucket yet, so it has to survive a restart of
-*that* node. Browse what the cluster writes at <http://localhost:9001> (MinIO console,
-`oteldb`/`oteldbsecret`).
+*that* node. Browse what the cluster writes at <http://localhost:8888/buckets/oteldb/> (SeaweedFS
+filer UI).
 
 ### What this exercises that the default cannot
 
@@ -137,12 +137,12 @@ would, which is the whole reason this variant exists as a runnable stack rather 
 
 | profile | store | why |
 |---|---|---|
-| `minio` (default) | MinIO | An independent, widely deployed implementation. A green run is evidence about oteldb. |
+| `seaweedfs` (default) | [SeaweedFS](https://github.com/seaweedfs/seaweedfs) | An independent, widely deployed implementation. A green run is evidence about oteldb. |
 | `fs` | [go-faster/fs](https://github.com/go-faster/fs) in single-node filesystem mode | A sibling project. Lighter, but a green run says the two agree — not the same claim. |
 
 Pick deliberately. If the conditional-PUT path breaks against a store you also maintain, you cannot
 tell from the failure which side is wrong. Use `--profile fs` when you want to exercise go-faster/fs
-against a real workload, and `--profile minio` when you want to make a claim about oteldb.
+against a real workload, and `--profile seaweedfs` when you want to make a claim about oteldb.
 
 Neither is a substitute for running against the store you deploy on: `If-Match` on PUT is not
 universal among S3-compatible services, and where it is missing `CompareAndSwap` has no ground to
