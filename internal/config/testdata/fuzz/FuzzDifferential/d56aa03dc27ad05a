@@ -1,0 +1,2 @@
+go test fuzz v1
+string("otelcol:\n 0000:\n  0000: #0000000000000000000")
