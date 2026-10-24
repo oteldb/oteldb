@@ -7,8 +7,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/oteldb/storage"
+	"github.com/oteldb/storage/backend"
+	"github.com/oteldb/storage/signal"
+
 	"github.com/oteldb/oteldb/internal/profileql/profileqlengine"
 	"github.com/oteldb/oteldb/internal/profilestorage"
+	"github.com/oteldb/oteldb/internal/storagebackend"
 )
 
 // TestStorageBackend exercises the embedded storage profiles backend end-to-end: generated CPU
@@ -23,9 +28,9 @@ func TestStorageBackend(t *testing.T) {
 
 	ctx := context.Background()
 	services := []string{"frontend", "backend"}
-	backend, start, end, total := newBackend(t, services, 50)
+	db, start, end, total := newBackend(t, services, 50)
 
-	pq := backend.Profiles()
+	pq := db.Profiles()
 	opts := profilestorage.ProfileTypesOptions{Start: start.Add(-time.Hour), End: end.Add(time.Hour)}
 
 	t.Run("ProfileTypes", func(t *testing.T) {
@@ -85,4 +90,35 @@ func TestStorageBackend(t *testing.T) {
 		require.NoError(t, err)
 		require.Zero(t, res.Tree.Total())
 	})
+}
+
+func TestStorageBackendProfileSymbolsFollowQueryWindow(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	be := backend.Memory()
+	store, err := storage.InMemory(storage.WithBackend(be), storage.WithProfileSymbolCache(-1))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close(context.WithoutCancel(ctx))) })
+	db := storagebackend.New(store)
+	start := time.Date(2026, time.October, 24, 12, 0, 0, 0, time.UTC)
+
+	old, _, _ := generateProfiles(start.Add(-24*time.Hour), []string{"frontend"}, 1)
+	require.NoError(t, db.ConsumeProfiles(ctx, old))
+	require.NoError(t, store.Admin().Flush(ctx, "", signal.Profile))
+	parts := store.Parts("", signal.Profile)
+	require.Len(t, parts, 1)
+	require.NoError(t, be.Write(ctx, parts[0].ID+"/sym-strings.bin", []byte("corrupt symbols")))
+
+	current, end, total := generateProfiles(start, []string{"frontend"}, 2)
+	require.NoError(t, db.ConsumeProfiles(ctx, current))
+	require.NoError(t, store.Admin().Flush(ctx, "", signal.Profile))
+
+	engine := profileqlengine.NewEngine(db.Profiles(), profileqlengine.Options{})
+	result, err := engine.Select(ctx, profileTypeID, profileqlengine.EvalParams{Start: start, End: end})
+	require.NoError(t, err, "symbols outside the query window must not be read")
+	require.Equal(t, total, result.Tree.Total())
+	require.NotEmpty(t, result.Tree.Root.Children)
+
+	_, err = store.ProfileResolver(ctx, "", 0, 0)
+	require.Error(t, err, "an unbounded resolver reads the corrupt older part")
 }

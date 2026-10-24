@@ -468,7 +468,7 @@ func BenchmarkGoldenProfileQL(b *testing.B) {
 	b.Run("profile_resolver", func(b *testing.B) {
 		ctx := context.Background()
 
-		r, err := c.store.ProfileResolver(ctx, "")
+		r, err := c.store.ProfileResolver(ctx, "", c.start.UnixNano(), c.end.UnixNano())
 		require.NoError(b, err)
 		require.NotNil(b, r)
 
@@ -476,7 +476,7 @@ func BenchmarkGoldenProfileQL(b *testing.B) {
 		b.ResetTimer()
 
 		for range b.N {
-			if _, err := c.store.ProfileResolver(ctx, ""); err != nil {
+			if _, err := c.store.ProfileResolver(ctx, "", c.start.UnixNano(), c.end.UnixNano()); err != nil {
 				b.Fatal(err)
 			}
 		}

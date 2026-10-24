@@ -185,25 +185,24 @@ func (s *Source) Trace(
 // ProfileResolver implements [storagebackend.Source]. A stack's symbols live in whichever shard
 // ingested it, so every shard's symbol tables are collected and unioned — content addressing makes
 // that a plain dedup, so a flamegraph over samples from several shards resolves every stack id.
-func (s *Source) ProfileResolver(ctx context.Context, tenant signal.TenantID) (*sigprofile.Resolver, error) {
+func (s *Source) ProfileResolver(ctx context.Context, tenant signal.TenantID, start, end int64) (*sigprofile.Resolver, error) {
 	keys := s.shardKeys(tenant)
-	parts := make([]map[string][]byte, 0, len(keys))
+	layers := make([]*sigprofile.Tables, 0, len(keys))
 
 	for _, sk := range keys {
-		tables, err := s.rt.Side(ctx, signal.Profile, sk)
+		tables, err := s.rt.Side(ctx, signal.Profile, sk, start, end)
 		if err != nil {
 			return nil, errors.Wrapf(err, "load profile symbols of shard %q", sk)
 		}
 
 		if len(tables) > 0 {
-			parts = append(parts, tables)
+			decoded, err := sigprofile.DecodeTables(tables)
+			if err != nil {
+				return nil, errors.Wrapf(err, "decode profile symbols of shard %q", sk)
+			}
+			layers = append(layers, decoded)
 		}
 	}
 
-	tables, err := sigprofile.NewSymbolStore().Union(parts)
-	if err != nil {
-		return nil, errors.Wrap(err, "union profile symbols")
-	}
-
-	return sigprofile.NewResolver(tables)
+	return sigprofile.NewResolverFrom(layers...), nil
 }

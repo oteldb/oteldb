@@ -10,11 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// maxFloatBytes is the largest size that survives the round trip. humanize parses through a
-// float64, so the mantissa quantizes anything near the limit to a multiple of 1024: the next
-// representable value above it is 1<<63, which no longer fits.
-const maxFloatBytes = math.MaxInt64 - 1023
-
 // bytesCases covers the accepted forms and the sizes that used to wrap negative. It is shared by
 // the direct, YAML and JSON tests: all three route through [Bytes.UnmarshalText].
 var bytesCases = []struct {
@@ -29,8 +24,9 @@ var bytesCases = []struct {
 	{input: "104857600", expected: 104857600},
 	{input: "100", expected: 100},
 	{input: "0", expected: 0},
-	{input: "9223372036854774784", expected: maxFloatBytes},
-	{input: "9223372036854775807", wantErr: true},
+	{input: "9223372036854774784", expected: math.MaxInt64 - 1023},
+	{input: "9223372036854775807", expected: math.MaxInt64},
+	{input: "9223372036854775807B", expected: math.MaxInt64},
 	{input: "9223372036854775808", wantErr: true},
 	{input: "8EiB", wantErr: true},
 	{input: "10EB", wantErr: true},

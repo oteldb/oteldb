@@ -104,12 +104,12 @@ func (q *ProfileQuerier) SelectMergeProfile(ctx context.Context, params profiles
 		return nil, err
 	}
 
-	resolver, err := q.b.src.ProfileResolver(ctx, q.b.tenant)
+	lo, hi := fetchWindow(params.Start, params.End)
+	resolver, err := q.b.src.ProfileResolver(ctx, q.b.tenant, lo, hi)
 	if err != nil {
 		return nil, errors.Wrap(err, "profile resolver")
 	}
 
-	lo, hi := fetchWindow(params.Start, params.End)
 	req := fetch.Request{
 		Tenant:     q.b.tenant,
 		Signal:     signal.Profile,

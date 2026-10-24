@@ -64,7 +64,8 @@ type fakeNode struct {
 
 	mu sync.Mutex
 	// keySignals records the signal of every key enumeration the node served.
-	keySignals []signal.Signal
+	keySignals  []signal.Signal
+	sideWindows [][2]int64
 }
 
 func startNode(t *testing.T, endpoint, id string, held map[string][]string) *fakeNode {
@@ -76,6 +77,15 @@ func startNode(t *testing.T, endpoint, id string, held map[string][]string) *fak
 	mux.Handle(cluster.ReadPath, cluster.NewReadHandler(n.requestFetch))
 	mux.Handle(cluster.SeriesPath, cluster.SeriesHandler(n.series))
 	mux.Handle(cluster.KeysPath, cluster.KeysHandler(n.keyList))
+	mux.Handle(cluster.SidePath, cluster.SideHandler(func(_ context.Context, tenant string, start, end int64) (map[string][]byte, error) {
+		if _, err := n.streams(tenant); err != nil {
+			return nil, err
+		}
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		n.sideWindows = append(n.sideWindows, [2]int64{start, end})
+		return nil, nil
+	}))
 
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 
@@ -280,6 +290,22 @@ func TestFetcherGathersEveryShard(t *testing.T) {
 
 	slices.Sort(names)
 	assert.Equal(t, []string{"a", "b", "c", "d"}, names)
+}
+
+func TestProfileResolverForwardsWindow(t *testing.T) {
+	t.Parallel()
+	endpoint := etcdtest.Start(t)
+	keys := shardKeys(2)
+	node := startNode(t, endpoint, "node-a", map[string][]string{keys[0]: nil, keys[1]: nil})
+	src := clusterquery.New(openRouter(t, endpoint, 1, 2), 0)
+
+	resolver, err := src.ProfileResolver(t.Context(), "", 10, 20)
+	require.NoError(t, err)
+	require.NotNil(t, resolver)
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
+	assert.Equal(t, [][2]int64{{10, 20}, {10, 20}}, node.sideWindows)
 }
 
 // TestFetcherReappliesMatchers pins, from the consumer's side, that what a read yields is what the
