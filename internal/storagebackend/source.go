@@ -75,8 +75,8 @@ type Source interface {
 	ProfileSeries(
 		ctx context.Context, tenant signal.TenantID, matchers []fetch.Matcher, start, end int64,
 	) ([]signal.Series, error)
-	// ProfileResolver resolves a tenant's content-addressed stack ids to frames.
-	ProfileResolver(ctx context.Context, tenant signal.TenantID) (*sigprofile.Resolver, error)
+	// ProfileResolver resolves a tenant's content-addressed stack ids to frames within [start, end] ns.
+	ProfileResolver(ctx context.Context, tenant signal.TenantID, start, end int64) (*sigprofile.Resolver, error)
 
 	// WithQueryBudget returns ctx carrying one read-memory allowance for the query about to run, so
 	// the several fetches a single query makes share one bound instead of taking a fresh one each.
