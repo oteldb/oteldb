@@ -43,7 +43,10 @@ func (KLogParser) Parse(data string, target *Record) error {
 	if !ok {
 		return errors.New("invalid klog header")
 	}
-	target.Timestamp = pcommon.NewTimestampFromTime(h.Timestamp)
+	// The header has no timezone; the receiver's event timestamp identifies the instant.
+	if target.Timestamp == 0 {
+		target.Timestamp = pcommon.NewTimestampFromTime(h.Timestamp)
+	}
 	target.SeverityNumber = h.Level
 	target.Body = rest
 	h.Source.Add(m)
