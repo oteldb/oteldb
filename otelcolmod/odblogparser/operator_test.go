@@ -87,6 +87,31 @@ func TestParserProcessDetectDisabled(t *testing.T) {
 	require.Equal(t, entry.Default, got.Severity)
 }
 
+func TestParserProcessKLogPreservesTimestamp(t *testing.T) {
+	cfg := NewConfig()
+	cfg.Format = "klog"
+	cfg.OutputIDs = []string{"sink"}
+	parser, err := cfg.Build(testTelemetrySettings(t))
+	require.NoError(t, err)
+
+	sink := stanzatest.NewSink()
+	require.NoError(t, parser.SetOutputs([]operator.Operator{sink}))
+
+	timestamp := time.Date(2026, time.October, 24, 18, 0, 0, 123456789, time.FixedZone("UTC+3", 3*60*60))
+	ent := entry.New()
+	ent.Timestamp = timestamp
+	ent.ObservedTimestamp = timestamp.Add(time.Second)
+	ent.Body = `W1024 18:00:00.123456 243509 logging.go:55] grpc failed`
+
+	require.NoError(t, parser.Process(t.Context(), ent))
+	require.Len(t, sink.Entries(), 1)
+	got := sink.Entries()[0]
+	require.True(t, timestamp.Equal(got.Timestamp), "event timestamp changed: %s", got.Timestamp)
+	require.True(t, timestamp.Add(time.Second).Equal(got.ObservedTimestamp))
+	require.Equal(t, "grpc failed", got.Body)
+	require.Equal(t, entry.Warn, got.Severity)
+}
+
 func TestSeverityMapping(t *testing.T) {
 	tests := []struct {
 		name   string

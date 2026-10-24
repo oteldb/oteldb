@@ -191,7 +191,7 @@ func TestConsumeLogsDefaultFormats(t *testing.T) {
 	c, err := NewConsumer(i, ConsumerOptions{})
 	require.NoError(t, err)
 
-	recordTime := time.Date(2024, time.June, 21, 0, 0, 0, 0, time.UTC)
+	recordTime := time.Date(2024, time.June, 21, 16, 26, 15, 372343123, time.FixedZone("UTC+3", 3*60*60))
 
 	logs := plog.NewLogs()
 	resLogs := logs.ResourceLogs().AppendEmpty()
@@ -212,7 +212,7 @@ func TestConsumeLogsDefaultFormats(t *testing.T) {
 	require.Equal(t, "Starting Provisioner", got.Body)
 	require.Equal(t, plog.SeverityNumberInfo, got.SeverityNumber)
 	require.Equal(t,
-		otelstorage.NewTimestampFromTime(time.Date(2024, time.June, 21, 16, 26, 15, 372343000, time.UTC)),
+		otelstorage.NewTimestampFromTime(recordTime),
 		got.Timestamp,
 	)
 
