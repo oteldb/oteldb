@@ -180,9 +180,8 @@ func (s *QuerierService) SelectMergeProfile(ctx context.Context, req *connect.Re
 	return connect.NewResponse(&prof), nil
 }
 
-// SelectSeries implements the SelectSeries RPC by evaluating the merged total per time bucket. The
-// group_by labels are not honored (a single total series is returned); the engine has no grouped
-// time-series primitive, so this trades fidelity for a useful timeline.
+// SelectSeries returns profile totals per half-open time bucket.
+// GroupBy is currently ignored; one unlabelled series is returned.
 func (s *QuerierService) SelectSeries(ctx context.Context, req *connect.Request[querierv1.SelectSeriesRequest]) (*connect.Response[querierv1.SelectSeriesResponse], error) {
 	msg := req.Msg
 	start, end := msToTime(msg.Start), msToTime(msg.End)
@@ -193,30 +192,18 @@ func (s *QuerierService) SelectSeries(ctx context.Context, req *connect.Request[
 
 	rangeDur := end.Sub(start)
 	step := time.Duration(msg.Step * float64(time.Second))
-	if step <= 0 || rangeDur/step > maxSeriesBuckets {
-		step = rangeDur / maxSeriesBuckets
-	}
-	if step <= 0 {
-		step = rangeDur
+	minimumStep := (rangeDur-1)/maxSeriesBuckets + 1
+	if step < minimumStep {
+		step = minimumStep
 	}
 
-	var points []*typesv1.Point
-	for t := start; t.Before(end); t = t.Add(step) {
-		bucketEnd := t.Add(step)
-		if bucketEnd.After(end) {
-			bucketEnd = end
-		}
-		// The engine's time range is inclusive on both ends, so trim a nanosecond to keep buckets
-		// half-open [t, bucketEnd) and avoid double-counting a sample that lands on a boundary.
-		result, err := s.engine.Select(ctx, query, profileqlengine.EvalParams{Start: t, End: bucketEnd.Add(-time.Nanosecond)})
-		if err != nil {
-			return nil, connectErr(err)
-		}
-		var total int64
-		if result.Tree != nil {
-			total = result.Tree.Total()
-		}
-		points = append(points, &typesv1.Point{Value: float64(total), Timestamp: t.UnixMilli()})
+	values, err := s.engine.SelectSeries(ctx, query, start, end, step)
+	if err != nil {
+		return nil, connectErr(err)
+	}
+	points := make([]*typesv1.Point, len(values))
+	for i, value := range values {
+		points[i] = &typesv1.Point{Value: float64(value), Timestamp: start.Add(time.Duration(i) * step).UnixMilli()}
 	}
 	return connect.NewResponse(&querierv1.SelectSeriesResponse{
 		Series: []*typesv1.Series{{Points: points}},

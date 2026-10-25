@@ -185,3 +185,16 @@ the entire selector has been lowered exactly.
   adapter. Since oteldb/storage#262 they answer from the postings index rather than draining
   samples; oteldb gets that for free, because the capability is detected on the `fetch.Fetcher`
   it already passes in.
+
+## Profile timelines
+
+`profilestorage.SeriesQuerier` optionally answers a ProfileQL timeline as one value per half-open
+bucket in `[Start, End)`. The native `ProfileQuerier` resolves the profile type and label selector
+once, fetches only the value column over the union window, and bins values by timestamp. It does
+not load stack ids, symbol sidecars, or flamegraph nodes. Missing legacy values still count as one;
+empty buckets return zero, and native reads share the query budget with their output buffer.
+
+The ProfileQL engine parses once and uses this capability when available. Existing queriers retain
+the merge-per-bucket fallback. The connect API bounds timelines to 120 buckets, including partial
+last buckets; it continues to return one unlabelled total series. Routed readers also need storage
+RPC projection forwarding to avoid extra columns from older peers, though totals remain correct.
