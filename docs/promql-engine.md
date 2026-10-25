@@ -8,8 +8,8 @@ Status: implemented through M5 (selectors, range functions, aggregations includi
 full-set forms and `count_values`, binary operators, instant functions, subqueries, concurrent
 binop sides, storage pushdowns), plus M12 (the function tail), M13 (`absent`/`absent_over_time`)
 and M16 (time-chunking), all taken out of order per their own notes, in `internal/scarecrow` —
-6/21 upstream corpus files, 1016/2117 eval cases (§8.1; M16 doesn't move this number, it has no
-corpus gate). Codename from the `gemini/scarecrow-engine-initial` prototype. Milestones and
+6/21 complete upstream corpus files; classic histogram quantiles are also implemented.
+The unskipped corpus report and remaining gaps are in §8.1. Codename from the `gemini/scarecrow-engine-initial` prototype. Milestones and
 their gates are in §10.
 
 ## 1. Scope
@@ -25,11 +25,11 @@ retired keys, including `enable_scarecrow_engine: false`. Every query uses Scare
 `timeout`, lookback, `@` and negative-offset settings remain effective. Per-step query statistics
 are unsupported.
 
-**Compatibility.** The corpus gaps in §8.1 remain: histogram functions (including classic
-`histogram_quantile`), native histogram evaluation, delayed name removal, annotations, created
-timestamps and some experimental functions. Unsupported native histogram samples return an error, including mixed float/histogram series; they are never silently
-truncated into float-only results. Native storage still exposes classic bucket/count/sum series,
-but this does not provide histogram-function support; see [#1420](https://github.com/oteldb/oteldb/issues/1420).
+**Compatibility.** Classic `histogram_quantile` works over float bucket series, including the
+classic buckets produced by native OTLP histogram ingestion. Native typed histogram evaluation,
+other histogram functions, delayed name removal, created timestamps and some experimental
+functions remain unsupported. Unsupported typed histogram samples return an error, including
+mixed float/histogram series; they are never silently truncated into float-only results.
 
 **ClickHouse.** `Querier.ScarecrowScanner` retains the cached SQL rate-family offloads for `rate`,
 `increase`, `delta`, `irate` and `idelta`. Result caching is used only when the effective start
@@ -459,6 +459,27 @@ run unchunked.
 (§3.4, ask #2) would let chunking collapse into the iterator and drop the repeated postings
 resolution. Worth doing; no longer close to critical.
 
+#### Classic histogram quantiles
+
+`histogram_quantile` projects every input identity to its parsed `le` boundary and histogram group
+once during schema resolution. Group keys retain the metric name; output labels remove `le` and
+metadata. Distinct names remain separate internally, and simultaneous output-label collisions fail.
+
+Only emitted, nonempty buckets allocate value buffers. Dense buckets copy their values directly;
+gappy buckets keep compact values with the smaller of step indexes and a validity bitmap. Inactive
+index-superset identities consume projection metadata, never a buckets-times-steps value grid.
+The query sample cap bounds copied values; schema, copy and fold loops check cancellation.
+
+One scratch bucket slice is reused across steps and groups. Upstream `promql.BucketQuantile`
+provides duplicate-boundary coalescing, interpolation, infinity/NaN handling and monotonic repair.
+Bad bucket labels, invalid quantiles and forced repairs enter a query-local, synchronized annotation
+sink shared across chunks and subqueries, then become HTTP warnings/infos.
+
+Range repair counts reflect actual corrections. The pinned upstream engine self-merges those
+counts (two corrected timestamps report four samples); only that confirmed count-text defect is
+excluded from oracle comparisons. Instant annotations and every other range annotation field stay
+exact; see [#1422](https://github.com/oteldb/oteldb/issues/1422).
+
 ### 4.5 Worked example
 
 `sum by (job) (rate(http_requests_total[5m]))`, range query over 1h at 15s step, 1000 series,
@@ -822,47 +843,19 @@ Compliance is not a phase at the end; it is the first thing wired up.
 
 ### 8.1 Where the corpus stands
 
-The file-level pass count (6/21 after M5) is the number milestones are judged by, but it is a
-harsh metric: one unimplemented function fails a 413-case file, and the skip list then hides the
-other 412 cases. `TestPromQLGap` runs the corpus unskipped — promqltest makes every `eval` its
-own subtest and keeps going after a failure — which gives the finer number: **1016/2117 eval
-cases (48.0%)**.
+The complete-file gate passes 6/21 corpus files. The unskipped `TestPromQLGap` report against the
+pinned Prometheus v0.313.2 corpus passes **990/2183 eval cases (45.4%)**. A file stays unsupported
+until every case in it passes; adding classic histogram support does not make native histogram
+cases in the same file work. No unsupported-file entry or compatibility threshold is relaxed.
 
-Attributing the 1101 failures:
+Major remaining gaps are native typed histogram operations, annotations outside the classic
+quantile path, extended range selectors, binop fill modifiers, `info()`, created timestamps and
+delayed metric-name/type/unit handling. Classic quantiles have their own upstream oracle matrix,
+including invalid inputs, metadata, gaps, duplicate boundaries and nested/chunked execution.
 
-| Cause | Cases | Milestone |
-|---|---:|---|
-| Native histograms (`histogram_*`, histogram operands and expectations, including `count_values` over a mixed float/histogram series) | ~700 | M7 |
-| Missing annotations (`info`/`warn` expected, none produced) | 117 | M9 |
-| Extended range selectors (`anchored`/`smoothed`) | 74 | — |
-| Binop fill modifiers | 39 | — |
-| `info()` | 41 | — |
-| Created timestamps | 16 | M10 |
-| `__name__` handling (delayed removal, `type`/`unit` metadata labels) | 23 | M8 |
-
-`topk`/`bottomk`/`quantile`/`limitk`/`limit_ratio`/`sort*` are gone from this table: M2b
-implemented all of them, closing 58 cases outright. The rest of what that row used to cover
-turned out to already be double-counted under the rows above — a `limitk`/`topk` case over a
-native-histogram series was always going to fail on M7 regardless of M2b, and `sort()`'s "expect
-warn" cases were always an M9 gap, not a sorting bug.
-
-Date/time functions and the `predict_linear`/`deriv`/`quantile_over_time`/`mad_over_time`/
-`ts_of_*` row are gone the same way: M12 implemented all of them, closing 75 cases. The
-~90-vs-75 gap between what those two rows used to estimate and what actually closed is the same
-double-counting pattern — a `quantile_over_time` or `predict_linear` case over a mixed
-float/histogram series was always an M7 failure regardless of M12, and the invalid-quantile
-"expect warn" cases were always M9.
-
-`absent`/`absent_over_time` is gone from this table too: M13 closed 38 of the 42 cases the row
-used to estimate. The remaining 4 are the same double-counting pattern once more — an `absent`
-case wrapping a native-histogram selector, always an M7 failure regardless of M13.
-
-The shape of that table is the useful part: **almost everything left is a missing feature, not a
-wrong answer.** Outside the two native-histogram files there are 90 wrong-answer failures, and
-all but a handful belong to features that are absent rather than broken — 39 are the fill
-modifiers, 16 created timestamps, 15 `type`/`unit` metadata. What that says is that the execution
-model is carrying the semantics correctly and the remaining work is breadth, which is the
-cheerful reading of a 48.0% number.
+The HTTP harness compares both empty and nonempty queries against a separate Prometheus server.
+A pinned evaluation window inside the collected demo dataset and a finite-output probe prevent an
+apparently successful comparison from being explained by two empty results.
 
 ## 9. Salvage from `gemini/scarecrow-engine-initial`
 
@@ -1136,10 +1129,10 @@ a feature in its own right, not a gap in a milestone above, so each gets its own
   something a column can carry rather than something frozen at plan time, so doing them together
   costs less than doing either alone. Gate: `info.test` (41 cases).
 
-- **M9 — annotations.** `promql.Result.Warnings` is always empty today. PromQL emits info- and
-  warn-level annotations (a histogram ignored in a `stdvar`, a mixed float/histogram `rate`, a
-  range too short) and the corpus asserts them with `expect info` / `expect warn`. Needs an
-  annotation sink threaded through evaluation and returned from `Exec`.
+- **M9 — annotations.** A synchronized query-local sink is shared across chunks, subqueries and
+  concurrent branches, and returned through `promql.Result.Warnings`. Classic histogram quantiles
+  report invalid quantiles/bucket labels and monotonicity repairs. Other function families still
+  need their own warning/info emission, including mixed float/histogram operations.
 
   Gate: the `expect info` cases in `aggregators.test`; a prerequisite for closing out M7.
 

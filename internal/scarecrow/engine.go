@@ -222,7 +222,8 @@ type query struct {
 	stats  *stats.Statistics
 	// budget is the query's sample allowance, created in Exec and shared by every EvalContext
 	// the query builds.
-	budget *sampleBudget
+	budget      *sampleBudget
+	annotations annotationSink
 }
 
 var _ promql.Query = (*query)(nil)
@@ -263,6 +264,7 @@ func (q *query) Exec(ctx context.Context) *promql.Result {
 	// One budget for the whole query, so a range query's chunks and any subquery share it and
 	// time-chunking cannot be used to read past the limit.
 	q.budget = newSampleBudget(q.engine.opts.MaxSamples)
+	q.annotations = annotationSink{}
 
 	v, err := q.exec(ctx)
 
@@ -276,12 +278,12 @@ func (q *query) Exec(ctx context.Context) *promql.Result {
 
 		xspan.Fail(span, err)
 
-		return &promql.Result{Err: err}
+		return &promql.Result{Err: err, Warnings: q.annotations.snapshot()}
 	}
 
 	span.SetStatus(codes.Ok, "")
 
-	return &promql.Result{Value: v}
+	return &promql.Result{Value: v, Warnings: q.annotations.snapshot()}
 }
 
 // withTimeout applies the engine's query timeout, falling back to a plain cancel context when
@@ -334,6 +336,7 @@ func (q *query) exec(ctx context.Context) (parser.Value, error) {
 			LookbackDelta: q.lookback,
 			Tracer:        q.engine.tracer,
 			Budget:        q.budget,
+			annotations:   &q.annotations,
 		}
 		p := &planner{scanner: scanner, ec: ec, noStepSubqueryInterval: q.engine.opts.NoStepSubqueryInterval}
 
@@ -430,6 +433,7 @@ func (q *query) execChunk(
 		LookbackDelta: q.lookback,
 		Tracer:        q.engine.tracer,
 		Budget:        q.budget,
+		annotations:   &q.annotations,
 	}
 
 	// Only span the chunks when there is more than one: an unchunked query would otherwise get a
