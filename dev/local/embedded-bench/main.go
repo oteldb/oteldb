@@ -1,7 +1,6 @@
 // Command embedded-bench orchestrates a realistic PromQL benchmark of oteldb's embedded storage
 // engine over HTTP, replacing the previous run.sh. It builds the oteldb (and otelbench) binaries on
-// the host — where the oteldb repo's go.mod replace directives resolve the local storage /
-// promql-engine sources — then drives a thin docker-compose stack (live node_exporter → vmagent as
+// the host, preserving local storage overrides, then drives a thin docker-compose stack (live node_exporter → vmagent as
 // BENCH_NODES hosts → two oteldb --embedded instances off the same ingest stream: the `file` backend
 // and the go-faster/fs `s3` backend, capped) and runs the canonical query suite against each via
 // otelbench. Numbers are comparable to the oteldb / oteldb-s3 columns of
@@ -198,9 +197,8 @@ func loadConfig() (config, error) {
 	return cfg, nil
 }
 
-// buildBinaries compiles oteldb and otelbench from the oteldb repo root, where the go.mod replace
-// directives point at local /src/oteldb/{storage,promql-engine}. Both land in the bench dir so the
-// Dockerfile COPYs ./oteldb and the bench phase invokes ./otelbench without recompiling per run.
+// buildBinaries compiles oteldb and otelbench on the host, preserving any local storage override.
+// Both binaries are reused across benchmark runs.
 func buildBinaries(cfg config) error {
 	env := append(os.Environ(),
 		"CGO_ENABLED=0",

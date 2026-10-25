@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -15,26 +16,6 @@ import (
 
 	"github.com/oteldb/oteldb/internal/storagebackend"
 )
-
-// TestPrometheusConfigScarecrowYAML checks the flag parses from the documented YAML shape via the
-// real config loader.
-func TestPrometheusConfigScarecrowYAML(t *testing.T) {
-	const data = `
-prometheus:
-  enable_scarecrow_engine: true
-`
-	f, err := os.CreateTemp("", "oteldb.yml")
-	require.NoError(t, err)
-	defer func() { _ = os.Remove(f.Name()) }()
-	_, err = f.WriteString(data)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	cfg, err := loadConfig(f.Name())
-	require.NoError(t, err)
-
-	require.True(t, cfg.Prometheus.EnableScarecrowEngine)
-}
 
 // TestNewScarecrowEngineNativeScanner checks that a storage-backend querier gets the native
 // Scanner rather than falling back to scarecrow's generic storage.Queryable adapter: a query
@@ -61,7 +42,7 @@ func TestNewScarecrowEngineNativeScanner(t *testing.T) {
 	require.NoError(t, b.ConsumeMetrics(ctx, md))
 
 	app := &App{lg: zap.NewNop()}
-	cfg := PrometheusConfig{EnableScarecrowEngine: true}
+	cfg := PrometheusConfig{}
 	cfg.SetDefaults()
 
 	engine := app.newScarecrowEngine(b, cfg)
@@ -110,7 +91,7 @@ func TestNewScarecrowEngineFallsBackOverOtherQuerier(t *testing.T) {
 	require.NoError(t, b.ConsumeMetrics(ctx, md))
 
 	app := &App{lg: zap.NewNop()}
-	cfg := PrometheusConfig{EnableScarecrowEngine: true}
+	cfg := PrometheusConfig{}
 	cfg.SetDefaults()
 
 	wrapped := metricQuerierWrapper{b}
@@ -128,4 +109,16 @@ func TestNewScarecrowEngineFallsBackOverOtherQuerier(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, vec, 1)
 	require.Equal(t, float64(9), vec[0].F)
+}
+
+func TestRetiredPrometheusEngineSetting(t *testing.T) {
+	for _, oldValue := range []string{"true", "false"} {
+		t.Run(oldValue, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "oteldb.yml")
+			require.NoError(t, os.WriteFile(path, []byte("prometheus:\n  enable_scarecrow_engine: "+oldValue+"\n  enable_per_step_stats: true\n  max_samples: 1234\n"), 0o600))
+			cfg, err := loadConfig(path)
+			require.NoError(t, err, "retired settings are ignored by the YAML loader")
+			require.Equal(t, 1234, cfg.Prometheus.MaxSamples)
+		})
+	}
 }

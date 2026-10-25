@@ -2,8 +2,8 @@ name: "Storage Compliance"
 
 # End-to-end PromQL/LogQL compliance for oteldb running on the embedded storage engine
 # (`--embedded`, no ClickHouse). Mirrors compliance.yml but points the compliance testers at an
-# embedded oteldb. PromQL is fully compatible (100%, 537/537) once the volatile demo gauge is frozen
-# before the comparison (see the Freeze dataset step), and is gated at 100%. LogQL ingestion is wired
+# embedded oteldb. PromQL stays gated at 100%; Scarecrow's known histogram-function gaps are
+# tracked separately. Freeze the volatile demo gauge before comparison. LogQL ingestion is wired
 # via otelcol.embedded.yml (hoists Loki labels to resource
 # attributes so the embedded backend can select streams); the embedded LogQL engine is far less
 # complete, so it is gated at a 25% floor (~28% locally) to catch regressions while it matures.

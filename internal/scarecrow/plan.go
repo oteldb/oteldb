@@ -288,6 +288,9 @@ func (p *planner) buildSelectorFold(
 
 	// The pushdown-eligible functions never carry a param, so this is unaffected by it.
 	if param == nil {
+		if op, ok := p.pushDownRangeFunction(fnName, vs, ms); ok {
+			return op, nil
+		}
 		if op, ok := p.pushDownOverTime(fnName, vs, ms); ok {
 			return op, nil
 		}
@@ -341,6 +344,7 @@ func (p *planner) buildSubquery(sq *parser.SubqueryExpr) (Operator, *EvalContext
 		Interval:      time.Duration(stepMs) * time.Millisecond,
 		LookbackDelta: p.ec.LookbackDelta,
 		Budget:        p.ec.Budget,
+		annotations:   p.ec.annotations,
 	}
 
 	inner, err := (&planner{

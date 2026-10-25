@@ -4,6 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage"
+
 	"github.com/prometheus/prometheus/promql/promqltest"
 	"github.com/stretchr/testify/require"
 
@@ -124,4 +127,41 @@ func TestQueryableScannerNoMatch(t *testing.T) {
 	s, err := it.Next(ctx)
 	require.NoError(t, err)
 	require.Nil(t, s)
+}
+
+func TestQueryableScannerRejectsNativeHistograms(t *testing.T) {
+	for _, tt := range []struct{ name, samples string }{
+		{"histogram", `{{schema:0 sum:5 count:4 buckets:[1 2 1]}}`},
+		{"mixed", `1 {{schema:0 sum:5 count:4 buckets:[1 2 1]}} 3`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			store := promqltest.LoadedStorage(t, "load 1s\n  histogram_metric "+tt.samples+"\n")
+			t.Cleanup(func() { require.NoError(t, store.Close()) })
+			scanner := scarecrow.NewQueryableScanner(store)
+			iterator, err := scanner.Scan(t.Context(), 0, 10_000, mustMatchers(t, `histogram_metric`))
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, iterator.Close()) })
+			samples, err := iterator.Next(t.Context())
+			require.ErrorContains(t, err, "native histogram samples")
+			require.Nil(t, samples, "a float prefix must not escape as a partial result")
+		})
+	}
+}
+
+func TestQueryableScannerSeriesUsesIdentityHint(t *testing.T) {
+	t.Parallel()
+	called := false
+	querier := &storage.MockQueryable{MockQuerier: &storage.MockQuerier{SelectMockFunction: func(sorted bool, hints *storage.SelectHints, _ ...*labels.Matcher) storage.SeriesSet {
+		called = true
+		require.True(t, sorted)
+		require.Equal(t, "series", hints.Func)
+		require.EqualValues(t, 42, hints.Start)
+		require.EqualValues(t, 84, hints.End)
+		return storage.EmptySeriesSet()
+	}}}
+	scanner := scarecrow.NewQueryableScanner(querier)
+	_, err := scanner.Series(t.Context(), 42, 84, nil)
+	require.NoError(t, err)
+	require.True(t, called)
 }

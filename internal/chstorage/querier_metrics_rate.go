@@ -5,15 +5,9 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ClickHouse/ch-go/proto"
-	"github.com/oteldb/promql-engine/execution/model"
-	"github.com/oteldb/promql-engine/execution/telemetry"
-	"github.com/oteldb/promql-engine/extlabels"
-	"github.com/oteldb/promql-engine/query"
-	promscanners "github.com/oteldb/promql-engine/storage/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -106,195 +100,6 @@ func funcNameToRateKind(name string) (rateKind, bool) {
 	}
 }
 
-// rateSelector is a VectorOperator that returns pre-computed rate values for
-// rate-family functions (rate, increase, delta, irate, idelta).
-//
-// It works by calling querySeriesSingleflight(ctx, samplePoints=true, ...).
-// Because samplePoints is true, querySeries sees a rate-kind Function and
-// delegates to queryRatePoints* (the offloaded path), so the returned "points"
-// are already the extrapolated results — not raw samples.
-// Next() then performs exact-timestamp lookups via selectExactPoint on those
-// pre-computed per-step values.
-//
-// This makes rateSelector look like a "selector" but it is actually a
-// specialized operator returning offloaded function results.
-type rateSelector struct {
-	telemetry telemetry.OperatorTelemetry
-
-	querier *promQuerier
-	filter  promscanners.Filter
-	once    sync.Once
-
-	series      []labels.Labels
-	pointSeries []*series[pointData]
-
-	params metricSelectParams
-	kind   rateKind
-
-	numSteps        int
-	mint            int64
-	maxt            int64
-	step            int64
-	seriesBatchSize int64
-
-	currentSeries int64
-	currentStep   int64
-}
-
-func newRateSelector(
-	querier *promQuerier,
-	filters []*labels.Matcher,
-	queryOpts *query.Options,
-	params metricSelectParams,
-	offset time.Duration,
-	batchSize int64,
-	kind rateKind,
-) model.VectorOperator {
-	params.Offset = offset
-	o := &rateSelector{
-		querier: querier,
-		filter:  promscanners.NewFilter(filters),
-
-		params: params,
-		kind:   kind,
-
-		mint:            queryOpts.Start.UnixMilli(),
-		maxt:            queryOpts.End.UnixMilli(),
-		step:            queryOpts.Step.Milliseconds(),
-		currentStep:     queryOpts.Start.UnixMilli(),
-		numSteps:        queryOpts.NumStepsPerBatch(),
-		seriesBatchSize: batchSize,
-	}
-	if o.step == 0 {
-		o.step = 1
-	}
-	o.telemetry = telemetry.NewTelemetry(o, queryOpts)
-	return telemetry.NewOperator(o.telemetry, o)
-}
-
-func (o *rateSelector) String() string {
-	return fmt.Sprintf("[chstorage.rateSelector] %s({%v}[%s])", o.params.Function, o.params.Matchers, o.params.Range)
-}
-
-func (o *rateSelector) Explain() (next []model.VectorOperator) {
-	return nil
-}
-
-func (o *rateSelector) Series(ctx context.Context) ([]labels.Labels, error) {
-	if err := o.loadSeries(ctx); err != nil {
-		return nil, err
-	}
-	return o.series, nil
-}
-
-func (o *rateSelector) Next(ctx context.Context, buf []model.StepVector) (int, error) {
-	select {
-	case <-ctx.Done():
-		return 0, ctx.Err()
-	default:
-	}
-	if o.currentStep > o.maxt {
-		return 0, nil
-	}
-	if err := o.loadSeries(ctx); err != nil {
-		return 0, err
-	}
-
-	totalSeries := int64(len(o.pointSeries))
-	maxSteps := min(o.numSteps, len(buf))
-	remainingSeries := int64(len(o.series)) - o.currentSeries
-	expectedSamples := int(min(o.seriesBatchSize, remainingSeries))
-	if expectedSamples <= 0 {
-		expectedSamples = len(o.series)
-	}
-
-	n := 0
-	ts := o.currentStep
-	for currStep := 0; currStep < maxSteps && ts <= o.maxt; currStep++ {
-		buf[n].Reset(ts)
-		n++
-		ts += o.step
-	}
-
-	ts = o.currentStep
-	fromSeries := o.currentSeries
-	for ; o.currentSeries-fromSeries < o.seriesBatchSize && o.currentSeries < totalSeries; o.currentSeries++ {
-		var (
-			series          = o.pointSeries[o.currentSeries]
-			seriesTimestamp = ts
-			idx             int
-			step            = computeStep(series.ts)
-		)
-		for currStep := 0; currStep < n && seriesTimestamp <= o.maxt; currStep++ {
-			currStepSamples := 0
-			if v, ok := selectExactPoint(series.ts, series.data.values, &idx, step, seriesTimestamp); ok {
-				buf[currStep].AppendSampleWithSizeHint(uint64(o.currentSeries), v, expectedSamples)
-				currStepSamples++
-			}
-			o.telemetry.IncrementSamplesAtTimestamp(currStepSamples, seriesTimestamp)
-			seriesTimestamp += o.step
-		}
-	}
-
-	if o.currentSeries == totalSeries {
-		o.currentStep += o.step * int64(n)
-		o.currentSeries = 0
-	}
-	return n, nil
-}
-
-func (o *rateSelector) loadSeries(ctx context.Context) error {
-	var err error
-	o.once.Do(func() {
-		ctx, span := o.querier.tracer.Start(ctx, "chstorage.metrics.rateSelector.loadSeries", trace.WithAttributes(
-			attribute.Int64("promql.selector.start", o.params.Start.UnixMilli()),
-			attribute.Int64("promql.selector.end", o.params.End.UnixMilli()),
-			attribute.Int64("promql.selector.mint", o.mint),
-			attribute.Int64("promql.selector.maxt", o.maxt),
-			attribute.Int64("promql.selector.step", o.step),
-			attribute.Int64("promql.selector.range", o.params.Range.Milliseconds()),
-			attribute.Int64("promql.selector.offset", o.params.Offset.Milliseconds()),
-			xattribute.StringerSlice("promql.selector.matchers", o.params.Matchers),
-			xattribute.StringerSlice("promql.selector.filter", o.filter.Matchers()),
-		))
-		defer func() {
-			xspan.End(span, err)
-		}()
-
-		r, queryErr := o.querier.querySeriesSingleflight(ctx, true, o.params)
-		if queryErr != nil {
-			err = queryErr
-			return
-		}
-
-		o.series = make([]labels.Labels, 0, len(r.points))
-		o.pointSeries = make([]*series[pointData], 0, len(r.points))
-		var b labels.ScratchBuilder
-		for _, s := range r.points {
-			if !o.filter.Matches(s) {
-				continue
-			}
-			// s is a pointer into querySeriesSingleflight's shared, cached result, so it
-			// must not be mutated here: concurrent identical queries hold the same
-			// *series[pointData] and would race on a s.labels write.
-			o.series = append(o.series, extlabels.DropReserved(s.labels, b))
-			o.pointSeries = append(o.pointSeries, s)
-		}
-		numSeries := int64(len(o.series))
-		if o.seriesBatchSize == 0 || numSeries < o.seriesBatchSize {
-			o.seriesBatchSize = numSeries
-		}
-	})
-	return err
-}
-
-func selectExactPoint(tss []int64, samples []float64, idx *int, step, ts int64) (float64, bool) {
-	if !seekIterator(tss, idx, step, ts) || *idx >= len(tss) || tss[*idx] != ts {
-		return 0, false
-	}
-	return samples[*idx], true
-}
-
 func (p *promQuerier) queryRatePoints(
 	ctx context.Context,
 	start, end time.Time,
@@ -340,7 +145,15 @@ func (p *promQuerier) queryRatePointsCached(
 	// Include window and offset in the cache key so that rate(x[5m]) and
 	// rate(x[1h]) with the same step do not share a cache entry.
 	rateFn := rateCacheFn(kind, window, offset)
-	resultMap, err := p.fetchAndMergeCache(ctx, span, start, end, step, rateFn, timeseries, fetch)
+	var resultMap map[[16]byte]*series[pointData]
+	var err error
+	// Cached tails use epoch-aligned steps and cannot preserve an arbitrary query grid.
+	if stepMs := step.Milliseconds(); stepMs > 0 && start.UnixMilli()%stepMs != 0 {
+		span.AddEvent("chstorage.bypass_unaligned_rate_cache")
+		resultMap, err = fetch(ctx, start, end)
+	} else {
+		resultMap, err = p.fetchAndMergeCache(ctx, span, start, end, step, rateFn, timeseries, fetch)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -806,7 +619,7 @@ func extrapolatedValue(w rateWindow, kind rateKind) (float64, bool) {
 	if durationToStart >= extrapolationThreshold {
 		durationToStart = averageDurationBetweenSamples / 2
 	}
-	if resultValue > 0 && w.FirstV >= 0 {
+	if kind.needsCounterReset() && resultValue > 0 && w.FirstV >= 0 {
 		durationToZero := sampledInterval * (w.FirstV / resultValue)
 		if durationToZero < durationToStart {
 			durationToStart = durationToZero

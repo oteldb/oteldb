@@ -29,7 +29,8 @@ type EvalContext struct {
 	// (and by a subquery's inner context), so chunking cannot be used to evade the limit. Nil is
 	// legal and means unlimited, so a test or an embedder building an EvalContext by hand need
 	// not care.
-	Budget *sampleBudget
+	Budget      *sampleBudget
+	annotations *annotationSink
 }
 
 // charge books n samples read from storage against the query's budget, returning

@@ -1,44 +1,42 @@
-// Package promql provides a PromQL engine implementation.
+// Package promql constructs the Scarecrow PromQL engine.
 package promql
 
 import (
 	"context"
 	"time"
 
-	"github.com/go-faster/errors"
-	promqlengine "github.com/oteldb/promql-engine/engine"
-	enginestorage "github.com/oteldb/promql-engine/storage"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+
+	"github.com/oteldb/oteldb/internal/scarecrow"
 )
 
-// Engine is a Prometheus engine interface.
+// Engine evaluates PromQL queries.
 type Engine interface {
 	NewInstantQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error)
 	NewRangeQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error)
 }
 
-// Querier is Prometheus storage interface.
+// Querier supplies metric series and exemplars.
 type Querier interface {
 	storage.Queryable
 	storage.ExemplarQueryable
-	MetricsScanners() (enginestorage.Scanners, error)
 }
 
-// EngineOpts defines PromQL engine options.
+// EngineOpts configures query limits and PromQL modifiers.
 type EngineOpts = promql.EngineOpts
 
-// New creates new [Engine].
-func New(q Querier, opts promql.EngineOpts) (Engine, error) {
-	scanners, err := q.MetricsScanners()
-	if err != nil {
-		return nil, errors.Wrap(err, "create scanners")
+// New creates a Scarecrow engine, using a native Scanner when q provides one.
+func New(q Querier, opts EngineOpts) (Engine, error) {
+	engineOpts := scarecrow.Opts{
+		LookbackDelta:        opts.LookbackDelta,
+		EnableAtModifier:     opts.EnableAtModifier,
+		EnableNegativeOffset: opts.EnableNegativeOffset,
+		MaxSamples:           opts.MaxSamples,
+		Timeout:              opts.Timeout,
 	}
-	return promqlengine.NewWithScanners(
-		promqlengine.Opts{
-			EngineOpts:     opts,
-			EnableAnalysis: true,
-		},
-		scanners,
-	), nil
+	if q, ok := q.(interface{ ScarecrowScanner() scarecrow.Scanner }); ok {
+		engineOpts.NewScanner = func(storage.Queryable) scarecrow.Scanner { return q.ScarecrowScanner() }
+	}
+	return scarecrow.NewEngine(engineOpts), nil
 }

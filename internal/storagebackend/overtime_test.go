@@ -6,11 +6,9 @@ import (
 	"math"
 	"slices"
 	"sort"
-	"strings"
 	"testing"
 	"time"
 
-	promqlengine "github.com/oteldb/promql-engine/engine"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
@@ -334,131 +332,6 @@ func assertFloatEqual(t *testing.T, query string, lset labels.Labels, want, got 
 	assert.InDeltaf(t, want, got, 1e-9, "%s: value for %s", query, lset)
 }
 
-// instantPlan returns the execution plan of an instant query, for asserting whether the aggregate
-// pushdown operator was selected.
-func instantPlan(
-	ctx context.Context, t *testing.T, eng otelpromql.Engine,
-	b *storagebackend.Backend, query string, ts time.Time,
-) *promqlengine.ExplainOutputNode {
-	t.Helper()
-	q, err := eng.NewInstantQuery(ctx, b, nil, query, ts)
-	require.NoError(t, err)
-	t.Cleanup(q.Close)
-	exp, ok := q.(promqlengine.ExplainableQuery)
-	require.True(t, ok, "query must implement ExplainableQuery to inspect its plan")
-	return exp.Explain()
-}
-
-// planOpName is the operator-name fragment the aggregate-pushdown vector operator reports in the
-// query plan (see aggregateOverTimeOp.String).
-const planOpName = "aggregateOverTimeOp"
-
-// rangePlanOpName is the operator-name fragment the range aggregate-pushdown operator reports (see
-// aggregateOverTimeRangeOp.String). It is distinct from planOpName ("aggregateOverTimeOp" is not a
-// substring of "aggregateOverTimeRangeOp"), so the two paths are matched independently.
-const rangePlanOpName = "aggregateOverTimeRangeOp"
-
-func explainContains(node *promqlengine.ExplainOutputNode, substr string) bool {
-	if node == nil {
-		return false
-	}
-	if strings.Contains(node.OperatorName, substr) {
-		return true
-	}
-	for i := range node.Children {
-		if explainContains(&node.Children[i], substr) {
-			return true
-		}
-	}
-	return false
-}
-
-// TestOverTimePushdownPlanRouting proves the pushdown is actually exercised where it should be and
-// — just as important for validity — that it cleanly steps aside everywhere it must. Without this,
-// the differential tests could pass trivially by never pushing down at all.
-func TestOverTimePushdownPlanRouting(t *testing.T) {
-	ctx := context.Background()
-	evalT := time.Unix(2_000_000, 0).UTC()
-
-	store := ingestGaugeSeries(ctx, t, evalT, []gaugeSeries{
-		{foo: "a", samples: []timeSample{{-10 * time.Second, 1}, {-5 * time.Second, 2}}},
-	})
-	t.Cleanup(func() { _ = store.Close(ctx) })
-
-	on := storagebackend.New(store)
-	off := storagebackend.New(store, storagebackend.WithOverTimePushdown(false))
-	engOn := newOverTimeEngine(t, on)
-	engOff := newOverTimeEngine(t, off)
-
-	t.Run("SupportedInstantUsesSidecar", func(t *testing.T) {
-		for _, q := range []string{
-			"count_over_time(ot_gauge[30s])",
-			"sum_over_time(ot_gauge[30s])",
-			"min_over_time(ot_gauge[30s])",
-			"max_over_time(ot_gauge[30s])",
-			"avg_over_time(ot_gauge[30s])",
-			"present_over_time(ot_gauge[30s])",
-			`max_over_time(ot_gauge{foo="a"}[30s])`,
-			"count_over_time(ot_gauge[30s] offset 10s)",
-		} {
-			plan := instantPlan(ctx, t, engOn, on, q, evalT)
-			assert.Truef(t, explainContains(plan, planOpName), "%s should push down to the sidecar", q)
-		}
-	})
-
-	t.Run("DisabledFallsBack", func(t *testing.T) {
-		plan := instantPlan(ctx, t, engOff, off, "count_over_time(ot_gauge[30s])", evalT)
-		assert.False(t, explainContains(plan, planOpName), "WithOverTimePushdown(false) must not use the sidecar")
-	})
-
-	t.Run("UnsupportedFunctionFallsBack", func(t *testing.T) {
-		// Functions the sidecar (count/sum/min/max) cannot answer must keep the raw matrix selector.
-		for _, q := range []string{
-			"last_over_time(ot_gauge[30s])",
-			"stddev_over_time(ot_gauge[30s])",
-			"quantile_over_time(0.5, ot_gauge[30s])",
-			"changes(ot_gauge[30s])",
-			"rate(ot_gauge[30s])",
-		} {
-			plan := instantPlan(ctx, t, engOn, on, q, evalT)
-			assert.Falsef(t, explainContains(plan, planOpName), "%s must fall back to the matrix selector", q)
-		}
-	})
-
-	t.Run("RangeQueryUsesSidecar", func(t *testing.T) {
-		// Range queries push the reducer folds down per step; @ / projection / unsupported folds fall back.
-		for _, tt := range []struct {
-			query string
-			push  bool
-		}{
-			{"count_over_time(ot_gauge[30s])", true},
-			{"sum_over_time(ot_gauge[30s])", true},
-			{"avg_over_time(ot_gauge[30s])", true},
-			{"present_over_time(ot_gauge[30s])", true},
-			{"count_over_time(ot_gauge[30s] offset 10s)", true},
-			{"rate(ot_gauge[30s])", false},
-			{"last_over_time(ot_gauge[30s])", false},
-			{"count_over_time(ot_gauge[30s] @ 2000000)", false},
-		} {
-			q, err := engOn.NewRangeQuery(ctx, on, nil, tt.query, evalT, evalT.Add(time.Minute), 15*time.Second)
-			require.NoError(t, err)
-			t.Cleanup(q.Close)
-			exp, ok := q.(promqlengine.ExplainableQuery)
-			require.True(t, ok)
-			assert.Equalf(t, tt.push, explainContains(exp.Explain(), rangePlanOpName), "range routing for %s", tt.query)
-		}
-	})
-
-	t.Run("RangeQueryDisabledFallsBack", func(t *testing.T) {
-		q, err := engOff.NewRangeQuery(ctx, off, nil, "count_over_time(ot_gauge[30s])", evalT, evalT.Add(time.Minute), 15*time.Second)
-		require.NoError(t, err)
-		t.Cleanup(q.Close)
-		exp, ok := q.(promqlengine.ExplainableQuery)
-		require.True(t, ok)
-		assert.False(t, explainContains(exp.Explain(), rangePlanOpName), "WithOverTimePushdown(false) must not use the sidecar")
-	})
-}
-
 // TestOverTimePushdownMultiSeriesMatchesRaw is the differential oracle over a multi-series fixture:
 // for a broad query matrix (every supported fold, matcher subsets, offsets, downstream aggregation,
 // arithmetic, and an empty result) the pushdown must produce exactly what the raw matrix-selector
@@ -542,7 +415,7 @@ func TestOverTimePushdownUnsupportedMatchesRaw(t *testing.T) {
 }
 
 // TestOverTimePushdownRangeMatchesRaw is the differential oracle for the range pushdown
-// (aggregateOverTimeRangeOp): for every supported fold, matcher subset, offset, and window/step
+// (Scarecrow GridAggregateScanner): for every supported fold, matcher subset, offset, and window/step
 // combination — including windows that overlap (range > step), tile with gaps (range < step), and
 // straddle each series' sample edges — the per-step aggregate pushdown must produce exactly the
 // matrix the raw matrix-selector fold produces: same series, same labels, same value at every step.

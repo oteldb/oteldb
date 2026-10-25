@@ -20,11 +20,11 @@ import (
 
 	"github.com/oteldb/oteldb/integration/prome2e"
 	"github.com/oteldb/oteldb/integration/requirex"
+	"github.com/oteldb/oteldb/internal/config"
 	"github.com/oteldb/oteldb/internal/httpmiddleware"
-	"github.com/oteldb/oteldb/internal/metricstorage"
 	"github.com/oteldb/oteldb/internal/promapi"
 	"github.com/oteldb/oteldb/internal/promhandler"
-	"github.com/oteldb/oteldb/internal/promql"
+	"github.com/oteldb/oteldb/internal/queryapi"
 )
 
 // MetricsConsumer is metrics consumer.
@@ -115,8 +115,7 @@ findLoop:
 }
 
 type metricQuerier interface {
-	promql.Querier
-	metricstorage.MetadataQuerier
+	queryapi.MetricQuerier
 }
 
 func setupDB(
@@ -124,11 +123,7 @@ func setupDB(
 	provider trace.TracerProvider,
 	querier metricQuerier,
 ) (string, *promapi.Client) {
-	engine, err := promql.New(querier, promql.EngineOpts{
-		Timeout:              time.Minute,
-		MaxSamples:           1_000_000,
-		EnableNegativeOffset: true,
-	})
+	engine, err := queryapi.NewPromEngine(queryapi.PrometheusOptions{Querier: querier, Config: config.Prometheus{Timeout: time.Minute, MaxSamples: 1_000_000}})
 	require.NoError(t, err)
 	api := promhandler.NewPromAPI(engine, querier, querier, querier, promhandler.PromAPIOptions{})
 	promh, err := promapi.NewServer(api,

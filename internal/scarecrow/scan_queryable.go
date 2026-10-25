@@ -39,7 +39,9 @@ func (s *queryableScanner) Series(
 	defer func() { _ = q.Close() }()
 
 	// Sorted, so schema order is deterministic across runs and across backends.
-	set := q.Select(ctx, true, hintsFor(mint, maxt), matchers...)
+	hints := hintsFor(mint, maxt)
+	hints.Func = "series"
+	set := q.Select(ctx, true, hints, matchers...)
 
 	var out []labels.Labels
 	for set.Next() {
@@ -101,7 +103,10 @@ func (it *queryableIterator) Next(ctx context.Context) (*Samples, error) {
 		it.cur.Weights = nil // a Queryable carries no sampling weights
 
 		it.iter = s.Iterator(it.iter)
-		for it.iter.Next() == chunkenc.ValFloat {
+		for typ := it.iter.Next(); typ != chunkenc.ValNone; typ = it.iter.Next() {
+			if typ != chunkenc.ValFloat {
+				return nil, unsupportedf("native histogram samples in series %s", s.Labels())
+			}
 			t, v := it.iter.At()
 			if t < it.mint || t > it.maxt {
 				continue

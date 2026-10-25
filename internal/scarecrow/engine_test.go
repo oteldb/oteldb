@@ -112,7 +112,7 @@ func TestEngineUnsupportedIsExplicit(t *testing.T) {
 	e := scarecrow.NewEngine(scarecrow.Opts{})
 
 	for _, qs := range []string{
-		`histogram_quantile(0.9, up)`, // M6: histograms
+		`histogram_avg(up)`, // Native histogram functions.
 	} {
 		t.Run(qs, func(t *testing.T) {
 			t.Parallel()

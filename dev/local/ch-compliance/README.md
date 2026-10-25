@@ -41,9 +41,15 @@ FATA[0000] Error running comparison: expected reference API query "label_replace
 
 ## Results
 
-Latest result:
+Scarecrow serves both backends. With classic histogram quantiles, the ClickHouse HTTP harness
+passes **537 / 537 (100%)**, including three repeats per query. The frozen evaluation window is
+pinned inside collected data; a quantile probe returns 27 series and 81 samples from each API,
+including finite values. These are compatibility results, not production latency measurements.
+
+The standalone verifier defaults to a 99.5% minimum; storage CI requires 100%. The broader upstream
+corpus still has unsupported features; see [the engine's coverage report](../../../docs/promql-engine.md#81-where-the-corpus-stands).
+
+Historical result from the retired Thanos fork:
 ```
 Total: 547 / 548 (99.82%) passed, 0 unsupported
 ```
-
-We are getting (99.6, 100] percent and current target is compatibility not less than 99.6%.

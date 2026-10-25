@@ -31,6 +31,17 @@ func (p *planner) buildInstantCall(e *parser.Call) (Operator, bool, error) {
 	}
 
 	switch name {
+	case "histogram_quantile":
+		param, err := p.buildArg(e, 0)
+		if err != nil {
+			return nil, true, err
+		}
+		input, err := p.buildArg(e, 1)
+		if err != nil {
+			return nil, true, err
+		}
+		return newHistogramQuantile(input, param, e, p.ec), true, nil
+
 	case "absent":
 		input, err := p.buildArg(e, 0)
 		if err != nil {

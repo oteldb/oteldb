@@ -6,6 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/promqltest"
+	"github.com/stretchr/testify/require"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel/trace/noop"
 )
@@ -440,4 +444,22 @@ func TestQueryRatePointsSQL(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestDeltaExtrapolationMatchesPrometheus(t *testing.T) {
+	t.Parallel()
+	store := promqltest.LoadedStorage(t, "load 15s\n gauge 0 1 2 3\n")
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	engine := promql.NewEngine(promql.EngineOpts{MaxSamples: 100, Timeout: time.Minute})
+	query, err := engine.NewInstantQuery(t.Context(), store, nil, "delta(gauge[2m])", time.Unix(60, 0))
+	require.NoError(t, err)
+	t.Cleanup(query.Close)
+	result := query.Exec(t.Context())
+	require.NoError(t, result.Err)
+	vector, err := result.Vector()
+	require.NoError(t, err)
+	require.Len(t, vector, 1)
+	got, ok := extrapolatedValue(rateWindow{StepTime: 60_000, Range: 120_000, FirstT: 0, FirstV: 0, LastT: 45_000, LastV: 3, Samples: 4}, rateKindDelta)
+	require.True(t, ok)
+	require.InDelta(t, vector[0].F, got, 1e-12, "gauge delta must extrapolate below zero")
 }
