@@ -15,11 +15,8 @@ import (
 // TestLogQLSelectorPushdown covers lowering stream selector matchers to storage fetch filters.
 //
 // Every matcher shape is pushed to the postings index, not just equality, so a regexp selector prunes
-// streams rather than being resolved after the fetch. The exception is a matcher that also matches
-// the empty string: LogQL reads an absent label as "", so it matches streams that lack the label
-// entirely, but the index only knows streams that have it. The "env" label is present on one stream
-// and absent from the other precisely to pin that case — pushing `env!="dev"` or `env=~".*"` would
-// drop the stream without the label.
+// streams rather than being resolved after the fetch. Missing attributes are evaluated as empty
+// label values, so negative and empty-matching predicates retain streams without the attribute.
 func TestLogQLSelectorPushdown(t *testing.T) {
 	b, ctx := newBackend(t)
 
@@ -85,21 +82,19 @@ func TestLogQLSelectorPushdown(t *testing.T) {
 			want:  []string{"line:api line", "line:api stage"},
 		},
 		{
-			// Not pushable: "" != "dev", so the stream WITHOUT env must still match.
+			// "" != "dev", so the stream WITHOUT env must still match.
 			name:  "negated matcher keeps stream lacking the label",
 			query: `{service_name=~".+", env!="dev"}`,
 			want:  []string{"line:api line", "line:web line", "line:api stage"},
 		},
 		{
-			// Not pushable: `.*` matches "", so the stream WITHOUT env must still match.
+			// `.*` matches "", so the stream WITHOUT env must still match.
 			name:  "match-all regexp keeps stream lacking the label",
 			query: `{service_name=~".+", env=~".*"}`,
 			want:  []string{"line:api line", "line:web line", "line:api stage"},
 		},
 		{
-			// A pushable matcher AND an unpushable one on the same label: the pushed predicate is a
-			// superset, so matchSelector must still re-check.
-			name:  "mixed pushable and unpushable on one label",
+			name:  "conjunction on one label",
 			query: `{env=~"prod|stage", env!="stage"}`,
 			want:  []string{"line:api line"},
 		},

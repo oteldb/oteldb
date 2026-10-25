@@ -276,14 +276,12 @@ func (n *logStreamNode) materializeRange(selector preparedSelector, batches []*f
 //
 // Every matcher shape is pushed, not just equality: the filters carry a predicate over the typed
 // value, which the postings layer applies to a label's distinct values, so a regexp selector prunes
-// streams instead of being resolved by matchSelector after the fact. The one exception is a matcher
-// that also matches the empty string (`=~".*"`, `!="x"`): LogQL reads an absent label as "", so such
-// a matcher matches streams that lack the label entirely, while the index only knows streams that
-// have it — pushing it would drop them. Those stay with matchSelector, and the label is then only
-// partially applied.
+// streams instead of being resolved by matchSelector after the fact. Missing attributes are
+// offered to the predicate as an empty value, which LogQL renders as an absent label's "".
 //
-// Absent labels, collisions (a label mapping to multiple raw keys), and mixed-scope keys (resource on
-// some streams, record on others — soundly pushable as neither) are left to matchSelector.
+// Unknown keys, normalization collisions, and keys observed in multiple scopes stay with
+// matchSelector. Synthetic labels need their own semantics; an ambiguous null/default service name
+// remains a residual predicate too.
 // Record-attribute Conditions carry only an exact Match (no bloom Equal hint): the value may be
 // non-string, and a typed value bloom token could wrongly part-prune; the Match still drops rows at
 // the fetch layer.
@@ -292,20 +290,10 @@ func (n *logStreamNode) materializeRange(selector preparedSelector, batches []*f
 // so a fetched record needs no in-memory matchSelector re-check (used by the bucketed sampling fast
 // path). It shares the single LogKeys lookup.
 func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matchers []fetch.Matcher, conditions []fetch.Condition, selectorPushed bool) {
-	var (
-		// wanted holds the pushable matchers per label; a label may carry several, which AND.
-		wanted = map[string][]logql.LabelMatcher{}
-		// partial marks a label with a matcher we could not push, so it is never fully applied.
-		partial = map[string]bool{}
-	)
+	wanted := map[string][]logql.LabelMatcher{}
 	add := func(ms []logql.LabelMatcher) {
 		for _, m := range ms {
 			label := string(m.Label)
-			if matchLabel(m, "") {
-				// Matches an absent label too — see above; not soundly pushable.
-				partial[label] = true
-				continue
-			}
 			wanted[label] = append(wanted[label], m)
 		}
 	}
@@ -347,15 +335,20 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 	// matchSelector need not re-check it.
 	applied := map[string]bool{}
 	for label, ms := range wanted {
+		if isLevelLabelName(label) || label == logstorage.LabelTraceID || label == logstorage.LabelSpanID {
+			continue
+		}
 		cands := byLabel[label]
 		if len(cands) != 1 {
 			// Absent (label not stored) or ambiguous (collision): leave it to matchSelector.
 			continue
 		}
 		c := cands[0]
+		if c.rawKey == signal.LabelScopeName || c.rawKey == signal.LabelScopeVersion {
+			continue
+		}
 		// Render the value exactly as the label set does, so this matches matchSelector.
-		match := func(v signal.Value) bool {
-			s := labelValueString(v)
+		matches := func(s string) bool {
 			for _, m := range ms {
 				if !matchLabel(m, s) {
 					return false
@@ -363,20 +356,24 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 			}
 			return true
 		}
-		// Equality is serializable and exact, so the cluster fan-out can push it to peers; a regexp
-		// predicate cannot cross the wire, and falls back to the requester's re-check.
-		var spec *fetch.EqualMatcher
-		if len(ms) == 1 && ms[0].Op == logql.OpEq {
-			spec = &fetch.EqualMatcher{Name: c.rawKey, Value: ms[0].Value}
+		match := func(v signal.Value) bool {
+			if label == logstorage.LabelServiceName && v.Kind() == signal.KindEmpty {
+				// A missing service name gets a default; an explicit OTLP null stays empty.
+				return matches("") || matches(logstorage.DefaultServiceName)
+			}
+			return matches(labelValueString(v))
 		}
-
 		stream := c.scope&(storage.KeyScopeResource|storage.KeyScopeScope) != 0
 		record := c.scope&storage.KeyScopeRecord != 0
 		switch {
-		case stream && !record:
-			// A resource/scope label: prune whole streams via the postings index.
-			matchers = append(matchers, fetch.Matcher{Name: []byte(c.rawKey), Match: match, Spec: spec})
+		case stream && !record && c.scope != storage.KeyScopeResource|storage.KeyScopeScope:
+			// EqualMatcher uses storage text, which differs from pdata for bytes and composites.
+			// Without type metadata, even equality must remain a callback on a routed read.
+			matchers = append(matchers, fetch.Matcher{Name: []byte(c.rawKey), Match: match})
 		case record && !stream:
+			if isFixedLogColumn(c.rawKey) {
+				continue
+			}
 			// A per-record attribute: drop non-matching records at the fetch layer. Match only (no
 			// bloom Equal hint): a typed value token could wrongly part-prune.
 			conditions = append(conditions, fetch.Condition{Column: c.rawKey, Match: match})
@@ -385,9 +382,7 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 			// either a Matcher or a Condition: leave it to matchSelector.
 			continue
 		}
-		// A label with an unpushable matcher is filtered by a superset predicate, so it still needs
-		// the matchSelector re-check.
-		applied[label] = !partial[label]
+		applied[label] = label != logstorage.LabelServiceName || matches("") == matches(logstorage.DefaultServiceName)
 	}
 
 	// Fully pushed iff every selector matcher became part of a Matcher/Condition.

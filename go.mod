@@ -90,7 +90,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/webhookeventreceiver v0.159.0
 	github.com/oteldb/promql-engine v0.10.0
-	github.com/oteldb/storage v0.49.3
+	github.com/oteldb/storage v0.49.4-0.20261025183318-bdcd227a4e6f
 	github.com/pierrec/lz4/v4 v4.1.33
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.70.1

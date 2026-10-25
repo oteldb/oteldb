@@ -66,9 +66,8 @@ func TestLogFetchLimitPushdown(t *testing.T) {
 	}
 
 	pushable := node(logql.LabelMatcher{Label: "env", Op: logql.OpEq, Value: "prod"})
-	// `env!="dev"` also matches a stream without env, so it cannot be pushed to the index; the
-	// post-fetch matchSelector must re-check it, and a fetch-side limit would be unsound.
-	unpushable := node(logql.LabelMatcher{Label: "env", Op: logql.OpNotEq, Value: "dev"})
+	// An unknown label still needs matchSelector, so a fetch-side limit would be unsound.
+	unpushable := node(logql.LabelMatcher{Label: "missing", Op: logql.OpNotEq, Value: "dev"})
 
 	t.Run("unlimited", func(t *testing.T) {
 		got, pushed := rows(pushable, fetchOptions{})
