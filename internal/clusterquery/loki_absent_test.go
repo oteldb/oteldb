@@ -47,35 +47,7 @@ func TestLokiRoutedAbsentAndTypedMatchers(t *testing.T) {
 		r.Body().SetStr(string(rune('a' + i)))
 	}
 	require.NoError(t, local.ConsumeLogs(ctx, ld))
-	mux := http.NewServeMux()
-	mux.Handle(cluster.ReadPath, cluster.NewReadHandler(func(ctx context.Context, r fetch.Request) ([]*fetch.Batch, error) {
-		it, err := s.LogFetcher(r.Tenant).Fetch(ctx, r)
-		if err != nil {
-			return nil, err
-		}
-		return fetch.Drain(ctx, it)
-	}))
-	mux.Handle(cluster.KeysPath, cluster.KeysHandler(func(ctx context.Context, _ signal.Signal, tenant string, lo, hi int64) ([]cluster.KeyInfo, error) {
-		keys, err := s.LogKeys(ctx, signal.TenantID(tenant), lo, hi)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]cluster.KeyInfo, len(keys))
-		for i, key := range keys {
-			out[i] = cluster.KeyInfo{Key: key.Key, Scope: uint8(key.Scope)}
-		}
-		return out, nil
-	}))
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	endpoint := etcdtest.Start(t)
-	client, err := clientv3.New(clientv3.Config{Endpoints: []string{endpoint}})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = client.Close() })
-	member, err := etcd.Join(ctx, client, clusterRoot, etcd.Member{ID: "logs", Addr: strings.TrimPrefix(srv.URL, "http://")}, 0)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = member.Close(context.Background()) })
-	routed := storagebackend.NewQuery(clusterquery.New(openRouter(t, endpoint, 1, 1), 0))
+	routed := routedLogsBackend(t, s)
 	for _, tt := range []struct {
 		name, value string
 		op          logql.BinOp
@@ -113,6 +85,87 @@ func TestLokiRoutedAbsentAndTypedMatchers(t *testing.T) {
 				assert.Equal(t, tt.want[len(tt.want)-1], entry.Line)
 				assert.False(t, it.Next(&entry))
 				require.NoError(t, it.Err())
+			}
+		})
+	}
+}
+
+func routedLogsBackend(t *testing.T, s *storage.Storage) *storagebackend.Backend {
+	t.Helper()
+	ctx := t.Context()
+	mux := http.NewServeMux()
+	mux.Handle(cluster.ReadPath, cluster.NewReadHandler(func(ctx context.Context, r fetch.Request) ([]*fetch.Batch, error) {
+		it, err := s.LogFetcher(r.Tenant).Fetch(ctx, r)
+		if err != nil {
+			return nil, err
+		}
+		return fetch.Drain(ctx, it)
+	}))
+	mux.Handle(cluster.KeysPath, cluster.KeysHandler(func(ctx context.Context, _ signal.Signal, tenant string, lo, hi int64) ([]cluster.KeyInfo, error) {
+		keys, err := s.LogKeys(ctx, signal.TenantID(tenant), lo, hi)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]cluster.KeyInfo, len(keys))
+		for i, key := range keys {
+			out[i] = cluster.KeyInfo{Key: key.Key, Scope: uint8(key.Scope)}
+		}
+		return out, nil
+	}))
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	endpoint := etcdtest.Start(t)
+	client, err := clientv3.New(clientv3.Config{Endpoints: []string{endpoint}})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+	member, err := etcd.Join(ctx, client, clusterRoot, etcd.Member{ID: "logs", Addr: strings.TrimPrefix(srv.URL, "http://")}, 0)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = member.Close(context.Background()) })
+	return storagebackend.NewQuery(clusterquery.New(openRouter(t, endpoint, 1, 1), 0))
+}
+
+func TestLokiRoutedRecordColumnCollisions(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"head", "part"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			ctx := t.Context()
+			s, err := storage.InMemory()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = s.Close(context.Background()) })
+			local := storagebackend.New(s)
+			base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+			ld := plog.NewLogs()
+			r := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+			r.SetTimestamp(pcommon.Timestamp(base.UnixNano()))
+			r.Body().SetStr("dev")
+			r.SetSeverityText("dev")
+			keys := []string{"ts", "observed", "severity", "flags", "dropped", "severity_text", "body", "trace_id", "span_id", "attrs"}
+			for _, key := range keys {
+				r.Attributes().PutStr(key, "prod")
+			}
+			require.NoError(t, local.ConsumeLogs(ctx, ld))
+			if mode == "part" {
+				require.NoError(t, s.Admin().Flush(ctx, "default", signal.Log))
+			}
+			routed := routedLogsBackend(t, s)
+			for _, key := range keys {
+				t.Run(key, func(t *testing.T) {
+					for _, m := range []logql.LabelMatcher{
+						{Label: logql.Label(key), Op: logql.OpNotEq, Value: "dev"},
+						{Label: logql.Label(key), Op: logql.OpEq, Value: "prod"},
+					} {
+						n, err := routed.Logs().Query(ctx, []logql.LabelMatcher{m})
+						require.NoError(t, err)
+						it, err := n.EvalPipeline(ctx, logqlengine.EvalParams{Start: base.Add(-time.Second), End: base.Add(time.Second), Limit: 1})
+						require.NoError(t, err)
+						var entry logqlengine.Entry
+						require.True(t, it.Next(&entry))
+						assert.Equal(t, "dev", entry.Line)
+						assert.False(t, it.Next(&entry))
+						require.NoError(t, it.Err())
+					}
+				})
 			}
 		})
 	}

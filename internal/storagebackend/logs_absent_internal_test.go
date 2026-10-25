@@ -43,6 +43,7 @@ func absentMatcherBackend(t *testing.T) (*Backend, time.Time) {
 			rl.Resource().Attributes().PutStr("overlap", "prod")
 			sl.Scope().Attributes().PutStr("overlap", "dev")
 			r.Attributes().PutStr("flag", "prod")
+			r.Attributes().PutStr("severity.text", "prod")
 		}
 		if i == 1 {
 			rl.Resource().Attributes().PutEmpty("service.name")
@@ -73,6 +74,7 @@ func TestLogAbsentMatcherPushdown(t *testing.T) {
 		{"bytes", "env", "AQI=", logql.OpEq, 1, true},
 		{"slice", "env", `["prod"]`, logql.OpEq, 1, true},
 		{"record absence", "flag", "dev", logql.OpNotEq, 6, true},
+		{"normalized name without raw collision", "severity_text", "prod", logql.OpEq, 1, true},
 		{"collision", "http_method", "x", logql.OpNotEq, 7, false},
 		{"mixed scope", "mixed", "dev", logql.OpNotEq, 6, false},
 		{"resource and scope", "overlap", "prod", logql.OpNotEq, 6, false},

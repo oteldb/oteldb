@@ -92,6 +92,8 @@ Unambiguous resource, scope and record attributes use native predicates for ever
 operator, including negative and empty-matching predicates. Missing attributes are evaluated as
 empty label values. Normalization collisions and keys observed in multiple scopes stay in the
 post-fetch selector so label precedence is preserved.
+Record attribute keys matching native column names also stay residual: a storage column condition
+would otherwise read the native value instead of the attribute (for example, `body` or `ts`).
 Synthetic labels keep their own rules: a missing service name defaults to `unknown_service`,
 whereas an explicit OTLP null stays empty; selectors distinguishing them remain residual.
 

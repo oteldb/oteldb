@@ -371,6 +371,9 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 			// Without type metadata, even equality must remain a callback on a routed read.
 			matchers = append(matchers, fetch.Matcher{Name: []byte(c.rawKey), Match: match})
 		case record && !stream:
+			if isFixedLogColumn(c.rawKey) {
+				continue
+			}
 			// A per-record attribute: drop non-matching records at the fetch layer. Match only (no
 			// bloom Equal hint): a typed value token could wrongly part-prune.
 			conditions = append(conditions, fetch.Condition{Column: c.rawKey, Match: match})
