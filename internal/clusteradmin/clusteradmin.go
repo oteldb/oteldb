@@ -55,6 +55,7 @@ type Peer struct {
 // startup: membership changes while the process runs, and a stale peer list would report a departed
 // node as unreachable forever.
 type PeerSet interface {
+	// Peers may return a shared slice; callers must not modify it.
 	Peers() ([]Peer, error)
 }
 

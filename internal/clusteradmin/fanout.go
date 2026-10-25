@@ -54,6 +54,7 @@ func fanout[T any](
 		return nil, errors.Wrap(err, "resolve cluster members")
 	}
 
+	peers = slices.Clone(peers)
 	slices.SortFunc(peers, func(a, b Peer) int { return strings.Compare(a.Node, b.Node) })
 
 	span.SetAttributes(attribute.Int("clusteradmin.peers", len(peers)))
