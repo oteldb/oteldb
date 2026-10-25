@@ -54,9 +54,11 @@ func (p *planner) pushDownCount(e *parser.AggregateExpr) (Operator, bool) {
 	label := matchersString(vs.LabelMatchers)
 
 	// A grid-aware scanner answers the whole step grid in one call; without it the operator falls
-	// back to one call per step, which is a pessimization at range-query scale
-	// ([GridAggregateScanner]).
+	// back to the selector for a multi-step range. Pinned timestamps reuse one window.
 	grid, _ := p.scanner.(GridAggregateScanner)
+	if grid == nil && p.ec.NumSteps() > 1 && vs.Timestamp == nil {
+		return nil, false
+	}
 
 	switch len(e.Grouping) {
 	case 0:

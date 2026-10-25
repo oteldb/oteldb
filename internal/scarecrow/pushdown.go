@@ -95,7 +95,8 @@ type GridAggregate struct {
 //
 // A scanner implementing this supersedes [AggregateScanner], [SeriesCounter] and
 // [GroupedSeriesCounter] for range queries; those remain for instant queries (one step, where the
-// per-window call is exactly right) and for scanners that cannot answer a grid.
+// per-window call is exactly right). A range count without this capability uses the ordinary
+// selector and aggregation path.
 type GridAggregateScanner interface {
 	Scanner
 

@@ -180,6 +180,8 @@ func (s *scarecrowScanner) AggregateOverTime(
 func (s *scarecrowScanner) CountSeries(
 	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
 ) (uint64, error) {
+	// Scarecrow excludes the lower bound; the storage count seam includes it.
+	mint++
 	q, err := s.b.queryable().QuerierWithScope(mint, maxt, s.scope)
 	if err != nil {
 		return 0, errors.Wrap(err, "count pushdown: create querier")
@@ -202,6 +204,7 @@ func (s *scarecrowScanner) CountSeries(
 func (s *scarecrowScanner) CountSeriesBy(
 	ctx context.Context, mint, maxt int64, label string, matchers []*labels.Matcher,
 ) (map[string]uint64, error) {
+	mint++
 	q, err := s.b.queryable().QuerierWithScope(mint, maxt, s.scope)
 	if err != nil {
 		return nil, errors.Wrap(err, "count-by pushdown: create querier")

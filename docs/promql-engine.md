@@ -1050,7 +1050,15 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   step buckets and slides them into every overlapping window, so cost tracks the data in range
   rather than range/step times it. When present it supersedes all three per-window capabilities;
   instant queries and `@`-pinned grids keep the per-window path, where a single window is exactly
-  the right question.
+  the right question. A pinned timestamp is resolved once and reused across the step grid; its
+  trace reports one actual storage call. Multi-step counts without a grid-capable scanner use
+  the ordinary selector and its cached label projection instead of repeated per-window lookups.
+
+  Grouped grid counts project each active input series to a dense group id once. Accumulation
+  then indexes a flat `(group, step)` buffer directly; no per-step label maps are constructed or
+  pivoted. Group ids are remapped to sorted label values for a deterministic schema, missing and
+  empty labels share one group, and absent windows retain their original step positions. The
+  sample budget charges active groups times steps before allocating the output grid.
 
   Two things about that seam are worth stating because both were caught by tests rather than by
   reading. Windows come back **keyed by evaluation timestamp, not by position** — the request
