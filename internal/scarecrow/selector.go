@@ -23,16 +23,13 @@ import (
 type vectorSelect struct {
 	scanner  Scanner
 	matchers []*labels.Matcher
-	offset   time.Duration
-	// at pins the evaluation timestamp (the @ modifier) in unix milliseconds. When set, every
-	// step resolves against it, which is what makes such a selector step-invariant.
-	at *int64
 	// emitTimestamp makes the selector report each chosen sample's own timestamp in seconds
 	// instead of its value. It backs timestamp(<selector>), whose result is a property of the
 	// sample rather than of the step — the same device upstream calls SelectTimestamp.
 	emitTimestamp bool
 	ec            *EvalContext
 
+	refs   []int64
 	schema *Schema
 	byHash map[uint64][]SeriesRef
 
@@ -43,7 +40,7 @@ type vectorSelect struct {
 func newVectorSelect(
 	sc Scanner, matchers []*labels.Matcher, offset time.Duration, at *int64, ec *EvalContext,
 ) *vectorSelect {
-	return &vectorSelect{scanner: sc, matchers: matchers, offset: offset, at: at, ec: ec}
+	return &vectorSelect{scanner: sc, matchers: matchers, ec: ec, refs: refTimes(ec.Steps, offset, at)}
 }
 
 // newTimestampSelect returns a selector reporting sample timestamps, for timestamp(<selector>).
@@ -93,7 +90,7 @@ func (o *vectorSelect) Close() error {
 
 // window returns the fetch bounds covering every step's lookback window.
 func (o *vectorSelect) window() (mint, maxt int64) {
-	refs := refTimes(o.ec.Steps, o.offset, o.at)
+	refs := o.refs
 
 	return refs[0] - o.ec.LookbackDelta.Milliseconds(), refs[len(refs)-1]
 }
@@ -222,7 +219,7 @@ func (o *vectorSelect) Next(ctx context.Context) (*Column, error) {
 func (o *vectorSelect) foldLookback(s *Samples) {
 	var (
 		lookback = o.ec.LookbackDelta.Milliseconds()
-		refs     = refTimes(o.ec.Steps, o.offset, o.at)
+		refs     = o.refs
 		// idx is the count of samples with T <= refTime, so idx-1 is the candidate.
 		idx int
 	)

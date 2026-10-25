@@ -396,6 +396,14 @@ This is why "one materialization point" (§3.1) is a claim about the whole engin
 about storage: the ragged→dense fold happens once, in a leaf, and everything above is
 contiguous `[]float64`.
 
+A selector keeps its effective reference timestamps once per chunk. Offsets and `@` are resolved
+when the selector is constructed; schema windows and every series' lookback fold read that same
+immutable slice. Rebuilding it for each series adds work proportional to buckets times steps.
+
+For 100 synthetic histograms, 12 buckets and 241 steps on linux/amd64 (Ryzen 5950X, Go 1.27.3,
+CPU 1, six runs), this cache reduces dense-query allocation from 7.062 to 4.716 MiB and median time
+from 15.06 to 14.46 ms. Gappy input falls from 4.278 to 1.933 MiB and 7.456 to 6.451 ms.
+
 ### 4.4 What each operator costs
 
 Resident memory is set entirely by the accumulating operators. Since every consumer is fed one
