@@ -3,8 +3,8 @@ package logqlmetric
 import (
 	"cmp"
 	"fmt"
-	"runtime"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -55,6 +55,7 @@ func evaluateQuery(t *testing.T, samples []SampledEntry, query string, params Ev
 }
 
 func TestInstantAggregation(t *testing.T) {
+	const quantileQuery = `quantile_over_time(0.99, {} | unwrap foo [2s])`
 	var (
 		testParams = EvalParams{
 			Start: time.Unix(1700000004, 0),
@@ -107,7 +108,7 @@ func TestInstantAggregation(t *testing.T) {
 		//  stddev = 0.5
 		//
 		{`stddev_over_time({} | unwrap foo [2s])`, "0.5"},
-		{`quantile_over_time(0.99, {} | unwrap foo [2s])`, "2.9899999999999998"},
+		{quantileQuery, "2.99"},
 		{`first_over_time({} | unwrap foo [2s])`, "2"},
 		{`last_over_time({} | unwrap foo [2s])`, "3"},
 		// Vector aggregation.
@@ -170,18 +171,21 @@ func TestInstantAggregation(t *testing.T) {
 	for i, tt := range tests {
 		id := i + 1
 		t.Run(fmt.Sprintf("Test%d", id), func(t *testing.T) {
-			if id == 12 && runtime.GOARCH == "riscv64" {
-				// TODO: Fix test failure on riscv64.
-				t.Skip("https://github.com/oteldb/oteldb/issues/828")
-			}
-
 			data := evaluateQuery(t, testSamples, tt.query, testParams, true)
 
 			v, ok := data.GetVectorResult()
 			require.True(t, ok)
 			require.NotEmpty(t, v.Result)
 			sample := v.Result[0]
-			require.Equal(t, tt.expected, sample.Value.V)
+			if tt.query == quantileQuery {
+				// Quantile interpolation may use fused multiply-add on some architectures.
+				// Allow rounding differences without weakening exact assertions elsewhere.
+				got, err := strconv.ParseFloat(sample.Value.V, 64)
+				require.NoError(t, err)
+				require.InDelta(t, 2.99, got, 1e-15)
+			} else {
+				require.Equal(t, tt.expected, sample.Value.V)
+			}
 		})
 	}
 }
