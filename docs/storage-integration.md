@@ -86,6 +86,21 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
 > `rate`/`increase` still need a richer sidecar (per-bucket first+last value + counter-reset count)
 > and remain on the matrix selector — tracked as the #1117 follow-up.
 
+## Loki label predicate pushdown
+
+Unambiguous resource, scope and record attributes use native predicates for every selector
+operator, including negative and empty-matching predicates. Missing attributes are evaluated as
+empty label values. Normalization collisions and keys observed in multiple scopes stay in the
+post-fetch selector so label precedence is preserved.
+Synthetic labels keep their own rules: a missing service name defaults to `unknown_service`,
+whereas an explicit OTLP null stays empty; selectors distinguishing them remain residual.
+
+Arbitrary OTLP attributes carry no equality wire hint: pdata renders bytes as base64 and composite
+values as JSON, while storage's equality hint uses its own text representation. Local reads apply
+the callback before materialization; routed reads reapply it to the owner's superset. A routed
+limit therefore cannot run before these residual predicates. Local limits are offered only when
+the entire selector has been lowered exactly.
+
 ## Other touch points
 
 - **Lossy precision:** expose `tenant.Precision{Tiers: []{After, Bits}}` (age-tiered lossy float
