@@ -145,7 +145,15 @@ func (p *promQuerier) queryRatePointsCached(
 	// Include window and offset in the cache key so that rate(x[5m]) and
 	// rate(x[1h]) with the same step do not share a cache entry.
 	rateFn := rateCacheFn(kind, window, offset)
-	resultMap, err := p.fetchAndMergeCache(ctx, span, start, end, step, rateFn, timeseries, fetch)
+	var resultMap map[[16]byte]*series[pointData]
+	var err error
+	// Cached tails use epoch-aligned steps and cannot preserve an arbitrary query grid.
+	if stepMs := step.Milliseconds(); stepMs > 0 && start.UnixMilli()%stepMs != 0 {
+		span.AddEvent("chstorage.bypass_unaligned_rate_cache")
+		resultMap, err = fetch(ctx, start, end)
+	} else {
+		resultMap, err = p.fetchAndMergeCache(ctx, span, start, end, step, rateFn, timeseries, fetch)
+	}
 	if err != nil {
 		return nil, err
 	}

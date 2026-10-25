@@ -32,7 +32,10 @@ truncated into float-only results. Native storage still exposes classic bucket/c
 but this does not provide histogram-function support; see [#1420](https://github.com/oteldb/oteldb/issues/1420).
 
 **ClickHouse.** `Querier.ScarecrowScanner` retains the cached SQL rate-family offloads for `rate`,
-`increase`, `delta`, `irate` and `idelta`; `disable_rate_offloading` and
+`increase`, `delta`, `irate` and `idelta`. Result caching is used only when the effective start
+is aligned to the step's epoch grid; unaligned starts retain SQL offloading and bypass that cache
+because its keys and tail fetches cannot preserve their phase. Phase-aware caching is tracked in
+[#1423](https://github.com/oteldb/oteldb/issues/1423). `disable_rate_offloading` and
 `disable_metric_offloading` select the raw fallback. `RangeFunctionScanner` returns final values
 for an effective timestamp grid, including shifted offsets and pinned `@` timestamps. A bounded
 histogram-existence probe (`LIMIT 1`, identity and timestamp columns only) rejects unsupported inputs before the

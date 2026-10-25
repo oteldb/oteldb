@@ -1351,3 +1351,60 @@ func TestQueryPointsCached_PrependDisjointGap(t *testing.T) {
 	require.Len(t, pts, 1)
 	require.Len(t, pts[0].ts, 16)
 }
+
+func TestQueryRatePointsCachedUnalignedGrid(t *testing.T) {
+	for _, phase := range []time.Duration{0, 6 * time.Second, 6250 * time.Millisecond} {
+		for _, kind := range []rateKind{rateKindRate, rateKindIncrease, rateKindDelta, rateKindIRate, rateKindIDelta} {
+			for _, state := range []string{"cold", "warm", "partial"} {
+				t.Run(kind.String()+"/"+phase.String()+"/"+state, func(t *testing.T) {
+					t.Parallel()
+					const step = time.Second * 10
+					start := testEpoch.Add(phase)
+					end := start.Add(2 * step)
+					ls := labels.FromStrings("__name__", "counter_total")
+					hash := labelHash(ls.Hash())
+					seriesLabels := map[[16]byte]labels.Labels{hash: ls}
+					cache := newTestCache(t, MetricsCacheOptions{MaxBytes: 1024 * 1024, SafetyLag: time.Minute})
+					if state != "cold" {
+						last := 3
+						if state == "partial" {
+							last = 1
+						}
+						var ts []int64
+						var values []float64
+						for i := 0; i <= last; i++ {
+							ts = append(ts, testEpoch.Add(time.Duration(i)*step).UnixMilli())
+							values = append(values, 1)
+						}
+						cache.Update(metricscache.Key{Hash: hash, Step: step.Milliseconds(), Fn: rateCacheFn(kind, time.Minute, 0)}, metricscache.Update{FetchFrom: testEpoch.UnixMilli(), UntilMs: ts[len(ts)-1], TS: ts, Vals: values})
+					}
+					calls := 0
+					querier := &promQuerier{metricsCache: cache, tracer: nooptrace.NewTracerProvider().Tracer("test"), queryRatePointsByHashFunc: func(_ context.Context, from, to time.Time, _, _, _ time.Duration, _ map[[16]byte]labels.Labels, _ rateKind) (map[[16]byte]*series[pointData], error) {
+						calls++
+						points := &series[pointData]{labels: ls}
+						for ts := from.UnixMilli(); ts <= to.UnixMilli(); ts += step.Milliseconds() {
+							points.ts = append(points.ts, ts)
+							points.data.values = append(points.data.values, 1)
+						}
+						return map[[16]byte]*series[pointData]{hash: points}, nil
+					}}
+					for range 2 {
+						result, err := querier.queryRatePointsCached(t.Context(), start, end, step, time.Minute, 0, seriesLabels, kind)
+						require.NoError(t, err)
+						require.Len(t, result, 1)
+						require.Equal(t, []int64{start.UnixMilli(), start.Add(step).UnixMilli(), end.UnixMilli()}, result[0].ts)
+					}
+					if phase != 0 {
+						require.Equal(t, 2, calls, "unaligned grids keep SQL offloading and bypass the result cache")
+					} else {
+						wantCalls := 1
+						if state == "warm" {
+							wantCalls = 0
+						}
+						require.Equal(t, wantCalls, calls, "aligned grids retain cache hits")
+					}
+				})
+			}
+		}
+	}
+}
