@@ -254,6 +254,7 @@ func extractPredicates(expr traceql.Expr, params EvalParams) SelectSpansetsParam
 	return SelectSpansetsParams{
 		Op:          op,
 		Matchers:    matchers,
+		Fields:      referencedFields(expr),
 		Start:       params.Start,
 		End:         params.End,
 		MinDuration: params.MinDuration,

@@ -15,63 +15,77 @@ import "github.com/oteldb/oteldb/internal/traceql"
 // not handle well.
 func referencedAttributes(expr traceql.Expr) map[string]struct{} {
 	set := make(map[string]struct{})
-	collectExprAttrs(expr, set)
+	collectExprAttrs(expr, func(attr traceql.Attribute) {
+		if attr.Prop == traceql.SpanAttribute {
+			set[attr.Name] = struct{}{}
+		}
+	})
 	return set
 }
 
-func collectExprAttrs(expr traceql.Expr, set map[string]struct{}) {
+func referencedFields(expr traceql.Expr) []traceql.Attribute {
+	fields := make([]traceql.Attribute, 0)
+	seen := map[traceql.Attribute]struct{}{}
+	collectExprAttrs(expr, func(attr traceql.Attribute) {
+		if _, ok := seen[attr]; !ok {
+			seen[attr] = struct{}{}
+			fields = append(fields, attr)
+		}
+	})
+	return fields
+}
+
+func collectExprAttrs(expr traceql.Expr, visit func(traceql.Attribute)) {
 	switch expr := expr.(type) {
 	case *traceql.BinaryExpr:
-		collectExprAttrs(expr.Left, set)
-		collectExprAttrs(expr.Right, set)
+		collectExprAttrs(expr.Left, visit)
+		collectExprAttrs(expr.Right, visit)
 	case *traceql.SpansetPipeline:
 		for _, stage := range expr.Pipeline {
-			collectStageAttrs(stage, set)
+			collectStageAttrs(stage, visit)
 		}
 	}
 }
 
-func collectStageAttrs(stage traceql.PipelineStage, set map[string]struct{}) {
+func collectStageAttrs(stage traceql.PipelineStage, visit func(traceql.Attribute)) {
 	switch stage := stage.(type) {
 	case *traceql.BinarySpansetExpr:
-		collectStageAttrs(stage.Left, set)
-		collectStageAttrs(stage.Right, set)
+		collectStageAttrs(stage.Left, visit)
+		collectStageAttrs(stage.Right, visit)
 	case *traceql.SpansetFilter:
-		collectFieldExprAttrs(stage.Expr, set)
+		collectFieldExprAttrs(stage.Expr, visit)
 	case *traceql.ScalarFilter:
-		collectScalarExprAttrs(stage.Left, set)
-		collectScalarExprAttrs(stage.Right, set)
+		collectScalarExprAttrs(stage.Left, visit)
+		collectScalarExprAttrs(stage.Right, visit)
 	case *traceql.GroupOperation:
-		collectFieldExprAttrs(stage.By, set)
+		collectFieldExprAttrs(stage.By, visit)
 	case *traceql.SelectOperation:
 		for _, arg := range stage.Args {
-			collectFieldExprAttrs(arg, set)
+			collectFieldExprAttrs(arg, visit)
 		}
 	}
 }
 
-func collectFieldExprAttrs(expr traceql.FieldExpr, set map[string]struct{}) {
+func collectFieldExprAttrs(expr traceql.FieldExpr, visit func(traceql.Attribute)) {
 	switch expr := expr.(type) {
 	case *traceql.BinaryFieldExpr:
-		collectFieldExprAttrs(expr.Left, set)
-		collectFieldExprAttrs(expr.Right, set)
+		collectFieldExprAttrs(expr.Left, visit)
+		collectFieldExprAttrs(expr.Right, visit)
 	case *traceql.UnaryFieldExpr:
-		collectFieldExprAttrs(expr.Expr, set)
+		collectFieldExprAttrs(expr.Expr, visit)
 	case *traceql.Attribute:
-		if expr.Prop == traceql.SpanAttribute {
-			set[expr.Name] = struct{}{}
-		}
+		visit(*expr)
 	}
 }
 
-func collectScalarExprAttrs(expr traceql.ScalarExpr, set map[string]struct{}) {
+func collectScalarExprAttrs(expr traceql.ScalarExpr, visit func(traceql.Attribute)) {
 	switch expr := expr.(type) {
 	case *traceql.BinaryScalarExpr:
-		collectScalarExprAttrs(expr.Left, set)
-		collectScalarExprAttrs(expr.Right, set)
+		collectScalarExprAttrs(expr.Left, visit)
+		collectScalarExprAttrs(expr.Right, visit)
 	case *traceql.AggregateScalarExpr:
 		if expr.Field != nil {
-			collectFieldExprAttrs(expr.Field, set)
+			collectFieldExprAttrs(expr.Field, visit)
 		}
 	}
 }

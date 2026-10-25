@@ -88,6 +88,11 @@ So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `Mat
 
 ## Other touch points
 
+- **TraceQL projection:** the engine passes AST-referenced fields through `SelectSpansetsParams`.
+  Native fetches retain the identity/timing columns for whole-trace evaluation and root metadata,
+  adding attributes, events, links and scalar columns only when required. Attribute names are
+  echoed across scopes by the search response, so any attribute reference retains span attributes.
+  A nil field list keeps the full-span contract for direct querier callers.
 - **Lossy precision:** expose `tenant.Precision{Tiers: []{After, Bits}}` (age-tiered lossy float
   compression) through oteldb's per-tenant resolver, alongside Downsample/Recompress.
   **Implemented** in `internal/storagebackend/policy.go` (`tenancyOption` → `storage.WithTenancy`):

@@ -57,7 +57,7 @@ func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.
 		return iterators.Empty[traceqlengine.Trace](), nil
 	}
 
-	spans, err := q.scanSpans(ctx, params.Start, params.End, traceIDs)
+	spans, err := q.scanProjectedSpans(ctx, params.Start, params.End, traceIDs, traceProjection(params.Fields))
 	if err != nil {
 		return nil, err
 	}
@@ -616,12 +616,19 @@ func (q *TraceQuerier) collectTraceIDs(
 func (q *TraceQuerier) scanSpans(
 	ctx context.Context, start, end time.Time, traceIDs map[otelstorage.TraceID]struct{},
 ) ([]tracestorage.Span, error) {
+	return q.scanProjectedSpans(ctx, start, end, traceIDs, nil)
+}
+
+func (q *TraceQuerier) scanProjectedSpans(
+	ctx context.Context, start, end time.Time, traceIDs map[otelstorage.TraceID]struct{}, projection []string,
+) ([]tracestorage.Span, error) {
 	lo, hi := fetchWindow(start, end)
 	req := fetch.Request{
-		Tenant: q.b.tenant,
-		Signal: signal.Trace,
-		Start:  lo,
-		End:    hi,
+		Tenant:     q.b.tenant,
+		Signal:     signal.Trace,
+		Start:      lo,
+		End:        hi,
+		Projection: projection,
 	}
 	if traceIDs != nil {
 		req.Conditions = []fetch.Condition{traceIDCondition(traceIDs)}
