@@ -91,13 +91,8 @@ func TestTracingDescribesTheQuery(t *testing.T) {
 	require.Empty(t, spansNamed(spans, "scarecrow.Chunk"))
 }
 
-// TestTracingShowsPerWindowCallCount is the regression guard for the pathology that motivated
-// this instrumentation: a pushdown issuing one storage call per step, which read as a cheap
-// index lookup and was ~240x slower than no pushdown at all on a 241-step grid.
-//
-// It asserts the trace makes the call *count* visible, not merely the total duration — a single
-// slow span looks like slow storage, whereas "241 calls" names the bug outright.
-func TestTracingShowsPerWindowCallCount(t *testing.T) {
+// TestTracingShowsPinnedCountCallCount records one lookup for a fixed @ timestamp across a range.
+func TestTracingShowsPinnedCountCallCount(t *testing.T) {
 	t.Parallel()
 
 	store := promqltest.LoadedStorage(t, pushdownData)
@@ -105,21 +100,22 @@ func TestTracingShowsPerWindowCallCount(t *testing.T) {
 
 	var scanner *pushdownScanner
 
-	// perWindowScanner drops the grid capability, forcing the per-step path.
+	// A pinned timestamp uses the single-window count capability.
 	spans := recordSpans(t, scarecrow.Opts{
+		EnableAtModifier: true,
 		NewScanner: func(q storage.Queryable) scarecrow.Scanner {
 			scanner = &pushdownScanner{Scanner: scarecrow.NewQueryableScanner(q)}
 
 			return perWindowScanner{s: scanner}
 		},
-	}, store, `count by (job) (http_requests)`, time.Unix(0, 0), time.Unix(600, 0))
+	}, store, `count by (job) (http_requests @ 300)`, time.Unix(0, 0), time.Unix(600, 0))
 
 	perWindow := spansNamed(spans, "scarecrow.CountSeriesBy.PerWindow")
 	require.Len(t, perWindow, 1)
 
-	// 11 steps, 11 storage calls — the number the trace has to surface.
-	require.EqualValues(t, 11, attrInt(t, perWindow[0], "promql.calls"))
-	require.EqualValues(t, 11, scanner.groupCount.Load())
+	// Every step reuses the same lookup.
+	require.EqualValues(t, 1, attrInt(t, perWindow[0], "promql.calls"))
+	require.EqualValues(t, 1, scanner.groupCount.Load())
 
 	require.Empty(t, spansNamed(spans, "scarecrow.AggregateGrid"))
 }

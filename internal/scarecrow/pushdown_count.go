@@ -103,20 +103,21 @@ func (o *countSeries) count(ctx context.Context, refs []int64, lookback int64) e
 		}
 	}
 
-	// Per-window fallback: one storage call per step. Spanned as a group with the call count on
-	// it, because the count is the diagnosis — a hundred sibling calls here is the pathology
-	// [GridAggregateScanner] exists to remove, and it is invisible if only the total shows up.
+	// Pinned timestamps reuse a window; report storage calls rather than output steps.
 	ctx, span := o.ec.span(ctx, "scarecrow.CountSeries.PerWindow",
-		attribute.Int("promql.calls", len(refs)),
+		attribute.Int("promql.calls", countWindowCalls(refs, o.at)),
 	)
 	defer span.End()
 
+	var n uint64
 	for step, maxt := range refs {
-		n, err := o.counter.CountSeries(ctx, maxt-lookback, maxt, o.matchers)
-		if err != nil {
-			xspan.Fail(span, err)
-
-			return errors.Wrapf(err, "count series at %d", maxt)
+		if step == 0 || maxt != refs[step-1] {
+			var err error
+			n, err = o.counter.CountSeries(ctx, maxt-lookback, maxt, o.matchers)
+			if err != nil {
+				xspan.Fail(span, err)
+				return errors.Wrapf(err, "count series at %d", maxt)
+			}
 		}
 
 		// An empty selector yields no series at all, not a zero — `count(absent_metric)` is empty.
@@ -178,7 +179,6 @@ type countSeriesBy struct {
 	ec     *EvalContext
 
 	schema *Schema
-	byHash map[uint64][]SeriesRef
 
 	values []float64
 	valid  []bool
@@ -224,32 +224,28 @@ func (o *countSeriesBy) Schema(ctx context.Context) (*Schema, error) {
 	return o.schema, nil
 }
 
-// collect returns the per-value counts at each step, preferring the one-call grid path over one
-// [GroupedSeriesCounter] call per step.
+// collect reads single-window counts, reusing a pinned timestamp across steps.
 func (o *countSeriesBy) collect(ctx context.Context, refs []int64) ([]map[string]uint64, error) {
 	lookback := o.ec.LookbackDelta.Milliseconds()
 
-	if o.grid != nil {
-		if grid, ok := gridFor(refs, lookback); ok {
-			return o.collectGrid(ctx, grid)
-		}
-	}
-
 	// See the note in [countSeries.count]: the call count is the whole diagnosis.
 	ctx, span := o.ec.span(ctx, "scarecrow.CountSeriesBy.PerWindow",
-		attribute.Int("promql.calls", len(refs)),
+		attribute.Int("promql.calls", countWindowCalls(refs, o.at)),
 		attribute.String("promql.by", o.by),
 	)
 	defer span.End()
 
 	perStep := make([]map[string]uint64, len(refs))
 
+	var counts map[string]uint64
 	for i, maxt := range refs {
-		counts, err := o.counter.CountSeriesBy(ctx, maxt-lookback, maxt, o.by, o.matchers)
-		if err != nil {
-			xspan.Fail(span, err)
-
-			return nil, errors.Wrapf(err, "count series by %s at %d", o.by, maxt)
+		if i == 0 || maxt != refs[i-1] {
+			var err error
+			counts, err = o.counter.CountSeriesBy(ctx, maxt-lookback, maxt, o.by, o.matchers)
+			if err != nil {
+				xspan.Fail(span, err)
+				return nil, errors.Wrapf(err, "count series by %s at %d", o.by, maxt)
+			}
 		}
 
 		if err := o.ec.charge(len(counts)); err != nil {
@@ -262,55 +258,19 @@ func (o *countSeriesBy) collect(ctx context.Context, refs []int64) ([]map[string
 	return perStep, nil
 }
 
-// collectGrid groups one grid call's series into per-step counts. The grouping happens here
-// rather than in storage because it is trivially cheap once the series are in hand — the label
-// value is on the series identity, no sample is consulted — and it keeps the pushdown seam a
-// single general-purpose call rather than one variant per grouping shape.
-func (o *countSeriesBy) collectGrid(ctx context.Context, grid WindowGrid) ([]map[string]uint64, error) {
-	series, err := aggregateGrid(ctx, o.ec, o.grid, grid, o.matchers)
-	if err != nil {
-		return nil, err
-	}
-
-	perStep := make([]map[string]uint64, grid.NumSteps)
-	for i := range perStep {
-		perStep[i] = map[string]uint64{}
-	}
-
-	groups := map[string]struct{}{}
-
-	for i := range series {
-		// A series without the label groups under "", matching PromQL's absent-label group.
-		v := series[i].Labels.Get(o.by)
-		groups[v] = struct{}{}
-
-		for step, w := range series[i].Windows {
-			if w.Rows > 0 {
-				perStep[step][v]++
-			}
-		}
-	}
-
-	// What survives the fold is one count per (group, step) — for `by (cpu)` that is the core
-	// count, not the 256 series it was folded from.
-	if err := o.ec.charge(len(groups) * grid.NumSteps); err != nil {
-		return nil, err
-	}
-
-	return perStep, nil
-}
-
-// load counts every step, then pivots the per-step maps into the (ref, step) grid the engine
-// emits from. Unlike [aggregateOverTime] this is bounded by the *group* count, not the series
-// count, which is the whole point of pushing the grouping down.
 func (o *countSeriesBy) load(ctx context.Context) error {
 	if o.loaded {
 		return nil
 	}
 	o.loaded = true
 
+	refs := refTimes(o.ec.Steps, o.offset, o.at)
+	if o.grid != nil {
+		if grid, ok := gridFor(refs, o.ec.LookbackDelta.Milliseconds()); ok {
+			return o.loadGrid(ctx, grid)
+		}
+	}
 	var (
-		refs   = refTimes(o.ec.Steps, o.offset, o.at)
 		steps  = len(refs)
 		values []string
 		seen   = map[string]bool{}
@@ -347,7 +307,6 @@ func (o *countSeriesBy) load(ctx context.Context) error {
 	}
 
 	o.schema = NewSchema(series)
-	o.byHash = indexByHash(o.schema)
 	o.values = make([]float64, len(series)*steps)
 	o.valid = make([]bool, len(series)*steps)
 
@@ -403,4 +362,11 @@ func (o *countSeriesBy) Next(ctx context.Context) (*Column, error) {
 	}
 
 	return nil, nil
+}
+
+func countWindowCalls(refs []int64, at *int64) int {
+	if at != nil && len(refs) > 0 {
+		return 1
+	}
+	return len(refs)
 }
