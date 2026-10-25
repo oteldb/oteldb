@@ -70,9 +70,8 @@ barely exercised (`s3 ≈ file`) — not comparable to `REPORT.md`. The default 
 ## How it builds
 
 `go run .` builds two binaries **on the host** from the oteldb repo root — `oteldb` and `otelbench` —
-because the oteldb `go.mod` has `replace` directives pointing at the local `storage` and
-`promql-engine` sources (absolute host paths), which only resolve on the host, never inside a
-container. The single host-built `oteldb` binary backs **both** instances — the `file` and `s3`
+so local storage-module overrides work without mounting source paths into the container.
+PromQL evaluation uses the in-tree Scarecrow engine. The single host-built `oteldb` binary backs **both** instances — the `file` and `s3`
 services COPY the same binary into alpine, differing only in their mounted config (`oteldb.yml` vs
 `oteldb-s3.yml`). The compose image is thin (`Dockerfile` just `COPY oteldb`), and the bench phase
 invokes the host-built `otelbench` directly, so a run never rebuilds in-container or recompiles

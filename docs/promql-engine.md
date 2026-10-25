@@ -1,8 +1,8 @@
 # Native PromQL engine
 
-Design for a native, columnar, batched PromQL execution engine over the `oteldb/storage`
-fetch seam, replacing the `github.com/oteldb/promql-engine` (Thanos) fork on the
-`internal/storagebackend` path.
+Scarecrow is the PromQL engine for both native storage and ClickHouse. Native storage supplies
+columnar samples directly; ClickHouse supplies raw series through the Queryable adapter and
+rate-family results through a grid-aware scanner capability. The Thanos fork is retired.
 
 Status: implemented through M5 (selectors, range functions, aggregations including the
 full-set forms and `count_values`, binary operators, instant functions, subqueries, concurrent
@@ -14,19 +14,31 @@ their gates are in §10.
 
 ## 1. Scope
 
-**In scope.** All PromQL evaluation for the `storagebackend` data path: parse (upstream
-parser) → plan → execute over `oteldb/storage`'s `query/fetch` seam.
+**Scope.** All PromQL evaluation uses `internal/scarecrow`, with the upstream parser and
+Prometheus API result types. The engine never imports ClickHouse wire types. Backends own their
+scanner adapters and optional pushdowns.
 
-**Package.** `internal/scarecrow`.
+**Configuration.** There is no engine-selection setting. Remove `prometheus.enable_scarecrow_engine`
+and `prometheus.enable_per_step_stats` from existing configuration; the YAML loader ignores these
+retired keys, including `enable_scarecrow_engine: false`. Every query uses Scarecrow regardless.
+`max_samples` counts samples cumulatively, including across chunks, rather than peak residency.
+`timeout`, lookback, `@` and negative-offset settings remain effective. Per-step query statistics
+are unsupported.
 
-**Out of scope.** `internal/chstorage` keeps the Thanos fork unchanged and frozen. chstorage is
-on a deprecation path, so the fork retires with it and the end state is a single engine — the
-two need to agree on semantics only for as long as chstorage is still served, and no permanent
-dual-engine compliance burden is being taken on. The new engine never imports `ch-go`. This is
-the single most important boundary in the design: the
-prototype's `Block` was built out of `proto.ColUInt32`/`ColInt64`/`ColFloat64` — a ClickHouse
-wire type used as an in-memory execution type. Dropping that is what makes a clean data model
-possible.
+**Compatibility.** The corpus gaps in §8.1 remain: histogram functions (including classic
+`histogram_quantile`), native histogram evaluation, delayed name removal, annotations, created
+timestamps and some experimental functions. Unsupported native histogram samples return an error, including mixed float/histogram series; they are never silently
+truncated into float-only results. Native storage still exposes classic bucket/count/sum series,
+but this does not provide histogram-function support; see [#1420](https://github.com/oteldb/oteldb/issues/1420).
+
+**ClickHouse.** `Querier.ScarecrowScanner` retains the cached SQL rate-family offloads for `rate`,
+`increase`, `delta`, `irate` and `idelta`; `disable_rate_offloading` and
+`disable_metric_offloading` select the raw fallback. `RangeFunctionScanner` returns final values
+for an effective timestamp grid, including shifted offsets and pinned `@` timestamps. A bounded
+histogram-existence probe (`LIMIT 1`, identity and timestamp columns only) rejects unsupported inputs before the
+float-only SQL offload. Schema discovery uses the index-only `series` hint. Other raw selectors
+retain the existing Queryable/cache path; fork-specific label projection and sampled matrix-fold
+operators are removed, so broad ClickHouse queries can read more raw samples.
 
 **Frontend.** `github.com/prometheus/prometheus/promql/parser`. The engine consumes
 `parser.Expr` and implements `promql.QueryEngine`, so it is a drop-in for the existing
@@ -1088,9 +1100,9 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   so two selectors can call it simultaneously. It was found by `-race` on a test double, which is
   precisely the sort of thing that would otherwise be found in production.
 
-  `internal/storagebackend` now wires `scarecrow.NewEngine` to `Backend.ScarecrowScanner()`
-  (opt-in behind `prometheus.enable_scarecrow_engine`, since corpus coverage is still partial —
-  see §8.1), which is what closes #1116/#1117 on this path once the flag is on by default.
+  `internal/storagebackend` wires Scarecrow to `Backend.ScarecrowScanner()` by default.
+  `WithOverTimePushdown(false)` hides the aggregate capabilities while retaining index counts,
+  so differential tests exercise a real raw-fold fallback.
 - **M6 — kernels.** Assembly paths + golden benchmarks vs the fork.
 - **M7 — native histograms.** **Blocked on storage:** `fetch.Batch` has no histogram column
   (`Timestamps []int64` + `Values []float64` only) and `signal/metric` has no histogram kind.
@@ -1137,10 +1149,8 @@ a feature in its own right, not a gap in a milestone above, so each gets its own
   Gate: `start_timestamps.test`.
 
 - **M11 — resource limits.** *Done.* `Opts.MaxSamples` and `Opts.Timeout`, mirroring the
-  upstream engine's so `prometheus.max_samples` and `prometheus.timeout` keep working when
-  `enable_scarecrow_engine` is on. Failures are upstream's own `promql.ErrTooManySamples` and
-  `promql.ErrQueryTimeout`, so the HTTP status mapping and the error text are identical between
-  engines. Zero means unlimited, which is where scarecrow deliberately differs: upstream treats
+  upstream engine's so `prometheus.max_samples` and `prometheus.timeout` remain enforced.
+  Failures use `promql.ErrTooManySamples` and `promql.ErrQueryTimeout` for the HTTP status mapping. Zero means unlimited, which is where scarecrow deliberately differs: upstream treats
   a zero value as "fail every query", a footgun for an embedder that simply did not set it.
 
   The count is cumulative over the query rather than a live high-water mark. The columnar model

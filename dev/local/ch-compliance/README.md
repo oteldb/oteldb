@@ -41,7 +41,14 @@ FATA[0000] Error running comparison: expected reference API query "label_replace
 
 ## Results
 
-Latest result:
+Scarecrow is the default engine for both backends. The ClickHouse HTTP harness measured
+525 / 537 (97.77%) on a frozen dataset using the CI procedure (stop demo generators, restart
+Prometheus). Twelve `histogram_quantile` cases fail with an explicit unsupported-expression
+error. This is below the unchanged compatibility gate; see [#1420](https://github.com/oteldb/oteldb/issues/1420).
+The ordinary live-data run measured 523 / 537, with two additional volatile-gauge differences.
+These results verify compatibility, not production latency.
+
+Historical result from the retired Thanos fork:
 ```
 Total: 547 / 548 (99.82%) passed, 0 unsupported
 ```

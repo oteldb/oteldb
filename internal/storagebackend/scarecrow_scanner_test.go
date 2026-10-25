@@ -16,7 +16,6 @@ import (
 
 	oteldbstorage "github.com/oteldb/storage"
 
-	otelpromql "github.com/oteldb/oteldb/internal/promql"
 	"github.com/oteldb/oteldb/internal/scarecrow"
 	"github.com/oteldb/oteldb/internal/storagebackend"
 )
@@ -198,21 +197,20 @@ func TestScarecrowScannerPushdowns(t *testing.T) {
 	})
 }
 
-// TestScarecrowScannerEngineMatchesFork runs a real query through internal/scarecrow wired to
+// TestScarecrowScannerEngineMatchesPrometheus runs a real query through internal/scarecrow wired to
 // [storagebackend.Backend.ScarecrowScanner] and compares it against the same query answered by
-// the production fork engine (internal/promql) over the same store — the differential oracle for
+// the upstream Prometheus reference engine over the same store — the differential oracle for
 // the whole Scanner adapter (label projection, matcher pushdown, ms/ns conversion, release
 // lifecycle), not just its two methods in isolation.
-func TestScarecrowScannerEngineMatchesFork(t *testing.T) {
+func TestScarecrowScannerEngineMatchesPrometheus(t *testing.T) {
 	ctx := context.Background()
 	base := time.Unix(2_000_000, 0).UTC()
 
 	b := ingestScannerFixture(ctx, t, base)
 
-	forkEng, err := otelpromql.New(b, promql.EngineOpts{
+	forkEng := promql.NewEngine(promql.EngineOpts{
 		MaxSamples: 1_000_000, Timeout: time.Minute, LookbackDelta: 5 * time.Minute,
 	})
-	require.NoError(t, err)
 
 	scarecrowEng := scarecrow.NewEngine(scarecrow.Opts{
 		NewScanner: func(storage.Queryable) scarecrow.Scanner { return b.ScarecrowScanner() },
@@ -246,12 +244,15 @@ func TestScarecrowScannerEngineMatchesFork(t *testing.T) {
 
 			sortVector(forkVec)
 			sortVector(scarecrowVec)
+			for i := range forkVec {
+				forkVec[i].DropName = false
+			}
 			require.Equal(t, forkVec, scarecrowVec)
 		})
 	}
 }
 
-// TestScarecrowScannerGridMatchesFork is [TestScarecrowScannerEngineMatchesFork] over a stepped
+// TestScarecrowScannerGridMatchesPrometheus is [TestScarecrowScannerEngineMatchesPrometheus] over a stepped
 // range, which is the only shape that reaches the [scarecrow.GridAggregateScanner] pushdown:
 // gridFor declines a single-step grid, so every instant query above takes the per-window path and
 // leaves AggregateGrid entirely untested.
@@ -263,16 +264,15 @@ func TestScarecrowScannerEngineMatchesFork(t *testing.T) {
 //
 // Several step sizes on purpose: a step that divides the range evenly and one that does not
 // exercise different bucket-to-window slides inside storage.
-func TestScarecrowScannerGridMatchesFork(t *testing.T) {
+func TestScarecrowScannerGridMatchesPrometheus(t *testing.T) {
 	ctx := context.Background()
 	base := time.Unix(2_000_000, 0).UTC()
 
 	b := ingestScannerFixture(ctx, t, base)
 
-	forkEng, err := otelpromql.New(b, promql.EngineOpts{
+	forkEng := promql.NewEngine(promql.EngineOpts{
 		MaxSamples: 1_000_000, Timeout: time.Minute, LookbackDelta: 5 * time.Minute,
 	})
-	require.NoError(t, err)
 
 	scarecrowEng := scarecrow.NewEngine(scarecrow.Opts{
 		NewScanner: func(storage.Queryable) scarecrow.Scanner { return b.ScarecrowScanner() },

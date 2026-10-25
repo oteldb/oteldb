@@ -18,7 +18,7 @@ import (
 
 // TestBackendMetricsRoundtrip ingests OTLP gauge metrics through the storage backend's
 // ingestion sink and queries them back through oteldb's PromQL engine, exercising the full
-// adapter (ConsumeMetrics → WriteMetrics, Querier + MetricsScanners → Fetcher).
+// adapter (ConsumeMetrics → WriteMetrics, ScarecrowScanner → Fetcher).
 func TestBackendMetricsRoundtrip(t *testing.T) {
 	ctx := context.Background()
 

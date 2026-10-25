@@ -8,9 +8,7 @@ import (
 
 // A pushdown is an optional [Scanner] capability: a computation the engine would otherwise do
 // itself, which storage can answer more cheaply because it holds the data in a form the engine
-// never sees. `internal/storagebackend` reaches these through the Thanos fork today by
-// intercepting scanner construction and pattern-matching the logical node (docs §2.2); here they
-// are plain planner rules over a capability the scanner either has or does not.
+// never sees. Planner rules use the capabilities exposed by each backend scanner.
 //
 // Every pushdown is an optimization and never a semantic change: a scanner that implements none
 // of these answers every query identically, only slower. That property is what the tests assert,

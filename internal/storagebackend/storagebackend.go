@@ -4,7 +4,7 @@
 //
 // All four signals are wired over a single shared *storage.Storage instance. [Backend]
 // implements the metrics seam directly (Prometheus storage.Queryable + ExemplarQueryable, the
-// PromQL engine's MetricsScanners, metricstorage.MetadataQuerier) and the ingestion sinks for
+// native Scarecrow Scanner, metricstorage.MetadataQuerier) and the ingestion sinks for
 // every signal (ConsumeMetrics/ConsumeTraces/ConsumeLogs/ConsumeProfiles). Because the logs and
 // profiles read interfaces declare colliding method names, each non-metric signal's query
 // interface is implemented by a small wrapper obtained via [Backend.Logs], [Backend.Traces],
@@ -17,12 +17,6 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
-	"github.com/oteldb/promql-engine/execution/model"
-	"github.com/oteldb/promql-engine/logicalplan"
-	"github.com/oteldb/promql-engine/query"
-	enginestorage "github.com/oteldb/promql-engine/storage"
-	promscanners "github.com/oteldb/promql-engine/storage/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 	promstorage "github.com/prometheus/prometheus/storage"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	otelmetric "go.opentelemetry.io/otel/metric"
@@ -50,7 +44,7 @@ type Backend struct {
 	// logParallelism is the max number of workers used to materialize log query results across the
 	// fetched record set. <= 1 keeps the sequential path (the default). See [WithLogParallelism].
 	logParallelism int
-	// overTimePushdown routes instant *_over_time queries through the aggregate-sidecar pushdown
+	// overTimePushdown routes *_over_time queries through the aggregate-sidecar pushdown
 	// ([storage.Storage.AggregateMetricsNamed]) instead of a raw fetch-and-fold. True by default;
 	// see [WithOverTimePushdown].
 	overTimePushdown bool
@@ -79,7 +73,7 @@ func WithLogParallelism(n int) Option {
 	return func(b *Backend) { b.logParallelism = n }
 }
 
-// WithOverTimePushdown toggles the instant *_over_time aggregate pushdown. It is on by default
+// WithOverTimePushdown toggles the *_over_time aggregate pushdown. It is on by default
 // (the sidecar path is faster and correct); passing false restores the raw matrix-selector path
 // (useful as a fallback or for differential testing).
 func WithOverTimePushdown(enabled bool) Option {
@@ -247,11 +241,6 @@ func clampQueryMs(ms int64) int64 {
 	}
 }
 
-// MetricsScanners implements the oteldb PromQL engine's scanner seam.
-func (b *Backend) MetricsScanners() (enginestorage.Scanners, error) {
-	return scanners{b: b}, nil
-}
-
 // MetricMetadata implements metricstorage.MetadataQuerier. The storage engine does not
 // expose metric metadata yet, so this returns an empty set.
 func (b *Backend) MetricMetadata(context.Context, metricstorage.MetadataParams) (metricstorage.Metadata, error) {
@@ -283,145 +272,4 @@ func (b *Backend) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error 
 		return errors.Wrap(err, "write metrics")
 	}
 	return nil
-}
-
-// scanners builds per-selector Prometheus scanners over the storage fetch seam. The storage
-// querier scopes a read to its construction window and ignores SelectHints, so each selector
-// gets a querier widened to its own [Start, End] (which already accounts for range and
-// lookback) — mirroring how chstorage scopes its metric queriers per selector.
-type scanners struct {
-	b *Backend
-}
-
-var _ enginestorage.Scanners = scanners{}
-
-func (scanners) Close() error { return nil }
-
-// SeriesCounter returns the count-pushdown capability for the count() fast path. Each CountSeries
-// call opens a fresh windowed querier over the backend's current data and closes it when done, so
-// the counter carries no lifecycle across steps and observes the latest head/parts every call.
-func (s scanners) SeriesCounter() enginestorage.SeriesCounter {
-	return backendCounter(s)
-}
-
-// GroupedSeriesCounter returns the grouped-count-pushdown capability for the count by (label)
-// fast path, with the same per-call querier lifecycle as [scanners.SeriesCounter].
-func (s scanners) GroupedSeriesCounter() enginestorage.GroupedSeriesCounter {
-	return backendGroupCounter(s)
-}
-
-// backendCounter adapts [Backend] to the PromQL engine's SeriesCounter seam: it builds a fresh
-// querier per CountSeries call (scoped to the call's window) and delegates to the queryable-backed
-// querier's own CountSeries.
-type backendCounter struct{ b *Backend }
-
-func (c backendCounter) CountSeries(ctx context.Context, startMs, endMs int64, matchers ...*labels.Matcher) (uint64, error) {
-	q, err := c.b.queryable().Querier(startMs, endMs)
-	if err != nil {
-		return 0, errors.Wrap(err, "count pushdown: create querier")
-	}
-	defer func() { _ = q.Close() }()
-
-	sc, ok := q.(enginestorage.SeriesCounter)
-	if !ok {
-		return 0, nil // fetcher without count support ⇒ no series counted (pushdown opted out upstream)
-	}
-
-	return sc.CountSeries(ctx, startMs, endMs, matchers...)
-}
-
-// backendGroupCounter adapts [Backend] to the PromQL engine's GroupedSeriesCounter seam, the
-// grouped analog of [backendCounter]. The storage querier's CountSeriesBy is total — a fetcher
-// chain without the grouped-count capability answers via its exact Fetch-based grouping — so this
-// adapter has no silent-empty path; a querier that lacks the hook entirely (a swapped queryable
-// implementation) is a wiring bug and surfaces as an error rather than an empty vector.
-type backendGroupCounter struct{ b *Backend }
-
-func (c backendGroupCounter) CountSeriesBy(
-	ctx context.Context, startMs, endMs int64, label string, matchers ...*labels.Matcher,
-) (map[string]uint64, error) {
-	q, err := c.b.queryable().Querier(startMs, endMs)
-	if err != nil {
-		return nil, errors.Wrap(err, "count-by pushdown: create querier")
-	}
-	defer func() { _ = q.Close() }()
-
-	sc, ok := q.(enginestorage.GroupedSeriesCounter)
-	if !ok {
-		return nil, errors.New("count-by pushdown: querier does not implement CountSeriesBy")
-	}
-
-	return sc.CountSeriesBy(ctx, startMs, endMs, label, matchers...)
-}
-
-func (s scanners) NewVectorSelector(
-	ctx context.Context,
-	opts *query.Options,
-	hints promstorage.SelectHints,
-	node logicalplan.VectorSelector,
-) (model.VectorOperator, error) {
-	inner, err := s.windowed(opts, hints)
-	if err != nil {
-		return nil, err
-	}
-	return inner.NewVectorSelector(ctx, opts, hints, node)
-}
-
-func (s scanners) NewMatrixSelector(
-	ctx context.Context,
-	opts *query.Options,
-	hints promstorage.SelectHints,
-	node logicalplan.MatrixSelector,
-	call logicalplan.FunctionCall,
-) (model.VectorOperator, error) {
-	// *_over_time over a sidecar-answerable function (count/sum/min/max/avg/present): answer from the
-	// aggregate pushdown instead of a raw fetch-and-fold, for both instant and range queries. Anything
-	// with a projection, per-series filter, or @ modifier falls back to the matrix selector, as do the
-	// folds the sidecar cannot answer (rate/increase/quantile/…).
-	if s.b.overTimePushdown && node.Range > 0 {
-		if fold, ok := overTimeFold[call.Func.Name]; ok {
-			vs := node.VectorSelector
-			plainInstant := vs.Projection == nil && len(vs.Filters) == 0
-			switch {
-			case opts.IsInstantQuery():
-				if plainInstant {
-					return newAggregateOverTimeOp(
-						s.b.src, s.b.tenant, vs.LabelMatchers, call.Func.Name, fold,
-						opts.Start.UnixMilli(), node.Range.Milliseconds(), vs.Offset.Milliseconds(),
-					), nil
-				}
-			// Range queries evaluate the fold over each step's sliding window (t-range, t]; the range op
-			// folds one aggregate per (series, step) instead of materializing the raw windows. The @
-			// modifier pins the eval timestamp (a shape the plain per-step offset does not model), so
-			// only push down its absence.
-			case opts.Step > 0 && plainInstant && vs.Timestamp == nil && !vs.SelectTimestamp:
-				return newAggregateOverTimeRangeOp(
-					s.b.src, s.b.tenant, vs.LabelMatchers, call.Func.Name, fold,
-					opts.Start.UnixMilli(), opts.End.UnixMilli(), opts.Step.Milliseconds(),
-					node.Range.Milliseconds(), vs.Offset.Milliseconds(), opts.NumStepsPerBatch(),
-				), nil
-			}
-		}
-	}
-
-	inner, err := s.windowed(opts, hints)
-	if err != nil {
-		return nil, err
-	}
-	return inner.NewMatrixSelector(ctx, opts, hints, node, call)
-}
-
-// windowed builds a Prometheus scanner set whose querier covers the selector window. opts is
-// shallow-copied (the library's own idiom, see query.Options.WithEndTime) with the window
-// overridden to the selector's hints so the storage querier reads the right range.
-func (s scanners) windowed(opts *query.Options, hints promstorage.SelectHints) (*promscanners.Scanners, error) {
-	o := *opts
-	o.Start = time.UnixMilli(hints.Start)
-	o.End = time.UnixMilli(hints.End)
-
-	sc, err := promscanners.NewPrometheusScanners(s.b.queryable(), &o, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "create prometheus scanners")
-	}
-	return sc, nil
 }

@@ -17,12 +17,27 @@ import (
 
 // ScarecrowScanner returns a [scarecrow.Scanner] backed by the storage engine's native fetch seam.
 //
-// Unlike [Backend.MetricsScanners] (the Thanos-fork seam, itself layered over [Backend.Querier]),
-// this reads [fetch.Batch] directly: no chunkenc.Iterator, no storage.Series boxing, no per-sample
-// interface dispatch — the one copy this pays is the nanosecond-to-millisecond timestamp
-// conversion [scarecrow.Samples] requires; Values is aliased from the batch unchanged.
+// It reads fetch.Batch directly and borrows value columns without per-sample iterator dispatch.
 func (b *Backend) ScarecrowScanner() scarecrow.Scanner {
-	return &scarecrowScanner{b: b, scope: fetch.NewScope()}
+	scanner := &scarecrowScanner{b: b, scope: fetch.NewScope()}
+	if !b.overTimePushdown {
+		return rawScarecrowScanner{Scanner: scanner, counter: scanner}
+	}
+	return scanner
+}
+
+// rawScarecrowScanner retains index counts while disabling aggregate-sidecar pushdowns.
+type rawScarecrowScanner struct {
+	scarecrow.Scanner
+	counter *scarecrowScanner
+}
+
+func (s rawScarecrowScanner) CountSeries(ctx context.Context, mint, maxt int64, matchers []*labels.Matcher) (uint64, error) {
+	return s.counter.CountSeries(ctx, mint, maxt, matchers)
+}
+
+func (s rawScarecrowScanner) CountSeriesBy(ctx context.Context, mint, maxt int64, label string, matchers []*labels.Matcher) (map[string]uint64, error) {
+	return s.counter.CountSeriesBy(ctx, mint, maxt, label, matchers)
 }
 
 type scarecrowScanner struct {
@@ -50,9 +65,8 @@ func (s *scarecrowScanner) Close() error { return nil }
 // with one [storage.Storage.AggregateMetricsWindowNamed] call, which folds each series' samples
 // once into step-wide buckets and slides them into every overlapping window.
 //
-// This is the same windowed call the fork engine's range `*_over_time` pushdown uses
-// ([aggregateOverTimeRangeOp]); the per-window entry points above predate it and cost one storage
-// round-trip per step, which measured ~240x slower than no pushdown at all on a 241-step grid.
+// Per-window calls cost one storage round-trip per step, which measured ~240x slower than
+// no pushdown at all on a 241-step grid.
 //
 // The grid's anchor matters: storage would otherwise evaluate on the absolute grid (multiples of
 // Step from the epoch) and answer at timestamps the query never asked about.
@@ -96,7 +110,7 @@ func (s *scarecrowScanner) AggregateGrid(
 		// full width back before the first step, so storage legitimately returns windows ending
 		// before it, and a step the series has no sample in is absent entirely. Indexing
 		// positionally silently shifts every value onto the wrong step whenever the two disagree
-		// — which is what TestScarecrowScannerGridMatchesFork caught at a step that does not
+		// — which is what TestScarecrowScannerGridMatchesPrometheus caught at a step that does not
 		// divide the window evenly.
 		windows := make([]scarecrow.Aggregate, grid.NumSteps)
 
@@ -129,8 +143,7 @@ func (s *scarecrowScanner) AggregateGrid(
 
 // AggregateOverTime implements [scarecrow.AggregateScanner], answering a reducer `*_over_time`
 // from the stats sidecar ([storage.Storage.AggregateMetricsNamed]) instead of a raw fetch-and-fold
-// — the same pushdown [aggregateOverTimeOp] performs for the fork engine, reused here because both
-// read the same window-aggregate API. The caller ([scarecrow]'s aggregateOverTime operator) drops
+// . The caller ([scarecrow]'s aggregateOverTime operator) drops
 // the metric name itself, so the labels returned here are unfiltered.
 func (s *scarecrowScanner) AggregateOverTime(
 	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
@@ -175,8 +188,7 @@ func (s *scarecrowScanner) AggregateOverTime(
 }
 
 // CountSeries implements [scarecrow.SeriesCounter], delegating to the same
-// [storagepromql.Queryable]-backed CountSeries the fork engine's count() pushdown uses
-// ([backendCounter]).
+// [storagepromql.Queryable]-backed CountSeries.
 func (s *scarecrowScanner) CountSeries(
 	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
 ) (uint64, error) {
@@ -199,8 +211,7 @@ func (s *scarecrowScanner) CountSeries(
 }
 
 // CountSeriesBy implements [scarecrow.GroupedSeriesCounter], delegating to the same
-// [storagepromql.Queryable]-backed CountSeriesBy the fork engine's count-by pushdown uses
-// ([backendGroupCounter]).
+// [storagepromql.Queryable]-backed CountSeriesBy.
 func (s *scarecrowScanner) CountSeriesBy(
 	ctx context.Context, mint, maxt int64, label string, matchers []*labels.Matcher,
 ) (map[string]uint64, error) {

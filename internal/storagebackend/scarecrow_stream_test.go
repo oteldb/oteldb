@@ -151,7 +151,7 @@ func TestBatchIteratorExhausts(t *testing.T) {
 func TestScarecrowScannerScopePerQuery(t *testing.T) {
 	t.Parallel()
 
-	b := &Backend{}
+	b := &Backend{overTimePushdown: true}
 
 	first, ok := b.ScarecrowScanner().(*scarecrowScanner)
 	require.True(t, ok)

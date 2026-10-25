@@ -1,7 +1,6 @@
 package queryapi
 
 import (
-	"github.com/go-faster/errors"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -12,9 +11,7 @@ import (
 	"github.com/oteldb/oteldb/internal/config"
 	"github.com/oteldb/oteldb/internal/promapi"
 	"github.com/oteldb/oteldb/internal/promhandler"
-	"github.com/oteldb/oteldb/internal/promql"
 	"github.com/oteldb/oteldb/internal/scarecrow"
-	"github.com/oteldb/oteldb/internal/storagebackend"
 )
 
 // PrometheusOptions configures the Prometheus API server.
@@ -47,36 +44,13 @@ func NewPrometheus(opts PrometheusOptions) (*promapi.Server, error) {
 	)
 }
 
-// NewPromEngine builds the PromQL engine selected by the config.
+// NewPromEngine builds the Scarecrow PromQL engine.
 func NewPromEngine(opts PrometheusOptions) (promhandler.Engine, error) {
-	cfg := opts.Config
-	cfg.SetDefaults()
-
-	if cfg.EnableScarecrowEngine {
-		return NewScarecrowEngine(opts.Logger, opts.Querier, cfg, opts.TracerProvider), nil
-	}
-
-	engine, err := promql.New(opts.Querier, promql.EngineOpts{
-		// NOTE: zero-value MaxSamples and Timeout makes
-		// all queries to fail with error.
-		MaxSamples:           cfg.MaxSamples,
-		Timeout:              cfg.Timeout,
-		LookbackDelta:        cfg.LookbackDelta,
-		EnableAtModifier:     cfg.EnableAtModifier,
-		EnableNegativeOffset: *cfg.EnableNegativeOffset,
-		EnablePerStepStats:   cfg.EnablePerStepStats,
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "create PromQL engine")
-	}
-
-	return engine, nil
+	return NewScarecrowEngine(opts.Logger, opts.Querier, opts.Config, opts.TracerProvider), nil
 }
 
-// NewScarecrowEngine builds the internal/scarecrow engine. When q is the embedded storage engine,
-// it gets scarecrow's native columnar Scanner (storagebackend.Backend.ScarecrowScanner); over any
-// other querier (e.g. ClickHouse) it falls back to scarecrow's generic storage.Queryable adapter,
-// which is correct but pays the same per-sample conversion cost the fork already does.
+// NewScarecrowEngine uses the querier's backend Scanner when available, otherwise adapting
+// storage.Queryable to the Scarecrow sample stream.
 func NewScarecrowEngine(
 	lg *zap.Logger,
 	q MetricQuerier,
@@ -97,12 +71,11 @@ func NewScarecrowEngine(
 	if lg == nil {
 		lg = zap.NewNop()
 	}
-	if backend, ok := q.(*storagebackend.Backend); ok {
+	if backend, ok := q.(interface{ ScarecrowScanner() scarecrow.Scanner }); ok {
 		opts.NewScanner = func(storage.Queryable) scarecrow.Scanner { return backend.ScarecrowScanner() }
-		lg.Info("Using scarecrow PromQL engine with the native storage Scanner")
+		lg.Info("Using scarecrow PromQL engine with the backend Scanner")
 	} else {
-		lg.Warn("Using scarecrow PromQL engine over the generic storage.Queryable adapter; " +
-			"switch metrics.backend to storage for the native Scanner")
+		lg.Info("Using scarecrow PromQL engine over the storage.Queryable adapter")
 	}
 
 	return scarecrow.NewEngine(opts)

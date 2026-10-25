@@ -65,26 +65,15 @@ the seam oteldb's pushdown path sits on:
 So the pushdown path is: `PushableMatchers` → `AggregateMetricsNamed` → `MatchesAll` re-check →
 `PromLabels` to render the vector — all using the library's own translation.
 
-> **Implemented** for both **instant** and **range** queries, wired through
-> `scanners.NewMatrixSelector`:
-> - Instant: `aggregateOverTimeOp` (`internal/storagebackend/overtime.go`) folds one
->   `AggregateMetricsNamed` over the single eval window.
-> - Range: `aggregateOverTimeRangeOp` (`internal/storagebackend/overtime_range.go`) folds one
->   aggregate per `(series, step)` over each step's exact sliding window `(t-range, t]` — the same
->   window the matrix selector uses — and streams the per-step vectors, so it holds `O(result)`
->   instead of materializing every raw sample in every window. The storage engine still applies its
->   own sidecar/decode fast paths (and decode cache) per window; folding one aggregate per part per
->   step in a single decode pass (rather than re-decoding overlapping windows) is a follow-up.
->
-> Both paths fall back to the raw matrix selector for selectors carrying a projection, per-series
-> filter, or `@` modifier, and for folds the sidecar cannot answer. Covered folds:
-> `count`/`sum`/`min`/`max`/`avg`/`present_over_time` (`overTimeFold`). Toggle with
-> `WithOverTimePushdown` (on by default). Correctness is pinned by the differential oracle
-> (`TestOverTimePushdownRangeMatchesRaw`): pushdown-on vs the raw fold must produce an identical
-> matrix across folds, matchers, offsets, and window/step combinations.
->
-> `rate`/`increase` still need a richer sidecar (per-bucket first+last value + counter-reset count)
-> and remain on the matrix selector — tracked as the #1117 follow-up.
+Scarecrow's native scanner implements `AggregateScanner` for instant windows and
+`GridAggregateScanner` for complete range grids. Both return labeled statistics with exact
+`(t-range, t]` bounds. A pinned `@` selector resolves one window and reuses it across steps.
+The ordinary native scan remains the fallback for functions the sidecar cannot answer.
+`WithOverTimePushdown(false)` disables these capabilities while retaining index counts.
+The differential tests compare pushdown results against raw folds and upstream Prometheus.
+
+`rate`/`increase` on native storage still need raw samples for reset detection. ClickHouse retains
+its SQL rate-family offloads through `RangeFunctionScanner`; see [the engine contract](promql-engine.md).
 
 ## Loki label predicate pushdown
 

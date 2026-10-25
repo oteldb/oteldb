@@ -1,21 +1,17 @@
 #!/bin/bash
-# Same as run.sh, but against oteldb on the embedded storage engine
-# (docker-compose.embedded.yml) with internal/scarecrow layered on top
-# (docker-compose.embedded.scarecrow.yml, mounting oteldb.embedded.yml), instead of the
-# ClickHouse/fork-engine combo run.sh exercises. The base compose file stays scarecrow-free
-# because .github/workflows/storage-compliance.yml runs it directly, gated at 100%.
+# PromQL compliance over native storage and the default Scarecrow engine.
 
 clean_up () {
     ARG=$?
     echo ">> Stopping"
-    docker compose -f docker-compose.embedded.yml -f docker-compose.embedded.scarecrow.yml down -v
+    docker compose -f docker-compose.embedded.yml down -v
     exit $ARG
 }
 trap clean_up EXIT
 
 set -e
 
-docker compose -f docker-compose.embedded.yml -f docker-compose.embedded.scarecrow.yml up -d --remove-orphans --build --force-recreate
+docker compose -f docker-compose.embedded.yml up -d --remove-orphans --build --force-recreate
 
 go run ./cmd/compliance-wait -wait 10s
 
