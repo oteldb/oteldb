@@ -57,7 +57,7 @@ func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.
 		return iterators.Empty[traceqlengine.Trace](), nil
 	}
 
-	spans, err := q.scanSpans(ctx, params.Start, params.End, traceIDs)
+	spans, err := q.scanProjectedSpans(ctx, params.Start, params.End, traceIDs, traceProjection(params.Fields))
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,8 @@ func (q *TraceQuerier) TraceByID(ctx context.Context, id otelstorage.TraceID, _ 
 // SearchTags implements [tracestorage.Querier]. It returns the spans whose attributes match every
 // requested tag and whose duration is within the optional bounds.
 func (q *TraceQuerier) SearchTags(ctx context.Context, tags map[string]string, opts tracestorage.SearchTagsOptions) (iterators.Iterator[tracestorage.Span], error) {
-	spans, err := q.scanSpans(ctx, opts.Start, opts.End, nil)
+	ctx = q.b.queryContext(ctx)
+	spans, err := q.scanSpans(ctx, opts.Start, opts.End, nil, tagSearchConditions(tags, opts)...)
 	if err != nil {
 		return nil, err
 	}
@@ -615,16 +616,27 @@ func (q *TraceQuerier) collectTraceIDs(
 // to those traces, so the spans of every other trace are never materialized.
 func (q *TraceQuerier) scanSpans(
 	ctx context.Context, start, end time.Time, traceIDs map[otelstorage.TraceID]struct{},
+	conditions ...fetch.Condition,
+) ([]tracestorage.Span, error) {
+	return q.scanProjectedSpans(ctx, start, end, traceIDs, nil, conditions...)
+}
+
+func (q *TraceQuerier) scanProjectedSpans(
+	ctx context.Context, start, end time.Time, traceIDs map[otelstorage.TraceID]struct{}, projection []string,
+	conditions ...fetch.Condition,
 ) ([]tracestorage.Span, error) {
 	lo, hi := fetchWindow(start, end)
 	req := fetch.Request{
-		Tenant: q.b.tenant,
-		Signal: signal.Trace,
-		Start:  lo,
-		End:    hi,
+		Tenant:        q.b.tenant,
+		Signal:        signal.Trace,
+		Start:         lo,
+		End:           hi,
+		Projection:    projection,
+		Conditions:    conditions,
+		AllConditions: len(conditions) > 0,
 	}
 	if traceIDs != nil {
-		req.Conditions = []fetch.Condition{traceIDCondition(traceIDs)}
+		req.Conditions = append(req.Conditions, traceIDCondition(traceIDs))
 		req.AllConditions = true
 	}
 

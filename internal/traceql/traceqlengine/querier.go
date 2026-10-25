@@ -26,6 +26,9 @@ type Querier interface {
 type SelectSpansetsParams struct {
 	Op       traceql.SpansetOp // OpAnd, OpOr
 	Matchers []traceql.SpanMatcher
+	// Fields are the attributes and intrinsics needed by evaluation and the search response.
+	// Nil requests full spans; a non-nil empty slice needs only identity, timing and root metadata.
+	Fields []traceql.Attribute
 
 	// Time range to query, optional.
 	Start, End time.Time
