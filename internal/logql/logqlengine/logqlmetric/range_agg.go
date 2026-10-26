@@ -79,7 +79,7 @@ func RangeAggregation(
 		}
 	}
 
-	return &rangeAggIterator{
+	base := &rangeAggIterator{
 		iter: iter,
 
 		agg:          agg,
@@ -89,9 +89,15 @@ func RangeAggregation(
 		grouper:     grouper,
 		groupLabels: groupLabels,
 
-		window:   map[logqlabels.GroupingKey]Series{},
 		interval: expr.Range.Range,
-	}, nil
+	}
+	if !start.Add(step).After(end) && expr.Range.Range > step {
+		if additive := newAdditiveRangeIterator(base, expr); additive != nil {
+			return additive, nil
+		}
+	}
+	base.window = map[logqlabels.GroupingKey]Series{}
+	return base, nil
 }
 
 func (i *rangeAggIterator) Next(r *Step) bool {

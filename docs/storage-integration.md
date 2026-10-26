@@ -75,6 +75,19 @@ The differential tests compare pushdown results against raw folds and upstream P
 `rate`/`increase` on native storage still need raw samples for reset detection. ClickHouse retains
 its SQL rate-family offloads through `RangeFunctionScanner`; see [the engine contract](promql-engine.md).
 
+## LogQL metric windows
+
+Overlapping log count/rate and byte-count/rate windows consume each input sample and expire it
+once, retaining an ordered ring per active group. Integer byte totals avoid subtraction rounding;
+noninteger, nonfinite or overflowing sample values retain the floating window fold. Unwrapped
+and other aggregations keep their existing evaluators.
+
+Native bucketed sampling adds each record at its first affected step and removes it after its
+last. Row presence is independent of byte totals, so empty bodies still produce active zero-valued
+groups. Dense difference vectors share a cell budget bounded by the fetched row count; custom
+severity groups beyond that budget keep sparse boundary events and visit only active intervals.
+Both paths preserve `(step-window, step]` and the existing line/pipeline semantics.
+
 ## Loki label predicate pushdown
 
 Unambiguous resource, scope and record attributes use native predicates for every selector
