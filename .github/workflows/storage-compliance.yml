@@ -3,10 +3,9 @@ name: "Storage Compliance"
 # End-to-end PromQL/LogQL compliance for oteldb running on the embedded storage engine
 # (`--embedded`, no ClickHouse). Mirrors compliance.yml but points the compliance testers at an
 # embedded oteldb. PromQL stays gated at 100%; Scarecrow's known histogram-function gaps are
-# tracked separately. Freeze the volatile demo gauge before comparison. LogQL ingestion is wired
-# via otelcol.embedded.yml (hoists Loki labels to resource
-# attributes so the embedded backend can select streams); the embedded LogQL engine is far less
-# complete, so it is gated at a 25% floor (~28% locally) to catch regressions while it matures.
+# tracked separately. Freeze the volatile demo gauge before comparison. LogQL uses the same
+# Collector fixture as the ClickHouse compliance job, preserving per-record Loki labels.
+# Its pass percentage is gated separately below.
 
 on:
   push:
@@ -165,13 +164,11 @@ jobs:
         working-directory: dev/local/ch-logql-compliance
         run: docker compose -f docker-compose.embedded.yml up -d --build --force-recreate
 
-      # oteldb ingests the pushed logs (docker-compose.embedded.yml uses otelcol.embedded.yml to
-      # hoist Loki labels into resource attributes, which the embedded backend uses for stream
-      # selection). -skip-reference-errors records queries the reference Loki rejects (e.g. the
+      # Both backends ingest the same OTLP representation through otelcol.yml.
+      # -skip-reference-errors records queries the reference Loki rejects (e.g. the
       # experimental rate_counter, which intermittently returns HTTP 400 from Loki 3.0.0) as
-      # unsupported instead of aborting the run. The embedded LogQL engine is far less complete than
-      # the ClickHouse backend, so the score is much lower (~28% locally); gate at a 25% floor to
-      # catch regressions, and ratchet up as the embedded LogQL engine gains coverage.
+      # unsupported instead of aborting the run. The aggregate floor permits known differences;
+      # targeted tests cover the supported query behavior independently.
       - name: Run
         working-directory: dev/local/ch-logql-compliance
         run: |
@@ -182,7 +179,7 @@ jobs:
           -output-unsupported \
           -query-parallelism 4 \
           -skip-reference-errors \
-          -target 25.00
+          -target 90.00
 
       - name: Upload artifact
         if: always()
