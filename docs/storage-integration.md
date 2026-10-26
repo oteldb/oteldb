@@ -112,6 +112,11 @@ the entire selector has been lowered exactly.
   adding attributes, events, links and scalar columns only when required. Attribute names are
   echoed across scopes by the search response, so any attribute reference retains span attributes.
   A nil field list keeps the full-span contract for direct querier callers.
+- **Exact predicate hints:** fixed trace-string equality and resolved raw trace-ID sets survive
+  native fetch RPCs as `Equal`/`AnyEqual`. Whole-text finite regexps can carry exact sets for raw
+  log bodies and trace names/messages; extraction is bounded and rejects folding and unsupported
+  forms. Arbitrary Loki attributes retain callback predicates because pdata text can differ from
+  storage canonical text. Substring alternatives never become equality sets.
 - **Legacy Tempo tag search:** native fetch conditions apply intrinsic `name` equality and positive
   span-duration bounds before span materialization. Attribute tags stay with the residual check,
   which preserves span/resource/scope precedence and pdata string formatting. The API's trace

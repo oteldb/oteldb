@@ -1,6 +1,7 @@
 package storagebackend
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"maps"
@@ -656,9 +657,7 @@ func (q *TraceQuerier) scanProjectedSpans(
 	return spans, nil
 }
 
-// traceIDCondition builds the per-span condition keeping only the spans of the given traces. A
-// single id also carries the equality-bloom hint, so a trace-by-id shaped query prunes to the parts
-// that hold it.
+// traceIDCondition keeps the requested traces and carries their raw IDs as equality/set hints.
 func traceIDCondition(traceIDs map[otelstorage.TraceID]struct{}) fetch.Condition {
 	cond := fetch.Condition{
 		Column: sigtrace.ColTraceID,
@@ -675,6 +674,12 @@ func traceIDCondition(traceIDs map[otelstorage.TraceID]struct{}) fetch.Condition
 		for id := range traceIDs {
 			cond.Equal = &fetch.EqualMatcher{Name: sigtrace.ColTraceID, Value: string(id[:])}
 		}
+	} else if len(traceIDs) > 1 {
+		values := make([][]byte, 0, len(traceIDs))
+		for id := range traceIDs {
+			values = append(values, bytes.Clone(id[:]))
+		}
+		cond.AnyEqual = fetch.AnyEqualSet(values)
 	}
 	return cond
 }

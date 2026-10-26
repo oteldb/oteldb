@@ -163,6 +163,7 @@ func lowerSpanMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 		return one(spanCondition(sigtrace.ColDuration, durationStatic, pred))
 	case traceql.SpanName:
 		f := spanCondition(sigtrace.ColName, stringStatic, pred)
+		rawStringConditionHints(&f.conditions[0], m.Op, m.Static)
 		// The name column carries a full-text bloom: an exact value's own tokens are present in
 		// every part that holds it, so they prune parts that do not.
 		if m.Op == traceql.OpEq && m.Static.Type == traceql.TypeString {
@@ -174,7 +175,9 @@ func lowerSpanMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 	case traceql.SpanKind:
 		return one(spanCondition(sigtrace.ColKind, kindStatic, pred))
 	case traceql.SpanStatusMessage:
-		return one(spanCondition(sigtrace.ColStatusMsg, stringStatic, pred))
+		f := spanCondition(sigtrace.ColStatusMsg, stringStatic, pred)
+		rawStringConditionHints(&f.conditions[0], m.Op, m.Static)
+		return one(f)
 	case traceql.SpanID:
 		return one(spanCondition(sigtrace.ColSpanID, hexStatic, pred))
 	case traceql.ParentID:
@@ -235,6 +238,7 @@ func lowerRootMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 	switch m.Attribute.Prop {
 	case traceql.RootSpanName:
 		name := spanCondition(sigtrace.ColName, stringStatic, pred)
+		rawStringConditionHints(&name.conditions[0], m.Op, m.Static)
 		if m.Op == traceql.OpEq && m.Static.Type == traceql.TypeString {
 			name.conditions[0].Tokens = bloom.SafeTokens(nil, []byte(m.Static.AsString()), true, true)
 		}

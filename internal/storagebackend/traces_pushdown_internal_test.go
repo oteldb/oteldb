@@ -247,7 +247,7 @@ func TestTracePushdownHints(t *testing.T) {
 	t.Run("NameTokens", func(t *testing.T) {
 		c := condition(t, `{name = "checkout.process"}`)
 		require.Equal(t, [][]byte{[]byte("checkout"), []byte("process")}, c.Tokens)
-		require.Nil(t, c.Equal)
+		require.Equal(t, &fetch.EqualMatcher{Name: "name", Value: "checkout.process"}, c.Equal)
 	})
 	t.Run("NameRegexpNotHinted", func(t *testing.T) {
 		require.Empty(t, condition(t, `{name =~ "checkout.*"}`).Tokens)

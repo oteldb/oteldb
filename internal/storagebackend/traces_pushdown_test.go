@@ -176,6 +176,8 @@ func TestTraceQLRootlessTraces(t *testing.T) {
 		// An empty root name is exactly what a rootless trace has. It is deliberately not pushed (the
 		// filter could never select it), so this falls back to the plain scan.
 		{query: `{rootName = ""}`, want: 1},
+		{query: `{rootName =~ "^(|orphan)$"}`, want: 1},
+		{query: `{rootName =~ "^(orphan|other)$"}`, want: 0},
 		{query: `{rootServiceName = ""}`, want: 1},
 	}
 	for _, tt := range tests {

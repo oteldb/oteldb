@@ -167,7 +167,7 @@ func (o *LogQLOptimizer) optimizePipeline(n logqlengine.PipelineNode) {
 	if !ok {
 		return
 	}
-	sn.conditions = lineFilterConditions(pn.Pipeline)
+	sn.conditions = lineFilterConditions(pn.Pipeline, !pn.EnableOTELAdapter)
 	sn.pipelineLabels = labelFilterMatchers(pn.Pipeline)
 }
 
@@ -207,12 +207,12 @@ func equalityLabelMatcher(pred logql.LabelPredicate) (logql.LabelMatcher, bool) 
 // lineFilterConditions builds storage fetch conditions from the leading offloadable line filters of
 // a pipeline. It stops at the first stage that may rewrite the line, after which earlier-derived
 // conditions no longer hold for the modified line.
-func lineFilterConditions(pipeline []logql.PipelineStage) (conds []fetch.Condition) {
+func lineFilterConditions(pipeline []logql.PipelineStage, finiteSets bool) (conds []fetch.Condition) {
 stageLoop:
 	for _, stage := range pipeline {
 		switch stage := stage.(type) {
 		case *logql.LineFilter:
-			c, ok := lineFilterCondition(stage)
+			c, ok := lineFilterCondition(stage, finiteSets)
 			if !ok {
 				continue
 			}
@@ -237,11 +237,10 @@ stageLoop:
 }
 
 // lineFilterCondition lowers a positive line filter to a body fetch condition. A substring filter
-// (`|= "x"`) becomes an exact contains Match plus a safe token hint. A regexp filter (`|~ "re"`) is
-// offloaded only when its required literals yield a token hint, so it prunes parts rather than
-// paying a redundant per-record regexp eval for no benefit. Negated, IP, and multi-value (`or`)
-// filters are left to the engine.
-func lineFilterCondition(lf *logql.LineFilter) (fetch.Condition, bool) {
+// (`|= "x"`) becomes an exact contains Match plus a safe token hint. A regexp filter (`|~ "re"`)
+// carries an exact set for a supported whole-text finite pattern, otherwise a token hint from
+// required literals. Negated, IP, and multi-value (`or`) filters stay with the engine.
+func lineFilterCondition(lf *logql.LineFilter, finiteSets bool) (fetch.Condition, bool) {
 	if len(lf.Or) > 0 || lf.By.IP {
 		return fetch.Condition{}, false
 	}
@@ -263,19 +262,21 @@ func lineFilterCondition(lf *logql.LineFilter) (fetch.Condition, bool) {
 		if re == nil {
 			return fetch.Condition{}, false
 		}
-		var tokens [][]byte
-		for _, lit := range xregexp.Literals(lf.By.Value) {
-			tokens = bloom.SafeTokens(tokens, []byte(lit), false, false)
+		condition := fetch.Condition{
+			Column: siglog.ColBody,
+			Match:  func(v signal.Value) bool { return re.Match(valueBytes(v)) },
 		}
-		if len(tokens) == 0 {
+		if finiteSets {
+			condition.AnyEqual = fetch.AnyEqualStrings(xregexp.FiniteSet(re.String()))
+		}
+		for _, lit := range xregexp.Literals(lf.By.Value) {
+			condition.Tokens = bloom.SafeTokens(condition.Tokens, []byte(lit), false, false)
+		}
+		if len(condition.Tokens) == 0 && len(condition.AnyEqual) == 0 {
 			// No prunable literal: leave the regexp to the engine rather than eval it twice.
 			return fetch.Condition{}, false
 		}
-		return fetch.Condition{
-			Column: siglog.ColBody,
-			Match:  func(v signal.Value) bool { return re.Match(valueBytes(v)) },
-			Tokens: tokens,
-		}, true
+		return condition, true
 	default:
 		return fetch.Condition{}, false
 	}

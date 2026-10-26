@@ -65,6 +65,9 @@ func TestStorageBackendTraceQLProjection(t *testing.T) {
 	for _, query := range []string{
 		`{}`,
 		`{status = error}`,
+		`{statusMessage = ""}`,
+		`{name =~ "^(root|child)$"}`,
+		`{rootName =~ "^(root|not present)$"}`,
 		`{event:name = "exception"}`,
 		`{event.tag = "event-value"}`,
 		`{link:spanID = "0000000000000004"}`,
