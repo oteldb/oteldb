@@ -104,7 +104,9 @@ func (h *PyroscopeAPI) LabelValues(ctx context.Context, params pyroscopeapi.Labe
 	// Pyroscope returns profile types when the special profile-type label is
 	// requested.
 	if params.Label == profileql.LabelProfileType || params.Label == profileql.LabelName {
-		types, err := h.q.ProfileTypes(ctx, profilestorage.ProfileTypesOptions{Start: start, End: end})
+		types, err := h.q.ProfileTypes(ctx, profilestorage.ProfileTypesOptions{
+			Type: typ, Matchers: matchers, Start: start, End: end,
+		})
 		if err != nil {
 			return nil, executionErr(ctx, err, "get profile types")
 		}

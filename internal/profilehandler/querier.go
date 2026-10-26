@@ -90,7 +90,9 @@ func (s *QuerierService) LabelValues(ctx context.Context, req *connect.Request[t
 	// The synthetic profile-type label resolves to the list of profile type IDs, matching the
 	// legacy API and what Grafana expects from the __profile_type__ / __name__ labels.
 	if name := req.Msg.Name; name == profileql.LabelProfileType || name == profileql.LabelName {
-		types, err := s.q.ProfileTypes(ctx, profilestorage.ProfileTypesOptions{Start: start, End: end})
+		types, err := s.q.ProfileTypes(ctx, profilestorage.ProfileTypesOptions{
+			Type: typ, Matchers: matchers, Start: start, End: end,
+		})
 		if err != nil {
 			return nil, connectErr(err)
 		}

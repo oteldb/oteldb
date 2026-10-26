@@ -14,6 +14,7 @@ import (
 	sigtrace "github.com/oteldb/storage/signal/trace"
 
 	"github.com/oteldb/oteldb/internal/traceql"
+	"github.com/oteldb/oteldb/internal/xregexp"
 )
 
 // traceFilter is one group of storage-level filters: every stream matcher and every per-span
@@ -163,6 +164,7 @@ func lowerSpanMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 		return one(spanCondition(sigtrace.ColDuration, durationStatic, pred))
 	case traceql.SpanName:
 		f := spanCondition(sigtrace.ColName, stringStatic, pred)
+		rawStringConditionHints(&f.conditions[0], m.Op, m.Static)
 		// The name column carries a full-text bloom: an exact value's own tokens are present in
 		// every part that holds it, so they prune parts that do not.
 		if m.Op == traceql.OpEq && m.Static.Type == traceql.TypeString {
@@ -174,7 +176,9 @@ func lowerSpanMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 	case traceql.SpanKind:
 		return one(spanCondition(sigtrace.ColKind, kindStatic, pred))
 	case traceql.SpanStatusMessage:
-		return one(spanCondition(sigtrace.ColStatusMsg, stringStatic, pred))
+		f := spanCondition(sigtrace.ColStatusMsg, stringStatic, pred)
+		rawStringConditionHints(&f.conditions[0], m.Op, m.Static)
+		return one(f)
 	case traceql.SpanID:
 		return one(spanCondition(sigtrace.ColSpanID, hexStatic, pred))
 	case traceql.ParentID:
@@ -235,6 +239,7 @@ func lowerRootMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 	switch m.Attribute.Prop {
 	case traceql.RootSpanName:
 		name := spanCondition(sigtrace.ColName, stringStatic, pred)
+		rawStringConditionHints(&name.conditions[0], m.Op, m.Static)
 		if m.Op == traceql.OpEq && m.Static.Type == traceql.TypeString {
 			name.conditions[0].Tokens = bloom.SafeTokens(nil, []byte(m.Static.AsString()), true, true)
 		}
@@ -253,9 +258,10 @@ func lowerRootMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 		return []traceFilter{{
 			conditions: []fetch.Condition{isRoot},
 			matchers: []fetch.Matcher{{
-				Name:  []byte(serviceNameKey),
-				Match: func(v signal.Value) bool { return pred(attrStatic(v)) },
-				Spec:  spec,
+				Name:         []byte(serviceNameKey),
+				Match:        func(v signal.Value) bool { return pred(attrStatic(v)) },
+				Spec:         spec,
+				StringValues: traceStringValues(m),
 			}},
 		}}, true
 	default:
@@ -283,9 +289,8 @@ func lowerAttributeMatcher(m traceql.SpanMatcher, pred func(traceql.Static) bool
 		return nil, false
 	}
 
-	// Exact string equality is the one shape whose bloom token is exactly the stored value's own
-	// text, so it is the only one hinted; a typed (numeric, bool) value's text form need not match
-	// the static's, and testing it could wrongly prune a part that holds a match.
+	// String predicates accept strings and raw bytes; other types are rejected before matching,
+	// so equality and finite-regexp hints use the same text as the attribute bloom.
 	var equal *fetch.EqualMatcher
 	if m.Op == traceql.OpEq && m.Static.Type == traceql.TypeString {
 		equal = &fetch.EqualMatcher{Name: attr.Name, Value: m.Static.AsString()}
@@ -296,14 +301,15 @@ func lowerAttributeMatcher(m traceql.SpanMatcher, pred func(traceql.Static) bool
 	// for `instrumentation.` (which reads only scope attributes) — the engine re-checks either way.
 	streamFilter := func() traceFilter {
 		return traceFilter{matchers: []fetch.Matcher{{
-			Name:  []byte(attr.Name),
-			Match: func(v signal.Value) bool { return pred(attrStatic(v)) },
-			Spec:  equal,
+			Name:         []byte(attr.Name),
+			Match:        func(v signal.Value) bool { return pred(attrStatic(v)) },
+			Spec:         equal,
+			StringValues: traceStringValues(m),
 		}}}
 	}
 	spanFilter := func() traceFilter {
 		f := spanCondition(attr.Name, attrStatic, pred)
-		f.conditions[0].Equal = equal
+		rawStringConditionHints(&f.conditions[0], m.Op, m.Static)
 		return f
 	}
 
@@ -378,9 +384,10 @@ func staticPredicate(op traceql.BinaryOp, want traceql.Static) (func(traceql.Sta
 			return nil, false
 		}
 		match := op == traceql.OpRe
+		prepared := xregexp.NewMatcher(re)
 		return func(v traceql.Static) bool {
 			// A non-string value matches neither the pattern nor its negation, as in the engine.
-			return v.Type == traceql.TypeString && re.MatchString(v.AsString()) == match
+			return v.Type == traceql.TypeString && prepared.MatchString(v.AsString()) == match
 		}, true
 	default:
 		return nil, false
@@ -456,4 +463,18 @@ func attrStatic(v signal.Value) (r traceql.Static) {
 		r.SetNil()
 	}
 	return r
+}
+
+func traceStringValues(m traceql.SpanMatcher) [][]byte {
+	if m.Static.Type != traceql.TypeString {
+		return nil
+	}
+	switch m.Op {
+	case traceql.OpEq:
+		return [][]byte{[]byte(m.Static.AsString())}
+	case traceql.OpRe:
+		return finiteRegexpValues(m.Static.AsString())
+	default:
+		return nil
+	}
 }

@@ -57,7 +57,7 @@ now exports the projection helpers the `Queryable` uses, which are the single so
 the seam oteldb's pushdown path sits on:
 
 - `promql.PushableMatchers(ms)` — lower a Prometheus matcher set to the index-safe `fetch.Matcher`
-  subset (matchers that match `""` are not pushed; they stay for the post-fetch re-check).
+  subset, including missing-label predicates; hidden internal labels stay residual.
 - `promql.MatchesAll(lset, ms)` — the post-fetch full-set re-check (absent label = `""`).
 - `promql.PromLabels(series)` — project a `signal.Series` identity (e.g. the one carried on a
   `SeriesAggregate`) to a Prometheus label set, with reserved labels hidden.
@@ -99,19 +99,38 @@ would otherwise read the native value instead of the attribute (for example, `bo
 Synthetic labels keep their own rules: a missing service name defaults to `unknown_service`,
 whereas an explicit OTLP null stays empty; selectors distinguishing them remain residual.
 
-Arbitrary OTLP attributes carry no equality wire hint: pdata renders bytes as base64 and composite
-values as JSON, while storage's equality hint uses its own text representation. Local reads apply
-the callback before materialization; routed reads reapply it to the owner's superset. A routed
-limit therefore cannot run before these residual predicates. Local limits are offered only when
-the entire selector has been lowered exactly.
+Prepared matchers replace finite whole-label regexps with set membership and literal TraceQL
+regexps with substring searches. Other patterns keep their compiled regexp. Pipeline label filters
+preserve the engine's own matcher semantics and are pushed only before label-changing stages;
+conjuncts may push independently, while disjunctions remain residual.
+
+Finite identity predicates carry `Matcher.StringValues` through fetch and series RPCs. Owners
+filter string values but retain missing and other typed values for the exact callback recheck,
+preserving pdata's bytes/base64 and composite formatting. These hints never authorize routed limits.
+
+Series, label, and detected-field listings use the same key/scope resolver to pass safe identity
+matchers into `LogSeries`, then recheck projected labels. Record and synthetic predicates stay
+residual for identity enumeration; they cannot be applied as stream attributes.
 
 ## Other touch points
 
+- **TraceQL autocomplete:** filtered tag values reuse candidate selection and the TraceQL evaluator,
+  with only the filter and requested-value columns materialized. Resource/scope-only predicates and
+  identity values use `TraceSeries` instead, including the exact residual evaluation on each identity.
+  Unfiltered suggestions retain dictionary enumeration; kind/status suggestions retain their fixed lists.
 - **TraceQL projection:** the engine passes AST-referenced fields through `SelectSpansetsParams`.
   Native fetches retain the identity/timing columns for whole-trace evaluation and root metadata,
   adding attributes, events, links and scalar columns only when required. Attribute names are
   echoed across scopes by the search response, so any attribute reference retains span attributes.
   A nil field list keeps the full-span contract for direct querier callers.
+- **Exact predicate hints:** fixed trace-string equality and resolved raw trace-ID sets survive
+  native fetch RPCs as `Equal`/`AnyEqual`. Whole-text finite regexps can carry exact sets for raw
+  log bodies, trace names/messages, and string/bytes TraceQL attributes; extraction is bounded
+  and rejects folding and unsupported forms. Other typed TraceQL attributes never satisfy a
+  string regexp. Arbitrary Loki attributes retain exact callbacks because pdata text can differ
+  from storage canonical text. Substring alternatives never become equality sets.
+  Finite alternatives use VictoriaMetrics' existing extraction after Go-regexp safety checks;
+  transient prefilter values use iterators, and only the owned wire byte set is collected and sorted.
 - **Legacy Tempo tag search:** native fetch conditions apply intrinsic `name` equality and positive
   span-duration bounds before span materialization. Attribute tags stay with the residual check,
   which preserves span/resource/scope precedence and pdata string formatting. The API's trace

@@ -39,5 +39,12 @@ func seriesWindow(start, end time.Time) (lo, hi int64) {
 // valueText renders a typed storage value to its canonical text form, the representation matchers
 // and label enumeration compare against.
 func valueText(v signal.Value) string {
-	return string(v.AppendText(nil))
+	switch v.Kind() {
+	case signal.KindStr:
+		return string(v.Str())
+	case signal.KindBytes:
+		return string(v.Bytes())
+	default:
+		return string(v.AppendText(nil))
+	}
 }

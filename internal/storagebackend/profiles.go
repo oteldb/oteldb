@@ -14,6 +14,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/profileql"
 	"github.com/oteldb/oteldb/internal/profilestorage"
+	"github.com/oteldb/oteldb/internal/xregexp"
 )
 
 var _ profilestorage.Querier = (*ProfileQuerier)(nil)
@@ -29,10 +30,14 @@ var reservedProfileLabels = map[string]struct{}{
 }
 
 // ProfileTypes implements [profilestorage.Querier]. It enumerates the distinct profile types of the
-// tenant's streams in the window, reading the type out of each series' reserved labels.
+// matching tenant streams, reading the type out of each series' reserved labels.
 func (q *ProfileQuerier) ProfileTypes(ctx context.Context, opts profilestorage.ProfileTypesOptions) ([]profileql.ProfileType, error) {
+	matchers, err := profileFetchMatchers(opts.Type, opts.Matchers)
+	if err != nil {
+		return nil, err
+	}
 	start, end := seriesWindow(opts.Start, opts.End)
-	series, err := q.b.src.ProfileSeries(ctx, q.b.tenant, nil, start, end)
+	series, err := q.b.src.ProfileSeries(ctx, q.b.tenant, matchers, start, end)
 	if err != nil {
 		return nil, errors.Wrap(err, "profile series")
 	}
@@ -268,9 +273,14 @@ func profileLabelMatcher(m profileql.LabelMatcher) (fetch.Matcher, error) {
 			re = compiled
 		}
 		negate := m.Op == profileql.OpNotRe
-		return fetch.Matcher{Name: name, Match: func(v signal.Value) bool {
-			return re.MatchString(valueText(v)) != negate
-		}}, nil
+		prepared := xregexp.NewMatcher(re)
+		fm := fetch.Matcher{Name: name, Match: func(v signal.Value) bool {
+			return prepared.MatchString(valueText(v)) != negate
+		}}
+		if !negate {
+			fm.StringValues = stringValues(prepared.Values())
+		}
+		return fm, nil
 	default:
 		return fetch.Matcher{}, errors.Errorf("unsupported matcher op %v", m.Op)
 	}
