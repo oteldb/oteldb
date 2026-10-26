@@ -2,6 +2,7 @@ package scarecrow
 
 import (
 	"math"
+	"slices"
 
 	"github.com/prometheus/prometheus/model/value"
 )
@@ -427,6 +428,10 @@ func predictLinear(w *window, duration float64) (float64, bool) {
 func madOverTime(w *window) (float64, bool) {
 	if w.Len() == 0 {
 		return 0, false
+	}
+
+	if slices.ContainsFunc(w.V, math.IsNaN) {
+		return math.NaN(), true
 	}
 
 	median := quantile(0.5, append([]float64(nil), w.V...))

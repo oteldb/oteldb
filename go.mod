@@ -64,7 +64,6 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension v0.163.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.163.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.163.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.160.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.163.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.159.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.159.0
@@ -178,6 +177,7 @@ require (
 	github.com/maypok86/otter/v2 v2.3.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/internal/secretprovider v0.163.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/kubelet v0.163.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.160.0 // indirect
 	github.com/oracle/oci-go-sdk/v65 v65.124.1 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/sony/gobreaker/v2 v2.4.0 // indirect
@@ -597,7 +597,7 @@ require (
 	go.opentelemetry.io/collector/internal/telemetry v0.163.0 // indirect
 	go.opentelemetry.io/collector/pdata/pprofile v0.163.0
 	go.opentelemetry.io/collector/pdata/testdata v0.163.0 // indirect
-	go.opentelemetry.io/collector/pdata/xpdata v0.163.0 // indirect
+	go.opentelemetry.io/collector/pdata/xpdata v0.163.0
 	go.opentelemetry.io/collector/pipeline/xpipeline v0.163.0 // indirect
 	go.opentelemetry.io/collector/processor/processorhelper v0.163.0 // indirect
 	go.opentelemetry.io/collector/processor/processorhelper/xprocessorhelper v0.163.0 // indirect
