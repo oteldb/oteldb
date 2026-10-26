@@ -14,6 +14,7 @@ import (
 
 	"github.com/oteldb/oteldb/internal/profileql"
 	"github.com/oteldb/oteldb/internal/profilestorage"
+	"github.com/oteldb/oteldb/internal/xregexp"
 )
 
 var _ profilestorage.Querier = (*ProfileQuerier)(nil)
@@ -268,9 +269,14 @@ func profileLabelMatcher(m profileql.LabelMatcher) (fetch.Matcher, error) {
 			re = compiled
 		}
 		negate := m.Op == profileql.OpNotRe
-		return fetch.Matcher{Name: name, Match: func(v signal.Value) bool {
-			return re.MatchString(valueText(v)) != negate
-		}}, nil
+		prepared := xregexp.NewMatcher(re)
+		fm := fetch.Matcher{Name: name, Match: func(v signal.Value) bool {
+			return prepared.MatchString(valueText(v)) != negate
+		}}
+		if !negate {
+			fm.StringValues = stringValues(prepared.Values())
+		}
+		return fm, nil
 	default:
 		return fetch.Matcher{}, errors.Errorf("unsupported matcher op %v", m.Op)
 	}

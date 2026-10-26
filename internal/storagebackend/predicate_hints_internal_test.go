@@ -114,7 +114,7 @@ func TestTraceStringPredicateHints(t *testing.T) {
 		{name: "empty_literal", query: `{name = ""}`, column: sigtrace.ColName, equal: new("")},
 		{name: "empty_set", query: `{statusMessage =~ "^(|foo)$"}`, column: sigtrace.ColStatusMsg, values: []string{"", "foo"}},
 		{name: "folded", query: `{name =~ "(?i)^(foo|bar)$"}`, column: sigtrace.ColName},
-		{name: "typed_attribute", query: `{span.http.route =~ "^(/route/7|/route/8)$"}`, column: "http.route"},
+		{name: "typed_attribute", query: `{span.http.route =~ "^(/route/7|/route/8)$"}`, column: "http.route", values: []string{"/route/7", "/route/8"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			expr, err := traceql.Parse(tt.query)

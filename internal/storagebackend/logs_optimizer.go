@@ -169,21 +169,16 @@ func (o *LogQLOptimizer) optimizePipeline(n logqlengine.PipelineNode) {
 	}
 	sn.conditions = lineFilterConditions(pn.Pipeline, !pn.EnableOTELAdapter)
 	sn.pipelineLabels = labelFilterMatchers(pn.Pipeline)
+	sn.preparedPipeline = preparePipelineSelector(sn.pipelineLabels)
 }
 
-// labelFilterMatchers extracts the equality label filters (`| L="v"`) that can be resolved against
-// the stored label set: those appearing before any stage that adds, renames, or drops labels (after
-// which a filter could reference a derived label rather than a stored one). Only simple equality
-// predicates on non-empty values are returned; streamFilters then decides per label whether the
-// offload is sound (clean name; resource → Matcher, record → Condition). The filters stay in the
-// engine pipeline, so this only ever skips work.
+// labelFilterMatchers extracts conjunctive string-label filters before any stage that changes labels.
+// The filters stay in the engine pipeline; streamFilters resolves safe stored keys and scopes.
 func labelFilterMatchers(pipeline []logql.PipelineStage) (out []logql.LabelMatcher) {
 	for _, stage := range pipeline {
 		switch stage := stage.(type) {
 		case *logql.LabelFilter:
-			if m, ok := equalityLabelMatcher(stage.Pred); ok {
-				out = append(out, m)
-			}
+			out = appendLabelMatchers(out, stage.Pred)
 		case *logql.LineFilter, *logql.LineFormat, *logql.DecolorizeExpr:
 			// These do not change the stored label set; keep scanning.
 		default:
@@ -195,13 +190,20 @@ func labelFilterMatchers(pipeline []logql.PipelineStage) (out []logql.LabelMatch
 	return out
 }
 
-// equalityLabelMatcher returns the underlying matcher of a simple `label = "value"` predicate.
-func equalityLabelMatcher(pred logql.LabelPredicate) (logql.LabelMatcher, bool) {
-	m, ok := logql.UnparenLabelPredicate(pred).(*logql.LabelMatcher)
-	if !ok || m.Op != logql.OpEq || m.Value == "" {
-		return logql.LabelMatcher{}, false
+func appendLabelMatchers(dst []logql.LabelMatcher, pred logql.LabelPredicate) []logql.LabelMatcher {
+	switch pred := logql.UnparenLabelPredicate(pred).(type) {
+	case *logql.LabelMatcher:
+		switch pred.Op {
+		case logql.OpEq, logql.OpNotEq, logql.OpRe, logql.OpNotRe:
+			return append(dst, *pred)
+		}
+	case *logql.LabelPredicateBinOp:
+		if pred.Op == logql.OpAnd {
+			dst = appendLabelMatchers(dst, pred.Left)
+			return appendLabelMatchers(dst, pred.Right)
+		}
 	}
-	return *m, true
+	return dst
 }
 
 // lineFilterConditions builds storage fetch conditions from the leading offloadable line filters of

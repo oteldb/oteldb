@@ -2,6 +2,7 @@ package storagebackend
 
 import (
 	"bytes"
+	"iter"
 	"slices"
 
 	"github.com/oteldb/storage/query/fetch"
@@ -23,8 +24,12 @@ func rawStringConditionHints(c *fetch.Condition, op traceql.BinaryOp, value trac
 }
 
 func finiteRegexpValues(pattern string) [][]byte {
+	return stringValues(xregexp.FiniteSet(pattern))
+}
+
+func stringValues(seq iter.Seq[string]) [][]byte {
 	var values [][]byte
-	for value := range xregexp.FiniteSet(pattern) {
+	for value := range seq {
 		values = append(values, []byte(value))
 	}
 	slices.SortFunc(values, bytes.Compare)

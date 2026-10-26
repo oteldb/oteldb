@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"golang.org/x/sync/errgroup"
@@ -24,6 +25,7 @@ import (
 	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlabels"
 	"github.com/oteldb/oteldb/internal/logstorage"
 	"github.com/oteldb/oteldb/internal/otelstorage"
+	"github.com/oteldb/oteldb/internal/xregexp"
 )
 
 var (
@@ -50,21 +52,23 @@ func (q *LogQuerier) Capabilities() (caps logqlengine.QuerierCapabilities) {
 // Query implements [logqlengine.Querier]. It returns a node that streams the entries of the
 // streams matching selector; the engine wraps it to evaluate the rest of the pipeline.
 func (q *LogQuerier) Query(_ context.Context, selector []logql.LabelMatcher) (logqlengine.PipelineNode, error) {
-	return &logStreamNode{q: q, selector: selector}, nil
+	return &logStreamNode{q: q, selector: selector, prepared: prepareSelector(selector)}, nil
 }
 
 // logStreamNode is the base [logqlengine.PipelineNode] over the storage logs fetcher.
 type logStreamNode struct {
 	q        *LogQuerier
 	selector []logql.LabelMatcher
+	prepared preparedSelector
 	// conditions are offloaded columnar predicates (e.g. line filters as body conditions) pushed
 	// into the fetch by [LogQLOptimizer]. They prune parts and drop records at the storage layer;
 	// the engine still applies the full pipeline, so they only ever skip work.
 	conditions []fetch.Condition
-	// pipelineLabels are equality label filters (`| L="v"`) extracted from the pipeline by
+	// pipelineLabels are string-label filters extracted from the pipeline by
 	// [LogQLOptimizer] that can be resolved against the stored label set, just like selector
 	// matchers. streamFilters resolves them to Matchers/Conditions.
-	pipelineLabels []logql.LabelMatcher
+	pipelineLabels   []logql.LabelMatcher
+	preparedPipeline preparedSelector
 }
 
 var _ logqlengine.PipelineNode = (*logStreamNode)(nil)
@@ -124,8 +128,7 @@ type fetchOptions struct {
 // batches for [lo, hi]. Shared by the entry-materialization path (EvalPipeline) and the bucketed
 // sampling path (bucketSamplingNode.EvalBucketedSample).
 func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, opts fetchOptions) (_ []*fetch.Batch, selectorPushed bool, _ error) {
-	// Offload equality matchers: resource/scope labels prune streams via the postings index, clean
-	// record-attribute labels drop records via a per-record condition — both before materialization.
+	// Identity matchers and per-record conditions run before row materialization.
 	matchers, selConds, selectorPushed := n.streamFilters(ctx, lo, hi)
 	req := fetch.Request{
 		Tenant:     n.q.b.tenant,
@@ -181,7 +184,7 @@ func (n *logStreamNode) materialize(ctx context.Context, batches []*fetch.Batch)
 	}
 	offsets[len(batches)] = total
 
-	selector := prepareSelector(n.selector)
+	selector := n.selectorMatchers()
 	workers := n.q.b.logParallelism
 	if workers <= 1 || total < logMaterializeThreshold {
 		return n.materializeRange(selector, batches, offsets, 0, total), nil
@@ -290,19 +293,24 @@ func (n *logStreamNode) materializeRange(selector preparedSelector, batches []*f
 // so a fetched record needs no in-memory matchSelector re-check (used by the bucketed sampling fast
 // path). It shares the single LogKeys lookup.
 func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matchers []fetch.Matcher, conditions []fetch.Condition, selectorPushed bool) {
-	wanted := map[string][]logql.LabelMatcher{}
-	add := func(ms []logql.LabelMatcher) {
+	wanted := map[string]preparedSelector{}
+	add := func(ms preparedSelector) {
 		for _, m := range ms {
 			label := string(m.Label)
 			wanted[label] = append(wanted[label], m)
 		}
 	}
-	add(n.selector)       // stream selector labels
-	add(n.pipelineLabels) // offloaded pipeline label filters (| L="v")
+	prepared := n.selectorMatchers()
+	add(prepared)
+	if n.preparedPipeline != nil {
+		add(n.preparedPipeline)
+	} else {
+		add(preparePipelineSelector(n.pipelineLabels))
+	}
 
 	// A level matcher resolves through no attribute key — severity is a record column — so it is
 	// pushed separately, as the superset condition [levelCondition] builds.
-	if c, ok := levelCondition(n.selector); ok {
+	if c, ok := levelCondition(prepared); ok {
 		conditions = append(conditions, c)
 	}
 	if len(wanted) == 0 {
@@ -350,7 +358,7 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 		// Render the value exactly as the label set does, so this matches matchSelector.
 		matches := func(s string) bool {
 			for _, m := range ms {
-				if !matchLabel(m, s) {
+				if !m.matches(s) {
 					return false
 				}
 			}
@@ -361,15 +369,24 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 				// A missing service name gets a default; an explicit OTLP null stays empty.
 				return matches("") || matches(logstorage.DefaultServiceName)
 			}
+			if v.Kind() == signal.KindStr {
+				return matches(string(v.Str()))
+			}
 			return matches(labelValueString(v))
 		}
 		stream := c.scope&(storage.KeyScopeResource|storage.KeyScopeScope) != 0
 		record := c.scope&storage.KeyScopeRecord != 0
 		switch {
 		case stream && !record && c.scope != storage.KeyScopeResource|storage.KeyScopeScope:
-			// EqualMatcher uses storage text, which differs from pdata for bytes and composites.
-			// Without type metadata, even equality must remain a callback on a routed read.
-			matchers = append(matchers, fetch.Matcher{Name: []byte(c.rawKey), Match: match})
+			// String hints leave other types to the callback's pdata rendering.
+			fm := fetch.Matcher{Name: []byte(c.rawKey), Match: match}
+			for _, m := range ms {
+				if len(m.stringValues) > 0 {
+					fm.StringValues = m.stringValues
+					break
+				}
+			}
+			matchers = append(matchers, fm)
 		case record && !stream:
 			if isFixedLogColumn(c.rawKey) {
 				continue
@@ -502,6 +519,13 @@ func (c logColumns) recordInto(batch *fetch.Batch, i int, attrBuf *signal.Attrib
 // label as the empty string (Loki semantics).
 type preparedSelector []preparedMatcher
 
+func (n *logStreamNode) selectorMatchers() preparedSelector {
+	if n.prepared != nil || len(n.selector) == 0 {
+		return n.prepared
+	}
+	return prepareSelector(n.selector)
+}
+
 // preparedMatcher is one selector matcher with its per-record work hoisted out. A severity-derived
 // matcher is resolved case-insensitively — chstorage resolves one to a severity number rather than
 // comparing text, and a selector must not mean two things on the two backends — and that folding is
@@ -509,10 +533,9 @@ type preparedSelector []preparedMatcher
 type preparedMatcher struct {
 	logql.LabelMatcher
 	// level marks a severity-derived label, tested once here rather than per record.
-	level bool
-	// foldRe is a level regexp recompiled case-insensitively, so matching is one pass over the
-	// record's own spelling instead of a pass per casing it might have been written in.
-	foldRe *regexp.Regexp
+	level        bool
+	regexpMatch  func(string) bool
+	stringValues [][]byte
 }
 
 // prepareSelector compiles matchers for repeated evaluation. It is called once per query; [match]
@@ -525,13 +548,24 @@ func prepareSelector(matchers []logql.LabelMatcher) preparedSelector {
 	out := make(preparedSelector, len(matchers))
 	for i, m := range matchers {
 		p := preparedMatcher{LabelMatcher: m, level: isLevelLabelName(string(m.Label))}
-		if p.level && m.Re != nil {
+		re := m.Re
+		if p.level && re != nil {
 			// A pattern anchored by the parser stays anchored: the flag group only sets case
 			// folding for what follows it. A pattern that will not recompile keeps its own casing
 			// rather than failing the query.
-			if re, err := regexp.Compile("(?i)" + m.Re.String()); err == nil {
-				p.foldRe = re
+			if folded, err := regexp.Compile("(?i)" + re.String()); err == nil {
+				re = folded
 			}
+		}
+		if re != nil {
+			prepared := xregexp.NewMatcher(re)
+			p.regexpMatch = prepared.MatchString
+			if m.Op == logql.OpRe && !p.level {
+				p.stringValues = stringValues(prepared.Values())
+			}
+		}
+		if m.Op == logql.OpEq && !p.level {
+			p.stringValues = [][]byte{[]byte(m.Value)}
 		}
 		out[i] = p
 	}
@@ -552,40 +586,51 @@ func (p preparedSelector) match(set logqlabels.LabelSet) bool {
 }
 
 func (m preparedMatcher) matches(value string) bool {
-	if !m.level {
-		return matchLabel(m.LabelMatcher, value)
-	}
-
 	switch m.Op {
 	case logql.OpEq:
-		return strings.EqualFold(value, m.Value)
+		if m.level {
+			return strings.EqualFold(value, m.Value)
+		}
+		return value == m.Value
 	case logql.OpNotEq:
-		return !strings.EqualFold(value, m.Value)
+		if m.level {
+			return !strings.EqualFold(value, m.Value)
+		}
+		return value != m.Value
 	case logql.OpRe:
-		re := cmp.Or(m.foldRe, m.Re)
-		return re != nil && re.MatchString(value)
+		return m.regexpMatch != nil && m.regexpMatch(value)
 	case logql.OpNotRe:
-		re := cmp.Or(m.foldRe, m.Re)
-		return re != nil && !re.MatchString(value)
+		return m.regexpMatch != nil && !m.regexpMatch(value)
 	default:
 		return false
 	}
 }
 
-// matchLabel evaluates one LogQL label matcher against a value.
-func matchLabel(m logql.LabelMatcher, value string) bool {
-	switch m.Op {
-	case logql.OpEq:
-		return value == m.Value
-	case logql.OpNotEq:
-		return value != m.Value
-	case logql.OpRe:
-		return m.Re != nil && m.Re.MatchString(value)
-	case logql.OpNotRe:
-		return m.Re != nil && !m.Re.MatchString(value)
-	default:
-		return false
+func preparePipelineSelector(matchers []logql.LabelMatcher) preparedSelector {
+	if len(matchers) == 0 {
+		return nil
 	}
+	out := make(preparedSelector, len(matchers))
+	for i, m := range matchers {
+		p := &out[i]
+		p.LabelMatcher = m
+		if m.Op == logql.OpEq {
+			p.stringValues = [][]byte{[]byte(m.Value)}
+		}
+		if m.Op != logql.OpRe && m.Op != logql.OpNotRe {
+			continue
+		}
+		// Pipeline labels use Prometheus' matcher, whose dot matches newlines.
+		prepared, err := labels.NewFastRegexMatcher(m.Value)
+		if err != nil {
+			continue
+		}
+		p.regexpMatch = prepared.MatchString
+		if m.Op == logql.OpRe {
+			p.stringValues = finiteRegexpValues("^(?s:" + m.Value + ")$")
+		}
+	}
+	return out
 }
 
 // LabelNames implements [logstorage.Querier]. It returns the distinct label names of the streams
@@ -821,12 +866,14 @@ func (q *LogQuerier) DetectedFields(ctx context.Context, opts logstorage.LabelsO
 // logStreams returns the label sets of the streams matching the selector within [start, end].
 func (q *LogQuerier) logStreams(ctx context.Context, start, end time.Time, matchers []logql.LabelMatcher) ([]logqlabels.LabelSet, error) {
 	lo, hi := seriesWindow(start, end)
-	series, err := q.b.src.LogSeries(ctx, q.b.tenant, nil, lo, hi)
+	node := logStreamNode{q: q, selector: matchers, prepared: prepareSelector(matchers)}
+	pushed, _, _ := node.streamFilters(ctx, lo, hi)
+	series, err := q.b.src.LogSeries(ctx, q.b.tenant, pushed, lo, hi)
 	if err != nil {
 		return nil, errors.Wrap(err, "log series")
 	}
 
-	selector := prepareSelector(matchers)
+	selector := node.selectorMatchers()
 	var out []logqlabels.LabelSet
 	for _, s := range series {
 		set := logqlabels.NewLabelSet()

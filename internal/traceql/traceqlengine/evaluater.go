@@ -12,6 +12,7 @@ import (
 	"github.com/oteldb/oteldb/internal/otelstorage"
 	"github.com/oteldb/oteldb/internal/traceql"
 	"github.com/oteldb/oteldb/internal/tracestorage"
+	"github.com/oteldb/oteldb/internal/xregexp"
 )
 
 func filterBy[E Evaluater](eval E, sets []Spanset) (result []Spanset) {
@@ -196,12 +197,13 @@ func buildBinaryOp(op traceql.BinaryOp, right traceql.TypedExpr) (BinaryOp, erro
 			return nil, errors.Wrapf(err, "compile regexp %q", pattern)
 		}
 
+		prepared := xregexp.NewMatcher(re)
 		if op == traceql.OpRe {
 			return func(a, _ traceql.Static) (r traceql.Static) {
 				if a.Type != traceql.TypeString {
 					r.SetBool(false)
 				} else {
-					r.SetBool(re.MatchString(a.AsString()))
+					r.SetBool(prepared.MatchString(a.AsString()))
 				}
 				return r
 			}, nil
@@ -210,7 +212,7 @@ func buildBinaryOp(op traceql.BinaryOp, right traceql.TypedExpr) (BinaryOp, erro
 			if a.Type != traceql.TypeString {
 				r.SetBool(false)
 			} else {
-				r.SetBool(!re.MatchString(a.AsString()))
+				r.SetBool(!prepared.MatchString(a.AsString()))
 			}
 			return r
 		}, nil

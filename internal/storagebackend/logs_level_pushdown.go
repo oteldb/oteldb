@@ -7,7 +7,6 @@ import (
 	"github.com/oteldb/storage/signal"
 	siglog "github.com/oteldb/storage/signal/log"
 
-	"github.com/oteldb/oteldb/internal/logql"
 	"github.com/oteldb/oteldb/internal/logql/logqlengine/logqlabels"
 )
 
@@ -32,9 +31,9 @@ const maxSeverityNumber = int64(plog.SeverityNumberFatal4)
 // builds blooms over byte columns only, and it compiles an int column to a per-value memo that
 // consults Match alone. So no part is skipped by this; what is saved is the materialization of the
 // records it drops.
-func levelCondition(matchers []logql.LabelMatcher) (fetch.Condition, bool) {
+func levelCondition(matchers preparedSelector) (fetch.Condition, bool) {
 	var level preparedSelector
-	for _, m := range prepareSelector(matchers) {
+	for _, m := range matchers {
 		if m.level {
 			level = append(level, m)
 		}

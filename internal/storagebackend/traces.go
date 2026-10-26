@@ -197,6 +197,14 @@ func (q *TraceQuerier) TagNames(ctx context.Context, opts tracestorage.TagNamesO
 //   - an event- or link-scoped attribute lives inside the events/links blob columns, which carry no
 //     dictionary of their own.
 func (q *TraceQuerier) TagValues(ctx context.Context, attr traceql.Attribute, opts tracestorage.TagValuesOptions) (iterators.Iterator[tracestorage.Tag], error) {
+	if len(opts.AutocompleteQuery.Matchers) > 0 {
+		switch attr.Prop {
+		case traceql.SpanName, traceql.RootSpanName, traceql.RootServiceName,
+			traceql.SpanStatusMessage, traceql.InstrumentationName, traceql.InstrumentationVersion,
+			traceql.SpanAttribute:
+			return q.filteredTagValues(ctx, attr, opts)
+		}
+	}
 	switch attr.Prop {
 	case traceql.SpanStatus:
 		return iterators.Slice(spanStatusTags(attr)), nil
