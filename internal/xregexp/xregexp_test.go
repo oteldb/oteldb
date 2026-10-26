@@ -3,6 +3,7 @@ package xregexp
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -29,7 +30,7 @@ func TestLiterals(t *testing.T) {
 	}
 	for i, tt := range tests {
 		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
-			require.Equal(t, tt.want, Literals(tt.pattern))
+			require.Equal(t, tt.want, slices.Collect(Literals(tt.pattern)))
 		})
 	}
 }
@@ -46,7 +47,7 @@ func FuzzLiterals(f *testing.F) {
 		if err != nil || !re.MatchString(value) {
 			return // only matching values constrain the invariant
 		}
-		for _, lit := range Literals(pattern) {
+		for lit := range Literals(pattern) {
 			require.Containsf(t, value, lit,
 				"value %q matches %q but lacks required literal %q", value, pattern, lit)
 		}

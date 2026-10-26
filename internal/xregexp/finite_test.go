@@ -22,6 +22,8 @@ func TestFiniteSet(t *testing.T) {
 		{name: "unicode", pattern: `^(猫|犬)$`, want: []string{"犬", "猫"}},
 		{name: "empty", pattern: `^$`, want: []string{""}},
 		{name: "empty_alternative", pattern: `^(|foo)$`, want: []string{"", "foo"}},
+		{name: "leading_empty", pattern: `^(|foo)bar$`, want: []string{"bar", "foobar"}},
+		{name: "internal_empty", pattern: `^foo(bar||baz)$`, want: []string{"foo", "foobar", "foobaz"}},
 		{name: "duplicate", pattern: `^(foo|foo)$`, want: []string{"foo"}},
 		{name: "capture", pattern: `(^foo$)`, want: []string{"foo"}},
 		{name: "explicit_anchors", pattern: `\A(?:foo|bar)\z`, want: []string{"bar", "foo"}},
@@ -42,7 +44,7 @@ func TestFiniteSet(t *testing.T) {
 		{name: "invalid", pattern: `(`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, FiniteSet(tt.pattern))
+			require.Equal(t, tt.want, slices.Collect(FiniteSet(tt.pattern)))
 		})
 	}
 }
@@ -54,8 +56,8 @@ func FuzzFiniteSet(f *testing.F) {
 		}
 	}
 	f.Fuzz(func(t *testing.T, pattern, value string) {
-		values := FiniteSet(pattern)
-		if values == nil {
+		values := slices.Collect(FiniteSet(pattern))
+		if len(values) == 0 {
 			return
 		}
 		re, err := regexp.Compile(pattern)

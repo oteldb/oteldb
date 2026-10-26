@@ -1,6 +1,9 @@
 package storagebackend
 
 import (
+	"bytes"
+	"slices"
+
 	"github.com/oteldb/storage/query/fetch"
 
 	"github.com/oteldb/oteldb/internal/traceql"
@@ -15,6 +18,15 @@ func rawStringConditionHints(c *fetch.Condition, op traceql.BinaryOp, value trac
 	case traceql.OpEq:
 		c.Equal = &fetch.EqualMatcher{Name: c.Column, Value: value.AsString()}
 	case traceql.OpRe:
-		c.AnyEqual = fetch.AnyEqualStrings(xregexp.FiniteSet(value.AsString()))
+		c.AnyEqual = finiteRegexpValues(value.AsString())
 	}
+}
+
+func finiteRegexpValues(pattern string) [][]byte {
+	var values [][]byte
+	for value := range xregexp.FiniteSet(pattern) {
+		values = append(values, []byte(value))
+	}
+	slices.SortFunc(values, bytes.Compare)
+	return slices.CompactFunc(values, bytes.Equal)
 }

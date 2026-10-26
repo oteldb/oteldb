@@ -194,3 +194,25 @@ func BenchmarkExactPredicateHints(b *testing.B) {
 		}
 	})
 }
+
+func BenchmarkFiniteLogPlanAndEval(b *testing.B) {
+	store, params := hintLogFixture(b)
+	engine, err := logqlengine.NewEngine(storagebackend.New(store).Logs(), logqlengine.Options{
+		Optimizers: []logqlengine.Optimizer{&storagebackend.LogQLOptimizer{}},
+	})
+	require.NoError(b, err)
+	b.ReportAllocs()
+	for b.Loop() {
+		query, err := engine.NewQuery(b.Context(), `{job="api"} |~ "^(foo|bar)$"`)
+		if err != nil {
+			b.Fatal(err)
+		}
+		result, err := query.Eval(b.Context(), params)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if logqlResultCount(result) != 2 {
+			b.Fatal("unexpected result count")
+		}
+	}
+}

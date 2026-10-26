@@ -1,9 +1,11 @@
 package xregexp
 
 import (
+	"iter"
 	"regexp/syntax"
-	"slices"
 	"unicode/utf8"
+
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/regexutil"
 )
 
 const (
@@ -12,109 +14,126 @@ const (
 	maxFiniteDepth  = 64
 )
 
-// FiniteSet returns the exact values accepted by a whole-text anchored pattern, or nil when unsupported.
+// FiniteSet yields the exact values accepted by a whole-text anchored pattern, or nothing when unsupported.
 // Expansion is bounded to 64 values and 4 KiB; folding, repetition and invalid-UTF-8 matches are excluded.
-func FiniteSet(pattern string) []string {
+func FiniteSet(pattern string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		yieldFinite(pattern, yield)
+	}
+}
+
+func yieldFinite(pattern string, yield func(string) bool) {
 	re, err := syntax.Parse(pattern, syntax.Perl)
 	if err != nil {
-		return nil
+		return
 	}
 	depth := 0
 	for re.Op == syntax.OpCapture {
 		depth++
 		if depth > maxFiniteDepth {
-			return nil
+			return
 		}
 		re = re.Sub[0]
 	}
-	if re.Op != syntax.OpConcat || len(re.Sub) < 2 ||
-		re.Sub[0].Op != syntax.OpBeginText || re.Sub[len(re.Sub)-1].Op != syntax.OpEndText {
-		return nil
+	if re.Op != syntax.OpConcat || len(re.Sub) < 2 || re.Sub[0].Op != syntax.OpBeginText || re.Sub[len(re.Sub)-1].Op != syntax.OpEndText {
+		return
 	}
-	values, ok := finiteConcat(re.Sub[1:len(re.Sub)-1], depth)
-	if !ok {
-		return nil
+	body := &syntax.Regexp{Op: syntax.OpConcat, Sub: re.Sub[1 : len(re.Sub)-1]}
+	if _, _, ok := finiteBounds(body, depth); !ok {
+		return
 	}
-	slices.Sort(values)
-	return slices.Compact(values)
+	for (body.Op == syntax.OpConcat && len(body.Sub) == 1) || body.Op == syntax.OpCapture {
+		body = body.Sub[0]
+	}
+	switch body.Op {
+	case syntax.OpLiteral:
+		yield(string(body.Rune))
+		return
+	case syntax.OpEmptyMatch:
+		yield("")
+		return
+	case syntax.OpConcat:
+		if len(body.Sub) == 0 {
+			yield("")
+			return
+		}
+	}
+	values := regexutil.GetOrValuesRegex(body.String())
+	if len(values) > maxFiniteValues {
+		return
+	}
+	bytes := 0
+	for _, value := range values {
+		bytes += len(value)
+		if bytes > maxFiniteBytes {
+			return
+		}
+	}
+	for i, value := range values {
+		if i > 0 && value == values[i-1] {
+			continue
+		}
+		if !yield(value) {
+			return
+		}
+	}
 }
 
-func finiteValues(re *syntax.Regexp, depth int) ([]string, bool) {
+func finiteBounds(re *syntax.Regexp, depth int) (values, bytes int, ok bool) {
 	if depth > maxFiniteDepth || re.Flags&syntax.FoldCase != 0 {
-		return nil, false
+		return 0, 0, false
 	}
 	switch re.Op {
 	case syntax.OpEmptyMatch:
-		return []string{""}, true
+		values = 1
 	case syntax.OpLiteral:
-		// Regexp also matches malformed UTF-8 as RuneError; its UTF-8 spelling is not the full byte set.
+		values = 1
 		for _, r := range re.Rune {
+			// Regexp also matches malformed UTF-8 as RuneError; its UTF-8 spelling is not the full byte set.
 			if !utf8.ValidRune(r) || r == utf8.RuneError {
-				return nil, false
+				return 0, 0, false
+			}
+			bytes += utf8.RuneLen(r)
+			if bytes > maxFiniteBytes {
+				return 0, 0, false
 			}
 		}
-		value := string(re.Rune)
-		return []string{value}, len(value) <= maxFiniteBytes
 	case syntax.OpCharClass:
-		var values []string
 		for i := 0; i < len(re.Rune); i += 2 {
 			lo, hi := re.Rune[i], re.Rune[i+1]
-			if lo <= utf8.RuneError && utf8.RuneError <= hi || int64(hi-lo)+1 > int64(maxFiniteValues-len(values)) {
-				return nil, false
+			if lo <= utf8.RuneError && utf8.RuneError <= hi || int64(hi-lo)+1 > int64(maxFiniteValues-values) {
+				return 0, 0, false
 			}
 			for r := lo; r <= hi; r++ {
 				if !utf8.ValidRune(r) {
-					return nil, false
+					return 0, 0, false
 				}
-				values = append(values, string(r))
+				values++
+				bytes += utf8.RuneLen(r)
 			}
 		}
-		return values, true
 	case syntax.OpCapture:
-		return finiteValues(re.Sub[0], depth+1)
-	case syntax.OpConcat:
-		return finiteConcat(re.Sub, depth+1)
-	case syntax.OpAlternate:
-		var values []string
-		bytes := 0
+		return finiteBounds(re.Sub[0], depth+1)
+	case syntax.OpConcat, syntax.OpAlternate:
+		if re.Op == syntax.OpConcat {
+			values = 1
+		}
 		for _, sub := range re.Sub {
-			part, ok := finiteValues(sub, depth+1)
-			if !ok || len(values)+len(part) > maxFiniteValues {
-				return nil, false
+			n, size, valid := finiteBounds(sub, depth+1)
+			if !valid {
+				return 0, 0, false
 			}
-			for _, value := range part {
-				bytes += len(value)
-				if bytes > maxFiniteBytes {
-					return nil, false
-				}
+			if re.Op == syntax.OpConcat {
+				bytes, values = bytes*n+size*values, values*n
+			} else {
+				bytes, values = bytes+size, values+n
 			}
-			values = append(values, part...)
+			if values > maxFiniteValues || bytes > maxFiniteBytes {
+				return 0, 0, false
+			}
 		}
-		return values, true
 	default:
-		return nil, false
+		return 0, 0, false
 	}
-}
-
-func finiteConcat(subs []*syntax.Regexp, depth int) ([]string, bool) {
-	values := []string{""}
-	for _, sub := range subs {
-		part, ok := finiteValues(sub, depth+1)
-		if !ok || len(values)*len(part) > maxFiniteValues {
-			return nil, false
-		}
-		next := make([]string, 0, len(values)*len(part))
-		bytes := 0
-		for _, prefix := range values {
-			for _, suffix := range part {
-				bytes += len(prefix) + len(suffix)
-				if bytes > maxFiniteBytes {
-					return nil, false
-				}
-				next = append(next, prefix+suffix)
-			}
-		}
-		values = next
-	}
-	return values, true
+	return values, bytes, values <= maxFiniteValues && bytes <= maxFiniteBytes
 }

@@ -267,9 +267,9 @@ func lineFilterCondition(lf *logql.LineFilter, finiteSets bool) (fetch.Condition
 			Match:  func(v signal.Value) bool { return re.Match(valueBytes(v)) },
 		}
 		if finiteSets {
-			condition.AnyEqual = fetch.AnyEqualStrings(xregexp.FiniteSet(re.String()))
+			condition.AnyEqual = finiteRegexpValues(re.String())
 		}
-		for _, lit := range xregexp.Literals(lf.By.Value) {
+		for lit := range xregexp.Literals(lf.By.Value) {
 			condition.Tokens = bloom.SafeTokens(condition.Tokens, []byte(lit), false, false)
 		}
 		if len(condition.Tokens) == 0 && len(condition.AnyEqual) == 0 {

@@ -117,6 +117,8 @@ the entire selector has been lowered exactly.
   log bodies and trace names/messages; extraction is bounded and rejects folding and unsupported
   forms. Arbitrary Loki attributes retain callback predicates because pdata text can differ from
   storage canonical text. Substring alternatives never become equality sets.
+  Finite alternatives use VictoriaMetrics' existing extraction after Go-regexp safety checks;
+  transient prefilter values use iterators, and only the owned wire byte set is collected and sorted.
 - **Legacy Tempo tag search:** native fetch conditions apply intrinsic `name` equality and positive
   span-duration bounds before span materialization. Attribute tags stay with the residual check,
   which preserves span/resource/scope precedence and pdata string formatting. The API's trace

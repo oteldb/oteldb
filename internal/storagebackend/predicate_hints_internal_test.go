@@ -118,3 +118,14 @@ func TestTraceIDSetHint(t *testing.T) {
 	require.Empty(t, empty.AnyEqual)
 	require.False(t, empty.Match(signal.StringValue(make([]byte, 16))))
 }
+
+func TestFiniteRegexpValuesOwned(t *testing.T) {
+	t.Parallel()
+	pattern := `^(foo|bar|foo)$`
+	values := finiteRegexpValues(pattern)
+	require.Equal(t, fetch.AnyEqualStrings([]string{"bar", "foo"}), values)
+	values[0][0] = 'x'
+	require.Equal(t, fetch.AnyEqualStrings([]string{"bar", "foo"}), finiteRegexpValues(pattern))
+	require.Equal(t, fetch.AnyEqualStrings([]string{"", "foo"}), finiteRegexpValues(`^(|foo)$`))
+	require.Nil(t, finiteRegexpValues(`^(foo|[a-z][a-z])$`), "a rejected expansion cannot expose a partial hint")
+}
