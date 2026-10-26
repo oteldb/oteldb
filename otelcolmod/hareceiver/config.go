@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/confmap"
 )
 
 // SourceKind selects a Home Assistant log stream.
@@ -151,4 +152,12 @@ func (c *Config) Validate() error {
 		return errors.New("recombine_window must not be negative")
 	}
 	return nil
+}
+
+// Unmarshal decodes receiver fields alongside the embedded HTTP configuration.
+func (c *Config) Unmarshal(conf *confmap.Conf) error {
+	if err := conf.Unmarshal(c); err != nil {
+		return err
+	}
+	return c.ClientConfig.Unmarshal(conf)
 }

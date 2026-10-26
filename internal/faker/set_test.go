@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/go-faster/jx"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/xpdata/xhash"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
 )
@@ -67,7 +67,7 @@ func TestSet(t *testing.T) {
 			"bar": "baz",
 		}),
 	)
-	t.Logf("%x", pdatautil.MapHash(m))
+	t.Logf("%x", xhash.MapHash(m))
 }
 
 func BenchmarkMapHash(b *testing.B) {
@@ -79,6 +79,6 @@ func BenchmarkMapHash(b *testing.B) {
 		}),
 	)
 	for i := 0; i < b.N; i++ {
-		pdatautil.MapHash(m)
+		xhash.MapHash(m)
 	}
 }
