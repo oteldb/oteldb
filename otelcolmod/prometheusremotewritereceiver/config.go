@@ -18,10 +18,19 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/confmap"
 )
 
 // Config defines config for [Receiver].
 type Config struct {
 	confighttp.ServerConfig `mapstructure:",squash"`
 	TimeThreshold           time.Duration `mapstructure:"time_threshold"`
+}
+
+// Unmarshal decodes receiver fields alongside the embedded HTTP configuration.
+func (c *Config) Unmarshal(conf *confmap.Conf) error {
+	if err := conf.Unmarshal(c); err != nil {
+		return err
+	}
+	return c.ServerConfig.Unmarshal(conf)
 }

@@ -3,6 +3,11 @@
 The dependency update uses Collector core 1.69/0.163 and Prometheus 0.315.
 Scarecrow remains the primary query engine; there is no Thanos engine dependency.
 
+Receiver configuration explicitly decodes both custom and embedded HTTP fields.
+This preserves the remote-write `time_threshold` and Home Assistant credentials,
+sources, and polling settings despite the HTTP types gaining `Unmarshal` methods.
+Nested keepalive normalization and validation run through the HTTP decoder.
+
 The embedded collector keeps the application's logger, name, fields, and level.
 It does not rebuild logging from Collector telemetry configuration. The removed
 `LoggerSettings.ZapOptions` field does not affect application logging.
@@ -38,6 +43,8 @@ These upstream changes affect `odbagent` components when configured:
   `group_rebalance_strategy` are removed; use the current equivalents.
 - HTTP keepalive settings use the nested `keepalive` block. Deprecated flat
   settings still work individually, but combining both forms is an error.
+  Upstream HTTP decoding can ignore unknown sibling keys; configuration typos
+  are not reliably rejected by these embedding components.
 
 The local Prometheus remote-write receiver uses this repository's converter.
 Changes to the upstream remote-write receiver do not update that converter.
