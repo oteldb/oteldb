@@ -2,6 +2,7 @@ package storagebackend
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -90,23 +91,19 @@ func (n *bucketSamplingNode) EvalBucketedSample(ctx context.Context, params logq
 		return n.streamingFallback(ctx, params, window)
 	}
 
-	// counts[k] maps a group key to its running total at output step k. groupMaps caches the label
-	// map per group key so AggregatedLabels is built once per distinct group, not per record.
-	counts := make([]map[string]float64, numSteps)
-	groupMaps := map[string]map[string]string{}
+	groups := map[string]*logWindowGroup{}
+	var denseBudget int64
+	for _, batch := range batches {
+		denseBudget += min(int64(len(batch.Timestamps)), math.MaxInt64-denseBudget)
+	}
 
 	for _, batch := range batches {
 		cols := newLogColumns(batch)
 		for i, ts := range batch.Timestamps {
-			gk := n.groupKey(cols, i)
-			var val float64
-			switch n.op {
-			case bytesSampling:
-				if i < len(cols.body) {
-					val = float64(len(cols.body[i]))
+			if i&4095 == 0 {
+				if err := ctx.Err(); err != nil {
+					return nil, err
 				}
-			default:
-				val = 1
 			}
 
 			// Steps s_k = Start + k*step with ts <= s_k < ts+window contain this record.
@@ -116,40 +113,59 @@ func (n *bucketSamplingNode) EvalBucketedSample(ctx context.Context, params logq
 			if kHi >= int64(numSteps) {
 				kHi = int64(numSteps) - 1
 			}
-			for k := kLo; k <= kHi; k++ {
-				m := counts[k]
-				if m == nil {
-					m = map[string]float64{}
-					counts[k] = m
-				}
-				m[gk] += val
+			if kLo > kHi {
+				continue
 			}
-			// Build the label map once per distinct group, not per record.
-			if _, ok := groupMaps[gk]; !ok {
-				groupMaps[gk] = n.groupLabels(gk)
+			gk := n.groupKey(cols, i)
+			group := groups[gk]
+			if group == nil {
+				group = newLogWindowGroup(numSteps, &denseBudget)
+				groups[gk] = group
 			}
+			var bytes int64
+			if n.op == bytesSampling && i < len(cols.body) {
+				bytes = int64(len(cols.body[i]))
+			}
+			group.add(int(kLo), int(kHi), bytes)
 		}
 	}
 
-	steps := make([]logqlmetric.Step, 0, numSteps)
-	for k := range numSteps {
-		m := counts[k]
-		if len(m) == 0 {
-			continue
-		}
-		samples := make([]logqlmetric.Sample, 0, len(m))
-		for gk, total := range m {
-			samples = append(samples, logqlmetric.Sample{
-				Data: total,
-				Set:  logqlabels.AggregatedLabelsFromMap(groupMaps[gk]),
-			})
-		}
-		steps = append(steps, logqlmetric.Step{
-			Timestamp: otelstorage.Timestamp(startNs + int64(k)*stepNs),
-			Samples:   samples,
+	steps := make([]logqlmetric.Step, numSteps)
+	for key, group := range groups {
+		labels := n.groupLabels(key)
+		err := group.visit(func(first, end int, rows, bytes int64) error {
+			for k := first; k < end; k++ {
+				if k&255 == 0 || k == first {
+					if err := ctx.Err(); err != nil {
+						return err
+					}
+				}
+				total := float64(rows)
+				if n.op == bytesSampling {
+					total = float64(bytes)
+					if group.direct != nil {
+						total = group.direct[k]
+					}
+				}
+				steps[k].Samples = append(steps[k].Samples, logqlmetric.Sample{
+					Data: total,
+					Set:  logqlabels.AggregatedLabelsFromMap(labels),
+				})
+			}
+			return nil
 		})
+		if err != nil {
+			return nil, err
+		}
 	}
-	return iterators.Slice(steps), nil
+	populated := steps[:0]
+	for k := range steps {
+		if len(steps[k].Samples) > 0 {
+			steps[k].Timestamp = otelstorage.Timestamp(startNs + int64(k)*stepNs)
+			populated = append(populated, steps[k])
+		}
+	}
+	return iterators.Slice(populated), nil
 }
 
 // streamingFallback evaluates the range aggregation the generic way (stream entries, apply the
