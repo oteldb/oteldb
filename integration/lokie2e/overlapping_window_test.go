@@ -91,7 +91,9 @@ func TestLogQLOverlappingWindowsHTTP(t *testing.T) {
 								matrix, ok := response.Data.GetMatrixResult()
 								require.True(t, ok)
 								want := map[string]map[float64]float64{}
-								for tick := start; !tick.After(end); tick = tick.Add(time.Second) {
+								gridStart := start.Truncate(time.Second)
+								gridEnd := end.Truncate(time.Second).Add(time.Second)
+								for tick := gridStart; !tick.After(gridEnd); tick = tick.Add(time.Second) {
 									for _, record := range records {
 										at := start.Add(record.offset)
 										if !at.After(tick.Add(-window)) || at.After(tick) {
