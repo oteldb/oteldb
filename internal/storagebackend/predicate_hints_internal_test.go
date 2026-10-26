@@ -1,20 +1,67 @@
 package storagebackend
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
+	"regexp"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/oteldb/storage/index/bloom"
 	"github.com/oteldb/storage/query/fetch"
 	"github.com/oteldb/storage/signal"
 	sigtrace "github.com/oteldb/storage/signal/trace"
 
+	"github.com/oteldb/oteldb/internal/logql"
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
 	"github.com/oteldb/oteldb/internal/otelstorage"
 	"github.com/oteldb/oteldb/internal/traceql"
 )
+
+func FuzzLineRegexpHints(f *testing.F) {
+	for _, seed := range [][2]string{
+		{`foo`, "xfooy"},
+		{`foo|bar`, "xbarz"},
+		{`^(foo|bar)$`, "foo"},
+		{`^foo|bar$`, "xbar"},
+		{`foo bar baz`, "xfoo bar bazY"},
+		{`foo.*bar baz`, "xfoo middle bar bazY"},
+		{`foo(?: middle)? bar baz`, "xfoo bar bazY"},
+		{`(?i:foo) bar baz`, "xFOO bar bazY"},
+		{`(?m)^foo$`, "before\nfoo\nafter"},
+		{`^(|foo)$`, ""},
+	} {
+		f.Add(seed[0], seed[1])
+	}
+	f.Fuzz(func(t *testing.T, pattern, body string) {
+		re, err := regexp.Compile(pattern)
+		if err != nil || !re.MatchString(body) {
+			return
+		}
+		condition, ok := lineFilterCondition(&logql.LineFilter{
+			Op: logql.OpRe,
+			By: logql.LineFilterValue{Value: pattern, Re: re},
+		}, true)
+		if !ok {
+			return
+		}
+		if !condition.Match(signal.StringValue([]byte(body))) {
+			t.Fatalf("condition rejects regexp match %q over %q", pattern, body)
+		}
+		if len(condition.AnyEqual) > 0 && !fetch.InAnyEqual(condition.AnyEqual, []byte(body)) {
+			t.Fatalf("finite set rejects regexp match %q over %q", pattern, body)
+		}
+		tokens := bloom.Tokenize(nil, []byte(body))
+		for _, hint := range condition.Tokens {
+			if !slices.ContainsFunc(tokens, func(token []byte) bool { return bytes.Equal(token, hint) }) {
+				t.Fatalf("token %q rejects regexp match %q over %q", hint, pattern, body)
+			}
+		}
+	})
+}
 
 func TestFiniteLineRegexpHints(t *testing.T) {
 	t.Parallel()
