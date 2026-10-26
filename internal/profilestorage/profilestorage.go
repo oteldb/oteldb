@@ -20,7 +20,7 @@ import (
 // label matchers, resolving symbols, and merging samples into the requested
 // representation.
 type Querier interface {
-	// ProfileTypes returns the profile types available in the given time range.
+	// ProfileTypes returns the profile types matching the given selector and time range.
 	ProfileTypes(ctx context.Context, opts ProfileTypesOptions) ([]profileql.ProfileType, error)
 
 	// LabelNames returns all label names matching the given selector.
@@ -36,6 +36,10 @@ type Querier interface {
 
 // ProfileTypesOptions defines options for [Querier.ProfileTypes].
 type ProfileTypesOptions struct {
+	// Type, when set, restricts the lookup to series of the given profile type.
+	Type *profileql.ProfileType
+	// Matchers restricts the lookup to series matching the given matchers.
+	Matchers []profileql.LabelMatcher
 	// Start defines the time range for the lookup.
 	//
 	// Querier ignores the parameter, if it is zero.

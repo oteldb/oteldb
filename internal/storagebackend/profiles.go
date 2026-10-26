@@ -30,10 +30,14 @@ var reservedProfileLabels = map[string]struct{}{
 }
 
 // ProfileTypes implements [profilestorage.Querier]. It enumerates the distinct profile types of the
-// tenant's streams in the window, reading the type out of each series' reserved labels.
+// matching tenant streams, reading the type out of each series' reserved labels.
 func (q *ProfileQuerier) ProfileTypes(ctx context.Context, opts profilestorage.ProfileTypesOptions) ([]profileql.ProfileType, error) {
+	matchers, err := profileFetchMatchers(opts.Type, opts.Matchers)
+	if err != nil {
+		return nil, err
+	}
 	start, end := seriesWindow(opts.Start, opts.End)
-	series, err := q.b.src.ProfileSeries(ctx, q.b.tenant, nil, start, end)
+	series, err := q.b.src.ProfileSeries(ctx, q.b.tenant, matchers, start, end)
 	if err != nil {
 		return nil, errors.Wrap(err, "profile series")
 	}
