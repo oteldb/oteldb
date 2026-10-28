@@ -1,0 +1,54 @@
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/oteldb/integration/prome2e
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkWritePressureBatchSize/points=10000/path=native-8         	      20	   3097906 ns/op	  51.65 MB/s	   3227987 points/s	  497557 B/op	    5021 allocs/op
+BenchmarkWritePressureBatchSize/points=10000/path=adapter-8        	      20	   4652729 ns/op	  34.39 MB/s	   2149276 points/s	 8188942 B/op	   85073 allocs/op
+BenchmarkWritePressureBatchSize/points=65536/path=native-8         	      20	  22210622 ns/op	  47.21 MB/s	   2950660 points/s	 3252201 B/op	   32789 allocs/op
+BenchmarkWritePressureBatchSize/points=65536/path=adapter-8        	      20	  35220844 ns/op	  29.77 MB/s	   1860716 points/s	52782618 B/op	  557140 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/oteldb/integration/prome2e
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkWritePressureBatchSize/points=10000/path=native-8         	      20	   3163069 ns/op	  50.58 MB/s	   3161487 points/s	  497557 B/op	    5021 allocs/op
+BenchmarkWritePressureBatchSize/points=10000/path=adapter-8        	      20	   4846207 ns/op	  33.02 MB/s	   2063469 points/s	 8188940 B/op	   85073 allocs/op
+BenchmarkWritePressureBatchSize/points=65536/path=native-8         	      20	  22615129 ns/op	  46.37 MB/s	   2897883 points/s	 3252201 B/op	   32789 allocs/op
+BenchmarkWritePressureBatchSize/points=65536/path=adapter-8        	      20	  35470317 ns/op	  29.56 MB/s	   1847629 points/s	52269031 B/op	  557129 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/oteldb/integration/prome2e
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkWritePressureBatchSize/points=10000/path=native-8         	      20	   3444012 ns/op	  46.46 MB/s	   2903590 points/s	  497557 B/op	    5021 allocs/op
+BenchmarkWritePressureBatchSize/points=10000/path=adapter-8        	      20	   5923123 ns/op	  27.01 MB/s	   1688299 points/s	 7882640 B/op	   85063 allocs/op
+BenchmarkWritePressureBatchSize/points=65536/path=native-8         	      20	  23034333 ns/op	  45.52 MB/s	   2845144 points/s	 3252201 B/op	   32789 allocs/op
+BenchmarkWritePressureBatchSize/points=65536/path=adapter-8        	      20	  35153628 ns/op	  29.83 MB/s	   1864274 points/s	53296195 B/op	  557151 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/oteldb/integration/prome2e
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkWritePressureBatchSize/points=10000/path=native-8         	      20	   3102555 ns/op	  51.57 MB/s	   3223150 points/s	  497557 B/op	    5021 allocs/op
+BenchmarkWritePressureBatchSize/points=10000/path=adapter-8        	      20	   4732018 ns/op	  33.81 MB/s	   2113263 points/s	 8188954 B/op	   85073 allocs/op
+BenchmarkWritePressureBatchSize/points=65536/path=native-8         	      20	  22220870 ns/op	  47.19 MB/s	   2949299 points/s	 3252201 B/op	   32789 allocs/op
+BenchmarkWritePressureBatchSize/points=65536/path=adapter-8        	      20	  35824246 ns/op	  29.27 MB/s	   1829376 points/s	52782614 B/op	  557140 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/oteldb/integration/prome2e
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkWritePressureBatchSize/points=10000/path=native-8         	      20	   3139318 ns/op	  50.97 MB/s	   3185405 points/s	  497557 B/op	    5021 allocs/op
+BenchmarkWritePressureBatchSize/points=10000/path=adapter-8        	      20	   4704443 ns/op	  34.01 MB/s	   2125650 points/s	 8035724 B/op	   85068 allocs/op
+BenchmarkWritePressureBatchSize/points=65536/path=native-8         	      20	  22307392 ns/op	  47.01 MB/s	   2937860 points/s	 3252201 B/op	   32789 allocs/op
+BenchmarkWritePressureBatchSize/points=65536/path=adapter-8        	      20	  35717384 ns/op	  29.36 MB/s	   1834849 points/s	53039518 B/op	  557146 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/oteldb/integration/prome2e
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkWritePressureBatchSize/points=10000/path=native-8         	      20	   3290570 ns/op	  48.62 MB/s	   3038987 points/s	  497557 B/op	    5021 allocs/op
+BenchmarkWritePressureBatchSize/points=10000/path=adapter-8        	      20	   5812281 ns/op	  27.53 MB/s	   1720495 points/s	 8035914 B/op	   85068 allocs/op
+BenchmarkWritePressureBatchSize/points=65536/path=native-8         	      20	  23283610 ns/op	  45.03 MB/s	   2814684 points/s	 3252201 B/op	   32789 allocs/op
+BenchmarkWritePressureBatchSize/points=65536/path=adapter-8        	      20	  37574490 ns/op	  27.91 MB/s	   1744162 points/s	52782613 B/op	  557140 allocs/op
+PASS

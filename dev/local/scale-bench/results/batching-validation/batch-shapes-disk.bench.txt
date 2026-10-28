@@ -1,0 +1,54 @@
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/oteldb/integration/prome2e
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkWritePressureShape/names=1/shape=remote-write/WAL=false-8         	     100	    493159 ns/op	  33.22 MB/s	   2076411 points/s	  579297 B/op	    8582 allocs/op
+BenchmarkWritePressureShape/names=1/shape=remote-write/WAL=false-8         	     100	    401633 ns/op	  40.79 MB/s	   2549594 points/s	  579301 B/op	    8582 allocs/op
+BenchmarkWritePressureShape/names=1/shape=remote-write/WAL=false-8         	     100	    403324 ns/op	  40.62 MB/s	   2538902 points/s	  581401 B/op	    8583 allocs/op
+BenchmarkWritePressureShape/names=1/shape=remote-write/WAL=false-8         	     100	    398995 ns/op	  41.06 MB/s	   2566451 points/s	  585597 B/op	    8584 allocs/op
+BenchmarkWritePressureShape/names=1/shape=remote-write/WAL=false-8         	     100	    408269 ns/op	  40.13 MB/s	   2508153 points/s	  583485 B/op	    8583 allocs/op
+BenchmarkWritePressureShape/names=1/shape=remote-write/WAL=false-8         	     100	    408234 ns/op	  40.13 MB/s	   2508364 points/s	  583492 B/op	    8583 allocs/op
+BenchmarkWritePressureShape/names=1/shape=remote-write/WAL=true-8          	     100	    507831 ns/op	  32.26 MB/s	   2016418 points/s	  608279 B/op	    8617 allocs/op
+BenchmarkWritePressureShape/names=1/shape=remote-write/WAL=true-8          	     100	    499326 ns/op	  32.81 MB/s	   2050764 points/s	  601902 B/op	    8615 allocs/op
+BenchmarkWritePressureShape/names=1/shape=remote-write/WAL=true-8          	     100	    504711 ns/op	  32.46 MB/s	   2028883 points/s	  599779 B/op	    8614 allocs/op
+BenchmarkWritePressureShape/names=1/shape=remote-write/WAL=true-8          	     100	    497538 ns/op	  32.93 MB/s	   2058136 points/s	  597729 B/op	    8614 allocs/op
+BenchmarkWritePressureShape/names=1/shape=remote-write/WAL=true-8          	     100	    485092 ns/op	  33.78 MB/s	   2110942 points/s	  599789 B/op	    8614 allocs/op
+BenchmarkWritePressureShape/names=1/shape=remote-write/WAL=true-8          	     100	    487484 ns/op	  33.61 MB/s	   2100580 points/s	  595557 B/op	    8613 allocs/op
+BenchmarkWritePressureShape/names=1/shape=grouped/WAL=false-8              	     100	    218005 ns/op	  75.15 MB/s	   4697141 points/s	  467000 B/op	    5518 allocs/op
+BenchmarkWritePressureShape/names=1/shape=grouped/WAL=false-8              	     100	    210904 ns/op	  77.68 MB/s	   4855293 points/s	  458405 B/op	    5515 allocs/op
+BenchmarkWritePressureShape/names=1/shape=grouped/WAL=false-8              	     100	    204952 ns/op	  79.94 MB/s	   4996284 points/s	  464953 B/op	    5517 allocs/op
+BenchmarkWritePressureShape/names=1/shape=grouped/WAL=false-8              	     100	    207010 ns/op	  79.15 MB/s	   4946620 points/s	  457548 B/op	    5515 allocs/op
+BenchmarkWritePressureShape/names=1/shape=grouped/WAL=false-8              	     100	    213099 ns/op	  76.88 MB/s	   4805284 points/s	  457370 B/op	    5515 allocs/op
+BenchmarkWritePressureShape/names=1/shape=grouped/WAL=false-8              	     100	    211711 ns/op	  77.39 MB/s	   4836779 points/s	  455548 B/op	    5514 allocs/op
+BenchmarkWritePressureShape/names=1/shape=grouped/WAL=true-8               	     100	    296676 ns/op	  55.23 MB/s	   3451578 points/s	  472572 B/op	    5545 allocs/op
+BenchmarkWritePressureShape/names=1/shape=grouped/WAL=true-8               	     100	    315045 ns/op	  52.01 MB/s	   3250334 points/s	  475186 B/op	    5546 allocs/op
+BenchmarkWritePressureShape/names=1/shape=grouped/WAL=true-8               	     100	    327086 ns/op	  50.09 MB/s	   3130680 points/s	  476378 B/op	    5547 allocs/op
+BenchmarkWritePressureShape/names=1/shape=grouped/WAL=true-8               	     100	    311449 ns/op	  52.61 MB/s	   3287857 points/s	  474531 B/op	    5546 allocs/op
+BenchmarkWritePressureShape/names=1/shape=grouped/WAL=true-8               	     100	    325656 ns/op	  50.31 MB/s	   3144423 points/s	  475188 B/op	    5546 allocs/op
+BenchmarkWritePressureShape/names=1/shape=grouped/WAL=true-8               	     100	    322264 ns/op	  50.84 MB/s	   3177521 points/s	  467983 B/op	    5544 allocs/op
+BenchmarkWritePressureShape/names=128/shape=remote-write/WAL=false-8       	     100	    433803 ns/op	  37.77 MB/s	   2360516 points/s	  584564 B/op	    8590 allocs/op
+BenchmarkWritePressureShape/names=128/shape=remote-write/WAL=false-8       	     100	    413292 ns/op	  39.64 MB/s	   2477666 points/s	  586624 B/op	    8590 allocs/op
+BenchmarkWritePressureShape/names=128/shape=remote-write/WAL=false-8       	     100	    427056 ns/op	  38.36 MB/s	   2397810 points/s	  590851 B/op	    8592 allocs/op
+BenchmarkWritePressureShape/names=128/shape=remote-write/WAL=false-8       	     100	    407349 ns/op	  40.22 MB/s	   2513814 points/s	  588736 B/op	    8591 allocs/op
+BenchmarkWritePressureShape/names=128/shape=remote-write/WAL=false-8       	     100	    419577 ns/op	  39.05 MB/s	   2440554 points/s	  584540 B/op	    8590 allocs/op
+BenchmarkWritePressureShape/names=128/shape=remote-write/WAL=false-8       	     100	    413797 ns/op	  39.59 MB/s	   2474645 points/s	  588767 B/op	    8591 allocs/op
+BenchmarkWritePressureShape/names=128/shape=remote-write/WAL=true-8        	     100	    503620 ns/op	  32.53 MB/s	   2033280 points/s	  605064 B/op	    8622 allocs/op
+BenchmarkWritePressureShape/names=128/shape=remote-write/WAL=true-8        	     100	    489498 ns/op	  33.47 MB/s	   2091940 points/s	  600808 B/op	    8620 allocs/op
+BenchmarkWritePressureShape/names=128/shape=remote-write/WAL=true-8        	     100	    486345 ns/op	  33.69 MB/s	   2105502 points/s	  602897 B/op	    8621 allocs/op
+BenchmarkWritePressureShape/names=128/shape=remote-write/WAL=true-8        	     100	    497728 ns/op	  32.92 MB/s	   2057347 points/s	  600788 B/op	    8620 allocs/op
+BenchmarkWritePressureShape/names=128/shape=remote-write/WAL=true-8        	     100	    495547 ns/op	  33.06 MB/s	   2066405 points/s	  605033 B/op	    8622 allocs/op
+BenchmarkWritePressureShape/names=128/shape=remote-write/WAL=true-8        	     100	    494536 ns/op	  33.13 MB/s	   2070627 points/s	  596593 B/op	    8619 allocs/op
+BenchmarkWritePressureShape/names=128/shape=grouped/WAL=false-8            	     100	    266455 ns/op	  61.49 MB/s	   3843046 points/s	  465090 B/op	    6287 allocs/op
+BenchmarkWritePressureShape/names=128/shape=grouped/WAL=false-8            	     100	    255121 ns/op	  64.22 MB/s	   4013783 points/s	  453878 B/op	    6283 allocs/op
+BenchmarkWritePressureShape/names=128/shape=grouped/WAL=false-8            	     100	    258371 ns/op	  63.41 MB/s	   3963299 points/s	  457092 B/op	    6284 allocs/op
+BenchmarkWritePressureShape/names=128/shape=grouped/WAL=false-8            	     100	    247515 ns/op	  66.19 MB/s	   4137130 points/s	  458698 B/op	    6285 allocs/op
+BenchmarkWritePressureShape/names=128/shape=grouped/WAL=false-8            	     100	    248518 ns/op	  65.93 MB/s	   4120432 points/s	  461860 B/op	    6285 allocs/op
+BenchmarkWritePressureShape/names=128/shape=grouped/WAL=false-8            	     100	    267730 ns/op	  61.20 MB/s	   3824752 points/s	  453894 B/op	    6283 allocs/op
+BenchmarkWritePressureShape/names=128/shape=grouped/WAL=true-8             	     100	    344635 ns/op	  47.54 MB/s	   2971261 points/s	  472866 B/op	    6314 allocs/op
+BenchmarkWritePressureShape/names=128/shape=grouped/WAL=true-8             	     100	    352895 ns/op	  46.43 MB/s	   2901714 points/s	  469595 B/op	    6313 allocs/op
+BenchmarkWritePressureShape/names=128/shape=grouped/WAL=true-8             	     100	    344278 ns/op	  47.59 MB/s	   2974339 points/s	  471207 B/op	    6314 allocs/op
+BenchmarkWritePressureShape/names=128/shape=grouped/WAL=true-8             	     100	    341874 ns/op	  47.92 MB/s	   2995260 points/s	  469603 B/op	    6313 allocs/op
+BenchmarkWritePressureShape/names=128/shape=grouped/WAL=true-8             	     100	    333895 ns/op	  49.07 MB/s	   3066836 points/s	  466406 B/op	    6312 allocs/op
+BenchmarkWritePressureShape/names=128/shape=grouped/WAL=true-8             	     100	    343150 ns/op	  47.75 MB/s	   2984120 points/s	  471198 B/op	    6313 allocs/op
+PASS
+ok  	github.com/oteldb/oteldb/integration/prome2e	2.232s
