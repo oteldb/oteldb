@@ -22,7 +22,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cheggaaa/pb/v3 v3.2.1
 	github.com/cilium/cilium v1.20.4
-	github.com/docker/cli v29.7.2+incompatible
+	github.com/docker/cli v29.9.2+incompatible
 	github.com/dustin/go-humanize v1.1.0
 	github.com/fatih/color v1.19.0
 	github.com/go-faster/errors v0.8.0
