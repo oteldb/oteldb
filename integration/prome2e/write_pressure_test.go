@@ -1,6 +1,7 @@
 package prome2e_test
 
 import (
+	"context"
 	"io/fs"
 	"math"
 	"os"
@@ -77,7 +78,7 @@ func pressureStore(tb testing.TB, dir string, provider *sdkmetric.MeterProvider)
 	}
 	store, err := storage.Open(tb.Context(), opts, extra...)
 	require.NoError(tb, err)
-	tb.Cleanup(func() { require.NoError(tb, store.Close(tb.Context())) })
+	tb.Cleanup(func() { require.NoError(tb, store.Close(context.Background())) })
 	return store
 }
 
@@ -109,7 +110,7 @@ func checkPressureEquivalence(t *testing.T, names int) {
 		dir := t.TempDir()
 		reader := sdkmetric.NewManualReader()
 		provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-		t.Cleanup(func() { require.NoError(t, provider.Shutdown(t.Context())) })
+		t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.Background())) })
 		store := pressureStore(t, dir, provider)
 		require.NoError(t, storagebackend.New(store).ConsumeMetrics(t.Context(), shape.data))
 		identities, err := store.MetricSeries(t.Context(), "default", nil, 0, math.MaxInt64)
@@ -177,7 +178,7 @@ func BenchmarkWritePressureShape(b *testing.B) {
 						var err error
 						store, err = storage.InMemory()
 						require.NoError(b, err)
-						b.Cleanup(func() { require.NoError(b, store.Close(b.Context())) })
+						b.Cleanup(func() { require.NoError(b, store.Close(context.Background())) })
 					}
 					backend := storagebackend.New(store)
 					b.ReportAllocs()

@@ -1,6 +1,7 @@
 package prome2e_test
 
 import (
+	"context"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -32,7 +33,7 @@ func TestStorageFileIdentityRoundTrip(t *testing.T) {
 	store, err := storage.Open(ctx, options)
 	require.NoError(t, err)
 	firstStore := store
-	t.Cleanup(func() { require.NoError(t, firstStore.Close(ctx)) })
+	t.Cleanup(func() { require.NoError(t, firstStore.Close(context.Background())) })
 	base := time.Unix(2_000_000, 0)
 	for round := range 2 {
 		metrics := pmetric.NewMetrics()
@@ -66,7 +67,7 @@ func TestStorageFileIdentityRoundTrip(t *testing.T) {
 	require.NoError(t, store.Close(ctx))
 	store, err = storage.Open(ctx, options)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, store.Close(ctx)) })
+	t.Cleanup(func() { require.NoError(t, store.Close(context.Background())) })
 	_, client := setupDB(t, integration.TraceProvider(t), storagebackend.New(store))
 	end := pcommon.NewTimestampFromTime(base.Add(15 * time.Second))
 	for _, tt := range []struct {
