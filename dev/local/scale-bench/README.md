@@ -122,3 +122,8 @@ The downstream dependency pin targets the storage draft stack:
 [bounded concurrency #793](https://github.com/oteldb/storage/pull/793).
 Those must merge before this draft is promoted; refresh the storage version after merge.
 Recorded measurements use the exact pre-rebase image/source hashes in the result reports.
+
+[QUEUE_SHUTDOWN_INVESTIGATION.md](QUEUE_SHUTDOWN_INVESTIGATION.md) traces the remaining queue,
+worker cancellation/rollback, and SDK watchdog. `build_shutdown_probe.py` builds a separate
+signal-dump image via an overlay because the normal profiler closes on SIGTERM; it changes
+no production source or shutdown policy.
