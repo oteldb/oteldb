@@ -1,0 +1,2 @@
+# Preserve verbatim machine-produced benchmark and test output.
+*.txt -whitespace

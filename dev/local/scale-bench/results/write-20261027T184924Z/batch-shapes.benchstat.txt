@@ -1,0 +1,43 @@
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/oteldb/integration/prome2e
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+          │ remote-write │               grouped               │
+          │    sec/op    │    sec/op     vs base               │
+1 false      571.8µ ± 6%   262.6µ ± 14%  -54.08% (p=0.002 n=6)
+1 true      1272.9µ ± 2%   354.5µ ±  4%  -72.15% (p=0.002 n=6)
+128 false    585.6µ ± 6%   352.3µ ±  8%  -39.84% (p=0.002 n=6)
+128 true    1260.0µ ± 1%   493.1µ ±  8%  -60.87% (p=0.002 n=6)
+geomean      856.1µ        356.6µ        -58.34%
+
+          │ remote-write │                grouped                │
+          │     B/s      │      B/s       vs base                │
+1 false     27.33Mi ± 6%   59.51Mi ± 16%  +117.76% (p=0.002 n=6)
+1 true      12.27Mi ± 2%   44.08Mi ±  5%  +259.17% (p=0.002 n=6)
+128 false   26.68Mi ± 5%   44.36Mi ±  8%   +66.24% (p=0.002 n=6)
+128 true    12.40Mi ± 1%   31.69Mi ±  9%  +155.52% (p=0.002 n=6)
+geomean     18.25Mi        43.82Mi        +140.08%
+
+          │ remote-write │                grouped                │
+          │   points/s   │   points/s     vs base                │
+1 false      1.791M ± 6%    3.900M ± 16%  +117.76% (p=0.002 n=6)
+1 true       804.4k ± 2%   2889.2k ±  5%  +259.15% (p=0.002 n=6)
+128 false    1.749M ± 5%    2.907M ±  8%   +66.25% (p=0.002 n=6)
+128 true     812.7k ± 1%   2077.0k ±  9%  +155.57% (p=0.002 n=6)
+geomean      1.196M         2.872M        +140.09%
+
+          │ remote-write │               grouped               │
+          │     B/op     │     B/op      vs base               │
+1 false     551.2Ki ± 0%   435.6Ki ± 1%  -20.96% (p=0.002 n=6)
+1 true      551.2Ki ± 0%   454.2Ki ± 1%  -17.61% (p=0.002 n=6)
+128 false   552.2Ki ± 0%   429.2Ki ± 0%  -22.27% (p=0.002 n=6)
+128 true    552.2Ki ± 0%   429.4Ki ± 0%  -22.25% (p=0.002 n=6)
+geomean     551.7Ki        437.0Ki       -20.80%
+
+          │ remote-write │              grouped               │
+          │  allocs/op   │  allocs/op   vs base               │
+1 false      8.578k ± 0%   5.512k ± 0%  -35.74% (p=0.002 n=6)
+1 true       8.578k ± 0%   5.543k ± 0%  -35.38% (p=0.002 n=6)
+128 false    8.584k ± 0%   6.278k ± 0%  -26.86% (p=0.002 n=6)
+128 true     8.585k ± 0%   6.279k ± 0%  -26.86% (p=0.002 n=6)
+geomean      8.581k        5.891k       -31.35%

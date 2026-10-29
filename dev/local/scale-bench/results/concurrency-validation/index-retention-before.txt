@@ -1,0 +1,10 @@
+--- FAIL: TestPagedIndexDoesNotRetainValidationBuffer (0.00s)
+    --- FAIL: TestPagedIndexDoesNotRetainValidationBuffer/file (0.00s)
+            	Error Trace:	/home/tdakkota/workspace/github.com/oteldb/oteldb/.worktrees/concurrent-storage/engine/sidx_page_test.go:81
+            	Messages:   	no first query is required to release whole-index bytes
+    --- FAIL: TestPagedIndexDoesNotRetainValidationBuffer/cached-file (0.00s)
+            	Error Trace:	/home/tdakkota/workspace/github.com/oteldb/oteldb/.worktrees/concurrent-storage/engine/sidx_page_test.go:81
+            	Messages:   	no first query is required to release whole-index bytes
+FAIL
+FAIL	github.com/oteldb/storage/engine	0.006s
+FAIL

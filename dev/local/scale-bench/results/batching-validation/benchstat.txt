@@ -1,0 +1,63 @@
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/oteldb/integration/prome2e
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+                                                            │ dev/local/scale-bench/results/write-20261027T184924Z/batch-shapes-disk.bench.txt │ dev/local/scale-bench/results/batching-validation/batch-shapes-disk.bench.txt │
+                                                            │                                      sec/op                                      │                         sec/op                          vs base               │
+WritePressureShape/names=1/shape=remote-write/WAL=false-8                                                                         571.8µ ±  6%                                             405.8µ ± 22%  -29.04% (p=0.002 n=6)
+WritePressureShape/names=1/shape=remote-write/WAL=true-8                                                                         1272.9µ ±  2%                                             498.4µ ±  3%  -60.84% (p=0.002 n=6)
+WritePressureShape/names=1/shape=grouped/WAL=false-8                                                                              262.6µ ± 14%                                             211.3µ ±  3%  -19.53% (p=0.002 n=6)
+WritePressureShape/names=1/shape=grouped/WAL=true-8                                                                               354.5µ ±  4%                                             318.7µ ±  7%  -10.12% (p=0.002 n=6)
+WritePressureShape/names=128/shape=remote-write/WAL=false-8                                                                       585.6µ ±  6%                                             416.7µ ±  4%  -28.84% (p=0.002 n=6)
+WritePressureShape/names=128/shape=remote-write/WAL=true-8                                                                       1260.0µ ±  1%                                             495.0µ ±  2%  -60.71% (p=0.002 n=6)
+WritePressureShape/names=128/shape=grouped/WAL=false-8                                                                            352.3µ ±  8%                                             256.7µ ±  4%  -27.12% (p=0.002 n=6)
+WritePressureShape/names=128/shape=grouped/WAL=true-8                                                                             493.1µ ±  8%                                             343.7µ ±  3%  -30.29% (p=0.002 n=6)
+geomean                                                                                                                           552.5µ                                                   354.2µ        -35.89%
+
+                                                            │ dev/local/scale-bench/results/write-20261027T184924Z/batch-shapes-disk.bench.txt │ dev/local/scale-bench/results/batching-validation/batch-shapes-disk.bench.txt │
+                                                            │                                       B/s                                        │                          B/s                           vs base                │
+WritePressureShape/names=1/shape=remote-write/WAL=false-8                                                                        27.33Mi ±  6%                                           38.50Mi ± 18%   +40.90% (p=0.002 n=6)
+WritePressureShape/names=1/shape=remote-write/WAL=true-8                                                                         12.27Mi ±  2%                                           31.35Mi ±  3%  +155.40% (p=0.002 n=6)
+WritePressureShape/names=1/shape=grouped/WAL=false-8                                                                             59.51Mi ± 16%                                           73.94Mi ±  3%   +24.25% (p=0.002 n=6)
+WritePressureShape/names=1/shape=grouped/WAL=true-8                                                                              44.08Mi ±  5%                                           49.04Mi ±  7%   +11.25% (p=0.002 n=6)
+WritePressureShape/names=128/shape=remote-write/WAL=false-8                                                                      26.68Mi ±  5%                                           37.50Mi ±  4%   +40.53% (p=0.002 n=6)
+WritePressureShape/names=128/shape=remote-write/WAL=true-8                                                                       12.40Mi ±  1%                                           31.56Mi ±  2%  +154.48% (p=0.002 n=6)
+WritePressureShape/names=128/shape=grouped/WAL=false-8                                                                           44.36Mi ±  8%                                           60.86Mi ±  4%   +37.19% (p=0.002 n=6)
+WritePressureShape/names=128/shape=grouped/WAL=true-8                                                                            31.69Mi ±  9%                                           45.46Mi ±  3%   +43.45% (p=0.002 n=6)
+geomean                                                                                                                          28.28Mi                                                 44.11Mi         +55.96%
+
+                                                            │ dev/local/scale-bench/results/write-20261027T184924Z/batch-shapes-disk.bench.txt │ dev/local/scale-bench/results/batching-validation/batch-shapes-disk.bench.txt │
+                                                            │                                     points/s                                     │                       points/s                         vs base                │
+WritePressureShape/names=1/shape=remote-write/WAL=false-8                                                                         1.791M ±  6%                                            2.524M ± 18%   +40.91% (p=0.002 n=6)
+WritePressureShape/names=1/shape=remote-write/WAL=true-8                                                                          804.4k ±  2%                                           2054.4k ±  3%  +155.39% (p=0.002 n=6)
+WritePressureShape/names=1/shape=grouped/WAL=false-8                                                                              3.900M ± 16%                                            4.846M ±  3%   +24.26% (p=0.002 n=6)
+WritePressureShape/names=1/shape=grouped/WAL=true-8                                                                               2.889M ±  5%                                            3.214M ±  7%   +11.24% (p=0.002 n=6)
+WritePressureShape/names=128/shape=remote-write/WAL=false-8                                                                       1.749M ±  5%                                            2.458M ±  4%   +40.53% (p=0.002 n=6)
+WritePressureShape/names=128/shape=remote-write/WAL=true-8                                                                        812.7k ±  1%                                           2068.5k ±  2%  +154.53% (p=0.002 n=6)
+WritePressureShape/names=128/shape=grouped/WAL=false-8                                                                            2.907M ±  8%                                            3.989M ±  4%   +37.19% (p=0.002 n=6)
+WritePressureShape/names=128/shape=grouped/WAL=true-8                                                                             2.077M ±  9%                                            2.979M ±  3%   +43.44% (p=0.002 n=6)
+geomean                                                                                                                           1.854M                                                  2.891M         +55.97%
+
+                                                            │ dev/local/scale-bench/results/write-20261027T184924Z/batch-shapes-disk.bench.txt │ dev/local/scale-bench/results/batching-validation/batch-shapes-disk.bench.txt │
+                                                            │                                       B/op                                       │                          B/op                            vs base              │
+WritePressureShape/names=1/shape=remote-write/WAL=false-8                                                                         551.2Ki ± 0%                                              568.8Ki ± 1%  +3.20% (p=0.002 n=6)
+WritePressureShape/names=1/shape=remote-write/WAL=true-8                                                                          551.2Ki ± 0%                                              585.7Ki ± 1%  +6.26% (p=0.002 n=6)
+WritePressureShape/names=1/shape=grouped/WAL=false-8                                                                              435.6Ki ± 1%                                              447.2Ki ± 2%  +2.67% (p=0.002 n=6)
+WritePressureShape/names=1/shape=grouped/WAL=true-8                                                                               454.2Ki ± 1%                                              463.7Ki ± 1%  +2.11% (p=0.002 n=6)
+WritePressureShape/names=128/shape=remote-write/WAL=false-8                                                                       552.2Ki ± 0%                                              573.9Ki ± 1%  +3.94% (p=0.002 n=6)
+WritePressureShape/names=128/shape=remote-write/WAL=true-8                                                                        552.2Ki ± 0%                                              587.7Ki ± 1%  +6.43% (p=0.002 n=6)
+WritePressureShape/names=128/shape=grouped/WAL=false-8                                                                            429.2Ki ± 0%                                              447.2Ki ± 2%  +4.19% (p=0.002 n=6)
+WritePressureShape/names=128/shape=grouped/WAL=true-8                                                                             429.4Ki ± 0%                                              459.4Ki ± 1%  +6.99% (p=0.002 n=6)
+geomean                                                                                                                           491.0Ki                                                   512.9Ki       +4.46%
+
+                                                            │ dev/local/scale-bench/results/write-20261027T184924Z/batch-shapes-disk.bench.txt │ dev/local/scale-bench/results/batching-validation/batch-shapes-disk.bench.txt │
+                                                            │                                    allocs/op                                     │                        allocs/op                         vs base              │
+WritePressureShape/names=1/shape=remote-write/WAL=false-8                                                                          8.578k ± 0%                                               8.583k ± 0%  +0.06% (p=0.002 n=6)
+WritePressureShape/names=1/shape=remote-write/WAL=true-8                                                                           8.578k ± 0%                                               8.614k ± 0%  +0.42% (p=0.002 n=6)
+WritePressureShape/names=1/shape=grouped/WAL=false-8                                                                               5.512k ± 0%                                               5.515k ± 0%  +0.05% (p=0.002 n=6)
+WritePressureShape/names=1/shape=grouped/WAL=true-8                                                                                5.543k ± 0%                                               5.546k ± 0%  +0.05% (p=0.009 n=6)
+WritePressureShape/names=128/shape=remote-write/WAL=false-8                                                                        8.584k ± 0%                                               8.591k ± 0%  +0.08% (p=0.002 n=6)
+WritePressureShape/names=128/shape=remote-write/WAL=true-8                                                                         8.585k ± 0%                                               8.620k ± 0%  +0.41% (p=0.002 n=6)
+WritePressureShape/names=128/shape=grouped/WAL=false-8                                                                             6.278k ± 0%                                               6.285k ± 0%  +0.10% (p=0.002 n=6)
+WritePressureShape/names=128/shape=grouped/WAL=true-8                                                                              6.279k ± 0%                                               6.313k ± 0%  +0.54% (p=0.002 n=6)
+geomean                                                                                                                            7.110k                                                    7.125k       +0.21%
