@@ -101,7 +101,9 @@ def summarize(directory):
         "stopped_state": stopped,
         "samples": samples,
     }
-    binary = Path(__file__).resolve().parent.parent / "scale-bench/bin/oteldb"
+    binary = directory / "oteldb"
+    if not binary.exists():
+        binary = Path(__file__).resolve().parent.parent / "scale-bench/bin/oteldb"
     if binary.exists() and shutil.which("go"):
         profiles = {}
         for label in ["baseline", "steady", "loaded", "loaded-gc", "drained-gc"]:

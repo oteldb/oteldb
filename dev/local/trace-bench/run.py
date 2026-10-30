@@ -135,6 +135,16 @@ def main():
         (directory / "image.json").write_bytes(
             subprocess.check_output(["docker", "image", "inspect", args.image])
         )
+        subprocess.run(
+            [
+                "docker",
+                "cp",
+                f"{container}:/usr/local/bin/oteldb",
+                str(directory / "oteldb"),
+            ],
+            check=True,
+            capture_output=True,
+        )
         ready = False
         for _ in range(60):
             if fetch(
