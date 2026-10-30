@@ -1,0 +1,58 @@
+[
+  {
+    "variant": "original",
+    "run": "20261030T213523Z",
+    "allocated_bytes": 31200783240.0,
+    "rewrite_factor": 5.73512057787649,
+    "peak_sampled_rss_bytes": 327397376,
+    "post_drain_heap_bytes": 60646385,
+    "merge_seconds": 42.791607628,
+    "parts": 1,
+    "merge_counters": {
+      "storage_merge_parts_in_sum": 61.0,
+      "storage_merge_total": 31.0
+    }
+  },
+  {
+    "variant": "allocation-reuse",
+    "run": "20261030T220735Z",
+    "allocated_bytes": 18449316568.0,
+    "rewrite_factor": 5.73439088176845,
+    "peak_sampled_rss_bytes": 334655488,
+    "post_drain_heap_bytes": 53900833,
+    "merge_seconds": 41.063597425,
+    "parts": 1,
+    "merge_counters": {
+      "storage_merge_parts_in_sum": 61.0,
+      "storage_merge_total": 31.0
+    }
+  },
+  {
+    "variant": "growth3-diagnostic",
+    "run": "20261030T221408Z",
+    "allocated_bytes": 18523893592.0,
+    "rewrite_factor": 5.732449613096778,
+    "peak_sampled_rss_bytes": 333672448,
+    "post_drain_heap_bytes": 9238344,
+    "merge_seconds": 42.35570521199999,
+    "parts": 1,
+    "merge_counters": {
+      "storage_merge_parts_in_sum": 61.0,
+      "storage_merge_total": 31.0
+    }
+  },
+  {
+    "variant": "compression-fallback",
+    "run": "20261030T222432Z",
+    "allocated_bytes": 11133213216.0,
+    "rewrite_factor": 1.4705669612029328,
+    "peak_sampled_rss_bytes": 344592384,
+    "post_drain_heap_bytes": 55946398,
+    "merge_seconds": 13.000490736,
+    "parts": 3,
+    "merge_counters": {
+      "storage_merge_parts_in_sum": 68.0,
+      "storage_merge_total": 40.0
+    }
+  }
+]

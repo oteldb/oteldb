@@ -70,3 +70,59 @@ See [selected counters](results/20261030T213523Z/selected-results.json),
 [steady heap](results/20261030T213523Z/steady.heap.top.txt),
 [final allocations](results/20261030T213523Z/final.alloc.top.txt), and
 [post-drain heap](results/20261030T213523Z/drained-gc.heap.bytes.txt).
+
+## Allocation and merge follow-up
+
+Runtime changes are recorded in storage commits `920a3b3` (buffer reuse) and
+`6ac0c29` (compression fallback). Images were built from isolated worktrees before
+committing: their labels record the parent revision plus source-diff hash, and each
+raw run retains the exact server executable for profiling. All four runs use the
+same 1 MB/s protobuf rate, 16 streams, payload shape, 10s flush, 8 vCPU/16 GiB and
+fresh independent file/WAL volumes. Each accepted 345,600 spans with zero failures
+or rejections and exited 0 without OOM.
+
+| Variant | Allocated bytes | Rewrite factor | Sampled peak RSS | Merge seconds | Final parts |
+|---|---:|---:|---:|---:|---:|
+| Original | 31.20 GB | 5.735x | 312 MiB | 42.79s | 1 |
+| Reuse frame + attribute buffers | 18.45 GB | 5.734x | 319 MiB | 41.06s | 1 |
+| Reuse + ordinary growth threshold 3x (diagnostic) | 18.52 GB | 5.732x | 318 MiB | 42.36s | 1 |
+| Reuse + compression fallback fix | 11.13 GB | 1.471x | 329 MiB | 13.00s | 3 |
+
+These are single five-minute runs per image, followed by 45s drain. They are a
+controlled diagnostic comparison, not a statistical end-to-end throughput result.
+Peak RSS did not fall: allocation reuse and less I/O do not imply a smaller
+instantaneous working set. Forced-GC heap snapshots also depend on pool/maintenance
+timing and must not be treated as a stable capacity estimate.
+
+### Allocation changes
+
+Streamed frames reuse their encoded destination only after the sink's `Write`
+returns; buffered frames retain independent ownership. Attribute-key enumeration
+reuses and clears decode scratch. Both capacities are charged to writer memory.
+Six-run microbenchmarks show Zstd frame allocations 2823.9 -> 190.5 KiB/op
+(-93.25%, p=0.002) and flat attribute-key enumeration 704 -> 0 B/row after warmup
+(p=0.002). Corresponding times fall 30.72% and 30.13%.
+
+### Why changing normal merge size alone did not help
+
+The [diagnostic patch](experiments/merge-growth3.patch) raises only the ordinary
+run's growth target from 1.7x to 3x, retaining disk sealing and idle fallback.
+It still performs 31 merge/upgrade operations and rewrites ~5.73x, because the
+compression-only fallback bypasses the ordinary guard: a fresh part needing Zstd
+compression fills its remaining budget with already-compressed neighbors.
+
+The fix restricts compression-only work to parts requiring an upgrade. Balanced
+ordinary compaction remains responsible for combining cold neighbors, and explicit
+force can still collapse an uneven pair. A memory/file regression fails before
+this change and passes after it, preserving row contents across durable reopen.
+
+Combined allocations fall 64% and merge output falls 74% versus original. There
+are 40 total merge/upgrade operations versus 31: the useful change is fewer costly
+old-data rewrites, not fewer operations of every kind. After draining, three readable
+parts remain, head and WAL are empty, and no merge is running. This trades more
+remaining parts for less rewriting; query fan-out was not benchmarked here.
+
+Full storage tests, focused race checks, attribute-scratch fuzzing and lint pass.
+The 3x-growth diagnostic is excluded from the product changes. See the compact
+[comparison](results/allocation-comparison.json) and per-run selected counters;
+raw profiles, binaries and volumes remain local and are not committed.

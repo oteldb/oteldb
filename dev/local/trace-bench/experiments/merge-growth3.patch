@@ -1,0 +1,21 @@
+diff --git a/recordengine/compact.go b/recordengine/compact.go
+index c440399..7c5ad03 100644
+--- a/recordengine/compact.go
++++ b/recordengine/compact.go
+@@ -13,6 +13,7 @@ const (
+ 	minTierParts       = 2
+ 	maxTierParts       = 16
+ 	minMergeMultiplier = 1.7
++	mergeGrowthMultiplier = 3.0
+ 	smallRunBytes      = 128 << 10
+ 	mergeIdleRounds    = 3
+ 	// Size tiers remain diagnostic only; selection scores stored-byte runs.
+@@ -177,7 +178,7 @@ func runQualifies(run []*part, total int64, m float64) bool {
+ 		return false
+ 	}
+ 
+-	return m >= minMergeMultiplier
++	return m >= mergeGrowthMultiplier
+ }
+ 
+ // inSrcOrder preserves source order for records sharing a timestamp.
