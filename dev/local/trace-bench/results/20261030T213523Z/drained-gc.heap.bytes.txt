@@ -1,0 +1,19 @@
+File: oteldb
+Build ID: f235d712037649030d194eb99b9c913cff17430e
+Type: inuse_space
+Time: 2026-10-31 00:41:13 MSK
+Showing nodes accounting for 55352614B, 91.27% of 60646385B total
+Showing top 12 nodes out of 154
+      flat  flat%   sum%        cum   cum%
+ 18913495B 31.19% 31.19%  18913495B 31.19%  github.com/klauspost/compress/zstd.(*fastBase).ensureHist
+ 17077104B 28.16% 59.35%  17077104B 28.16%  github.com/klauspost/compress/zstd.encoderOptions.encoder
+  6176815B 10.18% 69.53%   6747449B 11.13%  github.com/oteldb/storage/block.decompressKept
+  4201442B  6.93% 76.46%   4201442B  6.93%  github.com/oteldb/storage/pool.(*ByteIntMap).grow
+  3150321B  5.19% 81.65%   3150321B  5.19%  runtime.mallocgc
+  1185102B  1.95% 83.61%   1185102B  1.95%  github.com/klauspost/compress/zstd.(*blockEnc).init
+  1115476B  1.84% 85.45%   1115476B  1.84%  github.com/oteldb/storage/block.(*byteArena).copy
+  1036452B  1.71% 87.15%   1036452B  1.71%  github.com/oteldb/storage/index/bloom.Decode
+   695248B  1.15% 88.30%    695248B  1.15%  slices.Clone[go.shape.[]uint8,go.shape.uint8]
+   637974B  1.05% 89.35%    637974B  1.05%  github.com/klauspost/compress/zstd.(*betterFastEncoder).Encode
+   592551B  0.98% 90.33%   9723654B 16.03%  github.com/klauspost/compress/zstd.(*Encoder).Reset
+   570634B  0.94% 91.27%    570634B  0.94%  github.com/klauspost/compress/zstd.(*blockDec).decodeLiterals

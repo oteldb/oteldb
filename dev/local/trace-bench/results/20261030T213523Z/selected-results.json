@@ -1,0 +1,85 @@
+{
+  "workload": {
+    "image": "local/oteldb:trace-lineage-fbcd6b8",
+    "seconds": 300,
+    "rate": 1000000,
+    "payload": 512,
+    "services": 16,
+    "age": "0s"
+  },
+  "sender": {
+    "elapsed": 300.197154242,
+    "payload_bytes": 300196800,
+    "accepted_spans": 345600,
+    "rejected_spans": 0,
+    "failed_spans": 0,
+    "requests": 1350,
+    "payload_bytes_per_second": 999998.8199688272
+  },
+  "limits": {
+    "NanoCpus": 8000000000,
+    "Memory": 17179869184,
+    "MemorySwap": 17179869184
+  },
+  "baseline": {
+    "label": "baseline",
+    "elapsed": 0.5796115229895804,
+    "rss_bytes": 67682304,
+    "cgroup_bytes": 39452672,
+    "heap_alloc_bytes": 5417144.0,
+    "allocated_bytes_total": 8905672.0,
+    "head_bytes": 0,
+    "identity_bytes": 0,
+    "flush_bytes": 0,
+    "merge_bytes": 0,
+    "merge_seconds": 0
+  },
+  "final": {
+    "label": "drain-45",
+    "elapsed": 348.529905309013,
+    "rss_bytes": 264523776,
+    "cgroup_bytes": 370302976,
+    "heap_alloc_bytes": 159032136.0,
+    "allocated_bytes_total": 31200783240.0,
+    "head_bytes": 0.0,
+    "identity_bytes": 24849.0,
+    "flush_bytes": 271600736.0,
+    "merge_bytes": 1557662970.0,
+    "merge_seconds": 42.791607628
+  },
+  "peak_sampled_rss_bytes": 327397376,
+  "cgroup_peak_bytes": 506744832,
+  "peak_sampled_heap_alloc_bytes": 226370008.0,
+  "peak_sampled_head_bytes": 9738720.0,
+  "peak_sampled_identity_bytes": 24849.0,
+  "merge_rewrite_factor": 5.73512057787649,
+  "allocation_bytes_per_payload_byte": 103.90476370167836,
+  "stopped_state": {
+    "Status": "exited",
+    "Running": false,
+    "Paused": false,
+    "Restarting": false,
+    "OOMKilled": false,
+    "Dead": false,
+    "Pid": 0,
+    "ExitCode": 0,
+    "Error": "",
+    "StartedAt": "2026-10-30T21:35:24.05291792Z",
+    "FinishedAt": "2026-10-30T21:41:13.632490602Z"
+  },
+  "profile_inuse_bytes": {
+    "baseline": 8444124,
+    "steady": 83347214,
+    "loaded": 111141397,
+    "loaded-gc": 53908730,
+    "drained-gc": 60646385
+  },
+  "application_commit": "fcd1ccdccc4781c7e0ec7e8665425c9ca923a8d9",
+  "storage_commit": "fbcd6b8f9000931456228612d115f5acfe343efa",
+  "image_id": "sha256:36dff137eb716236a478bcb24ac2fd12019e96e071881a816ef23fee65b6afc9",
+  "lineage": {
+    "claims": 0,
+    "catalog_gaps": 0,
+    "parts": 1
+  }
+}
