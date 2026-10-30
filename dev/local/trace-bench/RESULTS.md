@@ -107,6 +107,7 @@ Six-run microbenchmarks show Zstd frame allocations 2823.9 -> 190.5 KiB/op
 
 The [diagnostic patch](experiments/merge-growth3.patch) raises only the ordinary
 run's growth target from 1.7x to 3x, retaining disk sealing and idle fallback.
+Apply it in the storage checkout at `920a3b3` with `git apply --unidiff-zero`.
 It still performs 31 merge/upgrade operations and rewrites ~5.73x, because the
 compression-only fallback bypasses the ordinary guard: a fresh part needing Zstd
 compression fills its remaining budget with already-compressed neighbors.
