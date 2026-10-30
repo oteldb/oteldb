@@ -127,3 +127,62 @@ Full storage tests, focused race checks, attribute-scratch fuzzing and lint pass
 The 3x-growth diagnostic is excluded from the product changes. See the compact
 [comparison](results/allocation-comparison.json) and per-run selected counters;
 raw profiles, binaries and volumes remain local and are not committed.
+
+## Further bounded codec reuse and protobuf attribution
+
+The next storage change retains one idle encoder per `Compressor` in a GC-stable
+recycler, so an active compressor keeps its tables across collections. Decoder
+scratch uses four slots up to 2 MiB and one separate slot up to 16 MiB: at most
+24 MiB retained idle process-wide, with active decoding still charged to existing
+working-set budgets. This avoids a process-wide encoder cache or unbounded large
+buffers. Codec bytes and the Collector input path are unchanged.
+
+| Variant | Allocated bytes | Rewrite factor | Sampled peak RSS | Post-drain forced-GC heap |
+|---|---:|---:|---:|---:|
+| Buffer + compression-fallback fixes | 11.13 GB | 1.471x | 329 MiB | 53.4 MiB |
+| GC-stable encoders + small scratch only (trial) | 10.64 GB | 1.529x | 299 MiB | 21.2 MiB |
+| GC-stable encoders + size-classed scratch | 9.73 GB | 1.471x | 277 MiB | 18.8 MiB |
+
+All use 1 MB/s for five minutes and accept 345,600 spans with zero failures or
+rejections; heads and WAL drain, and servers exit 0 without OOM. These are single
+runs per image; post-GC pool snapshots are timing-sensitive. The final run retains
+three parts, as does its control. Profiles retain their matching executables.
+The 2 MiB trial missed most 6-9 MB scratch allocations observed in the real profile;
+the separate large slot addresses those reads without giving every reader a large
+idle buffer. The final profile shows reserve allocation 1012 -> 294 MiB and Zstd
+encoder-table allocation 1050 -> 651 MiB (sampled allocation profiles).
+
+Six-run microbenchmarks show encoder reuse across two forced GCs reducing ~10.29 MB
+of allocation to ~856 bytes per iteration; its timing includes GC. Decode benchmarks
+that reuse the kept destination isolate auxiliary scratch: 6/9 MiB scratch allocations
+fall from 6.137/9.139 MiB to zero after warmup, with ~15% lower time (p=0.002, n=6).
+Real readers still allocate their independently owned kept frames when needed.
+Full storage tests, relevant race suites, codec goldens and full lint pass.
+
+### Protobuf path
+
+The measured image uses Collector `pdata v1.69.0`: OTLP protobuf -> `ptrace` ->
+`pdataconv` -> native traces -> record columns. The load generator also uses
+`ptraceotlp`, but it runs outside the server quota/profile. On disk the engine uses
+its native column/WAL encodings. The benchmark server continues to use Collector;
+the following decoder-only comparison does not change the product input route.
+
+`internal/otlpdirect` already decodes standard OTLP with VictoriaMetrics `easyproto`
+directly into native traces, borrowing request bytes during synchronous consumption.
+It is used by `odbingest`. Existing equivalence/race tests pass. For the same 256-span,
+222,368-byte request, six-sample medians are:
+
+| Decoder path | Allocated bytes/request | Allocs/request | Time/request |
+|---|---:|---:|---:|
+| pdata decode only | 460,322 | 7,767 | 148 us |
+| pdata decode + native conversion | 988,710 | 13,068 | 335 us |
+| Direct native, fresh converter | 352,312 | 247 | 143 us |
+| Direct native, reused converter | 15,496 | 133 | 113 us |
+
+Cold and warm cases matter: the direct Handler's converter pool may be cleared by
+GC. These numbers exclude HTTP body reading, storage append, projection and merges;
+they cannot be applied as a percentage saving for the whole server. The monolith's
+Collector pipeline may contain processors, so using a direct native route is a
+separate integration decision rather than silently bypassing its pipeline.
+See [decoder medians](results/pdata-decode-comparison.json) and the new per-run
+selected results/profile summary for retained evidence.
