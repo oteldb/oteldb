@@ -1,0 +1,101 @@
+{
+  "workload": {
+    "image": "local/oteldb:trace-bounded-reuse",
+    "seconds": 300,
+    "rate": 1000000,
+    "payload": 512,
+    "services": 16,
+    "age": "0s"
+  },
+  "sender": {
+    "elapsed": 300.196905113,
+    "payload_bytes": 300196800,
+    "accepted_spans": 345600,
+    "rejected_spans": 0,
+    "failed_spans": 0,
+    "requests": 1350,
+    "payload_bytes_per_second": 999999.6498531523
+  },
+  "limits": {
+    "NanoCpus": 8000000000,
+    "Memory": 17179869184,
+    "MemorySwap": 17179869184
+  },
+  "baseline": {
+    "label": "baseline",
+    "elapsed": 0.587536127990461,
+    "rss_bytes": 69947392,
+    "cgroup_bytes": 38281216,
+    "heap_alloc_bytes": 5411512.0,
+    "allocated_bytes_total": 8904712.0,
+    "head_bytes": 0,
+    "identity_bytes": 0,
+    "flush_bytes": 0,
+    "merge_bytes": 0,
+    "merge_seconds": 0
+  },
+  "final": {
+    "label": "drain-45",
+    "elapsed": 348.6828237499867,
+    "rss_bytes": 173166592,
+    "cgroup_bytes": 272084992,
+    "heap_alloc_bytes": 94254304.0,
+    "allocated_bytes_total": 10644958776.0,
+    "head_bytes": 0.0,
+    "identity_bytes": 24849.0,
+    "flush_bytes": 271600736.0,
+    "merge_bytes": 415214040.0,
+    "merge_seconds": 11.866474271000003
+  },
+  "peak_sampled_rss_bytes": 313901056,
+  "cgroup_peak_bytes": 512503808,
+  "peak_sampled_heap_alloc_bytes": 233749344.0,
+  "peak_sampled_head_bytes": 9738720.0,
+  "peak_sampled_identity_bytes": 24849.0,
+  "merge_rewrite_factor": 1.5287662548896774,
+  "allocation_bytes_per_payload_byte": 35.43027128870128,
+  "stopped_state": {
+    "Status": "exited",
+    "Running": false,
+    "Paused": false,
+    "Restarting": false,
+    "OOMKilled": false,
+    "Dead": false,
+    "Pid": 0,
+    "ExitCode": 0,
+    "Error": "",
+    "StartedAt": "2026-10-30T23:08:12.892675937Z",
+    "FinishedAt": "2026-10-30T23:14:02.671589781Z"
+  },
+  "profile_inuse_bytes": {
+    "baseline": 8705205,
+    "steady": 84284840,
+    "loaded": 58551693,
+    "loaded-gc": 12749462,
+    "drained-gc": 22181707
+  },
+  "variant": "small-cache-trial",
+  "image_id": "sha256:0cb62b09330ce7c78ea6d18853d24c9d4a9a7df34c8218002c8ebfbd70ee96b2",
+  "image_labels": {
+    "dev.oteldb.storage.diff": "0e15068723349849738af95e90bfbc05c7518f52cf8e277322eda0600dc5c801",
+    "dev.oteldb.storage.revision": "6ac0c29710debd5eb29164a5ee114ed50a662d10",
+    "org.opencontainers.image.revision": "e1f04056800e8fdb698bcf7f7e0eb013d39cdb70"
+  },
+  "final_storage": {
+    "signal": "traces",
+    "series": 16,
+    "head_items": 0,
+    "head_bytes": 0,
+    "parts": 2,
+    "sealed_parts": 0,
+    "min_time": "2026-10-30T23:08:13Z",
+    "max_time": "2026-10-30T23:13:13Z",
+    "merge_running": false,
+    "merge_backlog": 2,
+    "merge_candidates": 0,
+    "merge_cap_bytes": 17179869184,
+    "wal": true,
+    "wal_segments": 0,
+    "wal_bytes": 0
+  }
+}
