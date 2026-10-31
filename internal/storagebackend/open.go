@@ -79,6 +79,9 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 	if cfg.FlushInterval > 0 && cfg.Backend != "" && cfg.Backend != "memory" {
 		opts = append(opts, storage.WithFlushInterval(int64(cfg.FlushInterval)))
 	}
+	if cfg.FlushThresholdBytes > 0 && cfg.Backend != "" && cfg.Backend != "memory" {
+		opts = append(opts, storage.WithFlushThresholdBytes(int64(cfg.FlushThresholdBytes)))
+	}
 
 	if cfg.ReadOnly {
 		// A durable store with no explicit interval flushes periodically by default, and the loop

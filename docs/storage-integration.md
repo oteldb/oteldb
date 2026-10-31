@@ -176,6 +176,10 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   differently for `count` vs `sum` vs `rate`), so the correct home is either a weight-aware fold
   in the library `query/promql` queryable or a dedicated pushdown — a design decision deferred
   with sampling itself.
+- **Flush size:** `storage.flush_threshold_bytes` (→ `storage.WithFlushThresholdBytes`) controls
+  the per-engine sample-byte trigger independently of `storage.flush_interval`. Zero keeps the
+  library default of 64 MiB. Raising the interval alone does not postpone size-triggered flushes.
+  Resident identity state, buffer overhead and frozen inputs require additional memory.
 - **Merge memory:** `storage.merge_memory_bytes` (→ `storage.WithMergeMemory`) caps what all
   concurrent merges together hold, and with it the size a merged part reaches before it is sealed.
   It is the write-side counterpart of `decode_memory_bytes`: on a backend that takes objects whole
