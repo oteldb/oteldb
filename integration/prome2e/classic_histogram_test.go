@@ -33,7 +33,7 @@ func TestClassicHistogramNativeHTTP(t *testing.T) {
 			t.Parallel()
 			store, err := storage.InMemory()
 			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, store.Close(t.Context())) })
+			t.Cleanup(func() { require.NoError(t, store.Close(context.WithoutCancel(t.Context()))) })
 			backend := storagebackend.New(store)
 			testClassicHistogramHTTP(t, backend, backend, func() {
 				if state == "parts" {
