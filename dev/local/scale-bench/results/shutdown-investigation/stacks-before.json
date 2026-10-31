@@ -1,0 +1,186 @@
+[
+  {
+    "elapsed": "1.000201045s",
+    "goroutines": [
+      {
+        "state": "goroutine 81 [sync.Mutex.Lock]:",
+        "frames": [
+          "github.com/oteldb/storage/engine.(*Engine).lockFlush",
+          "github.com/oteldb/storage/engine.(*Engine).flush",
+          "github.com/oteldb/storage/engine.(*Engine).Flush",
+          "github.com/oteldb/storage.(*Storage).flushPressured.func1.func1",
+          "github.com/oteldb/storage.(*Storage).flushPressured.func2",
+          "github.com/oteldb/storage/internal/parallel.ForEach",
+          "github.com/oteldb/storage.(*Storage).flushPressured",
+          "github.com/oteldb/storage.(*Storage).runPressureFlush"
+        ]
+      },
+      {
+        "state": "goroutine 82 [runnable]:",
+        "frames": [
+          "github.com/oteldb/storage/index/symbols.(*Table).Intern",
+          "github.com/oteldb/storage/index/identity.(*encoder).appendSym",
+          "github.com/oteldb/storage/index/identity.(*encoder).appendAttrs",
+          "github.com/oteldb/storage/index/identity.(*encoder).appendSeries",
+          "github.com/oteldb/storage/index/identity.EncodeSorted",
+          "github.com/oteldb/storage/engine.writeIdentity",
+          "github.com/oteldb/storage/engine.writePart",
+          "github.com/oteldb/storage/engine.(*Engine).flush",
+          "github.com/oteldb/storage/engine.(*Engine).Flush",
+          "github.com/oteldb/storage.(*Storage).maintain.func7.1",
+          "github.com/oteldb/storage.(*Storage).maintainOneEngine",
+          "github.com/oteldb/storage.(*Storage).maintain.func2",
+          "github.com/oteldb/storage.(*Storage).maintain.func7",
+          "github.com/oteldb/storage.runMaintTasks.func1",
+          "github.com/oteldb/storage/internal/parallel.ForEach",
+          "github.com/oteldb/storage.runMaintTasks",
+          "github.com/oteldb/storage.(*Storage).maintain",
+          "github.com/oteldb/storage.(*Storage).runMaintenance"
+        ]
+      },
+      {
+        "state": "goroutine 90 [sync.WaitGroup.Wait]:",
+        "frames": [
+          "sync.(*WaitGroup).Wait",
+          "github.com/oteldb/storage.(*Storage).Close",
+          "main.newApp.func1"
+        ]
+      }
+    ]
+  },
+  {
+    "elapsed": "3.000779399s",
+    "goroutines": [
+      {
+        "state": "goroutine 81 [sync.Mutex.Lock]:",
+        "frames": [
+          "github.com/oteldb/storage/engine.(*Engine).lockFlush",
+          "github.com/oteldb/storage/engine.(*Engine).flush",
+          "github.com/oteldb/storage/engine.(*Engine).Flush",
+          "github.com/oteldb/storage.(*Storage).flushPressured.func1.func1",
+          "github.com/oteldb/storage.(*Storage).flushPressured.func2",
+          "github.com/oteldb/storage/internal/parallel.ForEach",
+          "github.com/oteldb/storage.(*Storage).flushPressured",
+          "github.com/oteldb/storage.(*Storage).runPressureFlush"
+        ]
+      },
+      {
+        "state": "goroutine 82 [runnable]:",
+        "frames": [
+          "github.com/oteldb/storage/engine.(*head).reattach",
+          "github.com/oteldb/storage/engine.(*Engine).abortFlush",
+          "github.com/oteldb/storage/engine.(*Engine).flush",
+          "github.com/oteldb/storage/engine.(*Engine).Flush",
+          "github.com/oteldb/storage.(*Storage).maintain.func7.1",
+          "github.com/oteldb/storage.(*Storage).maintainOneEngine",
+          "github.com/oteldb/storage.(*Storage).maintain.func2",
+          "github.com/oteldb/storage.(*Storage).maintain.func7",
+          "github.com/oteldb/storage.runMaintTasks.func1",
+          "github.com/oteldb/storage/internal/parallel.ForEach",
+          "github.com/oteldb/storage.runMaintTasks",
+          "github.com/oteldb/storage.(*Storage).maintain",
+          "github.com/oteldb/storage.(*Storage).runMaintenance"
+        ]
+      },
+      {
+        "state": "goroutine 90 [sync.WaitGroup.Wait]:",
+        "frames": [
+          "sync.(*WaitGroup).Wait",
+          "github.com/oteldb/storage.(*Storage).Close",
+          "main.newApp.func1"
+        ]
+      }
+    ]
+  },
+  {
+    "elapsed": "7.000913092s",
+    "goroutines": [
+      {
+        "state": "goroutine 81 [sync.Mutex.Lock]:",
+        "frames": [
+          "github.com/oteldb/storage/engine.(*Engine).lockFlush",
+          "github.com/oteldb/storage/engine.(*Engine).flush",
+          "github.com/oteldb/storage/engine.(*Engine).Flush",
+          "github.com/oteldb/storage.(*Storage).flushPressured.func1.func1",
+          "github.com/oteldb/storage.(*Storage).flushPressured.func2",
+          "github.com/oteldb/storage/internal/parallel.ForEach",
+          "github.com/oteldb/storage.(*Storage).flushPressured",
+          "github.com/oteldb/storage.(*Storage).runPressureFlush"
+        ]
+      },
+      {
+        "state": "goroutine 82 [runnable]:",
+        "frames": [
+          "github.com/oteldb/storage/engine.(*head).reattach",
+          "github.com/oteldb/storage/engine.(*Engine).abortFlush",
+          "github.com/oteldb/storage/engine.(*Engine).flush",
+          "github.com/oteldb/storage/engine.(*Engine).Flush",
+          "github.com/oteldb/storage.(*Storage).maintain.func7.1",
+          "github.com/oteldb/storage.(*Storage).maintainOneEngine",
+          "github.com/oteldb/storage.(*Storage).maintain.func2",
+          "github.com/oteldb/storage.(*Storage).maintain.func7",
+          "github.com/oteldb/storage.runMaintTasks.func1",
+          "github.com/oteldb/storage/internal/parallel.ForEach",
+          "github.com/oteldb/storage.runMaintTasks",
+          "github.com/oteldb/storage.(*Storage).maintain",
+          "github.com/oteldb/storage.(*Storage).runMaintenance"
+        ]
+      },
+      {
+        "state": "goroutine 90 [sync.WaitGroup.Wait]:",
+        "frames": [
+          "sync.(*WaitGroup).Wait",
+          "github.com/oteldb/storage.(*Storage).Close",
+          "main.newApp.func1"
+        ]
+      }
+    ]
+  },
+  {
+    "elapsed": "11.001144067s",
+    "goroutines": [
+      {
+        "state": "goroutine 81 [runnable]:",
+        "frames": [
+          "github.com/oteldb/storage/engine.(*Engine).reserveFlush.func2",
+          "github.com/oteldb/storage/internal/identitysnapshot.CaptureMap[...]",
+          "github.com/oteldb/storage/engine.(*Engine).captureDetachedIdentities",
+          "github.com/oteldb/storage/engine.(*Engine).reserveFlush",
+          "github.com/oteldb/storage/engine.(*Engine).flush",
+          "github.com/oteldb/storage/engine.(*Engine).Flush",
+          "github.com/oteldb/storage.(*Storage).flushPressured.func1.func1",
+          "github.com/oteldb/storage.(*Storage).flushPressured.func2",
+          "github.com/oteldb/storage/internal/parallel.ForEach",
+          "github.com/oteldb/storage.(*Storage).flushPressured",
+          "github.com/oteldb/storage.(*Storage).runPressureFlush"
+        ]
+      },
+      {
+        "state": "goroutine 82 [sync.RWMutex.Lock]:",
+        "frames": [
+          "github.com/oteldb/storage/engine.(*Engine).establishTenure",
+          "github.com/oteldb/storage/engine.(*Engine).MergeStep",
+          "github.com/oteldb/storage/engine.(*Engine).MergeWith",
+          "github.com/oteldb/storage.(*Storage).maintain.func5",
+          "github.com/oteldb/storage.(*Storage).maintain.func7.2",
+          "github.com/oteldb/storage.(*Storage).maintainOneEngine",
+          "github.com/oteldb/storage.(*Storage).maintain.func2",
+          "github.com/oteldb/storage.(*Storage).maintain.func7",
+          "github.com/oteldb/storage.runMaintTasks.func1",
+          "github.com/oteldb/storage/internal/parallel.ForEach",
+          "github.com/oteldb/storage.runMaintTasks",
+          "github.com/oteldb/storage.(*Storage).maintain",
+          "github.com/oteldb/storage.(*Storage).runMaintenance"
+        ]
+      },
+      {
+        "state": "goroutine 90 [sync.WaitGroup.Wait]:",
+        "frames": [
+          "sync.(*WaitGroup).Wait",
+          "github.com/oteldb/storage.(*Storage).Close",
+          "main.newApp.func1"
+        ]
+      }
+    ]
+  }
+]

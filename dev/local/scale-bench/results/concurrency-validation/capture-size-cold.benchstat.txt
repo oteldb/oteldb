@@ -1,0 +1,39 @@
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/storage/engine
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+                                                   │ /tmp/capture-size-256.bench.txt │  /tmp/capture-size-1024.bench.txt   │  /tmp/capture-size-4096.bench.txt   │ /tmp/capture-size-16384.bench.txt  │
+                                                   │             sec/op              │    sec/op     vs base               │    sec/op     vs base               │   sec/op     vs base               │
+IdentityCaptureContended/series=1048576/wal=true-8                     5295.6m ± 13%   2093.2m ± 3%  -60.47% (p=0.002 n=6)   998.7m ± 13%  -81.14% (p=0.002 n=6)   614.6m ± 4%  -88.40% (p=0.002 n=6)
+
+                                                   │ /tmp/capture-size-256.bench.txt │   /tmp/capture-size-1024.bench.txt    │       /tmp/capture-size-4096.bench.txt       │       /tmp/capture-size-16384.bench.txt       │
+                                                   │      capture-hold-max-sec       │ capture-hold-max-sec  vs base         │ capture-hold-max-sec  vs base                │ capture-hold-max-sec  vs base                 │
+IdentityCaptureContended/series=1048576/wal=true-8                     85.24µ ± 249%           184.96µ ± 7%  ~ (p=0.065 n=6)          845.92µ ± 25%  +892.39% (p=0.002 n=6)         2191.90µ ± 28%  +2471.44% (p=0.002 n=6)
+
+                                                   │ /tmp/capture-size-256.bench.txt │       /tmp/capture-size-1024.bench.txt       │       /tmp/capture-size-4096.bench.txt        │       /tmp/capture-size-16384.bench.txt       │
+                                                   │      capture-hold-p99-sec       │ capture-hold-p99-sec  vs base                │ capture-hold-p99-sec  vs base                 │ capture-hold-p99-sec  vs base                 │
+IdentityCaptureContended/series=1048576/wal=true-8                       50.39µ ± 1%           164.52µ ± 4%  +226.51% (p=0.002 n=6)          639.49µ ± 11%  +1169.10% (p=0.002 n=6)         2152.90µ ± 16%  +4172.51% (p=0.002 n=6)
+
+                                                   │ /tmp/capture-size-256.bench.txt │    /tmp/capture-size-1024.bench.txt     │    /tmp/capture-size-4096.bench.txt     │    /tmp/capture-size-16384.bench.txt    │
+                                                   │        capture-locks/op         │ capture-locks/op  vs base               │ capture-locks/op  vs base               │ capture-locks/op  vs base               │
+IdentityCaptureContended/series=1048576/wal=true-8                       8194.0 ± 0%        2050.0 ± 0%  -74.98% (p=0.002 n=6)         514.0 ± 0%  -93.73% (p=0.002 n=6)         130.0 ± 0%  -98.41% (p=0.002 n=6)
+
+                                                   │ /tmp/capture-size-256.bench.txt │      /tmp/capture-size-1024.bench.txt      │      /tmp/capture-size-4096.bench.txt      │     /tmp/capture-size-16384.bench.txt      │
+                                                   │       capture-wait-sec/op       │ capture-wait-sec/op  vs base               │ capture-wait-sec/op  vs base               │ capture-wait-sec/op  vs base               │
+IdentityCaptureContended/series=1048576/wal=true-8                    4561.54m ± 14%         1443.74m ± 4%  -68.35% (p=0.002 n=6)         437.41m ± 23%  -90.41% (p=0.002 n=6)          99.94m ± 16%  -97.81% (p=0.002 n=6)
+
+                                                   │ /tmp/capture-size-256.bench.txt │ /tmp/capture-size-1024.bench.txt │   /tmp/capture-size-4096.bench.txt    │   /tmp/capture-size-16384.bench.txt   │
+                                                   │         writer-p99-sec          │ writer-p99-sec   vs base         │ writer-p99-sec  vs base               │ writer-p99-sec  vs base               │
+IdentityCaptureContended/series=1048576/wal=true-8                      18.94m ± 28%      22.51m ± 18%  ~ (p=0.180 n=6)     32.52m ± 30%  +71.68% (p=0.015 n=6)     27.82m ± 22%  +46.86% (p=0.002 n=6)
+
+                                                   │ /tmp/capture-size-256.bench.txt │    /tmp/capture-size-1024.bench.txt     │    /tmp/capture-size-4096.bench.txt     │    /tmp/capture-size-16384.bench.txt    │
+                                                   │        writer-samples/s         │ writer-samples/s  vs base               │ writer-samples/s  vs base               │ writer-samples/s  vs base               │
+IdentityCaptureContended/series=1048576/wal=true-8                      2462.8k ± 5%       1827.5k ± 2%  -25.80% (p=0.002 n=6)        974.4k ± 8%  -60.44% (p=0.002 n=6)        885.1k ± 5%  -64.06% (p=0.002 n=6)
+
+                                                   │ /tmp/capture-size-256.bench.txt │  /tmp/capture-size-1024.bench.txt   │  /tmp/capture-size-4096.bench.txt   │  /tmp/capture-size-16384.bench.txt  │
+                                                   │              B/op               │     B/op      vs base               │     B/op      vs base               │     B/op      vs base               │
+IdentityCaptureContended/series=1048576/wal=true-8                      732.5Mi ± 0%   348.5Mi ± 0%  -52.42% (p=0.002 n=6)   250.2Mi ± 2%  -65.85% (p=0.002 n=6)   156.7Mi ± 3%  -78.61% (p=0.002 n=6)
+
+                                                   │ /tmp/capture-size-256.bench.txt │  /tmp/capture-size-1024.bench.txt  │  /tmp/capture-size-4096.bench.txt  │ /tmp/capture-size-16384.bench.txt  │
+                                                   │            allocs/op            │  allocs/op   vs base               │  allocs/op   vs base               │  allocs/op   vs base               │
+IdentityCaptureContended/series=1048576/wal=true-8                      11.485M ± 0%   7.291M ± 0%  -36.52% (p=0.002 n=6)   3.020M ± 4%  -73.71% (p=0.002 n=6)   1.679M ± 8%  -85.38% (p=0.002 n=6)

@@ -1,0 +1,45 @@
+=== RUN   TestStorageFileIdentityRoundTrip
+=== PAUSE TestStorageFileIdentityRoundTrip
+=== RUN   TestStorageFileReadsAndWritesDuringPublication
+=== PAUSE TestStorageFileReadsAndWritesDuringPublication
+=== RUN   TestWritePressureShapeEquivalence
+=== PAUSE TestWritePressureShapeEquivalence
+=== CONT  TestWritePressureShapeEquivalence
+=== CONT  TestStorageFileReadsAndWritesDuringPublication
+=== CONT  TestStorageFileIdentityRoundTrip
+=== RUN   TestWritePressureShapeEquivalence/1
+=== PAUSE TestWritePressureShapeEquivalence/1
+=== RUN   TestWritePressureShapeEquivalence/128
+=== PAUSE TestWritePressureShapeEquivalence/128
+=== CONT  TestWritePressureShapeEquivalence/128
+=== CONT  TestWritePressureShapeEquivalence/1
+--- PASS: TestStorageFileReadsAndWritesDuringPublication (0.01s)
+=== NAME  TestWritePressureShapeEquivalence/1
+    write_pressure_test.go:89: names=1 shape=remote-write points=1024 WAL_appends=1 WAL_bytes=225194
+=== NAME  TestWritePressureShapeEquivalence/128
+    write_pressure_test.go:89: names=128 shape=remote-write points=1024 WAL_appends=1 WAL_bytes=226362
+    write_pressure_test.go:89: names=128 shape=grouped points=1024 WAL_appends=1 WAL_bytes=226362
+=== NAME  TestWritePressureShapeEquivalence/1
+    write_pressure_test.go:89: names=1 shape=grouped points=1024 WAL_appends=1 WAL_bytes=225194
+--- PASS: TestWritePressureShapeEquivalence (0.00s)
+    --- PASS: TestWritePressureShapeEquivalence/128 (0.10s)
+    --- PASS: TestWritePressureShapeEquivalence/1 (0.10s)
+=== RUN   TestStorageFileIdentityRoundTrip/all
+=== PAUSE TestStorageFileIdentityRoundTrip/all
+=== RUN   TestStorageFileIdentityRoundTrip/host
+=== PAUSE TestStorageFileIdentityRoundTrip/host
+=== RUN   TestStorageFileIdentityRoundTrip/negative
+=== PAUSE TestStorageFileIdentityRoundTrip/negative
+=== RUN   TestStorageFileIdentityRoundTrip/rate
+=== PAUSE TestStorageFileIdentityRoundTrip/rate
+=== CONT  TestStorageFileIdentityRoundTrip/all
+=== CONT  TestStorageFileIdentityRoundTrip/host
+=== CONT  TestStorageFileIdentityRoundTrip/negative
+=== CONT  TestStorageFileIdentityRoundTrip/rate
+--- PASS: TestStorageFileIdentityRoundTrip (0.30s)
+    --- PASS: TestStorageFileIdentityRoundTrip/host (0.00s)
+    --- PASS: TestStorageFileIdentityRoundTrip/negative (0.00s)
+    --- PASS: TestStorageFileIdentityRoundTrip/all (0.00s)
+    --- PASS: TestStorageFileIdentityRoundTrip/rate (0.00s)
+PASS
+ok  	github.com/oteldb/oteldb/integration/prome2e	1.365s

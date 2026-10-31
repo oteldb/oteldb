@@ -1,0 +1,42 @@
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/storage/engine
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkIdentityCaptureContended/series=1048576/wal=true-8         	       1	4927443326 ns/op	    297550 capture-hold-max-ns	     50455 capture-hold-p99-ns	      8194 capture-locks/op	4202134309 capture-wait-ns/op	  23625980 writer-p99-ns	   2392378 writer-samples/s	768125688 B/op	11485414 allocs/op
+PASS
+ok  	github.com/oteldb/storage/engine	6.578s
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/storage/engine
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkIdentityCaptureContended/series=1048576/wal=true-8         	       1	4808075575 ns/op	     88056 capture-hold-max-ns	     49833 capture-hold-p99-ns	      8194 capture-locks/op	4086637300 capture-wait-ns/op	  23933507 writer-p99-ns	   2391290 writer-samples/s	768129520 B/op	11485446 allocs/op
+PASS
+ok  	github.com/oteldb/storage/engine	6.413s
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/storage/engine
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkIdentityCaptureContended/series=1048576/wal=true-8         	       1	4613133499 ns/op	     77105 capture-hold-max-ns	     50405 capture-hold-p99-ns	      8194 capture-locks/op	3904966908 capture-wait-ns/op	  23564663 writer-p99-ns	   2343172 writer-samples/s	768126088 B/op	11485402 allocs/op
+PASS
+ok  	github.com/oteldb/storage/engine	6.273s
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/storage/engine
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkIdentityCaptureContended/series=1048576/wal=true-8         	       1	5773835981 ns/op	     77025 capture-hold-max-ns	     50374 capture-hold-p99-ns	      8194 capture-locks/op	5012433617 capture-wait-ns/op	  13558222 writer-p99-ns	   2573739 writer-samples/s	768178608 B/op	11485539 allocs/op
+PASS
+ok  	github.com/oteldb/storage/engine	7.389s
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/storage/engine
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkIdentityCaptureContended/series=1048576/wal=true-8         	       1	5663757959 ns/op	     82425 capture-hold-max-ns	     50334 capture-hold-p99-ns	      8194 capture-locks/op	4920939025 capture-wait-ns/op	  14321517 writer-p99-ns	   2582534 writer-samples/s	767779880 B/op	11473202 allocs/op
+PASS
+ok  	github.com/oteldb/storage/engine	7.280s
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/storage/engine
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkIdentityCaptureContended/series=1048576/wal=true-8         	       1	5842004092 ns/op	     92194 capture-hold-max-ns	     50665 capture-hold-p99-ns	      8194 capture-locks/op	5097282746 capture-wait-ns/op	  14034726 writer-p99-ns	   2533184 writer-samples/s	768174968 B/op	11485499 allocs/op
+PASS
+ok  	github.com/oteldb/storage/engine	7.495s

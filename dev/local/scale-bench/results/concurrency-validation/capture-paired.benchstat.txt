@@ -1,0 +1,39 @@
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/storage/engine
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+                                           │ /tmp/capture-paired-dense-false.bench.txt │ /tmp/capture-paired-dense-true.bench.txt │
+                                           │                  sec/op                   │      sec/op        vs base               │
+IdentityCaptureContended 1048576 true true                                5833.5m ± 3%         319.3m ± 5%  -94.53% (p=0.002 n=6)
+
+                                           │ /tmp/capture-paired-dense-false.bench.txt │  /tmp/capture-paired-dense-true.bench.txt   │
+                                           │           capture-hold-max-sec            │ capture-hold-max-sec  vs base               │
+IdentityCaptureContended 1048576 true true                              79455.0n ± 32%           671.0n ± 23%  -99.16% (p=0.002 n=6)
+
+                                           │ /tmp/capture-paired-dense-false.bench.txt │  /tmp/capture-paired-dense-true.bench.txt   │
+                                           │           capture-hold-p99-sec            │ capture-hold-p99-sec  vs base               │
+IdentityCaptureContended 1048576 true true                               50455.0n ± 1%           671.0n ± 23%  -98.67% (p=0.002 n=6)
+
+                                           │ /tmp/capture-paired-dense-false.bench.txt │ /tmp/capture-paired-dense-true.bench.txt │
+                                           │             capture-locks/op              │ capture-locks/op   vs base               │
+IdentityCaptureContended 1048576 true true                               8194.000 ± 0%          2.000 ± 0%  -99.98% (p=0.002 n=6)
+
+                                           │ /tmp/capture-paired-dense-false.bench.txt │  /tmp/capture-paired-dense-true.bench.txt  │
+                                           │            capture-wait-sec/op            │ capture-wait-sec/op  vs base               │
+IdentityCaptureContended 1048576 true true                              5073.416m ± 3%          1.172m ± 32%  -99.98% (p=0.002 n=6)
+
+                                           │ /tmp/capture-paired-dense-false.bench.txt │ /tmp/capture-paired-dense-true.bench.txt │
+                                           │              writer-p99-sec               │   writer-p99-sec    vs base              │
+IdentityCaptureContended 1048576 true true                                 12.00m ± 2%          12.64m ± 9%  +5.36% (p=0.002 n=6)
+
+                                           │ /tmp/capture-paired-dense-false.bench.txt │ /tmp/capture-paired-dense-true.bench.txt │
+                                           │             writer-samples/s              │    writer-samples/s      vs base         │
+IdentityCaptureContended 1048576 true true                                 2.574M ± 1%               2.549M ± 1%  ~ (p=0.093 n=6)
+
+                                           │ /tmp/capture-paired-dense-false.bench.txt │ /tmp/capture-paired-dense-true.bench.txt │
+                                           │                   B/op                    │        B/op         vs base              │
+IdentityCaptureContended 1048576 true true                                53.47Mi ± 0%         53.35Mi ± 0%  -0.21% (p=0.002 n=6)
+
+                                           │ /tmp/capture-paired-dense-false.bench.txt │ /tmp/capture-paired-dense-true.bench.txt │
+                                           │                 allocs/op                 │     allocs/op       vs base              │
+IdentityCaptureContended 1048576 true true                                 4.502k ± 1%          4.301k ± 1%  -4.48% (p=0.002 n=6)

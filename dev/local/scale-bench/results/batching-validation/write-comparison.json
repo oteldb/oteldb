@@ -1,0 +1,60 @@
+{
+  "compact": {
+    "directory": "write-20261027T184924Z",
+    "elapsed_s": 300.008304720046,
+    "offered_points": 290162250.0,
+    "accepted_points": 74995629.0,
+    "accepted_points_per_s": 249978.50999485658,
+    "WAL_appends": 75040975.0,
+    "points_per_WAL_append": 0.9993957168067179,
+    "pending_bytes": 1435262540.0,
+    "write_syscalls": 75002175.0,
+    "process_wchar": 39100043594.0,
+    "mean_CPU_cores": 2.3894682104515113,
+    "throttled_s": 0.037093,
+    "memory_peak_bytes": 17180033024,
+    "memory_events": {
+      "low": 0.0,
+      "high": 0.0,
+      "max": 120174.0,
+      "oom": 0.0,
+      "oom_kill": 0.0,
+      "oom_group_kill": 0.0,
+      "sock_throttled": 207.0
+    },
+    "backend_write_bytes": 20760399513.0,
+    "flush_count": 14.0,
+    "flush_s": 144.50371509000001,
+    "merge_count": 9.0,
+    "merge_s": 116.50033697899998
+  },
+  "batched": {
+    "directory": "write-20261027T204416Z",
+    "elapsed_s": 300.0081229399657,
+    "offered_points": 290165148.0,
+    "accepted_points": 154915109.0,
+    "accepted_points_per_s": 516369.71519934444,
+    "WAL_appends": 48385.0,
+    "points_per_WAL_append": 3201.717660431952,
+    "pending_bytes": 906471625.0,
+    "write_syscalls": 115539.0,
+    "process_wchar": 47258752478.0,
+    "mean_CPU_cores": 3.5860114734802817,
+    "throttled_s": 0.410587,
+    "memory_peak_bytes": 17179967488,
+    "memory_events": {
+      "low": 0.0,
+      "high": 0.0,
+      "max": 152519.0,
+      "oom": 0.0,
+      "oom_kill": 0.0,
+      "oom_group_kill": 0.0,
+      "sock_throttled": 3465.0
+    },
+    "backend_write_bytes": 18465790464.0,
+    "flush_count": 9.0,
+    "flush_s": 206.24237223699998,
+    "merge_count": 3.0,
+    "merge_s": 51.460752769
+  }
+}

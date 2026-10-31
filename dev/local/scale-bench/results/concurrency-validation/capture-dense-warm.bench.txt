@@ -1,0 +1,12 @@
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/storage/engine
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkIdentityCaptureContended/series=1048576/wal=true/warm=true/dense=true-8         	       1	 316980541 ns/op	       531.0 capture-hold-max-ns	       531.0 capture-hold-p99-ns	         2.000 capture-locks/op	   1346478 capture-wait-ns/op	  13193785 writer-p99-ns	   2571559 writer-samples/s	55944928 B/op	    4306 allocs/op
+BenchmarkIdentityCaptureContended/series=1048576/wal=true/warm=true/dense=true-8         	       1	 307122217 ns/op	       802.0 capture-hold-max-ns	       802.0 capture-hold-p99-ns	         2.000 capture-locks/op	    826283 capture-wait-ns/op	  12823615 writer-p99-ns	   2574060 writer-samples/s	55934960 B/op	    4217 allocs/op
+BenchmarkIdentityCaptureContended/series=1048576/wal=true/warm=true/dense=true-8         	       1	 320631269 ns/op	       662.0 capture-hold-max-ns	       662.0 capture-hold-p99-ns	         2.000 capture-locks/op	    761952 capture-wait-ns/op	  12487838 writer-p99-ns	   2567812 writer-samples/s	55949072 B/op	    4343 allocs/op
+BenchmarkIdentityCaptureContended/series=1048576/wal=true/warm=true/dense=true-8         	       1	 313068069 ns/op	       421.0 capture-hold-max-ns	       421.0 capture-hold-p99-ns	         2.000 capture-locks/op	   1516480 capture-wait-ns/op	  12720006 writer-p99-ns	   2577511 writer-samples/s	55927552 B/op	    4151 allocs/op
+BenchmarkIdentityCaptureContended/series=1048576/wal=true/warm=true/dense=true-8         	       1	 317298475 ns/op	       742.0 capture-hold-max-ns	       742.0 capture-hold-p99-ns	         2.000 capture-locks/op	   1465913 capture-wait-ns/op	  13692215 writer-p99-ns	   2504415 writer-samples/s	55927320 B/op	    4148 allocs/op
+BenchmarkIdentityCaptureContended/series=1048576/wal=true/warm=true/dense=true-8         	       1	 302187325 ns/op	       651.0 capture-hold-max-ns	       651.0 capture-hold-p99-ns	         2.000 capture-locks/op	   1221842 capture-wait-ns/op	  12384440 writer-p99-ns	   2588993 writer-samples/s	55929696 B/op	    4170 allocs/op
+PASS
+ok  	github.com/oteldb/storage/engine	17.743s
