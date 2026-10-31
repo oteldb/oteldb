@@ -140,8 +140,8 @@ func TestOwnershipAndCanonicalization(t *testing.T) {
 			expected := copied(m)
 			got := convert(m)
 			reverse := pcommon.NewMap()
-			for i := len(expected) - 1; i >= 0; i-- {
-				reverse.PutStr(string(expected[i].Key), string(expected[i].Value.Str()))
+			for _, attr := range slices.Backward(expected) {
+				reverse.PutStr(string(attr.Key), string(attr.Value.Str()))
 			}
 			require.True(t, expected.Equal(convert(reverse)))
 			m.Clear()
