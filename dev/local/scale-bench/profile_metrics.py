@@ -77,7 +77,8 @@ def dashboard_soak(args, directory, servers, capture):
                 break
             except FutureTimeout:
                 if pending.done():
-                    raise
+                    loads = pending.result()
+                    break
                 capture()
     capture()
     summary = {"started_unix": started_unix, "ended_unix": time.time(),

@@ -70,6 +70,20 @@ class DashboardSoakTest(unittest.TestCase):
                 with self.assertRaisesRegex(TimeoutError, "worker failed"):
                     self.soak(self.args, Path(tmp), ["oteldb"], Mock())
 
+    def test_completion_between_timeout_and_done_check(self):
+        pending = Mock()
+        pending.result.side_effect = [TimeoutError(), []]
+        pending.done.return_value = True
+        runner = Mock()
+        runner.__enter__ = Mock(return_value=runner)
+        runner.__exit__ = Mock(return_value=False)
+        runner.submit.return_value = pending
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(self.soak.__globals__, {"ThreadPoolExecutor": Mock(return_value=runner)}):
+                summary = self.soak(self.args, Path(tmp), ["oteldb"], Mock())
+        self.assertEqual(summary["loads"], [])
+        self.assertEqual(pending.result.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
