@@ -3,6 +3,7 @@ package prome2e_test
 import (
 	"context"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +27,15 @@ import (
 func TestStorageFileReadsAndWritesDuringPublication(t *testing.T) {
 	t.Parallel()
 	integration.Skip(t)
+	for _, points := range []int{1, 4097} {
+		t.Run(strconv.Itoa(points), func(t *testing.T) {
+			testStorageFileReadsAndWritesDuringPublication(t, points)
+		})
+	}
+}
+
+func testStorageFileReadsAndWritesDuringPublication(t *testing.T, points int) {
+	t.Helper()
 	ctx := t.Context()
 	dir := t.TempDir()
 	files, err := file.New(filepath.Join(dir, "parts"))
@@ -42,14 +52,18 @@ func TestStorageFileReadsAndWritesDuringPublication(t *testing.T) {
 	release := sync.OnceFunc(gate.Release)
 	t.Cleanup(release)
 	base := time.Unix(2_000_000, 0)
+	queryAt := base.Add(time.Duration(2*points)*time.Millisecond + time.Second).Truncate(time.Second)
 	write := func(round int) error {
 		md := pmetric.NewMetrics()
 		m := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 		m.SetName("publication_probe")
-		p := m.SetEmptyGauge().DataPoints().AppendEmpty()
-		p.Attributes().PutStr("instance", "host-0")
-		p.SetTimestamp(pcommon.NewTimestampFromTime(base.Add(time.Duration(round) * 15 * time.Second)))
-		p.SetDoubleValue(float64(round + 1))
+		dps := m.SetEmptyGauge().DataPoints()
+		for point := range points {
+			p := dps.AppendEmpty()
+			p.Attributes().PutStr("instance", "host-0")
+			p.SetTimestamp(pcommon.NewTimestampFromTime(base.Add(time.Duration(round*points+point) * time.Millisecond)))
+			p.SetDoubleValue(float64(round + 1))
+		}
 		return storagebackend.New(store).ConsumeMetrics(ctx, md)
 	}
 	require.NoError(t, write(0))
@@ -74,13 +88,13 @@ func TestStorageFileReadsAndWritesDuringPublication(t *testing.T) {
 		defer cancel()
 		response, err := client.GetQuery(readCtx, promapi.GetQueryParams{
 			Query: `count_over_time(publication_probe{instance="host-0"}[1m])`,
-			Time:  promapi.NewOptPrometheusTimestamp(getPromTS(pcommon.NewTimestampFromTime(base.Add(15 * time.Second)))),
+			Time:  promapi.NewOptPrometheusTimestamp(getPromTS(pcommon.NewTimestampFromTime(queryAt))),
 		})
 		require.NoError(t, err)
 		require.Len(t, response.Data.Vector.Result, 1)
 		value, ok := response.Data.Vector.Result[0].Value.HistogramOrValue.GetStringFloat64()
 		require.True(t, ok)
-		require.InDelta(t, 2.0, float64(value), 0)
+		require.InDelta(t, float64(2*points), float64(value), 0)
 	}
 	check(client)
 	release()
