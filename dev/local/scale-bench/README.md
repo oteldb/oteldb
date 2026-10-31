@@ -138,6 +138,10 @@ queue sampling continues throughout. `soak-dashboards.jsonl` records every query
 partial load, including refresh lateness; `soak-summary.json` records the phase times and loads.
 Completion of the script is not an SLO pass: check all loads, individual timings, freshness,
 accepted versus offered points, queue trends, OOM events and exit state.
+For an image with direct native ingestion enabled, use
+`--native-remote-write-url http://oteldb:9090/api/v1/write` and a config containing
+`remote_write.enabled: true`. Record the ingestion path with the result; the default remains
+the Collector/pdata receiver.
 
 The current baseline uses published storage `v0.50.0`, including the merged stack:
 [compact indexes #791](https://github.com/oteldb/storage/pull/791),

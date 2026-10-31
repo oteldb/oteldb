@@ -94,6 +94,8 @@ def main():
     parser.add_argument("--image", required=True)
     parser.add_argument("--subnet", help="explicit Docker network subnet when automatic pools are exhausted")
     parser.add_argument("--config", help="benchmark application config; defaults to embedded-bench/oteldb.yml")
+    parser.add_argument("--native-remote-write-url", default="http://oteldb:19291/api/v1/write",
+                        help="native target URL inside the Compose network; defaults to the Collector receiver")
     parser.add_argument("--binary", default=str(HERE / "bin/oteldb"), help="matching image binary to retain")
     parser.add_argument("--trace-seconds", type=int, default=0, help="execution trace duration at 120s and 300s")
     parser.add_argument("--queries", action="store_true", help="run dashboard queries after capture for servers passing freshness")
@@ -129,6 +131,10 @@ def main():
     if args.subnet:
         config["networks"]["default"]["ipam"] = {"config": [{"subnet": args.subnet}]}
     database = config["services"]["oteldb"]
+    agent = config["services"]["vmagent"]
+    agent["command"] = [f"-remoteWrite.url={args.native_remote_write_url}"
+                        if item.startswith("-remoteWrite.url=http://oteldb:") else item
+                        for item in agent["command"]]
     source_config = Path(args.config) if args.config else HERE.parent / "embedded-bench/oteldb.yml"
     (directory / "oteldb.yml").write_text(source_config.read_text() + "\nadmin:\n  bind: 0.0.0.0:8090\n")
     for volume in database["volumes"]:
