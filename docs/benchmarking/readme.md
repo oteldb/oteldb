@@ -3,6 +3,7 @@
 ## Ingestion
 
 - [Metric consumer reuse measurements](metrics-consumer-reuse.md).
+- [Attribute copying, batch arenas and identity cache research](attribute-ingestion-design.md).
 - [Bounded WAL grouping and sealed metric heads: design proposal](wal-and-head-design.md).
 
 ### Prometheus remote write
