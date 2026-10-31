@@ -152,6 +152,33 @@ def dashboard_expression(item, host):
     return interpolate(expr, host)
 
 
+def load_dashboard(server, host, end, mode, trial, warmup, queries, pool, args, deadline):
+    rows = []
+
+    def execute(index):
+        item = queries[index]
+        row = query(server, dashboard_expression(item, host), end, item["instant"],
+                    mode == "random" and server == "victoriametrics")
+        row.update(kind="query", mode=mode, trial=trial, host=host,
+                   query_index=index, warmup=warmup)
+        return row
+
+    started = time.perf_counter()
+    for offset in range(0, len(queries), args.jobs):
+        if time.monotonic() >= deadline:
+            break
+        rows.extend(pool.map(execute, range(offset, min(offset + args.jobs, len(queries)))))
+    load = {"kind": "load", "server": server, "mode": mode, "host": host,
+            "trial": trial, "warmup": warmup,
+            "wall_ms": (time.perf_counter() - started) * 1000,
+            "queries": len(rows), "expected_queries": len(queries),
+            "complete": len(rows) == len(queries),
+            "errors": sum(not row["ok"] for row in rows),
+            "empty": sum(row.get("empty", False) for row in rows),
+            "max_query_ms": max((row["ms"] for row in rows), default=None)}
+    return rows, load
+
+
 def dashboard_loads(server, nodes, end, args, target):
     """Measure a complete dashboard's wall time with bounded concurrent requests."""
     queries = dashboard(True)
@@ -167,31 +194,10 @@ def dashboard_loads(server, nodes, end, args, target):
                     if time.monotonic() >= deadline:
                         break
                     host = hosts[trial] if mode == "random" else "host-0"
-                    rows = []
-
-                    def execute(index):
-                        item = queries[index]
-                        row = query(server, dashboard_expression(item, host), end, item["instant"],
-                                    mode == "random" and server == "victoriametrics")
-                        row.update(kind="query", mode=mode, trial=trial, host=host,
-                                   query_index=index, warmup=trial < 0)
-                        return row
-
-                    started = time.perf_counter()
-                    for offset in range(0, len(queries), args.jobs):
-                        if time.monotonic() >= deadline:
-                            break
-                        for row in pool.map(execute, range(offset, min(offset + args.jobs, len(queries)))):
-                            rows.append(row)
-                            output.write(json.dumps(row) + "\n")
-                    load = {"kind": "load", "server": server, "mode": mode, "host": host,
-                            "trial": trial, "warmup": trial < 0,
-                            "wall_ms": (time.perf_counter() - started) * 1000,
-                            "queries": len(rows), "expected_queries": len(queries),
-                            "complete": len(rows) == len(queries),
-                            "errors": sum(not row["ok"] for row in rows),
-                            "empty": sum(row.get("empty", False) for row in rows),
-                            "max_query_ms": max((row["ms"] for row in rows), default=None)}
+                    rows, load = load_dashboard(server, host, end, mode, trial, trial < 0,
+                                                queries, pool, args, deadline)
+                    for row in rows:
+                        output.write(json.dumps(row) + "\n")
                     output.write(json.dumps(load) + "\n")
                     output.flush()
                     if trial >= 0:

@@ -2,10 +2,11 @@
 """Capture bounded ingest profiles on the paired node-exporter benchmark."""
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 import json
 import os
 from pathlib import Path
+import random
 import runpy
 import shutil
 import subprocess
@@ -22,6 +23,68 @@ def fetch(url, destination, timeout=15):
     except OSError as exc:
         destination.with_suffix(destination.suffix + ".error").write_text(str(exc))
         return False
+
+
+def dashboard_soak(args, directory, servers, capture):
+    """Refresh full dashboards while the caller samples the live write queue and resources."""
+    queries = harness["dashboard"](True)
+    hosts = list(range(1, args.nodes))
+    random.Random(args.seed + args.nodes).shuffle(hosts)
+    started = time.monotonic()
+    started_unix = time.time()
+    deadline = started + args.soak_seconds
+    cached_end = int((time.time() - 30) // 15 * 15)
+
+    def refresh():
+        measured = []
+        trial = 0
+        with (directory / "soak-dashboards.jsonl").open("w") as output:
+            with ThreadPoolExecutor(args.jobs) as clients:
+                while time.monotonic() < deadline:
+                    scheduled = started + trial * args.refresh_interval
+                    lateness = max(0, time.monotonic() - scheduled)
+                    end = int((time.time() - 30) // 15 * 15)
+                    for server in servers:
+                        for mode in ["random", "cached"]:
+                            if time.monotonic() >= deadline:
+                                break
+                            host = f"host-{hosts[trial % len(hosts)]}" if mode == "random" else "host-0"
+                            query_end = end if mode == "random" else cached_end
+                            rows, load = harness["load_dashboard"](
+                                server, host, query_end, mode, trial, mode == "cached" and trial < 2,
+                                queries, clients, args, min(deadline, time.monotonic() + args.query_budget))
+                            load.update(elapsed=time.monotonic() - started, lateness_s=lateness,
+                                        end=query_end)
+                            for row in rows:
+                                output.write(json.dumps(row) + "\n")
+                            output.write(json.dumps(load) + "\n")
+                            output.flush()
+                            measured.append(load)
+                            print(f"  soak {server} {mode}/{trial}: {load['queries']}/{len(queries)} "
+                                  f"queries, {load['wall_ms']:.1f}ms", flush=True)
+                    trial += 1
+                    delay = min(deadline, started + trial * args.refresh_interval) - time.monotonic()
+                    if delay > 0:
+                        time.sleep(delay)
+        return measured
+
+    capture()
+    with ThreadPoolExecutor(1) as runner:
+        pending = runner.submit(refresh)
+        while True:
+            try:
+                loads = pending.result(timeout=15)
+                break
+            except FutureTimeout:
+                if pending.done():
+                    raise
+                capture()
+    capture()
+    summary = {"started_unix": started_unix, "ended_unix": time.time(),
+               "elapsed_s": time.monotonic() - started,
+               "refresh_interval_s": args.refresh_interval, "loads": loads}
+    (directory / "soak-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    return summary
 
 
 def main():
@@ -42,9 +105,15 @@ def main():
     parser.add_argument("--seed", type=int, default=20261027)
     parser.add_argument("--query-budget", type=int, default=120)
     parser.add_argument("--otelbench", action="store_true", help="also run the complete dashboard for ready servers")
+    parser.add_argument("--soak-seconds", type=int, default=0, help="sustained dashboard refresh duration after the query phase")
+    parser.add_argument("--refresh-interval", type=float, default=15, help="seconds between sustained dashboard refreshes")
     args = parser.parse_args()
     if args.live_queries and not args.queries:
         parser.error("--live-queries requires --queries")
+    if args.soak_seconds < 0 or args.refresh_interval <= 0:
+        parser.error("soak duration must be non-negative and refresh interval must be positive")
+    if args.soak_seconds and (not args.live_queries or args.nodes < 2):
+        parser.error("--soak-seconds requires --live-queries and at least two nodes")
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     directory = HERE / "results" / ("profile-" + stamp)
     directory.mkdir(parents=True)
@@ -184,6 +253,10 @@ def main():
                     capture(time.monotonic() - start, container)
                 for future in query_profiles:
                     future.result()
+                if args.soak_seconds:
+                    dashboard_soak(args, directory,
+                        [server for server, gate in readiness.items() if gate["ready"]],
+                        lambda: capture(time.monotonic() - start, container))
     finally:
         ids = dc("ps", "-aq", capture_output=True).stdout.split()
         if ids:

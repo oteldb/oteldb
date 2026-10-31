@@ -129,6 +129,16 @@ client count. Individual query timings, complete/incomplete loads, warmups and e
 counts are retained separately. `--subnet` supplies an unused explicit Docker subnet when
 retained fixtures have exhausted the automatic pools.
 
+For sustained read/write qualification, add `--soak-seconds 1800 --refresh-interval 15` to
+`profile_metrics.py --queries --live-queries --dashboard-loads`. After the initial query phase,
+it refreshes all 242 targets for each ready server in random-host and repeated-host modes with
+the configured bounded client count. Random hosts advance with the query time; repeated queries
+keep the same host and timestamp, with the first two refreshes marked as warmups. Resource and
+queue sampling continues throughout. `soak-dashboards.jsonl` records every query and complete or
+partial load, including refresh lateness; `soak-summary.json` records the phase times and loads.
+Completion of the script is not an SLO pass: check all loads, individual timings, freshness,
+accepted versus offered points, queue trends, OOM events and exit state.
+
 The current baseline uses published storage `v0.50.0`, including the merged stack:
 [compact indexes #791](https://github.com/oteldb/storage/pull/791),
 [metric batching #792](https://github.com/oteldb/storage/pull/792), and
