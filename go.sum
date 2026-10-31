@@ -1044,6 +1044,8 @@ github.com/oracle/oci-go-sdk/v65 v65.124.1/go.mod h1:Pzy+BpgkDesvGZXEHgslwhIYobH
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
 github.com/oteldb/storage v0.49.5-0.20261031000418-bc289970b645 h1:OA15toHjwP40cWlTKlarzNNM7TCIlwkE/F8tPK8eKiA=
 github.com/oteldb/storage v0.49.5-0.20261031000418-bc289970b645/go.mod h1:EkN9Ml26659Ce8dXkGIvEr9hWmlDmbkXfC7AhBWB6mY=
+github.com/oteldb/storage v0.50.0 h1:0G7MEXXBq9rTrhhrvucVWTJOWipWBpseaSjKtAGQTIY=
+github.com/oteldb/storage v0.50.0/go.mod h1:EkN9Ml26659Ce8dXkGIvEr9hWmlDmbkXfC7AhBWB6mY=
 github.com/outscale/osc-sdk-go/v2 v2.35.0 h1:bKR94p9KCc8ybu36k4RS5RDkC9p/7W//78CXPtOyXPo=
 github.com/outscale/osc-sdk-go/v2 v2.35.0/go.mod h1:6J8WRznaSIEXXVHhhTXisGJQgvE5fYzbf8hAw7YIGfQ=
 github.com/ovh/go-ovh v1.9.0 h1:6K8VoL3BYjVV3In9tPJUdT7qMx9h0GExN9EXx1r2kKE=
