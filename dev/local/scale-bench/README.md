@@ -9,6 +9,8 @@ response for 2s; vmagent assigns each scrape target a distinct `instance="host-N
 overload to conversion allocations and retained live/detached flush work.
 [FLUSH_COPY_RESULTS.md](FLUSH_COPY_RESULTS.md) measures the first isolated flush-copy
 optimization and its paired 10k follow-up.
+[FLUSH_REPROFILE_RESULTS.md](FLUSH_REPROFILE_RESULTS.md) repeats that exact build with
+short execution traces and explains the remaining full-head allocation and waits.
 
 ```sh
 bash dev/local/scale-bench/build.sh
