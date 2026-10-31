@@ -146,6 +146,61 @@ def benchmark(server, nodes, end, queries, args, output):
     return rows
 
 
+def dashboard_expression(item, host):
+    expr = item["expr"].replace("group_left(chip_name) node_hwmon_chip_names",
+        'group_left(chip_name) node_hwmon_chip_names{instance="$node",job="$job"}')
+    return interpolate(expr, host)
+
+
+def dashboard_loads(server, nodes, end, args, target):
+    """Measure a complete dashboard's wall time with bounded concurrent requests."""
+    queries = dashboard(True)
+    rng = random.Random(args.seed + nodes)
+    hosts = [f"host-{n}" for n in rng.sample(range(1, nodes), args.runs)]
+    deadline = time.monotonic() + args.query_budget
+    measured = []
+    with (target / f"dashboard-loads-{server}.jsonl").open("w") as output:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
+            for mode in ["random", "cached"]:
+                trials = range(args.runs) if mode == "random" else range(-2, args.runs)
+                for trial in trials:
+                    if time.monotonic() >= deadline:
+                        break
+                    host = hosts[trial] if mode == "random" else "host-0"
+                    rows = []
+
+                    def execute(index):
+                        item = queries[index]
+                        row = query(server, dashboard_expression(item, host), end, item["instant"],
+                                    mode == "random" and server == "victoriametrics")
+                        row.update(kind="query", mode=mode, trial=trial, host=host,
+                                   query_index=index, warmup=trial < 0)
+                        return row
+
+                    started = time.perf_counter()
+                    for offset in range(0, len(queries), args.jobs):
+                        if time.monotonic() >= deadline:
+                            break
+                        for row in pool.map(execute, range(offset, min(offset + args.jobs, len(queries)))):
+                            rows.append(row)
+                            output.write(json.dumps(row) + "\n")
+                    load = {"kind": "load", "server": server, "mode": mode, "host": host,
+                            "trial": trial, "warmup": trial < 0,
+                            "wall_ms": (time.perf_counter() - started) * 1000,
+                            "queries": len(rows), "expected_queries": len(queries),
+                            "complete": len(rows) == len(queries),
+                            "errors": sum(not row["ok"] for row in rows),
+                            "empty": sum(row.get("empty", False) for row in rows),
+                            "max_query_ms": max((row["ms"] for row in rows), default=None)}
+                    output.write(json.dumps(load) + "\n")
+                    output.flush()
+                    if trial >= 0:
+                        measured.append(load)
+                        print(f"  {server} full dashboard {mode}/{trial}: "
+                              f"{load['queries']}/{len(queries)} queries, {load['wall_ms']:.1f}ms", flush=True)
+    return measured
+
+
 def otelbench_dashboard(server, nodes, end, args, target):
     """Flatten collapsed rows for otelbench, which reads only top-level panels."""
     binary = HERE / "bin/otelbench"
@@ -161,10 +216,8 @@ def otelbench_dashboard(server, nodes, end, args, target):
             host = hosts[trial] if mode == "random" else "host-0"
             for item in queries:
                 # The dashboard's bare sensor-name join spans every cloned host otherwise.
-                expr = item["expr"].replace("group_left(chip_name) node_hwmon_chip_names",
-                    'group_left(chip_name) node_hwmon_chip_names{instance="$node",job="$job"}')
                 panels.append({"title": f"{item['panel']} / {host}", "targets": [{
-                    "datasource": {"type": "prometheus"}, "expr": interpolate(expr, host)}]})
+                    "datasource": {"type": "prometheus"}, "expr": dashboard_expression(item, host)}]})
         source = target / f"otelbench-{mode}.json"
         save(source, {"panels": panels})
         # dashboard bench applies its global time range to every target, including stat panels.

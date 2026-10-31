@@ -29,15 +29,22 @@ def main():
     parser.add_argument("--nodes", type=int, default=10000)
     parser.add_argument("--seconds", type=int, default=360)
     parser.add_argument("--image", required=True)
+    parser.add_argument("--subnet", help="explicit Docker network subnet when automatic pools are exhausted")
+    parser.add_argument("--config", help="benchmark application config; defaults to embedded-bench/oteldb.yml")
     parser.add_argument("--binary", default=str(HERE / "bin/oteldb"), help="matching image binary to retain")
     parser.add_argument("--trace-seconds", type=int, default=0, help="execution trace duration at 120s and 300s")
     parser.add_argument("--queries", action="store_true", help="run dashboard queries after capture for servers passing freshness")
+    parser.add_argument("--live-queries", action="store_true", help="keep ingestion running during dashboard queries")
+    parser.add_argument("--dashboard-loads", action="store_true", help="also measure complete-dashboard wall time")
+    parser.add_argument("--query-profile-seconds", type=int, default=0, help="capture CPU/allocation profiles during live dashboard measurement")
     parser.add_argument("--runs", type=int, default=10)
     parser.add_argument("--jobs", type=int, default=4)
     parser.add_argument("--seed", type=int, default=20261027)
     parser.add_argument("--query-budget", type=int, default=120)
     parser.add_argument("--otelbench", action="store_true", help="also run the complete dashboard for ready servers")
     args = parser.parse_args()
+    if args.live_queries and not args.queries:
+        parser.error("--live-queries requires --queries")
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     directory = HERE / "results" / ("profile-" + stamp)
     directory.mkdir(parents=True)
@@ -50,8 +57,10 @@ def main():
     (directory / "scrape.yml").write_text("\n".join(scrape) + "\n")
     original = ["docker", "compose", "-p", project, "-f", str(HERE / "docker-compose.yml")]
     config = json.loads(subprocess.check_output(original + ["config", "--format", "json"], env=env))
+    if args.subnet:
+        config["networks"]["default"]["ipam"] = {"config": [{"subnet": args.subnet}]}
     database = config["services"]["oteldb"]
-    source_config = HERE.parent / "embedded-bench/oteldb.yml"
+    source_config = Path(args.config) if args.config else HERE.parent / "embedded-bench/oteldb.yml"
     (directory / "oteldb.yml").write_text(source_config.read_text() + "\nadmin:\n  bind: 0.0.0.0:8090\n")
     for volume in database["volumes"]:
         if volume["target"] == "/etc/oteldb.yml":
@@ -133,13 +142,21 @@ def main():
                     "ready": harness["number"](hosts) == args.nodes and harness["number"](samples) >= 6}
             (directory / "freshness-final.json").write_text(json.dumps(history, indent=2) + "\n")
             (directory / "gate-summary.json").write_text(json.dumps(readiness, indent=2) + "\n")
-            dc("stop", "-t", "20", "vmagent", capture_output=True)
-            time.sleep(15)
-            fetch("http://127.0.0.1:19010/debug/pprof/heap?gc=1", directory / "quiescent-gc.heap.pb.gz", 30)
-            capture(time.monotonic() - start, container)
+            if not args.live_queries:
+                dc("stop", "-t", "20", "vmagent", capture_output=True)
+                time.sleep(15)
+                fetch("http://127.0.0.1:19010/debug/pprof/heap?gc=1", directory / "quiescent-gc.heap.pb.gz", 30)
+                capture(time.monotonic() - start, container)
             for future in futures:
                 future.result()
             if args.queries:
+                query_start = time.time()
+                query_profiles = []
+                if args.query_profile_seconds > 0:
+                    for kind in ["profile", "allocs"]:
+                        query_profiles.append(pool.submit(fetch,
+                            f"http://127.0.0.1:19010/debug/pprof/{kind}?seconds={args.query_profile_seconds}",
+                            directory / f"query-{kind}.pb.gz", args.query_profile_seconds + 20))
                 queries = harness["dashboard"]()
                 (directory / "queries.json").write_text(json.dumps(queries, indent=2) + "\n")
                 with (directory / "requests.jsonl").open("w") as output:
@@ -148,12 +165,25 @@ def main():
                             harness["benchmark"](server, args.nodes, end, queries, args, output)
                         else:
                             print(f"Skipping {server} dashboard: freshness gate failed", flush=True)
+                if args.dashboard_loads:
+                    outcomes = {}
+                    for server, gate in readiness.items():
+                        if gate["ready"]:
+                            outcomes[server] = harness["dashboard_loads"](server, args.nodes, end, args, directory)
+                    (directory / "dashboard-loads.json").write_text(json.dumps(outcomes, indent=2) + "\n")
                 if args.otelbench:
                     outcomes = {}
                     for server, gate in readiness.items():
                         if gate["ready"]:
                             outcomes[server] = harness["otelbench_dashboard"](server, args.nodes, end, args, directory)
                     (directory / "otelbench.json").write_text(json.dumps(outcomes, indent=2) + "\n")
+                (directory / "query-phase.json").write_text(json.dumps({
+                    "start": query_start, "end": time.time(), "live_ingestion": args.live_queries,
+                }, indent=2) + "\n")
+                if args.live_queries:
+                    capture(time.monotonic() - start, container)
+                for future in query_profiles:
+                    future.result()
     finally:
         ids = dc("ps", "-aq", capture_output=True).stdout.split()
         if ids:

@@ -121,6 +121,14 @@ limitations in PR descriptions or performance commit bodies. Version benchmark c
 tests and reusable methodology only.
 Use `summarize_write.py <run-directory>...` to derive counters from retained raw runs.
 
+`profile_metrics.py --queries --live-queries` keeps vmagent running during read measurement.
+Without `--live-queries`, its query results describe stopped ingestion. The query-phase
+timestamps and final counters distinguish these modes; neither short profile proves steady state.
+Add `--dashboard-loads` to measure wall time for all 242 targets with the configured bounded
+client count. Individual query timings, complete/incomplete loads, warmups and empty/error
+counts are retained separately. `--subnet` supplies an unused explicit Docker subnet when
+retained fixtures have exhausted the automatic pools.
+
 The current baseline uses published storage `v0.50.0`, including the merged stack:
 [compact indexes #791](https://github.com/oteldb/storage/pull/791),
 [metric batching #792](https://github.com/oteldb/storage/pull/792), and
