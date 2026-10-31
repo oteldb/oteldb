@@ -7,6 +7,8 @@ response for 2s; vmagent assigns each scrape target a distinct `instance="host-N
 [RESUMED_RESULTS.md](RESUMED_RESULTS.md) records the published-storage `v0.50.0` rerun.
 [METRICS_PROFILE_RESULTS.md](METRICS_PROFILE_RESULTS.md) attributes the repeated 10k
 overload to conversion allocations and retained live/detached flush work.
+[FLUSH_COPY_RESULTS.md](FLUSH_COPY_RESULTS.md) measures the first isolated flush-copy
+optimization and its paired 10k follow-up.
 
 ```sh
 bash dev/local/scale-bench/build.sh
