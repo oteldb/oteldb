@@ -3,6 +3,16 @@
 Integration work for `go-faster/oteldb` to exploit the `github.com/oteldb/storage`
 library's improvements: caches, aggregate pushdown, and lossy precision.
 
+## Metric ingestion
+
+The native backend hashes local gauge/sum pdata points before converting their
+attributes. The registry requests a full identity only for a missing series or
+overflow routing; known series recover their WAL identity from the registry.
+Tenant policy, sampling and admission remain in the storage facade. Resources and
+scopes still convert for tenant callbacks. Requests with exemplars, decomposed types
+or clustered storage use the existing whole-request conversion path. The pooled
+projector releases borrowed input after the synchronous write returns.
+
 ## Caches / optimizations are opt-out for oteldb
 
 The storage library keeps these opt-in (it's a general-purpose library whose default is the

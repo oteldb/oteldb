@@ -260,6 +260,10 @@ func (b *Backend) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error 
 		return ErrNoEngine
 	}
 
+	if handled, err := b.consumeProjectedMetrics(ctx, md); handled {
+		return err
+	}
+
 	// WriteMetrics owns stored identities and samples before returning, so the
 	// conversion descriptors can be reused independently of their byte payloads.
 	batch := metric.GetMetrics()
