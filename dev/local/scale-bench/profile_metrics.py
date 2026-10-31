@@ -124,6 +124,8 @@ def main():
         dc("stop", "-t", "30", capture_output=True)
         if ids:
             (directory / "stopped-containers.json").write_bytes(subprocess.check_output(["docker", "inspect", *ids]))
+        with (directory / "shutdown.log").open("w") as output:
+            dc("logs", "--no-color", "--tail", "100", stdout=output, stderr=output)
     print(f"Stopped benchmark containers; retained volumes and profiles in {directory}", flush=True)
 
 
