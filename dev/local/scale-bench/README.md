@@ -1,5 +1,8 @@
 # Node-exporter scaling benchmark
 
+[HEAD_WAL_RESULTS.md](HEAD_WAL_RESULTS.md) measures combined sealed-head streaming
+and WAL changes at 10k, including lower retained work and increased part count.
+
 [METRIC_CONSUMER_RESULTS.md](METRIC_CONSUMER_RESULTS.md) profiles the metric consumer
 reuse change at 10k hosts, with freshness-gated random/cached dashboard queries.
 
