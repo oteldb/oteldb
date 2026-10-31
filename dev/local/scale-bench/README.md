@@ -1,5 +1,8 @@
 # Node-exporter scaling benchmark
 
+[METRIC_CONSUMER_RESULTS.md](METRIC_CONSUMER_RESULTS.md) profiles the metric consumer
+reuse change at 10k hosts, with freshness-gated random/cached dashboard queries.
+
 Compare single-node oteldb's native `file` backend with single-node VictoriaMetrics.
 Both receive identical live samples from vmagent. Nginx caches one real node-exporter's
 response for 2s; vmagent assigns each scrape target a distinct `instance="host-N"`.

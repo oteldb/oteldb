@@ -31,6 +31,12 @@ def main():
     parser.add_argument("--image", required=True)
     parser.add_argument("--binary", default=str(HERE / "bin/oteldb"), help="matching image binary to retain")
     parser.add_argument("--trace-seconds", type=int, default=0, help="execution trace duration at 120s and 300s")
+    parser.add_argument("--queries", action="store_true", help="run dashboard queries after capture for servers passing freshness")
+    parser.add_argument("--runs", type=int, default=10)
+    parser.add_argument("--jobs", type=int, default=4)
+    parser.add_argument("--seed", type=int, default=20261027)
+    parser.add_argument("--query-budget", type=int, default=120)
+    parser.add_argument("--otelbench", action="store_true", help="also run the complete dashboard for ready servers")
     args = parser.parse_args()
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     directory = HERE / "results" / ("profile-" + stamp)
@@ -115,12 +121,39 @@ def main():
                     break
                 time.sleep(min(15, max(0, args.seconds - (time.monotonic() - start))))
             capture(time.monotonic() - start, container)
+            end = int((time.time() - 30) // 15 * 15)
+            readiness = {}
+            history = []
+            for server in harness["SERVERS"]:
+                hosts = harness["query"](server, 'count(node_uname_info{job="node_exporter"})', end, nocache=True)
+                samples = harness["query"](server,
+                    'min(count_over_time(node_uname_info{job="node_exporter"}[120s]))', end, nocache=True)
+                history.append(samples)
+                readiness[server] = {"hosts": hosts, "history": samples,
+                    "ready": harness["number"](hosts) == args.nodes and harness["number"](samples) >= 6}
+            (directory / "freshness-final.json").write_text(json.dumps(history, indent=2) + "\n")
+            (directory / "gate-summary.json").write_text(json.dumps(readiness, indent=2) + "\n")
             dc("stop", "-t", "20", "vmagent", capture_output=True)
             time.sleep(15)
             fetch("http://127.0.0.1:19010/debug/pprof/heap?gc=1", directory / "quiescent-gc.heap.pb.gz", 30)
             capture(time.monotonic() - start, container)
             for future in futures:
                 future.result()
+            if args.queries:
+                queries = harness["dashboard"]()
+                (directory / "queries.json").write_text(json.dumps(queries, indent=2) + "\n")
+                with (directory / "requests.jsonl").open("w") as output:
+                    for server, gate in readiness.items():
+                        if gate["ready"]:
+                            harness["benchmark"](server, args.nodes, end, queries, args, output)
+                        else:
+                            print(f"Skipping {server} dashboard: freshness gate failed", flush=True)
+                if args.otelbench:
+                    outcomes = {}
+                    for server, gate in readiness.items():
+                        if gate["ready"]:
+                            outcomes[server] = harness["otelbench_dashboard"](server, args.nodes, end, args, directory)
+                    (directory / "otelbench.json").write_text(json.dumps(outcomes, indent=2) + "\n")
     finally:
         ids = dc("ps", "-aq", capture_output=True).stdout.split()
         if ids:
