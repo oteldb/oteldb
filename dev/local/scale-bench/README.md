@@ -1,22 +1,8 @@
 # Node-exporter scaling benchmark
 
-[HEAD_WAL_RESULTS.md](HEAD_WAL_RESULTS.md) measures combined sealed-head streaming
-and WAL changes at 10k, including lower retained work and increased part count.
-
-[METRIC_CONSUMER_RESULTS.md](METRIC_CONSUMER_RESULTS.md) profiles the metric consumer
-reuse change at 10k hosts, with freshness-gated random/cached dashboard queries.
-
 Compare single-node oteldb's native `file` backend with single-node VictoriaMetrics.
 Both receive identical live samples from vmagent. Nginx caches one real node-exporter's
 response for 2s; vmagent assigns each scrape target a distinct `instance="host-N"`.
-
-[RESUMED_RESULTS.md](RESUMED_RESULTS.md) records the published-storage `v0.50.0` rerun.
-[METRICS_PROFILE_RESULTS.md](METRICS_PROFILE_RESULTS.md) attributes the repeated 10k
-overload to conversion allocations and retained live/detached flush work.
-[FLUSH_COPY_RESULTS.md](FLUSH_COPY_RESULTS.md) measures the first isolated flush-copy
-optimization and its paired 10k follow-up.
-[FLUSH_REPROFILE_RESULTS.md](FLUSH_REPROFILE_RESULTS.md) repeats that exact build with
-short execution traces and explains the remaining full-head allocation and waits.
 
 ```sh
 bash dev/local/scale-bench/build.sh
@@ -113,8 +99,6 @@ VictoriaMetrics cache controls are documented in its
 
 ## Native batching follow-up
 
-[BATCHING_RESULTS.md](BATCHING_RESULTS.md) records the bounded-batching implementation,
-correctness checks, disk benchmarks, and the repeated 10k-host write-pressure measurement.
 [CONCURRENCY_DESIGN.md](CONCURRENCY_DESIGN.md) is the separately requested Astra design.
 To repeat write-only measurement with an explicit image:
 
@@ -122,11 +106,6 @@ To repeat write-only measurement with an explicit image:
 python3 dev/local/scale-bench/write_pressure.py --image local/oteldb:scale-batched --nodes 10000 --seconds 300 --keep
 ```
 
-[BATCH_SIZE_RESULTS.md](BATCH_SIZE_RESULTS.md) compares the 4k, 16k, and 64k metric caps
-using source overlays, separately measuring native writes and adapter conversion.
-
-[CONCURRENCY_RESULTS.md](CONCURRENCY_RESULTS.md) records implementation, failure/recovery tests,
-the failed chunk-capture trial, the measured immutable-scan correction, and the 10k rerun.
 From the application benchmark worktree, rebuild the corrected storage worktree with:
 
 ```sh
@@ -135,18 +114,19 @@ BENCH_STORAGE_DIR="$PWD/../concurrent-storage" \
 OTELDB_BENCH_IMAGE=local/oteldb:scale-concurrent python3 dev/local/scale-bench/run.py --nodes 1000 --otelbench
 ```
 
-Raw profiles, full request logs, container volumes, and local binaries are excluded from git.
-Selected reports, counter summaries, validation output, and benchstat samples are committed
-separately under `results/`; raw artifacts remain in the local benchmark workspace.
+Keep generated reports, counter summaries, profiles, validation output, raw benchmark
+samples and benchstat output local under the ignored `results/` directory. Do not
+force-add them to git, documentation or testdata. Put the relevant results and
+limitations in PR descriptions or performance commit bodies. Version benchmark code,
+tests and reusable methodology only.
 Use `summarize_write.py <run-directory>...` to derive counters from retained raw runs.
 
 The current baseline uses published storage `v0.50.0`, including the merged stack:
 [compact indexes #791](https://github.com/oteldb/storage/pull/791),
 [metric batching #792](https://github.com/oteldb/storage/pull/792), and
 [bounded concurrency #793](https://github.com/oteldb/storage/pull/793).
-Recorded measurements use the exact pre-rebase image/source hashes in the result reports.
+Record exact image/source hashes with results in the PR or commit body.
 
-[QUEUE_SHUTDOWN_INVESTIGATION.md](QUEUE_SHUTDOWN_INVESTIGATION.md) traces the remaining queue,
-worker cancellation/rollback, and SDK watchdog. `build_shutdown_probe.py` builds a separate
+`build_shutdown_probe.py` builds a separate
 signal-dump image via an overlay because the normal profiler closes on SIGTERM; it changes
 no production source or shutdown policy.

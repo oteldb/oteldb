@@ -1,8 +1,0 @@
-{
-  "nodes": 10000,
-  "window_seconds": 85.372404614,
-  "offered_points_s": 966238.6970704191,
-  "accepted_points_s": 729424.0133162193,
-  "queue_bytes_start": 584729470.0,
-  "queue_bytes_end": 709289344.0
-}

@@ -12,7 +12,7 @@ this proposal uses committed architecture, implementation, and the primary refer
 
 ## Evidence and immediate priority
 
-[`WRITE_PRESSURE.md`](WRITE_PRESSURE.md) records the diagnostic 10k-host, 15s-scrape fixture:
+[PR #1441](https://github.com/oteldb/oteldb/pull/1441) records the diagnostic 10k-host, 15s-scrape fixture:
 approximately 967k offered versus 250k accepted points/s, about one WAL append per accepted
 point, and 28.57 aggregate writer mutex-wait seconds in a five-second runtime trace.
 The trace measures waiter delay; it does not attribute all contention to maintenance.

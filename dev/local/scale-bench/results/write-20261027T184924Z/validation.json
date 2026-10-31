@@ -1,8 +1,0 @@
-{
-  "semantic_equivalence": "passed for 1 and 128 metric names",
-  "WAL_replay_samples": "identical",
-  "homogeneous_WAL_bytes": "identical",
-  "lint": "0 issues",
-  "benchmark_repetitions": 6,
-  "benchmark_temp_storage": "workspace NVMe filesystem"
-}

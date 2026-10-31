@@ -1,5 +1,0 @@
-{
-  "nodes": 10000,
-  "seconds": 360,
-  "image": "local/oteldb:metrics-reprofile-3e7d95a5"
-}

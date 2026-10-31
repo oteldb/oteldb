@@ -1,3 +1,0 @@
-ok  	github.com/oteldb/storage	92.595s
-ok  	github.com/oteldb/storage/engine	6.480s
-ok  	github.com/oteldb/storage/recordengine	20.242s

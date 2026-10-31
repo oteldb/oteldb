@@ -1,7 +1,0 @@
-{
-  "nodes": 10000,
-  "seconds": 360,
-  "image": "local/oteldb:flush-copy-58a975d",
-  "binary": "dev/local/scale-bench/results/profile-20261031T020637Z/oteldb",
-  "trace_seconds": 3
-}

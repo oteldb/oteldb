@@ -1,9 +1,0 @@
-{
-  "rate_window_seconds": 77.80000000000001,
-  "offered_points_s": 966117.9562982004,
-  "accepted_points_s": 583195.4627249356,
-  "queue_bytes_start": 516749955.0,
-  "queue_bytes_end": 733957584.0,
-  "vm_queue_bytes_end": 0.0,
-  "queue_bytes_dropped": 0.0
-}
