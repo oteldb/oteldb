@@ -256,19 +256,20 @@ func (b *Backend) MetricMetadata(context.Context, metricstorage.MetadataParams) 
 // oteldb.storage.dropped_records, which is the only report this sink has — its signature returns
 // only an error.
 func (b *Backend) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
-	// A fresh batch is used (not pooled) because the engine may retain projected series
-	// bytes; pdataconv already copies out of pdata, so this allocates regardless.
 	if b.store == nil {
 		return ErrNoEngine
 	}
 
-	var batch metric.Metrics
+	// WriteMetrics owns stored identities and samples before returning, so the
+	// conversion descriptors can be reused independently of their byte payloads.
+	batch := metric.GetMetrics()
+	defer metric.PutMetrics(batch)
 
-	dropped := pdataconv.AppendMetrics(&batch, md)
+	dropped := pdataconv.AppendMetrics(batch, md)
 	b.countDropped(ctx, signal.Metric, reasonNoValue, dropped.Points)
 	b.countDropped(ctx, signal.Metric, reasonExemplar, dropped.Exemplars)
 
-	if _, err := b.store.WriteMetrics(ctx, batch); err != nil {
+	if _, err := b.store.WriteMetrics(ctx, *batch); err != nil {
 		return errors.Wrap(err, "write metrics")
 	}
 	return nil
