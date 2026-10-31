@@ -1,0 +1,25 @@
+File: oteldb
+Build ID: 72e07bb772ec3ffb95ef22c8252ff85a443f3551
+Type: cpu
+Time: 2026-10-31 14:43:34 MSK
+Duration: 30s, Total samples = 155.75s (519.15%)
+Showing nodes accounting for 105.90s, 67.99% of 155.75s total
+Dropped 793 nodes (cum <= 0.78s)
+Showing top 16 nodes out of 211
+      flat  flat%   sum%        cum   cum%
+    32.52s 20.88% 20.88%     32.52s 20.88%  runtime.spanClass.sizeclass (inline)
+    16.72s 10.74% 31.61%     16.72s 10.74%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+     9.96s  6.39% 38.01%     50.63s 32.51%  runtime.tryDeferToSpanScan
+     7.41s  4.76% 42.77%     42.25s 27.13%  runtime.scanSpan
+     6.50s  4.17% 46.94%      7.15s  4.59%  runtime.(*spanInlineMarkBits).tryAcquire
+     5.78s  3.71% 50.65%      5.78s  3.71%  internal/runtime/gc/scan.scanSpanPackedAVX512
+     4.84s  3.11% 53.76%     14.18s  9.10%  runtime.scanObjectsSmall
+     4.30s  2.76% 56.52%     25.45s 16.34%  runtime.mapaccess2
+     4.04s  2.59% 59.11%      4.04s  2.59%  runtime.memequal128
+     3.11s  2.00% 61.11%      8.33s  5.35%  runtime.scanObjectSmall
+     2.39s  1.53% 62.65%      2.45s  1.57%  runtime.(*mspan).moveInlineMarks
+     2.22s  1.43% 64.07%      2.22s  1.43%  runtime.memmove
+     1.73s  1.11% 65.18%      1.73s  1.11%  internal/runtime/maps.(*Map).directoryAt (inline)
+     1.61s  1.03% 66.22%      1.61s  1.03%  runtime.extractHeapBitsSmall
+     1.42s  0.91% 67.13%      2.10s  1.35%  github.com/oteldb/storage/signal/metric.(*projector).setMetric
+     1.35s  0.87% 67.99%      5.18s  3.33%  github.com/oteldb/storage/otlp/pdataconv.convertMap-range1

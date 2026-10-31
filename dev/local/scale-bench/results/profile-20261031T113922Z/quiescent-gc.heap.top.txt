@@ -1,0 +1,20 @@
+File: oteldb
+Build ID: 72e07bb772ec3ffb95ef22c8252ff85a443f3551
+Type: inuse_space
+Time: 2026-10-31 14:45:42 MSK
+Showing nodes accounting for 12.05GB, 96.66% of 12.46GB total
+Dropped 212 nodes (cum <= 0.06GB)
+Showing top 12 nodes out of 81
+      flat  flat%   sum%        cum   cum%
+    3.34GB 26.80% 26.80%     3.34GB 26.80%  github.com/oteldb/storage/engine.buildFlushColumns
+    2.84GB 22.79% 49.59%     2.84GB 22.79%  github.com/oteldb/storage/engine.(*head).bufFor
+    1.89GB 15.18% 64.77%     1.89GB 15.18%  github.com/oteldb/storage/engine.(*sampleBuf).appendSample
+    1.52GB 12.21% 76.98%     1.52GB 12.22%  github.com/oteldb/storage/index/series.(*Index).Add
+    0.83GB  6.68% 83.66%     0.83GB  6.68%  slices.Clone[go.shape.[]uint8,go.shape.uint8]
+    0.57GB  4.59% 88.26%     0.57GB  4.59%  github.com/oteldb/storage/engine.(*head).noteTS
+    0.50GB  4.05% 92.30%     0.50GB  4.05%  github.com/oteldb/storage/index/postings.(*memoryPostings[go.shape.uint32]).Add
+    0.27GB  2.19% 94.49%     0.54GB  4.35%  github.com/oteldb/storage/engine.(*Engine).identitiesOf
+    0.27GB  2.17% 96.66%     0.27GB  2.17%  github.com/oteldb/storage/engine.(*Engine).identitiesOf.func1
+         0     0% 96.66%     0.08GB  0.62%  github.com/ogen-go/ogen/middleware.HookMiddleware[go.shape.struct {},go.shape.struct { Query string; Time github.com/oteldb/oteldb/internal/promapi.OptPrometheusTimestamp "json:\",omitempty,omitzero\""; LookbackDelta github.com/oteldb/oteldb/internal/promapi.OptString "json:\",omitempty,omitzero\""; Stats github.com/oteldb/oteldb/internal/promapi.OptString "json:\",omitempty,omitzero\"" },go.shape.*uint8] (inline)
+         0     0% 96.66%     0.08GB  0.62%  github.com/ogen-go/ogen/middleware.HookMiddleware[go.shape.struct {},go.shape.struct { Query string; Time github.com/oteldb/oteldb/internal/promapi.OptPrometheusTimestamp "json:\",omitempty,omitzero\""; LookbackDelta github.com/oteldb/oteldb/internal/promapi.OptString "json:\",omitempty,omitzero\""; Stats github.com/oteldb/oteldb/internal/promapi.OptString "json:\",omitempty,omitzero\"" },go.shape.*uint8].func1
+         0     0% 96.66%     0.08GB  0.62%  github.com/oteldb/oteldb/internal/httpmiddleware.Explain.func1.1

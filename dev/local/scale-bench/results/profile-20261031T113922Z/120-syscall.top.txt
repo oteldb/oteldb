@@ -1,0 +1,21 @@
+Type: delay
+Showing nodes accounting for 175.43ms, 98.47% of 178.16ms total
+Dropped 120 nodes (cum <= 0.89ms)
+Showing top 16 nodes out of 138
+      flat  flat%   sum%        cum   cum%
+  111.46ms 62.56% 62.56%   111.46ms 62.56%  syscall.Fsync
+   51.31ms 28.80% 91.37%    51.31ms 28.80%  syscall.write
+       5ms  2.81% 94.17%        5ms  2.81%  syscall.read
+    4.36ms  2.45% 96.62%     4.36ms  2.45%  syscall.Close
+    3.29ms  1.85% 98.47%     3.29ms  1.85%  syscall.accept4
+         0     0% 98.47%     2.63ms  1.47%  bufio.(*Reader).Read
+         0     0% 98.47%     1.08ms  0.61%  bufio.(*Reader).ReadLine
+         0     0% 98.47%     1.08ms  0.61%  bufio.(*Reader).ReadSlice
+         0     0% 98.47%     1.08ms  0.61%  bufio.(*Reader).fill
+         0     0% 98.47%    10.98ms  6.16%  bufio.(*Writer).Flush
+         0     0% 98.47%     2.47ms  1.39%  bufio.(*Writer).Write
+         0     0% 98.47%     2.63ms  1.47%  github.com/klauspost/compress/zstd.(*Decoder).Read
+         0     0% 98.47%     2.63ms  1.47%  github.com/klauspost/compress/zstd.(*Decoder).nextBlock
+         0     0% 98.47%     2.63ms  1.47%  github.com/klauspost/compress/zstd.(*Decoder).nextBlockSync
+         0     0% 98.47%     2.63ms  1.47%  github.com/klauspost/compress/zstd.(*blockDec).reset
+         0     0% 98.47%     2.63ms  1.47%  github.com/klauspost/compress/zstd.(*frameDec).next
