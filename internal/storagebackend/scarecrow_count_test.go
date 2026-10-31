@@ -1,6 +1,7 @@
 package storagebackend_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ func TestScarecrowCountExcludesLeftBoundary(t *testing.T) {
 	t.Parallel()
 	base := time.Unix(2_000_000, 0)
 	store := ingestGauge(t.Context(), t, base, []timeSample{{offset: -30 * time.Second, value: 1}})
-	t.Cleanup(func() { require.NoError(t, store.Close(t.Context())) })
+	t.Cleanup(func() { require.NoError(t, store.Close(context.WithoutCancel(t.Context()))) })
 	scanner := storagebackend.New(store).ScarecrowScanner()
 	counter := scanner.(scarecrow.SeriesCounter)
 	grouped := scanner.(scarecrow.GroupedSeriesCounter)
@@ -50,7 +51,7 @@ func TestScarecrowCountGridNativeGaps(t *testing.T) {
 	t.Parallel()
 	base := time.Unix(2_000_000, 0)
 	store := ingestGauge(t.Context(), t, base, []timeSample{{-10 * time.Minute, 1}, {-9 * time.Minute, 2}, {-8 * time.Minute, 3}, {0, 4}, {time.Minute, 5}})
-	t.Cleanup(func() { require.NoError(t, store.Close(t.Context())) })
+	t.Cleanup(func() { require.NoError(t, store.Close(context.WithoutCancel(t.Context()))) })
 	backend := storagebackend.New(store)
 	raw := scarecrow.NewEngine(scarecrow.Opts{EnableAtModifier: true})
 	native := scarecrow.NewEngine(scarecrow.Opts{EnableAtModifier: true, NewScanner: func(storage.Queryable) scarecrow.Scanner { return backend.ScarecrowScanner() }})

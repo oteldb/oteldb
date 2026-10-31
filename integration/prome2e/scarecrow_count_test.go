@@ -1,6 +1,7 @@
 package prome2e_test
 
 import (
+	"context"
 	"fmt"
 	"net/http/httptest"
 	"testing"
@@ -25,7 +26,7 @@ func TestScarecrowStorageCountProjection(t *testing.T) {
 	ctx := t.Context()
 	store, err := storage.InMemory()
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, store.Close(ctx)) })
+	t.Cleanup(func() { require.NoError(t, store.Close(context.WithoutCancel(ctx))) })
 	backend := storagebackend.New(store)
 	set := loadTestData(ctx, t, backend)
 	engines := []promhandler.Engine{
