@@ -1,0 +1,36 @@
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/storage/engine
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkBuildFlushColumns/single-point         	      22	   9435496 ns/op	 222.26 MB/s	12681057 B/op	  131153 allocs/op
+BenchmarkBuildFlushColumns/single-point         	      22	   9224713 ns/op	 227.34 MB/s	12681056 B/op	  131153 allocs/op
+BenchmarkBuildFlushColumns/single-point         	      22	   9574438 ns/op	 219.04 MB/s	12681056 B/op	  131153 allocs/op
+BenchmarkBuildFlushColumns/single-point         	      21	   9593613 ns/op	 218.60 MB/s	12681056 B/op	  131153 allocs/op
+BenchmarkBuildFlushColumns/single-point         	      22	   9228489 ns/op	 227.25 MB/s	12681056 B/op	  131153 allocs/op
+BenchmarkBuildFlushColumns/single-point         	      22	   9262211 ns/op	 226.42 MB/s	12681057 B/op	  131153 allocs/op
+BenchmarkBuildFlushColumns/short-ordered        	      12	  17875796 ns/op	 938.54 MB/s	96337760 B/op	  131180 allocs/op
+BenchmarkBuildFlushColumns/short-ordered        	      14	  17694325 ns/op	 948.17 MB/s	96337760 B/op	  131180 allocs/op
+BenchmarkBuildFlushColumns/short-ordered        	      13	  17894631 ns/op	 937.56 MB/s	96337760 B/op	  131180 allocs/op
+BenchmarkBuildFlushColumns/short-ordered        	      12	  18761650 ns/op	 894.23 MB/s	96337760 B/op	  131180 allocs/op
+BenchmarkBuildFlushColumns/short-ordered        	      13	  18109378 ns/op	 926.44 MB/s	96337760 B/op	  131180 allocs/op
+BenchmarkBuildFlushColumns/short-ordered        	      12	  17881521 ns/op	 938.24 MB/s	96337760 B/op	  131180 allocs/op
+BenchmarkBuildFlushColumns/long-ordered         	     139	   1707389 ns/op	2456.56 MB/s	23846752 B/op	    2138 allocs/op
+BenchmarkBuildFlushColumns/long-ordered         	     142	   1668898 ns/op	2513.22 MB/s	23846752 B/op	    2138 allocs/op
+BenchmarkBuildFlushColumns/long-ordered         	     140	   1676592 ns/op	2501.68 MB/s	23846752 B/op	    2138 allocs/op
+BenchmarkBuildFlushColumns/long-ordered         	     139	   1728324 ns/op	2426.80 MB/s	23846752 B/op	    2138 allocs/op
+BenchmarkBuildFlushColumns/long-ordered         	     138	   1738626 ns/op	2412.42 MB/s	23846752 B/op	    2138 allocs/op
+BenchmarkBuildFlushColumns/long-ordered         	     142	   1668450 ns/op	2513.89 MB/s	23846752 B/op	    2138 allocs/op
+BenchmarkBuildFlushColumns/short-weighted       	      10	  21610289 ns/op	 776.35 MB/s	121615440 B/op	  196750 allocs/op
+BenchmarkBuildFlushColumns/short-weighted       	      10	  21866735 ns/op	 767.25 MB/s	121615440 B/op	  196750 allocs/op
+BenchmarkBuildFlushColumns/short-weighted       	      12	  21130912 ns/op	 793.97 MB/s	121615440 B/op	  196750 allocs/op
+BenchmarkBuildFlushColumns/short-weighted       	      10	  21499104 ns/op	 780.37 MB/s	121615440 B/op	  196750 allocs/op
+BenchmarkBuildFlushColumns/short-weighted       	      12	  21370631 ns/op	 785.06 MB/s	121615440 B/op	  196750 allocs/op
+BenchmarkBuildFlushColumns/short-weighted       	      10	  21390340 ns/op	 784.34 MB/s	121615440 B/op	  196750 allocs/op
+BenchmarkBuildFlushColumns/short-unordered      	       9	  24279006 ns/op	 691.02 MB/s	108920672 B/op	  196716 allocs/op
+BenchmarkBuildFlushColumns/short-unordered      	       9	  24737331 ns/op	 678.21 MB/s	108920672 B/op	  196716 allocs/op
+BenchmarkBuildFlushColumns/short-unordered      	       9	  24719354 ns/op	 678.71 MB/s	108920672 B/op	  196716 allocs/op
+BenchmarkBuildFlushColumns/short-unordered      	       9	  25061851 ns/op	 669.43 MB/s	108920672 B/op	  196716 allocs/op
+BenchmarkBuildFlushColumns/short-unordered      	       9	  24663079 ns/op	 680.26 MB/s	108920672 B/op	  196716 allocs/op
+BenchmarkBuildFlushColumns/short-unordered      	       8	  25209300 ns/op	 665.52 MB/s	108920672 B/op	  196716 allocs/op
+PASS
+ok  	github.com/oteldb/storage/engine	6.882s

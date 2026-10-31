@@ -1,0 +1,32 @@
+[
+  {
+    "server": "oteldb",
+    "query": "min(count_over_time(node_uname_info{job=\"node_exporter\"}[120s]))",
+    "instant": true,
+    "end": 1793412691.1403694,
+    "nocache": true,
+    "ok": true,
+    "series": 1,
+    "empty": false,
+    "points": 1,
+    "warnings": [],
+    "value": "2",
+    "result_sha256": "76ad2a833bcbcc20856f64124742225d58530b84dc167b807afb3a1b48809df5",
+    "ms": 136.49916301073972
+  },
+  {
+    "server": "victoriametrics",
+    "query": "min(count_over_time(node_uname_info{job=\"node_exporter\"}[120s]))",
+    "instant": true,
+    "end": 1793412691.1403694,
+    "nocache": true,
+    "ok": true,
+    "series": 1,
+    "empty": false,
+    "points": 1,
+    "warnings": [],
+    "value": "8",
+    "result_sha256": "6c16d211b038c4037692219026628b32de8708ecff0594df2880632739daa57c",
+    "ms": 599.6546830137959
+  }
+]

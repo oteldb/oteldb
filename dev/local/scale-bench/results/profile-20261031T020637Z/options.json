@@ -1,0 +1,5 @@
+{
+  "nodes": 10000,
+  "seconds": 360,
+  "image": "local/oteldb:flush-copy-58a975d"
+}
