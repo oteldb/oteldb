@@ -1,0 +1,36 @@
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/oteldb/internal/storagebackend
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+                                          │ /tmp/metric-consumer-before.txt │   /tmp/metric-consumer-after.txt   │
+                                          │             sec/op              │    sec/op     vs base              │
+ConsumeMetrics/fragmented=false/adapter-8                      3.716m ± 10%   3.510m ±  8%       ~ (p=0.065 n=6)
+ConsumeMetrics/fragmented=false/native-8                       1.915m ±  4%   1.970m ±  6%       ~ (p=0.180 n=6)
+ConsumeMetrics/fragmented=true/adapter-8                       5.280m ± 14%   5.044m ± 10%       ~ (p=0.485 n=6)
+ConsumeMetrics/fragmented=true/native-8                        3.348m ±  2%   3.377m ±  2%       ~ (p=0.818 n=6)
+geomean                                                        3.349m         3.294m        -1.64%
+
+                                          │ /tmp/metric-consumer-before.txt │   /tmp/metric-consumer-after.txt    │
+                                          │               B/s               │      B/s       vs base              │
+ConsumeMetrics/fragmented=false/adapter-8                     41.07Mi ±  9%   43.47Mi ±  8%       ~ (p=0.065 n=6)
+ConsumeMetrics/fragmented=false/native-8                      79.67Mi ±  4%   77.47Mi ±  6%       ~ (p=0.180 n=6)
+ConsumeMetrics/fragmented=true/adapter-8                      28.94Mi ± 13%   30.25Mi ± 11%       ~ (p=0.485 n=6)
+ConsumeMetrics/fragmented=true/native-8                       45.58Mi ±  2%   45.19Mi ±  2%       ~ (p=0.734 n=6)
+geomean                                                       45.58Mi         46.32Mi        +1.62%
+
+                                          │ /tmp/metric-consumer-before.txt │   /tmp/metric-consumer-after.txt    │
+                                          │              B/op               │     B/op      vs base               │
+ConsumeMetrics/fragmented=false/adapter-8                      5.812Mi ± 2%   2.441Mi ± 3%  -57.99% (p=0.002 n=6)
+ConsumeMetrics/fragmented=false/native-8                       485.9Ki ± 0%   485.9Ki ± 0%        ~ (p=0.182 n=6)
+ConsumeMetrics/fragmented=true/adapter-8                       7.023Mi ± 2%   2.657Mi ± 2%  -62.16% (p=0.002 n=6)
+ConsumeMetrics/fragmented=true/native-8                        485.9Ki ± 0%   485.9Ki ± 0%        ~ (p=1.000 n=6)
+geomean                                                        1.741Mi        1.099Mi       -36.86%
+
+                                          │ /tmp/metric-consumer-before.txt │    /tmp/metric-consumer-after.txt    │
+                                          │            allocs/op            │  allocs/op   vs base                 │
+ConsumeMetrics/fragmented=false/adapter-8                       55.05k ± 0%   55.02k ± 0%   -0.05% (p=0.002 n=6)
+ConsumeMetrics/fragmented=false/native-8                        5.021k ± 0%   5.021k ± 0%        ~ (p=1.000 n=6) ¹
+ConsumeMetrics/fragmented=true/adapter-8                        75.06k ± 0%   65.03k ± 0%  -13.37% (p=0.002 n=6)
+ConsumeMetrics/fragmented=true/native-8                         5.021k ± 0%   5.021k ± 0%        ~ (p=1.000 n=6) ¹
+geomean                                                         17.97k        17.33k        -3.54%
+¹ all samples are equal

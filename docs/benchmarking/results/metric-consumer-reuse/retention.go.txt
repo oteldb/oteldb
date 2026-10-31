@@ -1,0 +1,34 @@
+package main
+import (
+ "fmt"
+ "os"
+ "runtime"
+ "runtime/debug"
+ "go.opentelemetry.io/collector/pdata/pmetric"
+ "github.com/oteldb/storage/otlp/pdataconv"
+ "github.com/oteldb/storage/signal/metric"
+)
+func consume(n int) {
+ md := pmetric.NewMetrics()
+ ms := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics()
+ for i:=0; i<n; i++ {
+  m:=ms.AppendEmpty(); m.SetName("node_cpu_seconds_total")
+  p:=m.SetEmptyGauge().DataPoints().AppendEmpty();p.SetDoubleValue(1)
+  p.Attributes().PutStr("instance",fmt.Sprint("host-",i))
+  p.Attributes().PutStr("mode","user")
+ }
+ if os.Args[1]=="pool" {
+  out:=metric.GetMetrics(); pdataconv.AppendMetrics(out,md);metric.PutMetrics(out)
+ }else{var out metric.Metrics;pdataconv.AppendMetrics(&out,md)}
+ runtime.KeepAlive(md)
+}
+func main(){
+ runtime.GC();var before runtime.MemStats;runtime.ReadMemStats(&before)
+ debug.SetGCPercent(-1)
+ consume(65536)
+ for i:=0;i<100;i++{consume(1)}
+ runtime.GC();var after runtime.MemStats;runtime.ReadMemStats(&after)
+ fmt.Printf("mode=%s retained_after_one_gc=%d bytes objects=%d\n",os.Args[1],int64(after.HeapAlloc)-int64(before.HeapAlloc),int64(after.HeapObjects)-int64(before.HeapObjects))
+ runtime.GC();runtime.ReadMemStats(&after)
+ fmt.Printf("mode=%s retained_after_two_gc=%d bytes objects=%d\n",os.Args[1],int64(after.HeapAlloc)-int64(before.HeapAlloc),int64(after.HeapObjects)-int64(before.HeapObjects))
+}

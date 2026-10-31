@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/oteldb/internal/storagebackend
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkConsumeMetrics/fragmented=false/adapter-8 	      20	   4076486 ns/op	  39.25 MB/s	 6164246 B/op	   55056 allocs/op
+BenchmarkConsumeMetrics/fragmented=false/adapter-8 	      20	   3773669 ns/op	  42.40 MB/s	 5953974 B/op	   55047 allocs/op
+BenchmarkConsumeMetrics/fragmented=false/adapter-8 	      20	   3605112 ns/op	  44.38 MB/s	 6094077 B/op	   55053 allocs/op
+BenchmarkConsumeMetrics/fragmented=false/adapter-8 	      20	   3672198 ns/op	  43.57 MB/s	 6094078 B/op	   55053 allocs/op
+BenchmarkConsumeMetrics/fragmented=false/adapter-8 	      20	   3449384 ns/op	  46.39 MB/s	 6093960 B/op	   55053 allocs/op
+BenchmarkConsumeMetrics/fragmented=false/adapter-8 	      20	   3760320 ns/op	  42.55 MB/s	 6094078 B/op	   55053 allocs/op
+BenchmarkConsumeMetrics/fragmented=false/native-8  	      20	   1927493 ns/op	  83.01 MB/s	  497480 B/op	    5021 allocs/op
+BenchmarkConsumeMetrics/fragmented=false/native-8  	      20	   1837904 ns/op	  87.06 MB/s	  497482 B/op	    5021 allocs/op
+BenchmarkConsumeMetrics/fragmented=false/native-8  	      20	   1995989 ns/op	  80.16 MB/s	  497596 B/op	    5021 allocs/op
+BenchmarkConsumeMetrics/fragmented=false/native-8  	      20	   1903054 ns/op	  84.08 MB/s	  497596 B/op	    5021 allocs/op
+BenchmarkConsumeMetrics/fragmented=false/native-8  	      20	   1954509 ns/op	  81.86 MB/s	  497596 B/op	    5021 allocs/op
+BenchmarkConsumeMetrics/fragmented=false/native-8  	      20	   1836045 ns/op	  87.14 MB/s	  497480 B/op	    5021 allocs/op
+BenchmarkConsumeMetrics/fragmented=true/adapter-8  	      20	   6035717 ns/op	  26.51 MB/s	 7336071 B/op	   75060 allocs/op
+BenchmarkConsumeMetrics/fragmented=true/adapter-8  	      20	   5466391 ns/op	  29.27 MB/s	 7448846 B/op	   75068 allocs/op
+BenchmarkConsumeMetrics/fragmented=true/adapter-8  	      20	   5831353 ns/op	  27.44 MB/s	 7392256 B/op	   75064 allocs/op
+BenchmarkConsumeMetrics/fragmented=true/adapter-8  	      20	   4948225 ns/op	  32.33 MB/s	 7222789 B/op	   75051 allocs/op
+BenchmarkConsumeMetrics/fragmented=true/adapter-8  	      20	   4887861 ns/op	  32.73 MB/s	 7392255 B/op	   75064 allocs/op
+BenchmarkConsumeMetrics/fragmented=true/adapter-8  	      20	   5092954 ns/op	  31.42 MB/s	 7279283 B/op	   75055 allocs/op
+BenchmarkConsumeMetrics/fragmented=true/native-8   	      20	   3394794 ns/op	  47.13 MB/s	  497557 B/op	    5021 allocs/op
+BenchmarkConsumeMetrics/fragmented=true/native-8   	      20	   3364430 ns/op	  47.56 MB/s	  497615 B/op	    5021 allocs/op
+BenchmarkConsumeMetrics/fragmented=true/native-8   	      20	   3332263 ns/op	  48.02 MB/s	  497596 B/op	    5021 allocs/op
+BenchmarkConsumeMetrics/fragmented=true/native-8   	      20	   3296351 ns/op	  48.54 MB/s	  497596 B/op	    5021 allocs/op
+BenchmarkConsumeMetrics/fragmented=true/native-8   	      20	   3414033 ns/op	  46.87 MB/s	  497615 B/op	    5021 allocs/op
+BenchmarkConsumeMetrics/fragmented=true/native-8   	      20	   3267341 ns/op	  48.97 MB/s	  497596 B/op	    5021 allocs/op
+PASS
+ok  	github.com/oteldb/oteldb/internal/storagebackend	2.697s
