@@ -15,8 +15,9 @@ import (
 	"github.com/oteldb/storage/signal"
 	"github.com/oteldb/storage/signal/metric"
 
+	"github.com/oteldb/storage/pool"
+
 	"github.com/oteldb/oteldb/internal/prompb"
-	"github.com/oteldb/oteldb/internal/xarena"
 )
 
 // nameLabel is the Prometheus metric name label. It is the metric's name, not one of its
@@ -49,9 +50,9 @@ func (o *Options) setDefaults() {
 // state. It is not safe for concurrent use; pool one per in-flight request.
 type Converter struct {
 	batch  metric.Metrics
-	attrs  xarena.Arena[signal.KeyValue]
-	names  xarena.Arena[byte]
-	labels xarena.Arena[prompb.Label]
+	attrs  pool.Arena[signal.KeyValue]
+	names  pool.Arena[byte]
+	labels pool.Arena[prompb.Label]
 }
 
 // Convert builds a metrics batch from the request's timeseries, reporting what it did not ingest.

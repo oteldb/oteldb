@@ -12,6 +12,7 @@ import (
 	"github.com/go-faster/errors"
 	"go.uber.org/zap"
 
+	"github.com/oteldb/storage/otlp/otlpdecode"
 	"github.com/oteldb/storage/signal"
 	"github.com/oteldb/storage/signal/log"
 	"github.com/oteldb/storage/signal/metric"
@@ -118,10 +119,10 @@ func NewHandler(sink Sink, cfg HandlerConfig) *Handler {
 		h.lg = zap.NewNop()
 	}
 
-	h.logs.New = func() any { return new(LogsConverter) }
-	h.traces.New = func() any { return new(TracesConverter) }
-	h.metrics.New = func() any { return new(MetricsConverter) }
-	h.profiles.New = func() any { return new(ProfilesConverter) }
+	h.logs.New = func() any { return new(otlpdecode.LogsConverter) }
+	h.traces.New = func() any { return new(otlpdecode.TracesConverter) }
+	h.metrics.New = func() any { return new(otlpdecode.MetricsConverter) }
+	h.profiles.New = func() any { return new(otlpdecode.ProfilesConverter) }
 	h.bodies.New = func() any { return new(body) }
 
 	return h
@@ -138,7 +139,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 func (h *Handler) Logs() http.Handler { return h.serve(signal.Log, h.ingestLogs) }
 
 func (h *Handler) ingestLogs(ctx context.Context, src []byte) (ingested, error) {
-	c, _ := h.logs.Get().(*LogsConverter)
+	c, _ := h.logs.Get().(*otlpdecode.LogsConverter)
 	defer h.logs.Put(c)
 
 	batch, dropped, err := c.Convert(src)
@@ -156,7 +157,7 @@ func (h *Handler) ingestLogs(ctx context.Context, src []byte) (ingested, error) 
 func (h *Handler) Traces() http.Handler { return h.serve(signal.Trace, h.ingestTraces) }
 
 func (h *Handler) ingestTraces(ctx context.Context, src []byte) (ingested, error) {
-	c, _ := h.traces.Get().(*TracesConverter)
+	c, _ := h.traces.Get().(*otlpdecode.TracesConverter)
 	defer h.traces.Put(c)
 
 	batch, err := c.Convert(src)
@@ -174,7 +175,7 @@ func (h *Handler) ingestTraces(ctx context.Context, src []byte) (ingested, error
 func (h *Handler) Metrics() http.Handler { return h.serve(signal.Metric, h.ingestMetrics) }
 
 func (h *Handler) ingestMetrics(ctx context.Context, src []byte) (ingested, error) {
-	c, _ := h.metrics.Get().(*MetricsConverter)
+	c, _ := h.metrics.Get().(*otlpdecode.MetricsConverter)
 	defer h.metrics.Put(c)
 
 	batch, dropped, err := c.Convert(src)
@@ -199,7 +200,7 @@ func (h *Handler) ingestMetrics(ctx context.Context, src []byte) (ingested, erro
 func (h *Handler) Profiles() http.Handler { return h.serve(signal.Profile, h.ingestProfiles) }
 
 func (h *Handler) ingestProfiles(ctx context.Context, src []byte) (ingested, error) {
-	c, _ := h.profiles.Get().(*ProfilesConverter)
+	c, _ := h.profiles.Get().(*otlpdecode.ProfilesConverter)
 	defer h.profiles.Put(c)
 
 	batch, err := c.Convert(src)
