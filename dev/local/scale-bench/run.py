@@ -219,6 +219,13 @@ def stage(nodes, args, run_dir):
                         for line in stats.stdout.splitlines():
                             stream.write(json.dumps({"time": time.time(), "stats": json.loads(line)}) + "\n")
                         stream.flush()
+                    stamp = str(time.time_ns())
+                    for name, url in {"oteldb": "http://127.0.0.1:19464/metrics",
+                                      "vmagent": "http://127.0.0.1:18429/metrics"}.items():
+                        try:
+                            (target / f"{stamp}-{name}.metrics").write_bytes(get(url, timeout=5))
+                        except OSError:
+                            pass
                 except subprocess.CalledProcessError:
                     pass
                 stop.wait(10)
@@ -285,7 +292,8 @@ def stage(nodes, args, run_dir):
             for server in SERVERS:
                 if server in ready:
                     summary.setdefault("otelbench", {})[server] = otelbench_dashboard(server, nodes, end, args, target)
-        for name, url in {"vmagent": "http://127.0.0.1:18429/metrics",
+        for name, url in {"oteldb": "http://127.0.0.1:19464/metrics",
+                          "vmagent": "http://127.0.0.1:18429/metrics",
                           "victoriametrics": "http://127.0.0.1:18428/metrics"}.items():
             try:
                 (target / f"{name}.metrics").write_bytes(get(url))

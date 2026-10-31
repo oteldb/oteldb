@@ -27,7 +27,7 @@ func TestScarecrowMadNaNNativeHTTP(t *testing.T) {
 		t.Run(state, func(t *testing.T) {
 			store, err := storage.InMemory()
 			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, store.Close(context.Background())) })
+			t.Cleanup(func() { require.NoError(t, store.Close(context.WithoutCancel(t.Context()))) })
 			backend := storagebackend.New(store)
 			base := time.Unix(2_000_000, 0).UTC()
 			md := pmetric.NewMetrics()
