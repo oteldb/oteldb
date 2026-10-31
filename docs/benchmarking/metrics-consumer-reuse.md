@@ -65,3 +65,20 @@ ingest/query/compaction regression; native Prometheus API, exemplar parity and d
 record accounting checks also pass.
 
 For the larger storage changes, see the [WAL and head design](wal-and-head-design.md).
+
+## Full 10k-host run
+
+The requested follow-up is complete: 8 vCPU/16 GiB per database, native file/WAL,
+fresh volumes, 360s ingest. Full results and capture artifacts are in the
+[scale benchmark report](https://github.com/oteldb/oteldb/blob/claude/1106-node-exporter-scale-benchmark/dev/local/scale-bench/METRIC_CONSUMER_RESULTS.md).
+Steady 30s allocations are 31.21 GiB versus 45.50 GiB previously; GC remains 48.2%
+of sampled CPU versus 50.4%. Native accepts 840k versus 966k offered points/s in the
+final window, with its queue growing 563 to 624 MB. Total accepted points increase
+5.5%, while flushed points barely change; differing work phases prevent attributing
+the larger final-window rate change directly to this optimization.
+
+There is no OOM, but memory still reaches the cap, 134.94M points remain unflushed,
+WAL is 11.28 GB, and the shutdown watchdog still triggers. Native freshness is
+three historical samples per host versus VM's eight (minimum gate: six), so native
+query latency is not scored. VM completes selected queries and the complete dashboard
+in random and repeated modes. All benchmark containers are stopped, volumes retained.
