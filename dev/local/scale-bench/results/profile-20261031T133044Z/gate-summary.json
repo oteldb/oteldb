@@ -1,0 +1,68 @@
+{
+  "oteldb": {
+    "hosts": {
+      "server": "oteldb",
+      "query": "count(node_uname_info{job=\"node_exporter\"})",
+      "instant": true,
+      "end": 1793453775,
+      "nocache": true,
+      "ok": true,
+      "series": 1,
+      "empty": false,
+      "points": 1,
+      "warnings": [],
+      "value": "10000",
+      "result_sha256": "28fc577054205a4429d655432a45335fd815c0ceff2b2bed19162035faab5607",
+      "ms": 832.871669990709
+    },
+    "history": {
+      "server": "oteldb",
+      "query": "min(count_over_time(node_uname_info{job=\"node_exporter\"}[120s]))",
+      "instant": true,
+      "end": 1793453775,
+      "nocache": true,
+      "ok": true,
+      "series": 1,
+      "empty": false,
+      "points": 1,
+      "warnings": [],
+      "value": "5",
+      "result_sha256": "835047c783f8df5c1985eca55b4eb68dd44ca35e5c89c1593e7daedd01d7d61f",
+      "ms": 2394.7222999995574
+    },
+    "ready": false
+  },
+  "victoriametrics": {
+    "hosts": {
+      "server": "victoriametrics",
+      "query": "count(node_uname_info{job=\"node_exporter\"})",
+      "instant": true,
+      "end": 1793453775,
+      "nocache": true,
+      "ok": true,
+      "series": 1,
+      "empty": false,
+      "points": 1,
+      "warnings": [],
+      "value": "10000",
+      "result_sha256": "28fc577054205a4429d655432a45335fd815c0ceff2b2bed19162035faab5607",
+      "ms": 873.0027079873253
+    },
+    "history": {
+      "server": "victoriametrics",
+      "query": "min(count_over_time(node_uname_info{job=\"node_exporter\"}[120s]))",
+      "instant": true,
+      "end": 1793453775,
+      "nocache": true,
+      "ok": true,
+      "series": 1,
+      "empty": false,
+      "points": 1,
+      "warnings": [],
+      "value": "8",
+      "result_sha256": "4f8f3b5e0bb284c63d8f327aa62a4528ed4c2f9e7e69bf8c2918e85d7658dd96",
+      "ms": 38.15439101890661
+    },
+    "ready": true
+  }
+}

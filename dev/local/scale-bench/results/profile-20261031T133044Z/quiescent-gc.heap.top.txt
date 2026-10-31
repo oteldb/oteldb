@@ -1,0 +1,24 @@
+File: oteldb
+Build ID: 0ca4d3649a70273b07777aff6171a08e75f2cc73
+Type: inuse_space
+Time: 2026-10-31 16:37:07 MSK
+Showing nodes accounting for 6964.74MB, 97.99% of 7107.37MB total
+Dropped 224 nodes (cum <= 35.54MB)
+Showing top 16 nodes out of 159
+      flat  flat%   sum%        cum   cum%
+ 1700.43MB 23.92% 23.92%  1700.43MB 23.92%  github.com/oteldb/storage/engine.(*head).bufFor (inline)
+    1596MB 22.46% 46.38%  1596.71MB 22.47%  github.com/oteldb/storage/index/series.(*Index).Add
+  664.45MB  9.35% 55.73%   664.45MB  9.35%  os.readFileContents
+  555.64MB  7.82% 63.55%  4715.13MB 66.34%  github.com/oteldb/storage/engine.(*walBatch).apply
+  525.86MB  7.40% 70.95%   525.86MB  7.40%  github.com/oteldb/storage/index/postings.(*memoryPostings[go.shape.uint32]).Add
+  424.66MB  5.97% 76.92%   532.23MB  7.49%  github.com/oteldb/storage/engine.(*partStreamWriter).appendSeries
+  330.45MB  4.65% 81.57%   330.45MB  4.65%  encoding/binary.AppendUvarint
+  274.50MB  3.86% 85.43%   274.50MB  3.86%  github.com/oteldb/storage/engine.(*sampleBuf).appendSample (inline)
+  229.19MB  3.22% 88.66%   229.19MB  3.22%  github.com/oteldb/storage/backend/file.(*File).ReadAt
+  144.13MB  2.03% 90.68%   144.13MB  2.03%  github.com/oteldb/storage/internal/watermark.Decode
+  128.48MB  1.81% 92.49%   128.48MB  1.81%  slices.Clone[go.shape.[]uint8,go.shape.uint8]
+  115.40MB  1.62% 94.12%   115.40MB  1.62%  github.com/oteldb/storage/engine.(*bufFreeList[go.shape.float64]).get
+  110.86MB  1.56% 95.68%   110.86MB  1.56%  github.com/oteldb/storage/engine.(*bufFreeList[go.shape.int64]).get
+  101.05MB  1.42% 97.10%   101.05MB  1.42%  github.com/oteldb/storage/block.(*StreamWriter).AppendU128Run
+   60.15MB  0.85% 97.94%    60.15MB  0.85%  github.com/oteldb/storage/index/postings.(*memoryPostings[go.shape.uint32]).addAll (inline)
+    3.50MB 0.049% 97.99%   115.93MB  1.63%  github.com/oteldb/storage/engine.(*seriesBlockReader).tsBlock

@@ -1,0 +1,16 @@
+{
+  "random": {
+    "targets": 2420,
+    "empty_targets": 240,
+    "queries_per_dashboard": 242,
+    "query_shapes_nonempty": 218,
+    "exit_code": 0
+  },
+  "cached": {
+    "targets": 242,
+    "empty_targets": 24,
+    "queries_per_dashboard": 242,
+    "query_shapes_nonempty": 218,
+    "exit_code": 0
+  }
+}

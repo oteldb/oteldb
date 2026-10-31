@@ -1,0 +1,13 @@
+{
+  "nodes": 10000,
+  "seconds": 360,
+  "image": "local/oteldb:head-wal-3cfc382",
+  "binary": "/home/tdakkota/workspace/github.com/oteldb/oteldb/.worktrees/metric-consumer-reuse/bin/oteldb-head-wal",
+  "trace_seconds": 3,
+  "queries": true,
+  "runs": 10,
+  "jobs": 4,
+  "seed": 20261027,
+  "query_budget": 120,
+  "otelbench": true
+}

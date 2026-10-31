@@ -1,0 +1,45 @@
+Type: delay
+Showing nodes accounting for 27.02s, 94.97% of 28.45s total
+Dropped 9 nodes (cum <= 0.14s)
+Showing top 40 nodes out of 42
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%     21.54s 75.69%  net/http.(*conn).serve
+         0     0%     0%     21.54s 75.69%  net/http.HandlerFunc.ServeHTTP
+         0     0%     0%     21.54s 75.69%  net/http.serverHandler.ServeHTTP
+         0     0%     0%     18.53s 65.15%  github.com/oteldb/oteldb/internal/storagebackend.(*Backend).ConsumeMetrics
+         0     0%     0%     18.53s 65.15%  github.com/oteldb/oteldb/otelcolmod/prometheusremotewritereceiver.(*Receiver).ServeHTTP
+         0     0%     0%     18.53s 65.15%  github.com/oteldb/storage.(*Storage).WriteMetrics
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/collector/config/confighttp.(*clientInfoHandler).ServeHTTP
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/collector/config/confighttp.(*decompressor).ServeHTTP
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/collector/config/confighttp.maxRequestBodySizeInterceptor.func1
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/collector/consumer.ConsumeMetricsFunc.ConsumeMetrics
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/collector/exporter/exporterhelper/internal.(*BaseExporter).Send
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/collector/exporter/exporterhelper/internal.(*obsReportSender[...]).Send
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/collector/exporter/exporterhelper/internal.(*timeoutSender[...]).Send
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/collector/exporter/exporterhelper/internal.newConsumeMetrics.func1
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/collector/exporter/exporterhelper/internal/queuebatch.RequestConsumeFromMetrics.func1
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/collector/exporter/exporterhelper/internal/sender.(*sender[...]).Send
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/collector/service/internal/refconsumer.refMetrics.ConsumeMetrics
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.(*middleware).serveHTTP
+         0     0%     0%     18.53s 65.15%  go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.NewMiddleware.func2.1
+         0     0%     0%     18.53s 65.15%  github.com/oteldb/storage.(*metricWriter).flush
+         0     0%     0%     17.10s 60.12%  github.com/oteldb/storage.(*metricAppendBuffer).flush
+         0     0%     0%     17.10s 60.12%  github.com/oteldb/storage/engine.(*Engine).AppendBatch
+         0     0%     0%     17.10s 60.12%  github.com/oteldb/storage/internal/engineguard.(*Mutex).LockWriter
+    17.10s 60.12% 60.12%     17.10s 60.12%  sync.(*Mutex).Lock
+         0     0% 60.12%     11.25s 39.55%  github.com/oteldb/storage.(*metricWriter).write
+         0     0% 60.12%     11.25s 39.55%  github.com/oteldb/storage/signal/metric.Project
+         0     0% 60.12%     11.25s 39.55%  github.com/oteldb/storage.(*metricWriter).appendBuffered
+         0     0% 60.12%      4.92s 17.28%  runtime.(*wakeableSleep).sleep
+     4.92s 17.28% 77.39%      4.92s 17.28%  runtime.chanrecv1
+         0     0% 77.39%         3s 10.54%  github.com/go-faster/sdk/profiler.handler.ServeHTTP
+         0     0% 77.39%         3s 10.54%  net/http.(*ServeMux).ServeHTTP
+         0     0% 77.39%         3s 10.54%  net/http/pprof.Trace
+         0     0% 77.39%         3s 10.54%  net/http/pprof.sleep
+        3s 10.54% 87.94%         3s 10.54%  runtime.selectgo
+         0     0% 87.94%      2.91s 10.24%  runtime.traceStartReadCPU.func1
+         0     0% 87.94%         2s  7.03%  runtime.(*traceAdvancerState).start.func1
+         0     0% 87.94%         2s  7.03%  github.com/VictoriaMetrics/VictoriaMetrics/lib/fasttime.init.0.func1
+        2s  7.03% 94.97%         2s  7.03%  runtime.chanrecv2
+         0     0% 94.97%      1.43s  5.03%  github.com/oteldb/storage.(*Storage).pokeFlush
+         0     0% 94.97%      1.43s  5.03%  github.com/oteldb/storage/engine.(*Engine).HeadBytes
