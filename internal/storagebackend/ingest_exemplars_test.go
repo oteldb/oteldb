@@ -183,6 +183,24 @@ func TestConsumeMetricsCountsDropped(t *testing.T) {
 	require.Equal(t, map[string]int64{"exemplar": 3, "no_value": 1}, droppedByReason(ctx, t, reader))
 }
 
+func TestConsumeProjectedMetricsCountsDropped(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	b, ctx := backendWithMeter(t, sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
+	md := pmetric.NewMetrics()
+	m := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+	m.SetName("projection_dropped")
+	points := m.SetEmptyGauge().DataPoints()
+	points.AppendEmpty()
+	points.AppendEmpty()
+	valid := points.AppendEmpty()
+	valid.SetDoubleValue(1)
+	valid.SetTimestamp(pcommon.Timestamp(1_000_000_000))
+	for range 2 {
+		require.NoError(t, b.ConsumeMetrics(ctx, md))
+	}
+	require.Equal(t, map[string]int64{"no_value": 4}, droppedByReason(ctx, t, reader))
+}
+
 // TestOTLPDirectReportsDroppedExemplars pins that the odbingest path reports the same drops through
 // its ingest stats, which is where cmd/odbingest's counters come from.
 func TestOTLPDirectReportsDroppedExemplars(t *testing.T) {
