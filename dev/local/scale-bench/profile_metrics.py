@@ -29,6 +29,8 @@ def main():
     parser.add_argument("--nodes", type=int, default=10000)
     parser.add_argument("--seconds", type=int, default=360)
     parser.add_argument("--image", required=True)
+    parser.add_argument("--binary", default=str(HERE / "bin/oteldb"), help="matching image binary to retain")
+    parser.add_argument("--trace-seconds", type=int, default=0, help="execution trace duration at 120s and 300s")
     args = parser.parse_args()
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     directory = HERE / "results" / ("profile-" + stamp)
@@ -51,7 +53,7 @@ def main():
     database["ports"].append({"target": 8090, "published": "19809", "host_ip": "127.0.0.1", "protocol": "tcp"})
     (directory / "compose.json").write_text(json.dumps(config, indent=2) + "\n")
     (directory / "options.json").write_text(json.dumps(vars(args), indent=2) + "\n")
-    shutil.copyfile(HERE / "bin/oteldb", directory / "oteldb")
+    shutil.copyfile(args.binary, directory / "oteldb")
     (directory / "buildinfo.txt").write_bytes(subprocess.check_output(["go", "version", "-m", str(directory / "oteldb")]))
     (directory / "image.json").write_bytes(subprocess.check_output(["docker", "image", "inspect", args.image]))
     compose = ["docker", "compose", "-p", project, "-f", str(directory / "compose.json")]
@@ -98,6 +100,10 @@ def main():
                                                    directory / f"{threshold}-heap.pb.gz"))
                         futures.append(pool.submit(fetch, "http://127.0.0.1:19010/debug/pprof/goroutine?debug=2",
                                                    directory / f"{threshold}-goroutines.txt"))
+                        if threshold in [120, 300] and args.trace_seconds > 0:
+                            futures.append(pool.submit(fetch,
+                                f"http://127.0.0.1:19010/debug/pprof/trace?seconds={args.trace_seconds}",
+                                directory / f"{threshold}.trace", args.trace_seconds + 20))
                         if threshold in [60, 240]:
                             for kind in ["profile", "allocs"]:
                                 futures.append(pool.submit(fetch,
