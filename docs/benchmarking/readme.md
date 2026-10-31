@@ -2,6 +2,9 @@
 
 ## Ingestion
 
+- [Metric consumer reuse measurements](metrics-consumer-reuse.md).
+- [Bounded WAL grouping and sealed metric heads: design proposal](wal-and-head-design.md).
+
 ### Prometheus remote write
 
 See [ch-bench][ch-bench] for details.
