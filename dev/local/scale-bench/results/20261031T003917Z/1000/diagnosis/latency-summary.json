@@ -1,0 +1,1028 @@
+[
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 0,
+    "panel": "CPU Busy",
+    "p50_ms": 2.1399925026344135,
+    "p95_ms": 3.507129003992304,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 0,
+    "panel": "CPU Busy",
+    "p50_ms": 25.12450349604478,
+    "p95_ms": 33.65081700030714,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 1,
+    "panel": "Sys Load (5m avg)",
+    "p50_ms": 2.2919690018170513,
+    "p95_ms": 2.461177995428443,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 1,
+    "panel": "Sys Load (5m avg)",
+    "p50_ms": 0.7821945036994293,
+    "p95_ms": 1.0904959926847368,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 2,
+    "panel": "RAM Used",
+    "p50_ms": 1.1277255034656264,
+    "p95_ms": 1.404435999575071,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 2,
+    "panel": "RAM Used",
+    "p50_ms": 0.26309100940125063,
+    "p95_ms": 0.6835480016889051,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 3,
+    "panel": "CPU Cores",
+    "p50_ms": 0.44501850061351433,
+    "p95_ms": 0.5672690022038296,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 3,
+    "panel": "CPU Cores",
+    "p50_ms": 1.0833764972630888,
+    "p95_ms": 1.8948310025734827,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 4,
+    "panel": "Uptime",
+    "p50_ms": 1.0015024963649921,
+    "p95_ms": 1.078892993973568,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 4,
+    "panel": "Uptime",
+    "p50_ms": 0.3093880004598759,
+    "p95_ms": 0.5290870030876249,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 5,
+    "panel": "CPU Basic",
+    "p50_ms": 2.1172905107960105,
+    "p95_ms": 2.3740140022709966,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 5,
+    "panel": "CPU Basic",
+    "p50_ms": 0.7676620007259771,
+    "p95_ms": 1.058545007253997,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 6,
+    "panel": "CPU Basic",
+    "p50_ms": 0.7016374947852455,
+    "p95_ms": 0.8966089953901246,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 6,
+    "panel": "CPU Basic",
+    "p50_ms": 2.0896130008623004,
+    "p95_ms": 2.5821669987635687,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 7,
+    "panel": "CPU Basic",
+    "p50_ms": 0.8948065005824901,
+    "p95_ms": 1.2306090065976605,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 7,
+    "panel": "CPU Basic",
+    "p50_ms": 2.065211498120334,
+    "p95_ms": 2.4087589990813285,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 8,
+    "panel": "CPU Basic",
+    "p50_ms": 0.6221824951353483,
+    "p95_ms": 0.8422070095548406,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 8,
+    "panel": "CPU Basic",
+    "p50_ms": 2.1619295002892613,
+    "p95_ms": 2.44723200739827,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 9,
+    "panel": "CPU Basic",
+    "p50_ms": 0.9760789980646223,
+    "p95_ms": 1.3369389926083386,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 9,
+    "panel": "CPU Basic",
+    "p50_ms": 12.11440000042785,
+    "p95_ms": 12.996582998312078,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 10,
+    "panel": "CPU Basic",
+    "p50_ms": 0.6938774968148209,
+    "p95_ms": 0.8713119896128774,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 10,
+    "panel": "CPU Basic",
+    "p50_ms": 2.0785575034096837,
+    "p95_ms": 2.321013991604559,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 11,
+    "panel": "Memory Basic",
+    "p50_ms": 0.413719993957784,
+    "p95_ms": 0.47983499825932086,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 11,
+    "panel": "Memory Basic",
+    "p50_ms": 0.10276350076310337,
+    "p95_ms": 0.15196700405795127,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 12,
+    "panel": "Memory Basic",
+    "p50_ms": 1.488565503677819,
+    "p95_ms": 1.6226680018007755,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 12,
+    "panel": "Memory Basic",
+    "p50_ms": 0.32854399614734575,
+    "p95_ms": 0.46709000889677554,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 13,
+    "panel": "Memory Basic",
+    "p50_ms": 0.776648499595467,
+    "p95_ms": 0.8296839951071888,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 13,
+    "panel": "Memory Basic",
+    "p50_ms": 0.179438000486698,
+    "p95_ms": 0.21044700406491756,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 14,
+    "panel": "Memory Basic",
+    "p50_ms": 0.097719494078774,
+    "p95_ms": 0.12983499618712813,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 14,
+    "panel": "Memory Basic",
+    "p50_ms": 0.4128029977437109,
+    "p95_ms": 0.4698150005424395,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 15,
+    "panel": "Memory Basic",
+    "p50_ms": 0.20879849762422964,
+    "p95_ms": 0.26870600413531065,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 15,
+    "panel": "Memory Basic",
+    "p50_ms": 0.9709595033200458,
+    "p95_ms": 1.1924970021937042,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 16,
+    "panel": "Network Traffic Basic",
+    "p50_ms": 1.1296490047243424,
+    "p95_ms": 1.5003879962023348,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 16,
+    "panel": "Network Traffic Basic",
+    "p50_ms": 0.22028000239515677,
+    "p95_ms": 0.35717299033422023,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 17,
+    "panel": "Network Traffic Basic",
+    "p50_ms": 1.110187491576653,
+    "p95_ms": 1.295320995268412,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 17,
+    "panel": "Network Traffic Basic",
+    "p50_ms": 0.2206110002589412,
+    "p95_ms": 0.25748500775080174,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "random",
+    "query_index": 18,
+    "panel": "Disk Space Used Basic",
+    "p50_ms": 4.173685498244595,
+    "p95_ms": 4.884034002316184,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "random",
+    "query_index": 18,
+    "panel": "Disk Space Used Basic",
+    "p50_ms": 0.3887175043928437,
+    "p95_ms": 0.508668992551975,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 0,
+    "panel": "CPU Busy",
+    "p50_ms": 0.5773730008513667,
+    "p95_ms": 0.70185300137382,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 0,
+    "panel": "CPU Busy",
+    "p50_ms": 3.9505554959760047,
+    "p95_ms": 4.291067001759075,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 1,
+    "panel": "Sys Load (5m avg)",
+    "p50_ms": 1.6621319955447689,
+    "p95_ms": 1.7147620092146099,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 1,
+    "panel": "Sys Load (5m avg)",
+    "p50_ms": 0.3374959997017868,
+    "p95_ms": 0.3569029940990731,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 2,
+    "panel": "RAM Used",
+    "p50_ms": 0.46274699707282707,
+    "p95_ms": 0.5501569976331666,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 2,
+    "panel": "RAM Used",
+    "p50_ms": 0.12087749928468838,
+    "p95_ms": 0.18092099344357848,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 3,
+    "panel": "CPU Cores",
+    "p50_ms": 0.9623539954191074,
+    "p95_ms": 1.0225270088994876,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 3,
+    "panel": "CPU Cores",
+    "p50_ms": 0.11083899880759418,
+    "p95_ms": 0.1474780001444742,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 4,
+    "panel": "Uptime",
+    "p50_ms": 0.1291939988732338,
+    "p95_ms": 0.13724900782108307,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 4,
+    "panel": "Uptime",
+    "p50_ms": 0.5467505034175701,
+    "p95_ms": 0.5807340057799593,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 5,
+    "panel": "CPU Basic",
+    "p50_ms": 1.9665009967866354,
+    "p95_ms": 2.397197997197509,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 5,
+    "panel": "CPU Basic",
+    "p50_ms": 0.11603399616433308,
+    "p95_ms": 0.18420700507704169,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 6,
+    "panel": "CPU Basic",
+    "p50_ms": 0.11746100062737241,
+    "p95_ms": 0.19679100660141557,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 6,
+    "panel": "CPU Basic",
+    "p50_ms": 1.980613000341691,
+    "p95_ms": 2.615049001178704,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 7,
+    "panel": "CPU Basic",
+    "p50_ms": 0.11607850319705904,
+    "p95_ms": 0.12763100676238537,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 7,
+    "panel": "CPU Basic",
+    "p50_ms": 1.965574498171918,
+    "p95_ms": 2.453112989314832,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 8,
+    "panel": "CPU Basic",
+    "p50_ms": 0.12892300583189353,
+    "p95_ms": 0.21715900220442563,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 8,
+    "panel": "CPU Basic",
+    "p50_ms": 2.0927284931531176,
+    "p95_ms": 2.5938280014088377,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 9,
+    "panel": "CPU Basic",
+    "p50_ms": 0.18352099868934602,
+    "p95_ms": 0.2683259954210371,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 9,
+    "panel": "CPU Basic",
+    "p50_ms": 12.442704501154367,
+    "p95_ms": 12.894521001726389,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 10,
+    "panel": "CPU Basic",
+    "p50_ms": 0.1686830073595047,
+    "p95_ms": 0.19733200315386057,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 10,
+    "panel": "CPU Basic",
+    "p50_ms": 1.9587314964155667,
+    "p95_ms": 2.958625991595909,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 11,
+    "panel": "Memory Basic",
+    "p50_ms": 0.3964924981119111,
+    "p95_ms": 0.42351899901404977,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 11,
+    "panel": "Memory Basic",
+    "p50_ms": 0.12683899694820866,
+    "p95_ms": 0.1395330036757514,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 12,
+    "panel": "Memory Basic",
+    "p50_ms": 1.1264129934716038,
+    "p95_ms": 1.138386011007242,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 12,
+    "panel": "Memory Basic",
+    "p50_ms": 0.18939199799206108,
+    "p95_ms": 0.2052769996225834,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 13,
+    "panel": "Memory Basic",
+    "p50_ms": 0.7343540055444464,
+    "p95_ms": 0.7983450050232932,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 13,
+    "panel": "Memory Basic",
+    "p50_ms": 0.1408554962836206,
+    "p95_ms": 0.1820330071495846,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 14,
+    "panel": "Memory Basic",
+    "p50_ms": 0.07963049574755132,
+    "p95_ms": 0.08197400893550366,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 14,
+    "panel": "Memory Basic",
+    "p50_ms": 0.3250524969189428,
+    "p95_ms": 0.4050339921377599,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 15,
+    "panel": "Memory Basic",
+    "p50_ms": 0.09727849828777835,
+    "p95_ms": 0.11896499199792743,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 15,
+    "panel": "Memory Basic",
+    "p50_ms": 0.5442110050353222,
+    "p95_ms": 0.6209300045156851,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 16,
+    "panel": "Network Traffic Basic",
+    "p50_ms": 0.09877148841042072,
+    "p95_ms": 0.15165600052569062,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 16,
+    "panel": "Network Traffic Basic",
+    "p50_ms": 0.4652714997064322,
+    "p95_ms": 0.5748639960074797,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 17,
+    "panel": "Network Traffic Basic",
+    "p50_ms": 0.47718900168547407,
+    "p95_ms": 0.5181669985176995,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 17,
+    "panel": "Network Traffic Basic",
+    "p50_ms": 0.11501149856485426,
+    "p95_ms": 0.15631499991286546,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "cached",
+    "query_index": 18,
+    "panel": "Disk Space Used Basic",
+    "p50_ms": 3.3244249934796244,
+    "p95_ms": 3.7400290020741522,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "cached",
+    "query_index": 18,
+    "panel": "Disk Space Used Basic",
+    "p50_ms": 0.13748950004810467,
+    "p95_ms": 0.318410006002523,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 0,
+    "panel": "CPU Busy",
+    "p50_ms": 3.847250496619381,
+    "p95_ms": 4.295475999242626,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 0,
+    "panel": "CPU Busy",
+    "p50_ms": 0.6661454972345382,
+    "p95_ms": 0.7520579965785146,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 1,
+    "panel": "Sys Load (5m avg)",
+    "p50_ms": 0.39207899681059644,
+    "p95_ms": 0.6000209978083149,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 1,
+    "panel": "Sys Load (5m avg)",
+    "p50_ms": 1.69020050088875,
+    "p95_ms": 2.07414900069125,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 2,
+    "panel": "RAM Used",
+    "p50_ms": 0.42521149589447305,
+    "p95_ms": 0.49551299889571965,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 2,
+    "panel": "RAM Used",
+    "p50_ms": 0.10558899521129206,
+    "p95_ms": 0.1300250005442649,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 3,
+    "panel": "CPU Cores",
+    "p50_ms": 0.9630150016164407,
+    "p95_ms": 1.0007859964389354,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 3,
+    "panel": "CPU Cores",
+    "p50_ms": 0.3267104984843172,
+    "p95_ms": 0.36110999644733965,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 4,
+    "panel": "Uptime",
+    "p50_ms": 0.10963150270981714,
+    "p95_ms": 0.15190700651146472,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 4,
+    "panel": "Uptime",
+    "p50_ms": 0.5773179946118034,
+    "p95_ms": 0.6938680016901344,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 5,
+    "panel": "CPU Basic",
+    "p50_ms": 1.9996989940409549,
+    "p95_ms": 2.4657769972691312,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 5,
+    "panel": "CPU Basic",
+    "p50_ms": 0.41848849650705233,
+    "p95_ms": 0.6259699875954539,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 6,
+    "panel": "CPU Basic",
+    "p50_ms": 0.40035400161286816,
+    "p95_ms": 0.5704650102416053,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 6,
+    "panel": "CPU Basic",
+    "p50_ms": 2.042373496806249,
+    "p95_ms": 2.419198994175531,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 7,
+    "panel": "CPU Basic",
+    "p50_ms": 0.5060935000074096,
+    "p95_ms": 0.597845995798707,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 7,
+    "panel": "CPU Basic",
+    "p50_ms": 2.0190604918752797,
+    "p95_ms": 2.3047730064718053,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 8,
+    "panel": "CPU Basic",
+    "p50_ms": 2.1220039925538003,
+    "p95_ms": 2.405784005532041,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 8,
+    "panel": "CPU Basic",
+    "p50_ms": 0.5006385035812855,
+    "p95_ms": 0.6014140089973807,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 9,
+    "panel": "CPU Basic",
+    "p50_ms": 0.5407440039562061,
+    "p95_ms": 0.7906809914857149,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 9,
+    "panel": "CPU Basic",
+    "p50_ms": 12.326645002758596,
+    "p95_ms": 13.687705009942874,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 10,
+    "panel": "CPU Basic",
+    "p50_ms": 0.4522775052464567,
+    "p95_ms": 0.5474920035339892,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 10,
+    "panel": "CPU Basic",
+    "p50_ms": 2.0407004994922318,
+    "p95_ms": 2.22327999654226,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 11,
+    "panel": "Memory Basic",
+    "p50_ms": 0.08703399362275377,
+    "p95_ms": 0.10807400394696742,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 11,
+    "panel": "Memory Basic",
+    "p50_ms": 0.37856349808862433,
+    "p95_ms": 0.4825790092581883,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 12,
+    "panel": "Memory Basic",
+    "p50_ms": 0.2051565024885349,
+    "p95_ms": 0.23645600595045835,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 12,
+    "panel": "Memory Basic",
+    "p50_ms": 1.1243890039622784,
+    "p95_ms": 1.1835299956146628,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 13,
+    "panel": "Memory Basic",
+    "p50_ms": 0.13969299470772967,
+    "p95_ms": 0.15968098887242377,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 13,
+    "panel": "Memory Basic",
+    "p50_ms": 0.7256275057443418,
+    "p95_ms": 0.8084040018729866,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 14,
+    "panel": "Memory Basic",
+    "p50_ms": 0.29468499997165054,
+    "p95_ms": 0.39502499566879123,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 14,
+    "panel": "Memory Basic",
+    "p50_ms": 0.08125800377456471,
+    "p95_ms": 0.08689399692229927,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 15,
+    "panel": "Memory Basic",
+    "p50_ms": 0.09985300130210817,
+    "p95_ms": 0.15692600572947413,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 15,
+    "panel": "Memory Basic",
+    "p50_ms": 0.52967850206187,
+    "p95_ms": 0.6091279938118532,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 16,
+    "panel": "Network Traffic Basic",
+    "p50_ms": 0.14461750106420368,
+    "p95_ms": 0.19156099006067961,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 16,
+    "panel": "Network Traffic Basic",
+    "p50_ms": 0.49105050129583105,
+    "p95_ms": 0.5664869968313724,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 17,
+    "panel": "Network Traffic Basic",
+    "p50_ms": 0.1070970029104501,
+    "p95_ms": 0.16214601055253297,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 17,
+    "panel": "Network Traffic Basic",
+    "p50_ms": 0.5019609961891547,
+    "p95_ms": 0.5581419973168522,
+    "runs": 10
+  },
+  {
+    "server": "oteldb",
+    "mode": "repeated-no-response-cache",
+    "query_index": 18,
+    "panel": "Disk Space Used Basic",
+    "p50_ms": 3.3135244957520626,
+    "p95_ms": 3.6741740041179582,
+    "runs": 10
+  },
+  {
+    "server": "victoriametrics",
+    "mode": "repeated-no-response-cache",
+    "query_index": 18,
+    "panel": "Disk Space Used Basic",
+    "p50_ms": 0.24121450405800715,
+    "p95_ms": 0.29560699476860464,
+    "runs": 10
+  }
+]

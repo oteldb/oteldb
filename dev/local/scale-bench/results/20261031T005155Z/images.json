@@ -1,0 +1,289 @@
+[
+    {
+        "Id": "sha256:f29b24ad8d398371e3bdee49a832bb87ecae179fe94caade86a4c66d723e5cba",
+        "RepoTags": [
+            "local/oteldb:node-resume-9cd2b49b"
+        ],
+        "RepoDigests": [
+            "local/oteldb@sha256:f29b24ad8d398371e3bdee49a832bb87ecae179fe94caade86a4c66d723e5cba"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-10-31T03:37:21.8049043+03:00",
+        "Config": {
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Entrypoint": [
+                "oteldb"
+            ],
+            "WorkingDir": "/",
+            "Labels": {
+                "dev.oteldb.storage.diff": "",
+                "dev.oteldb.storage.revision": "",
+                "org.opencontainers.image.revision": "9cd2b49b32271e73b21ffef4f247e50eef6f5688"
+            }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 188826566,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:be64570a34e4c5e361d1f5d9cb42b851e7f9a33a61f91c335b287c1c7868f921",
+                "sha256:7bd30ac624c97f424cfc03e5806565b7a90d990187dbf82ebd47715da4de0fc6",
+                "sha256:4473003cef17557463be5c91bbfcd3f2c2f203699b671ca37c19b274d646012b"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-10-31T00:37:22.593781727Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": "sha256:f29b24ad8d398371e3bdee49a832bb87ecae179fe94caade86a4c66d723e5cba",
+            "size": 855
+        },
+        "Identity": {
+            "Build": [
+                {
+                    "Ref": "tv2c36feh3ukd428t2gbb78sn",
+                    "CreatedAt": "2026-10-31T03:37:22.905490864+03:00"
+                }
+            ]
+        }
+    },
+    {
+        "Id": "sha256:444f3c0178b4ef50dcde90ff91ee59ace0bbdf105789f6cbeb51385f5c0d9f90",
+        "RepoTags": [
+            "victoriametrics/victoria-metrics:v1.141.0"
+        ],
+        "RepoDigests": [
+            "victoriametrics/victoria-metrics@sha256:444f3c0178b4ef50dcde90ff91ee59ace0bbdf105789f6cbeb51385f5c0d9f90"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-04-24T16:48:57.347314459Z",
+        "Config": {
+            "ExposedPorts": {
+                "8428/tcp": {}
+            },
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Entrypoint": [
+                "/victoria-metrics-prod"
+            ],
+            "WorkingDir": "/",
+            "Labels": {
+                "org.opencontainers.image.created": "2026-04-24T16:48:40Z",
+                "org.opencontainers.image.documentation": "https://docs.victoriametrics.com/",
+                "org.opencontainers.image.source": "https://github.com/VictoriaMetrics/VictoriaMetrics",
+                "org.opencontainers.image.title": "victoria-metrics",
+                "org.opencontainers.image.vendor": "VictoriaMetrics",
+                "org.opencontainers.image.version": "v1.141.0"
+            }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 54102582,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:29df493baa13de438d6d2ece3a8333032e0b7b9b9d8cce4ee82194da255f61e1",
+                "sha256:0180a5a5790c049e0541ec746fdfd9ea21351329376bf47c59ad3a3abd0bb2e8",
+                "sha256:28fb15949d2a86c00deadfcbbea329dfd4d56b8c86a62b5acff6ede751037184"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-10-27T12:34:09.941026089Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": "sha256:444f3c0178b4ef50dcde90ff91ee59ace0bbdf105789f6cbeb51385f5c0d9f90",
+            "size": 3886
+        },
+        "Identity": {
+            "Pull": [
+                {
+                    "Repository": "docker.io/victoriametrics/victoria-metrics"
+                }
+            ]
+        }
+    },
+    {
+        "Id": "sha256:8d1ac70af117cda6f62173946dbfcff93a3b856a9398199946a69e4647bee69c",
+        "RepoTags": [
+            "victoriametrics/vmagent:v1.141.0"
+        ],
+        "RepoDigests": [
+            "victoriametrics/vmagent@sha256:8d1ac70af117cda6f62173946dbfcff93a3b856a9398199946a69e4647bee69c"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-04-24T16:49:53.469394857Z",
+        "Config": {
+            "ExposedPorts": {
+                "8429/tcp": {}
+            },
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Entrypoint": [
+                "/vmagent-prod"
+            ],
+            "WorkingDir": "/",
+            "Labels": {
+                "org.opencontainers.image.created": "2026-04-24T16:49:49Z",
+                "org.opencontainers.image.documentation": "https://docs.victoriametrics.com/",
+                "org.opencontainers.image.source": "https://github.com/VictoriaMetrics/VictoriaMetrics",
+                "org.opencontainers.image.title": "vmagent",
+                "org.opencontainers.image.vendor": "VictoriaMetrics",
+                "org.opencontainers.image.version": "v1.141.0"
+            }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 46402264,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:29df493baa13de438d6d2ece3a8333032e0b7b9b9d8cce4ee82194da255f61e1",
+                "sha256:0180a5a5790c049e0541ec746fdfd9ea21351329376bf47c59ad3a3abd0bb2e8",
+                "sha256:c2f6293ce9c760ffaef0854f530d7fb8473dd591abfbd79b9c61ab3c41ed5e09"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-10-27T12:34:08.370815609Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": "sha256:8d1ac70af117cda6f62173946dbfcff93a3b856a9398199946a69e4647bee69c",
+            "size": 3886
+        },
+        "Identity": {
+            "Pull": [
+                {
+                    "Repository": "docker.io/victoriametrics/vmagent"
+                }
+            ]
+        }
+    },
+    {
+        "Id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+        "RepoTags": [
+            "nginx:1.27-alpine"
+        ],
+        "RepoDigests": [
+            "nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2025-04-16T14:50:31Z",
+        "Config": {
+            "ExposedPorts": {
+                "80/tcp": {}
+            },
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NGINX_VERSION=1.27.5",
+                "PKG_RELEASE=1",
+                "DYNPKG_RELEASE=1",
+                "NJS_VERSION=0.8.10",
+                "NJS_RELEASE=1"
+            ],
+            "Entrypoint": [
+                "/docker-entrypoint.sh"
+            ],
+            "Cmd": [
+                "nginx",
+                "-g",
+                "daemon off;"
+            ],
+            "WorkingDir": "/",
+            "Labels": {
+                "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>"
+            },
+            "StopSignal": "SIGQUIT"
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 74950999,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:08000c18d16dadf9553d747a58cf44023423a9ab010aab96cf263d2216b8b350",
+                "sha256:d71eae0084c1aa823dd8fb2ecf8604d5c0f4911226c042bb1f8297e819f4b192",
+                "sha256:c56f134d380585340a68d0db2f2c170641a1c0ff72ccf2438cf2f693df756a85",
+                "sha256:e244aa659f612a80c40dd8645812301e3def6b15ec67b9e486ed2201172b51d1",
+                "sha256:b8d7d1d2263425d6044e059b2810017d062d659b9b755241f3747eda77726250",
+                "sha256:811a4dbbf4a5309e4390cf655c12db92e1a4304fb9d9731f83e7b02e95a617c6",
+                "sha256:947e805a4ac71f68e6703550c0b36c2aa2e554c4fa670ca2da6a25c6d7dccb66",
+                "sha256:0d853d50b128aa460b47e7121849463a14b18d4fd976caf5014744aae24d28aa"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-10-27T12:34:21.406319075Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+            "size": 10333
+        },
+        "Identity": {
+            "Pull": [
+                {
+                    "Repository": "docker.io/library/nginx"
+                }
+            ]
+        }
+    },
+    {
+        "Id": "sha256:4032c6d5bfd752342c3e631c2f1de93ba6b86c41db6b167b9a35372c139e7706",
+        "RepoTags": [
+            "prom/node-exporter:v1.8.2"
+        ],
+        "RepoDigests": [
+            "prom/node-exporter@sha256:4032c6d5bfd752342c3e631c2f1de93ba6b86c41db6b167b9a35372c139e7706"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2024-07-14T11:58:33.757161677Z",
+        "Author": "The Prometheus Authors <prometheus-developers@googlegroups.com>",
+        "Config": {
+            "User": "nobody",
+            "ExposedPorts": {
+                "9100/tcp": {}
+            },
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Entrypoint": [
+                "/bin/node_exporter"
+            ],
+            "Labels": {
+                "maintainer": "The Prometheus Authors <prometheus-developers@googlegroups.com>"
+            }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 39372349,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:1e604deea57dbda554a168861cff1238f93b8c6c69c863c43aed37d9d99c5fed",
+                "sha256:6b83872188a9e8912bee1d43add5e9bc518601b02a14a364c0da43b0d59acf33",
+                "sha256:4f3f7dd00054edf3bff177e14729aa095d77dc50608b044a4d8c9544cb1be866"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-10-27T12:34:13.525875537Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+            "digest": "sha256:4032c6d5bfd752342c3e631c2f1de93ba6b86c41db6b167b9a35372c139e7706",
+            "size": 1723
+        },
+        "Identity": {
+            "Pull": [
+                {
+                    "Repository": "docker.io/prom/node-exporter"
+                }
+            ]
+        }
+    }
+]

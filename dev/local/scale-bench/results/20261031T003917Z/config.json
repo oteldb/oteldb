@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    1000
+  ],
+  "runs": 10,
+  "jobs": 4,
+  "prewarm": 180,
+  "ingest_budget": 360,
+  "query_budget": 240,
+  "seed": 20261027,
+  "all_panels": false,
+  "otelbench": true,
+  "keep": true,
+  "revision": "b5666f1b06706e23a182bb5c679d02562de52393"
+}

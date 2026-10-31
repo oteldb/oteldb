@@ -1,0 +1,48 @@
+{
+  "nodes": 1000,
+  "gate": {
+    "oteldb": {
+      "server": "oteldb",
+      "query": "count(node_uname_info{job=\"node_exporter\"})",
+      "instant": true,
+      "end": 1793407340.3186553,
+      "nocache": true,
+      "ok": true,
+      "series": 1,
+      "empty": false,
+      "points": 1,
+      "warnings": [],
+      "value": "1000",
+      "result_sha256": "e3b9d2191d483033e50690aceab190272689fdb9cf8c261d2eb417cdc6446069",
+      "ms": 3.4774630039464682,
+      "elapsed": 181.9298285299883,
+      "check": "hosts",
+      "history_min_samples": "8"
+    },
+    "victoriametrics": {
+      "server": "victoriametrics",
+      "query": "count(node_uname_info{job=\"node_exporter\"})",
+      "instant": true,
+      "end": 1793407340.37936,
+      "nocache": true,
+      "ok": true,
+      "series": 1,
+      "empty": false,
+      "points": 1,
+      "warnings": [],
+      "value": "1000",
+      "result_sha256": "59ee24e03c8a508a02472a492200f5421bf134a0558f0222665cc56356bbb2d0",
+      "ms": 2.950330002931878,
+      "elapsed": 181.9298285299883,
+      "check": "hosts",
+      "history_min_samples": "8"
+    }
+  },
+  "rows": [],
+  "started": 1793407157.6049886,
+  "ready": [
+    "oteldb",
+    "victoriametrics"
+  ],
+  "query_end": 1793407305
+}
