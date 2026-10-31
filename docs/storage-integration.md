@@ -13,6 +13,25 @@ scopes still convert for tenant callbacks. Requests with exemplars, decomposed t
 or clustered storage use the existing whole-request conversion path. The pooled
 projector releases borrowed input after the synchronous write returns.
 
+`remote_write.enabled: true` enables `/api/v1/write` on oteldb's Prometheus listener when
+`metrics_backend: storage` (or `--embedded`) is selected. It uses the existing pooled direct
+decoder and native metrics sink, bypassing pdata and the Collector pipeline. It inherits
+Prometheus/global authentication and does not apply Collector processors or mirror exporters.
+The Collector remote-write receiver remains independently configurable.
+
+```yaml
+remote_write:
+  enabled: true
+  time_threshold: 24h
+  max_body_bytes: 64MiB
+  max_decoded_bytes: 256MiB
+```
+
+The endpoint is disabled by default. Zero limits select the decoder defaults shown above;
+negative limits are rejected. Successful writes return 204 after the native sink returns;
+write errors retain the decoder's retryable HTTP status behavior. Reused decode buffers stay
+borrowed only through the synchronous storage write.
+
 ## Caches / optimizations are opt-out for oteldb
 
 The storage library keeps these opt-in (it's a general-purpose library whose default is the

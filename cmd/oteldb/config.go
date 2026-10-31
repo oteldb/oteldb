@@ -93,6 +93,8 @@ type Config struct {
 	ProfilesBackend string `json:"profiles_backend" yaml:"profiles_backend"`
 	// Storage configures the embedded storage engine, used when a signal's backend is "storage".
 	Storage storagebackend.Config `json:"storage" yaml:"storage"`
+	// RemoteWrite enables direct native ingestion on the Prometheus listener.
+	RemoteWrite RemoteWriteConfig `json:"remote_write" yaml:"remote_write"`
 
 	Tempo       TempoConfig       `json:"tempo" yaml:"tempo"`
 	Prometheus  PrometheusConfig  `json:"prometheus" yaml:"prometheus"`
