@@ -84,6 +84,16 @@ test initial cardinality and dashboard reads, not long-retention steady state.
 stopped, including repeated queries with VictoriaMetrics' response cache disabled,
 and captures query-only CPU/heap profiles. The retained servers must still be running.
 
+If a server fails the live freshness gate, keep that failure in the report. To measure
+reads separately, `drain.py <results/timestamp/10000>` disables new scrapes, restarts
+vmagent to deliver its persistent queue, and checks the original historical window.
+Only run `diagnose.py` after draining succeeds. This is a stopped-ingest comparison;
+it does not establish sustainable write capacity. Original scrape config and drain
+progress are retained under the fixture's `drain/` directory.
+
+Periodic `*-oteldb.metrics` and `*-vmagent.metrics` snapshots record accepted points,
+offered points, and remote-write queues alongside the resource samples.
+
 VictoriaMetrics cache controls are documented in its
 [single-node documentation](https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#rollup-result-cache).
 
@@ -116,11 +126,10 @@ Selected reports, counter summaries, validation output, and benchstat samples ar
 separately under `results/`; raw artifacts remain in the local benchmark workspace.
 Use `summarize_write.py <run-directory>...` to derive counters from retained raw runs.
 
-The downstream dependency pin targets the storage draft stack:
+The current baseline uses published storage `v0.50.0`, including the merged stack:
 [compact indexes #791](https://github.com/oteldb/storage/pull/791),
 [metric batching #792](https://github.com/oteldb/storage/pull/792), and
 [bounded concurrency #793](https://github.com/oteldb/storage/pull/793).
-Those must merge before this draft is promoted; refresh the storage version after merge.
 Recorded measurements use the exact pre-rebase image/source hashes in the result reports.
 
 [QUEUE_SHUTDOWN_INVESTIGATION.md](QUEUE_SHUTDOWN_INVESTIGATION.md) traces the remaining queue,

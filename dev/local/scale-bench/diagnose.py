@@ -41,7 +41,7 @@ def request(conn, expr, end, instant, nocache):
     return elapsed, len(result), digest
 
 
-def profile(server, queries, end, output, seconds):
+def profile(server, queries, end, output, seconds, nodes):
     stop = threading.Event()
     counts = []
 
@@ -52,7 +52,7 @@ def profile(server, queries, end, output, seconds):
         try:
             while not stop.is_set():
                 item = queries[n % len(queries)]
-                expr = harness["interpolate"](item["expr"], f"host-{rng.randrange(1000)}")
+                expr = harness["interpolate"](item["expr"], f"host-{rng.randrange(nodes)}")
                 request(conn, expr, end, item["instant"], server == "victoriametrics")
                 n += 1
         finally:
@@ -94,7 +94,7 @@ def main():
     conns = {s: http.client.HTTPConnection("127.0.0.1", p, timeout=15) for s, p in PORTS.items()}
     groups = {}
     rng = random.Random(20261027)
-    hosts = rng.sample(range(1, 1000), args.runs)
+    hosts = rng.sample(range(1, summary["nodes"]), args.runs)
     with (output / "latencies.jsonl").open("w") as stream:
         for mode in ["random", "cached", "repeated-no-response-cache"]:
             for index, item in enumerate(queries):
@@ -125,7 +125,7 @@ def main():
                       "p95_ms": values[int(len(values)*.95)], "runs": len(values)})
     (output / "latency-summary.json").write_text(json.dumps(table, indent=2) + "\n")
     for server in args.profile_servers:
-        profile(server, queries, end, output, args.profile_seconds)
+        profile(server, queries, end, output, args.profile_seconds, summary["nodes"])
 
 
 if __name__ == "__main__":
