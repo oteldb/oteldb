@@ -42,7 +42,9 @@ func newApp(ctx context.Context, cfg Config, lg *zap.Logger, m *sdkapp.Telemetry
 		servers: map[string]*http.Server{},
 	}
 
-	backend := storagebackend.NewQuery(clusterquery.New(rt, cfg.maxQueryBytes()))
+	backend := storagebackend.NewQuery(clusterquery.New(rt, cfg.maxQueryBytes()),
+		storagebackend.WithTracerProvider(m.TracerProvider()),
+	)
 
 	if err := app.setupAPIs(backend); err != nil {
 		_ = rt.Close(ctx)
