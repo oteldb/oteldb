@@ -201,3 +201,140 @@ and replication. Reusing a dense reference after prune or restart can target ano
 series. Keep canonical 128-bit identity at durable/transport boundaries; scope local
 refs to a specific registry generation. The measured arena path provides a useful
 first improvement without introducing those lifecycle requirements.
+
+## Hash before conversion, using the existing registry
+
+There is a stronger alternative to the second attribute dictionary measured above:
+compute the complete canonical SeriesID directly from incoming pdata using reusable
+scratch, then let the engine's existing series registry decide whether to materialize
+native attributes. The unfavorable dictionary churn result does **not** reject this
+approach. It has no second cross-batch identity cache. The arena remains the measured
+improvement available behind the current facade; this lazy source is an unmeasured,
+potentially larger improvement requiring a new internal ingest seam.
+
+The relevant storage v0.50.0 code already supports the engine half:
+
+| Source location | Existing behavior relevant to lazy conversion |
+|---|---|
+| `engine/engine.go:463`, `Engine.AppendBatch` | Accepts ID/timestamp/value columns and a per-index materializer, under one writer lock. |
+| `engine/walbatch.go:62`, `walBatch.admit` | Buffered identities need no materializer; registered identities starting a new buffer need no materializer; new admitted identities and soft-overflow transformation do. Hard-limit rejection can avoid it. |
+| `engine/walbatch.go:184`, `walBatch.encode` | Reconstructs a known identity from `h.series.GetInto` when it must relog the identity for a new buffer. It does not require the producer to resend native descriptors. |
+| `metric_append.go:16`, `metricAppendBuffer` | Already batches IDs and point references, but captures concrete `metric.Source` values. |
+| `signal/metric/source.go:6`, `Source` | Hardcodes native resource/scope/Metric pointers; cannot describe pdata-backed points. |
+| `metric_write.go:33`, `metricWriter.write` | Resolves tenant, enforces policy, batches and samples before engine append. |
+| `exemplars.go:31`, `writeExemplars` | Reprojects the native Metrics input and writes a separate record engine after successful metric ingestion. |
+| `cluster/framemetrics.go:59`, `FrameMetrics` | Materializes and sends each distinct admitted series once per shard in each request. |
+
+A local repeat-series path can therefore be:
+
+```
+pdata/request
+  -> typed canonical hash scratch + sample columns + stable source coordinates
+  -> tenant/policy/admission
+  -> Engine.AppendBatch(ids, timestamps, values, weights, materialize)
+       known ID -> append sample (WAL identity relog from existing registry)
+       new ID   -> materialize this identity -> own/register -> append sample
+```
+
+Hashing still reads every attribute and copies canonical bytes into scratch. What it
+avoids on a hit is the second, native KeyValue/Value/payload object graph, including
+its sorting and copying. Sort reusable references to pdata entries rather than
+allocating native KeyValues; encode strings directly, scalar bits with the existing
+canonical type tags, and recursively sort map entries with bounded scratch. Hoist
+resource/scope and metric prefixes as the current projector does. Keep point fields
+and reserved metric labels merged with exactly the current precedence. A production
+encoder must match `Identity.ToSeries().AppendHashInput` byte-for-byte, not merely
+produce equal IDs on the common string-only fixture.
+
+Cold/churn paths still hash every point and then convert new identities, but they
+avoid constructing a duplicate dictionary and retained cache entries. They may pay
+additional traversal or new-series work under the engine lock; neither superiority
+over the arena nor acceptable contention is established without measurement. The
+current measured dictionary uses canonical scratch too, but its hit/miss costs cannot
+be transplanted: it hashes only point string labels, maintains its own map, and has
+no storage admission, lock, WAL or lifetime integration.
+
+### Optional prepared source seam
+
+A pdata-free prepared source contract could live beside `signal/metric` and be
+consumed by the storage facade, with its adapter implemented only in the optional
+`otlp/pdataconv` package. The contract would expose bounded sample-column batches,
+resource/scope context for existing tenant callbacks, and a stable source plus point
+index for lazy Series materialization. A native adapter would continue to serve
+current callers. This is a contract sketch, not a proposed public API signature.
+
+Keep IDs computed freshly from this request. The trusted adapter owns correctness
+between ID and materializer; do not expose unchecked caller-supplied IDs as a network
+protocol. Existing registry hit handling trusts the 128-bit ID, so this path preserves
+that collision model rather than adding candidate comparison or a new fingerprint.
+There is no retained dense reference to become stale: after prune/reset/reopen, an ID
+miss simply materializes from the still-live current request. Registration and WAL
+ordering remain the engine's existing authority. This is different from a producer
+sending an opaque cached local ID and needing dictionary registration generations.
+
+Integration requirements are substantive:
+
+- Generalize the concrete Source capture in `metricAppendBuffer` and the materializer
+  used by `metricWriter.appendSampled`. Sampling filters must retain original source
+  indices. A callback must not close over a reused batch header or hash scratch.
+  Preserve metric grouping/order: changing batch boundaries can change whole-batch
+  rate shedding and sampling behavior even when the samples are identical.
+- Preserve `Storage.WriteMetrics` closed/read-only checks, tenant resolution, reserved
+  tenant rejection, sampling weights, cardinality/in-flight limits, soft overflow,
+  counters and partial-success accounting. Calling Engine directly from an app adapter
+  bypasses these rules. Tenant callbacks accept full typed Resource/Scope and may
+  inspect arbitrary attributes; materializing those once per group is a compatible
+  compromise. A zero-native-descriptor claim for all context fields is unjustified.
+- Exemplars need a prepared-source projection or an explicit compatibility fallback.
+  Their independent registry may need a full identity even when the metric registry
+  already knows it. Preserve current best-effort/drop counting and the deferred
+  write-on-success behavior; do not silently switch to per-point accepted-only
+  exemplar semantics. A first local gauge/sum fast path can fall back for the entire
+  request when exemplars or decomposed types occur, avoiding mixed-order surprises.
+- Cluster framing cannot assume a remote primary knows an ID. Current frames carry
+  each identity once per shard per request, even if it was previously ingested. A
+  prepared source can supply those identities on demand, but local registry hits do
+  not eliminate their conversion/encoding at the origin. Preserve existing frames,
+  shard routing and origin admission; use the native fallback initially. Omitting
+  identities from the wire would be a separate protocol/recovery design.
+- Validate types and structural limits before admission: the current materializer
+  has no error return. New-series conversion failures must not panic inside an engine
+  lock or leave partial registrations. Existing gauge/sum value-less point and
+  exemplar drop behavior, and integer-to-float sample conversion, stay unchanged.
+
+The request, its read-only pdata objects, and captured source coordinates must remain
+valid until the entire facade write returns, including final buffered append and
+exemplar processing. Materialized misses must remain stable for the whole engine
+append: WAL staging stores shallow Series values until encode/apply, so reusing a
+single callback scratch identity for several misses would corrupt earlier entries.
+Use per-call arenas for all materialized misses, released only after those consumers
+finish. Never mutate pdata during hashing/materialization; callbacks must not call
+back into the engine or acquire locks that invert its writer lock. Retained callback
+sources must be cleared on every success/error/reset path. The earlier WAL reset and
+bounded arena ownership requirements still apply.
+
+### Validation before selecting the lazy path
+
+Property tests should compare complete canonical preimages and SeriesIDs against
+existing pdata conversion plus native projection for all AnyValue kinds, nested map
+orders, duplicate policy, metadata/context changes and reserved-label collisions.
+Also assert that each materialized identity hashes to its advertised ID. Include
+sample ordering, missing values, decomposed fallbacks and tenant separation.
+
+Instrument materializer calls in engine/facade tests: repeated known series should
+invoke none on the no-exemplar local path; first registration should invoke only as
+needed; a known series after head flush must relog/recover correctly without calling
+the producer materializer. Exercise multiple new identities in one WAL append,
+prune/reset/reopen misses, concurrent ingestion, soft overflow, all limit rejections,
+WAL errors and retry. Assert registry/query/WAL contents after source mutation and
+arena reuse, and run race tests. Add compatibility cases for tenant callbacks,
+sampling index remapping, deferred exemplars and cluster fallback.
+
+Then compare three complete paths: current adapter, owned arena adapter, and prepared
+hash/lazy adapter. Measure cold registration, warm repeats, churn, nested values,
+small/large batches, tenant switches, exemplars and concurrent writers. Count hash
+scratch allocations, source-coordinate storage, materialization calls, registry bytes,
+WAL relog materialization, lock contention, total objects and retained memory. Only a
+subsequent bounded live run can establish a throughput/GC benefit. No extra prototype
+or benchmark was run for this design extension while other agents held measurement
+slots.
