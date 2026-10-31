@@ -5,6 +5,8 @@ Both receive identical live samples from vmagent. Nginx caches one real node-exp
 response for 2s; vmagent assigns each scrape target a distinct `instance="host-N"`.
 
 [RESUMED_RESULTS.md](RESUMED_RESULTS.md) records the published-storage `v0.50.0` rerun.
+[METRICS_PROFILE_RESULTS.md](METRICS_PROFILE_RESULTS.md) attributes the repeated 10k
+overload to conversion allocations and retained live/detached flush work.
 
 ```sh
 bash dev/local/scale-bench/build.sh
