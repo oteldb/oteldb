@@ -1,0 +1,17 @@
+Type: delay
+Showing nodes accounting for 144.03ms, 98.83% of 145.73ms total
+Dropped 123 nodes (cum <= 0.73ms)
+Showing top 12 nodes out of 137
+      flat  flat%   sum%        cum   cum%
+   77.98ms 53.51% 53.51%    77.98ms 53.51%  syscall.Fsync
+   53.22ms 36.52% 90.03%    53.22ms 36.52%  syscall.write
+    4.71ms  3.23% 93.26%     4.71ms  3.23%  syscall.read
+    4.19ms  2.87% 96.14%     4.19ms  2.87%  syscall.Close
+    3.10ms  2.13% 98.27%     3.10ms  2.13%  syscall.accept4
+    0.82ms  0.57% 98.83%     0.82ms  0.57%  syscall.setsockopt
+         0     0% 98.83%     2.38ms  1.63%  bufio.(*Reader).Read
+         0     0% 98.83%     0.98ms  0.67%  bufio.(*Reader).ReadLine
+         0     0% 98.83%     0.98ms  0.67%  bufio.(*Reader).ReadSlice
+         0     0% 98.83%     0.98ms  0.67%  bufio.(*Reader).fill
+         0     0% 98.83%    10.54ms  7.23%  bufio.(*Writer).Flush
+         0     0% 98.83%     2.41ms  1.66%  bufio.(*Writer).Write

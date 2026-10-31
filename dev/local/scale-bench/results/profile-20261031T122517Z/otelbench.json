@@ -1,0 +1,12 @@
+{
+  "victoriametrics": {
+    "random": {
+      "exit_code": 0,
+      "panels": 242
+    },
+    "cached": {
+      "exit_code": 0,
+      "panels": 242
+    }
+  }
+}

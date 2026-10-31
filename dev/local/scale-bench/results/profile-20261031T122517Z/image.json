@@ -1,0 +1,54 @@
+[
+    {
+        "Id": "sha256:14f7f6eabeb1e2f00b454b854c70e79820b41bde2cb533f4741e3d62f05139ab",
+        "RepoTags": [
+            "local/oteldb:metric-consumer-b0f66553"
+        ],
+        "RepoDigests": [
+            "local/oteldb@sha256:14f7f6eabeb1e2f00b454b854c70e79820b41bde2cb533f4741e3d62f05139ab"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-10-31T15:24:28.512855704+03:00",
+        "Config": {
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Entrypoint": [
+                "oteldb"
+            ],
+            "WorkingDir": "/",
+            "Labels": {
+                "dev.oteldb.storage.diff": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "dev.oteldb.storage.revision": "e9ada72317cc374793b2e8d7f1204d200f1f7978",
+                "org.opencontainers.image.revision": "b0f66553"
+            }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 188791940,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:be64570a34e4c5e361d1f5d9cb42b851e7f9a33a61f91c335b287c1c7868f921",
+                "sha256:7bd30ac624c97f424cfc03e5806565b7a90d990187dbf82ebd47715da4de0fc6",
+                "sha256:be251d04670b97a6a1986a051ff33753179edf6417beced091313f9d66f837ed"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-10-31T12:24:29.291342824Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": "sha256:14f7f6eabeb1e2f00b454b854c70e79820b41bde2cb533f4741e3d62f05139ab",
+            "size": 855
+        },
+        "Identity": {
+            "Build": [
+                {
+                    "Ref": "yhhuabmhagp8iuqifurbz2fzb",
+                    "CreatedAt": "2026-10-31T15:24:29.610612712+03:00"
+                }
+            ]
+        }
+    }
+]

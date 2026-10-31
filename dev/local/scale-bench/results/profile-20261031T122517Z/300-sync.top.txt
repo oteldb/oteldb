@@ -1,0 +1,17 @@
+Type: delay
+Showing nodes accounting for 24262.27ms, 99.83% of 24303.76ms total
+Dropped 44 nodes (cum <= 121.52ms)
+Showing top 12 nodes out of 42
+      flat  flat%   sum%        cum   cum%
+13463.55ms 55.40% 55.40% 13463.55ms 55.40%  sync.(*Mutex).Lock
+ 4951.55ms 20.37% 75.77%  4951.55ms 20.37%  runtime.chanrecv1
+ 3010.27ms 12.39% 88.16%  3010.27ms 12.39%  runtime.selectgo
+ 2000.55ms  8.23% 96.39%  2000.55ms  8.23%  runtime.chanrecv2
+  836.36ms  3.44% 99.83%   836.36ms  3.44%  sync.(*RWMutex).RLock
+         0     0% 99.83%  2000.55ms  8.23%  github.com/VictoriaMetrics/VictoriaMetrics/lib/fasttime.init.0.func1
+         0     0% 99.83%  3010.27ms 12.39%  github.com/go-faster/sdk/profiler.handler.ServeHTTP
+         0     0% 99.83% 14337.32ms 58.99%  github.com/oteldb/oteldb/internal/storagebackend.(*Backend).ConsumeMetrics
+         0     0% 99.83% 14337.32ms 58.99%  github.com/oteldb/oteldb/otelcolmod/prometheusremotewritereceiver.(*Receiver).ServeHTTP
+         0     0% 99.83% 14337.17ms 58.99%  github.com/oteldb/storage.(*Storage).WriteMetrics
+         0     0% 99.83%   836.36ms  3.44%  github.com/oteldb/storage.(*Storage).pokeFlush
+         0     0% 99.83% 13500.59ms 55.55%  github.com/oteldb/storage.(*metricAppendBuffer).flush

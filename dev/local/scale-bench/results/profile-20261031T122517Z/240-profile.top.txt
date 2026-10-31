@@ -1,0 +1,25 @@
+File: oteldb
+Build ID: 95f80ae8071edcb6a671844039ffd9529e8c9e0f
+Type: cpu
+Time: 2026-10-31 15:29:28 MSK
+Duration: 30s, Total samples = 120.22s (400.73%)
+Showing nodes accounting for 77.61s, 64.56% of 120.22s total
+Dropped 743 nodes (cum <= 0.60s)
+Showing top 16 nodes out of 198
+      flat  flat%   sum%        cum   cum%
+    20.70s 17.22% 17.22%     20.70s 17.22%  runtime.spanClass.sizeclass (inline)
+    11.52s  9.58% 26.80%     11.52s  9.58%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+     7.49s  6.23% 33.03%     33.81s 28.12%  runtime.tryDeferToSpanScan
+     5.81s  4.83% 37.86%     32.39s 26.94%  runtime.scanSpan
+     4.87s  4.05% 41.91%     11.73s  9.76%  runtime.scanObjectsSmall
+     4.32s  3.59% 45.51%      4.33s  3.60%  internal/runtime/gc/scan.scanSpanPackedAVX512
+     4.28s  3.56% 49.07%      4.88s  4.06%  runtime.(*spanInlineMarkBits).tryAcquire
+     3.86s  3.21% 52.28%     21.25s 17.68%  runtime.mapaccess2
+     3.04s  2.53% 54.81%      3.04s  2.53%  runtime.memequal128
+     2.93s  2.44% 57.25%      6.35s  5.28%  runtime.scanObjectSmall
+     1.76s  1.46% 58.71%      1.76s  1.46%  runtime.memmove
+     1.66s  1.38% 60.09%      1.66s  1.38%  runtime.extractHeapBitsSmall
+     1.49s  1.24% 61.33%      1.49s  1.24%  internal/runtime/maps.(*Map).directoryAt (inline)
+     1.43s  1.19% 62.52%      2.03s  1.69%  github.com/oteldb/storage/signal/metric.(*projector).setMetric
+     1.26s  1.05% 63.57%      1.28s  1.06%  runtime.(*mspan).moveInlineMarks
+     1.19s  0.99% 64.56%      1.19s  0.99%  internal/runtime/maps.memHashAES

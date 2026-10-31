@@ -1,0 +1,25 @@
+File: oteldb
+Build ID: 95f80ae8071edcb6a671844039ffd9529e8c9e0f
+Type: cpu
+Time: 2026-10-31 15:26:20 MSK
+Duration: 30s, Total samples = 114.04s (380.12%)
+Showing nodes accounting for 69.58s, 61.01% of 114.04s total
+Dropped 707 nodes (cum <= 0.57s)
+Showing top 16 nodes out of 210
+      flat  flat%   sum%        cum   cum%
+    19.19s 16.83% 16.83%     19.19s 16.83%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+    10.74s  9.42% 26.25%     10.74s  9.42%  runtime.spanClass.sizeclass (inline)
+     5.44s  4.77% 31.02%      5.44s  4.77%  runtime.memequal128
+     4.49s  3.94% 34.95%     30.45s 26.70%  runtime.mapaccess2
+     3.94s  3.45% 38.41%     17.50s 15.35%  runtime.tryDeferToSpanScan
+     3.49s  3.06% 41.47%      4.40s  3.86%  github.com/oteldb/storage/index/series.View.At
+     3.36s  2.95% 44.41%      3.36s  2.95%  runtime.memmove
+     3.07s  2.69% 47.11%     17.62s 15.45%  runtime.scanSpan
+     2.76s  2.42% 49.53%      6.61s  5.80%  runtime.scanObjectsSmall
+     2.26s  1.98% 51.51%      2.48s  2.17%  runtime.(*spanInlineMarkBits).tryAcquire
+     2.24s  1.96% 53.47%      2.24s  1.96%  internal/runtime/gc/scan.scanSpanPackedAVX512
+     1.84s  1.61% 55.09%      1.84s  1.61%  github.com/oteldb/storage/index/series.View.ID
+     1.82s  1.60% 56.68%      3.91s  3.43%  runtime.scanObjectSmall
+     1.74s  1.53% 58.21%      1.94s  1.70%  github.com/oteldb/storage/engine.(*Engine).Stats
+     1.68s  1.47% 59.68%      1.68s  1.47%  internal/runtime/maps.(*Map).directoryAt (inline)
+     1.52s  1.33% 61.01%      1.52s  1.33%  internal/runtime/maps.memHashAES
