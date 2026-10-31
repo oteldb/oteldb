@@ -1,0 +1,24 @@
+File: oteldb
+Build ID: 7d59f808bc886d74fbe88b1d23581b1de1edb6fc
+Type: inuse_space
+Time: 2026-10-31 04:34:19 MSK
+Showing nodes accounting for 7.56GB, 96.17% of 7.86GB total
+Dropped 207 nodes (cum <= 0.04GB)
+Showing top 16 nodes out of 107
+      flat  flat%   sum%        cum   cum%
+    2.16GB 27.49% 27.49%     2.16GB 27.49%  github.com/oteldb/storage/engine.(*head).bufFor
+    1.56GB 19.87% 47.36%     1.56GB 19.88%  github.com/oteldb/storage/index/series.(*Index).Add
+    0.86GB 10.89% 58.26%     0.86GB 10.89%  slices.Clone[go.shape.[]uint8,go.shape.uint8]
+    0.75GB  9.49% 67.74%     0.75GB  9.49%  github.com/oteldb/storage/engine.(*sampleBuf).appendSample
+    0.56GB  7.08% 74.82%     0.56GB  7.08%  github.com/oteldb/storage/engine.(*head).noteTS
+    0.51GB  6.54% 81.36%     0.51GB  6.54%  github.com/oteldb/storage/index/postings.(*memoryPostings[go.shape.uint32]).Add
+    0.33GB  4.22% 85.58%     0.41GB  5.27%  github.com/oteldb/storage/engine.(*partStreamWriter).appendSeries
+    0.29GB  3.74% 89.31%     0.29GB  3.74%  github.com/oteldb/storage/internal/watermark.Decode
+    0.16GB  1.99% 91.30%     0.16GB  1.99%  os.readFileContents
+    0.08GB  1.00% 92.31%     0.08GB  1.00%  github.com/oteldb/storage/block.(*StreamWriter).AppendU128Run
+    0.08GB     1% 93.30%     0.08GB     1%  github.com/oteldb/storage/signal/metric.grow[go.shape.struct { Name []uint8; Unit []uint8; Kind github.com/oteldb/storage/signal/metric.PointKind; Temporality github.com/oteldb/storage/signal/metric.Temporality; Monotonic bool; Points []github.com/oteldb/storage/signal/metric.NumberPoint }]
+    0.07GB  0.86% 94.17%     0.09GB  1.11%  github.com/oteldb/storage/otlp/pdataconv.convertMap
+    0.06GB  0.75% 94.91%     0.06GB  0.75%  github.com/oteldb/storage/index/postings.(*memoryPostings[go.shape.uint32]).addAll
+    0.06GB  0.71% 95.63%     0.07GB  0.91%  go.opentelemetry.io/collector/pdata/pcommon.Map.PutStr
+    0.02GB  0.28% 95.91%     0.05GB  0.65%  github.com/valyala/bytebufferpool.(*ByteBuffer).ReadFrom
+    0.02GB  0.26% 96.17%     0.06GB  0.77%  github.com/oteldb/oteldb/internal/prompb.(*WriteRequest).Unmarshal

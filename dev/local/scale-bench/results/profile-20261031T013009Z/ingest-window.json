@@ -1,0 +1,11 @@
+{
+  "window_start_s": 280.4,
+  "window_end_s": 359.6,
+  "duration_s": 79.20000000000005,
+  "accepted_points_s": 780892.3989898985,
+  "offered_points_s": 965652.3863636358,
+  "queue_start_bytes": 549752857.0,
+  "queue_end_bytes": 639360527.0,
+  "queue_drop_bytes": 0.0,
+  "vm_queue_end_bytes": 0.0
+}

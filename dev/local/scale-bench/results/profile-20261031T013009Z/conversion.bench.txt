@@ -1,0 +1,18 @@
+goos: linux
+goarch: amd64
+pkg: github.com/oteldb/oteldb/internal/promrw
+cpu: AMD Ryzen 9 9950X3D2 16-Core Processor         
+BenchmarkConvert/Direct-8         	    2704	    218104 ns/op	     481 B/op	       0 allocs/op
+BenchmarkConvert/Direct-8         	    2638	    221456 ns/op	     493 B/op	       0 allocs/op
+BenchmarkConvert/Direct-8         	    2713	    219121 ns/op	     479 B/op	       0 allocs/op
+BenchmarkConvert/Direct-8         	    2695	    218334 ns/op	     483 B/op	       0 allocs/op
+BenchmarkConvert/Direct-8         	    2602	    219186 ns/op	     500 B/op	       0 allocs/op
+BenchmarkConvert/Direct-8         	    2642	    219794 ns/op	     492 B/op	       0 allocs/op
+BenchmarkConvert/Pdata-8          	     487	   1075637 ns/op	 2744981 B/op	   57180 allocs/op
+BenchmarkConvert/Pdata-8          	     560	   1038200 ns/op	 2744970 B/op	   57180 allocs/op
+BenchmarkConvert/Pdata-8          	     573	   1034364 ns/op	 2744968 B/op	   57180 allocs/op
+BenchmarkConvert/Pdata-8          	     582	   1030348 ns/op	 2744969 B/op	   57180 allocs/op
+BenchmarkConvert/Pdata-8          	     577	   1033638 ns/op	 2744968 B/op	   57180 allocs/op
+BenchmarkConvert/Pdata-8          	     578	   1038862 ns/op	 2744969 B/op	   57180 allocs/op
+PASS
+ok  	github.com/oteldb/oteldb/internal/promrw	7.014s

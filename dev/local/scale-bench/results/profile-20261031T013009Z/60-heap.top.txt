@@ -1,0 +1,24 @@
+File: oteldb
+Build ID: 7d59f808bc886d74fbe88b1d23581b1de1edb6fc
+Type: inuse_space
+Time: 2026-10-31 04:31:12 MSK
+Showing nodes accounting for 7645.87MB, 96.99% of 7883.53MB total
+Dropped 159 nodes (cum <= 39.42MB)
+Showing top 16 nodes out of 89
+      flat  flat%   sum%        cum   cum%
+ 2316.71MB 29.39% 29.39%  2318.02MB 29.40%  github.com/oteldb/storage/index/series.(*Index).Add
+ 1903.82MB 24.15% 53.54%  1903.82MB 24.15%  github.com/oteldb/storage/engine.(*head).bufFor (inline)
+  884.79MB 11.22% 64.76%   884.79MB 11.22%  slices.Clone[go.shape.[]uint8,go.shape.uint8]
+  663.61MB  8.42% 73.18%   825.37MB 10.47%  github.com/oteldb/storage/engine.(*partStreamWriter).appendSeries
+  569.66MB  7.23% 80.40%   569.66MB  7.23%  github.com/oteldb/storage/engine.(*head).noteTS (inline)
+  526.27MB  6.68% 87.08%   526.27MB  6.68%  github.com/oteldb/storage/index/postings.(*memoryPostings[go.shape.uint32]).Add
+  247.50MB  3.14% 90.22%   247.50MB  3.14%  github.com/oteldb/storage/engine.(*sampleBuf).appendSample (inline)
+  157.91MB  2.00% 92.22%   157.91MB  2.00%  github.com/oteldb/storage/block.(*StreamWriter).AppendU128Run
+  143.43MB  1.82% 94.04%   143.43MB  1.82%  github.com/oteldb/storage/internal/watermark.Decode
+   69.50MB  0.88% 94.92%    69.50MB  0.88%  github.com/oteldb/storage/signal.Value.appendHash
+   60.15MB  0.76% 95.68%    60.15MB  0.76%  github.com/oteldb/storage/index/postings.(*memoryPostings[go.shape.uint32]).addAll (inline)
+   46.01MB  0.58% 96.27%    59.01MB  0.75%  github.com/oteldb/storage/otlp/pdataconv.convertMap
+   40.51MB  0.51% 96.78%    47.01MB   0.6%  go.opentelemetry.io/collector/pdata/pcommon.Map.PutStr
+       8MB   0.1% 96.88%   117.37MB  1.49%  github.com/oteldb/storage/otlp/pdataconv.appendMetric
+       8MB   0.1% 96.99%    92.24MB  1.17%  github.com/oteldb/oteldb/prometheusremotewrite.FromTimeSeries
+         0     0% 96.99%  5829.93MB 73.95%  github.com/oteldb/oteldb/internal/storagebackend.(*Backend).ConsumeMetrics

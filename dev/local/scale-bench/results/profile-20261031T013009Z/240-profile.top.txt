@@ -1,0 +1,25 @@
+File: oteldb
+Build ID: 7d59f808bc886d74fbe88b1d23581b1de1edb6fc
+Type: cpu
+Time: 2026-10-31 04:34:19 MSK
+Duration: 30s, Total samples = 130.31s (434.35%)
+Showing nodes accounting for 85.78s, 65.83% of 130.31s total
+Dropped 684 nodes (cum <= 0.65s)
+Showing top 16 nodes out of 215
+      flat  flat%   sum%        cum   cum%
+    24.26s 18.62% 18.62%     24.26s 18.62%  runtime.spanClass.sizeclass (inline)
+    10.25s  7.87% 26.48%     10.25s  7.87%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+     7.78s  5.97% 32.45%     38.77s 29.75%  runtime.tryDeferToSpanScan
+     7.20s  5.53% 37.98%     37.69s 28.92%  runtime.scanSpan
+     5.61s  4.31% 42.28%     13.89s 10.66%  runtime.scanObjectsSmall
+     5.09s  3.91% 46.19%      5.76s  4.42%  runtime.(*spanInlineMarkBits).tryAcquire
+     4.66s  3.58% 49.77%      4.66s  3.58%  internal/runtime/gc/scan.scanSpanPackedAVX512
+     3.90s  2.99% 52.76%     19.90s 15.27%  runtime.mapaccess2
+     3.59s  2.75% 55.51%      7.89s  6.05%  runtime.scanObjectSmall
+     3.33s  2.56% 58.07%      3.33s  2.56%  runtime.memequal128
+     2.28s  1.75% 59.82%      2.28s  1.75%  runtime.extractHeapBitsSmall
+     2.13s  1.63% 61.45%      2.13s  1.63%  runtime.memmove
+     1.71s  1.31% 62.77%      1.91s  1.47%  slices.BinarySearchFunc[go.shape.[]github.com/oteldb/storage/internal/watermark.Entry,go.shape.struct { ID github.com/oteldb/storage/signal.SeriesID; Max int64 },go.shape.struct { Hi uint64; Lo uint64 }]
+     1.54s  1.18% 63.95%      1.58s  1.21%  runtime.(*mspan).moveInlineMarks
+     1.25s  0.96% 64.91%      1.25s  0.96%  internal/runtime/maps.(*Map).directoryAt (inline)
+     1.20s  0.92% 65.83%      1.83s  1.40%  github.com/oteldb/storage/engine.sidxEntryID

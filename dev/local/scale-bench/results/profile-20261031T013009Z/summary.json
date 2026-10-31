@@ -1,0 +1,106 @@
+{
+  "source_commit": "3e7d95a5",
+  "production_source_commit": "9cd2b49b",
+  "storage_version": "v0.50.0",
+  "nodes": 10000,
+  "quota_cpus": 8,
+  "memory_limit_bytes": 17179869184,
+  "gomemlimit": "14GiB",
+  "profile_binary_build_id": "7d59f808bc886d74fbe88b1d23581b1de1edb6fc",
+  "latest_capture_elapsed": 378.69503878800606,
+  "cpu_stat": {
+    "usage_usec": 1752455738,
+    "user_usec": 1715058001,
+    "system_usec": 37397736,
+    "nice_usec": 0,
+    "core_sched.force_idle_usec": 0,
+    "nr_periods": 3800,
+    "nr_throttled": 216,
+    "throttled_usec": 178712,
+    "nr_bursts": 0,
+    "burst_usec": 0
+  },
+  "memory_peak_bytes": 17180135424,
+  "memory_events": {
+    "low": 0,
+    "high": 0,
+    "max": 148744,
+    "oom": 0,
+    "oom_kill": 0,
+    "oom_group_kill": 0,
+    "sock_throttled": 3118
+  },
+  "container_states": {
+    "/odbprofile-20261031t013009z-node-cache-1": {
+      "Status": "exited",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "Pid": 0,
+      "ExitCode": 0,
+      "Error": "",
+      "StartedAt": "2026-10-31T01:30:09.7594664Z",
+      "FinishedAt": "2026-10-31T01:36:30.982779082Z"
+    },
+    "/odbprofile-20261031t013009z-node-exporter-1": {
+      "Status": "exited",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "Pid": 0,
+      "ExitCode": 2,
+      "Error": "",
+      "StartedAt": "2026-10-31T01:30:09.57287267Z",
+      "FinishedAt": "2026-10-31T01:36:31.298085079Z"
+    },
+    "/odbprofile-20261031t013009z-oteldb-1": {
+      "Status": "exited",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "Pid": 0,
+      "ExitCode": 1,
+      "Error": "",
+      "StartedAt": "2026-10-31T01:30:09.651497174Z",
+      "FinishedAt": "2026-10-31T01:36:46.154411698Z"
+    },
+    "/odbprofile-20261031t013009z-victoriametrics-1": {
+      "Status": "exited",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "Pid": 0,
+      "ExitCode": 0,
+      "Error": "",
+      "StartedAt": "2026-10-31T01:30:09.490090761Z",
+      "FinishedAt": "2026-10-31T01:36:31.341859245Z"
+    },
+    "/odbprofile-20261031t013009z-vmagent-1": {
+      "Status": "exited",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "Pid": 0,
+      "ExitCode": 0,
+      "Error": "",
+      "StartedAt": "2026-10-31T01:30:09.840402876Z",
+      "FinishedAt": "2026-10-31T01:36:12.460188792Z"
+    }
+  },
+  "freshness": {
+    "oteldb": "2",
+    "victoriametrics": "8"
+  },
+  "live_cluster_touched": false,
+  "native_direct_route_tested_end_to_end": false
+}

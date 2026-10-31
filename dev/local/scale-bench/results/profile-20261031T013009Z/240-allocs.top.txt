@@ -1,0 +1,25 @@
+File: oteldb
+Build ID: 7d59f808bc886d74fbe88b1d23581b1de1edb6fc
+Type: alloc_space
+Time: 2026-10-31 04:34:49 MSK
+Duration: 30.01s, Total samples = 41844.36MB 
+Showing nodes accounting for 36535.16MB, 87.31% of 41844.36MB total
+Dropped 237 nodes (cum <= 209.22MB)
+Showing top 16 nodes out of 110
+      flat  flat%   sum%        cum   cum%
+ 7321.79MB 17.50% 17.50%  7321.79MB 17.50%  github.com/oteldb/storage/signal/metric.grow[go.shape.struct { Name []uint8; Unit []uint8; Kind github.com/oteldb/storage/signal/metric.PointKind; Temporality github.com/oteldb/storage/signal/metric.Temporality; Monotonic bool; Points []github.com/oteldb/storage/signal/metric.NumberPoint }] (inline)
+ 5685.70MB 13.59% 31.09%  6735.21MB 16.10%  go.opentelemetry.io/collector/pdata/pcommon.Map.PutStr
+ 5411.48MB 12.93% 44.02%     6889MB 16.46%  github.com/oteldb/storage/otlp/pdataconv.convertMap
+ 3967.59MB  9.48% 53.50%  4801.69MB 11.48%  github.com/oteldb/storage/engine.(*partStreamWriter).appendSeries
+ 1990.68MB  4.76% 58.26%  1990.68MB  4.76%  go.opentelemetry.io/collector/pdata/internal.NewMetric
+ 1929.68MB  4.61% 62.87%  1929.68MB  4.61%  go.opentelemetry.io/collector/pdata/internal.NewNumberDataPoint
+ 1631.62MB  3.90% 66.77%  1631.62MB  3.90%  github.com/oteldb/storage/signal/metric.grow[go.shape.struct { Attributes github.com/oteldb/storage/signal.Attributes; Exemplars []github.com/oteldb/storage/signal/metric.Exemplar; StartTs int64; Ts int64; Value float64 }] (inline)
+ 1518.67MB  3.63% 70.40%  1518.67MB  3.63%  github.com/oteldb/storage/engine.(*head).bufFor
+ 1065.52MB  2.55% 72.94% 14244.95MB 34.04%  github.com/oteldb/oteldb/prometheusremotewrite.FromTimeSeries
+ 1049.52MB  2.51% 75.45%  1049.52MB  2.51%  go.opentelemetry.io/collector/pdata/internal.NewAnyValueStringValue
+  916.02MB  2.19% 77.64%   932.02MB  2.23%  github.com/klauspost/compress/zstd.(*Encoder).encodeAll
+  906.01MB  2.17% 79.81%   906.01MB  2.17%  github.com/oteldb/storage/otlp/pdataconv.convertValue
+  887.93MB  2.12% 81.93%   887.93MB  2.12%  slices.Grow[go.shape.[]uint8,go.shape.uint8]
+  829.41MB  1.98% 83.91%   829.41MB  1.98%  github.com/oteldb/storage/block.(*StreamWriter).AppendU128Run
+  735.02MB  1.76% 85.67% 16577.44MB 39.62%  github.com/oteldb/storage/otlp/pdataconv.appendMetric
+  688.52MB  1.65% 87.31%   688.52MB  1.65%  github.com/oteldb/oteldb/prometheusremotewrite.finalName (inline)
