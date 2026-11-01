@@ -20,6 +20,8 @@ import (
 	promstorage "github.com/prometheus/prometheus/storage"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	otelmetric "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/otlp/pdataconv"
@@ -60,6 +62,7 @@ type Backend struct {
 	labels *storagepromql.LabelCache
 	// dropped counts records the OTLP conversion refused. Nil unless [WithMeterProvider] was given.
 	dropped otelmetric.Int64Counter
+	tracer  trace.Tracer
 }
 
 // Option configures a [Backend].
@@ -105,6 +108,7 @@ func NewQuery(src Source, opts ...Option) *Backend {
 		overTimePushdown: true,
 		traceQLPushdown:  true,
 		labels:           storagepromql.NewLabelCache(),
+		tracer:           noop.NewTracerProvider().Tracer(meterName),
 	}
 	for _, opt := range opts {
 		opt(b)

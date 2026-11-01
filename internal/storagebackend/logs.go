@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/oteldb/storage"
@@ -26,6 +27,7 @@ import (
 	"github.com/oteldb/oteldb/internal/logstorage"
 	"github.com/oteldb/oteldb/internal/otelstorage"
 	"github.com/oteldb/oteldb/internal/xregexp"
+	"github.com/oteldb/oteldb/internal/xspan"
 )
 
 var (
@@ -85,7 +87,9 @@ func (n *logStreamNode) Traverse(cb logqlengine.NodeVisitor) error { return cb(n
 // when the selector is fully pushed, so no post-fetch filter can reduce the result below the limit.
 // The fetch answers with a superset (it keeps every row tying at the boundary timestamp), so the
 // sort+truncate below still decides the exact result.
-func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.EvalParams) (logqlengine.EntryIterator, error) {
+func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.EvalParams) (_ logqlengine.EntryIterator, rerr error) {
+	ctx, span := n.q.b.tracer.Start(ctx, "storagebackend.logs.eval")
+	defer func() { xspan.End(span, rerr) }()
 	ctx = n.q.b.queryContext(ctx)
 
 	lo, hi := fetchWindow(params.Start, params.End)
@@ -102,10 +106,14 @@ func (n *logStreamNode) EvalPipeline(ctx context.Context, params logqlengine.Eva
 		return nil, err
 	}
 
+	_, sortSpan := n.q.b.tracer.Start(ctx, "storagebackend.logs.sort")
 	sortEntries(entries, params.Direction)
+	sortSpan.SetAttributes(attribute.Int("storage.entries", len(entries)))
+	sortSpan.End()
 	if params.Limit > 0 && len(entries) > params.Limit {
 		entries = entries[:params.Limit]
 	}
+	span.SetAttributes(attribute.Int("storage.entries", len(entries)))
 	return iterators.Slice(entries), nil
 }
 
@@ -127,7 +135,9 @@ type fetchOptions struct {
 // fetchBatches resolves the selector to storage fetch filters and returns the matching record
 // batches for [lo, hi]. Shared by the entry-materialization path (EvalPipeline) and the bucketed
 // sampling path (bucketSamplingNode.EvalBucketedSample).
-func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, opts fetchOptions) (_ []*fetch.Batch, selectorPushed bool, _ error) {
+func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, opts fetchOptions) (_ []*fetch.Batch, selectorPushed bool, rerr error) {
+	ctx, span := n.q.b.tracer.Start(ctx, "storagebackend.logs.fetch")
+	defer func() { xspan.End(span, rerr) }()
 	// Identity matchers and per-record conditions run before row materialization.
 	matchers, selConds, selectorPushed := n.streamFilters(ctx, lo, hi)
 	req := fetch.Request{
@@ -145,6 +155,10 @@ func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, opts fet
 		req.Limit = opts.limit
 		req.Reverse = opts.reverse
 	}
+	span.SetAttributes(
+		attribute.Bool("storage.selector_pushed", selectorPushed),
+		attribute.Int("storage.limit", req.Limit),
+	)
 	// Selector record-attribute conditions plus any offloaded line filters (set by LogQLOptimizer).
 	if len(selConds)+len(n.conditions) > 0 {
 		conds := make([]fetch.Condition, 0, len(selConds)+len(n.conditions))
@@ -154,11 +168,15 @@ func (n *logStreamNode) fetchBatches(ctx context.Context, lo, hi int64, opts fet
 		req.AllConditions = true
 	}
 
-	it, err := n.q.b.src.LogFetcher(n.q.b.tenant).Fetch(ctx, req)
+	readCtx, readSpan := n.q.b.tracer.Start(ctx, "storagebackend.logs.read")
+	it, err := n.q.b.src.LogFetcher(n.q.b.tenant).Fetch(readCtx, req)
+	xspan.End(readSpan, err)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "fetch logs")
 	}
-	batches, err := fetch.Drain(ctx, it)
+	drainCtx, drainSpan := n.q.b.tracer.Start(ctx, "storagebackend.logs.drain")
+	batches, err := fetch.Drain(drainCtx, it)
+	xspan.End(drainSpan, err)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "drain logs")
 	}
@@ -175,7 +193,9 @@ var logMaterializeThreshold = 2048
 // concurrently and merges them in order; otherwise it runs sequentially. Because the chunks are
 // contiguous and merged in order, the merged entries are in the same order as the sequential path,
 // so the later stable sort yields the same output regardless of worker scheduling.
-func (n *logStreamNode) materialize(ctx context.Context, batches []*fetch.Batch) ([]logqlengine.Entry, error) {
+func (n *logStreamNode) materialize(ctx context.Context, batches []*fetch.Batch) (_ []logqlengine.Entry, rerr error) {
+	ctx, span := n.q.b.tracer.Start(ctx, "storagebackend.logs.materialize")
+	defer func() { xspan.End(span, rerr) }()
 	offsets := make([]int, len(batches)+1)
 	total := 0
 	for b, batch := range batches {
@@ -183,6 +203,7 @@ func (n *logStreamNode) materialize(ctx context.Context, batches []*fetch.Batch)
 		total += len(batch.Timestamps)
 	}
 	offsets[len(batches)] = total
+	span.SetAttributes(attribute.Int("storage.rows", total), attribute.Int("storage.batches", len(batches)))
 
 	selector := n.selectorMatchers()
 	workers := n.q.b.logParallelism
@@ -293,6 +314,8 @@ func (n *logStreamNode) materializeRange(selector preparedSelector, batches []*f
 // so a fetched record needs no in-memory matchSelector re-check (used by the bucketed sampling fast
 // path). It shares the single LogKeys lookup.
 func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matchers []fetch.Matcher, conditions []fetch.Condition, selectorPushed bool) {
+	ctx, span := n.q.b.tracer.Start(ctx, "storagebackend.logs.resolveFilters")
+	defer span.End()
 	wanted := map[string]preparedSelector{}
 	add := func(ms preparedSelector) {
 		for _, m := range ms {
@@ -318,7 +341,10 @@ func (n *logStreamNode) streamFilters(ctx context.Context, lo, hi int64) (matche
 		return nil, conditions, len(n.selector) == 0
 	}
 
-	keys, err := n.q.b.src.LogKeys(ctx, n.q.b.tenant, lo, hi)
+	keysCtx, keysSpan := n.q.b.tracer.Start(ctx, "storagebackend.logs.keys")
+	keys, err := n.q.b.src.LogKeys(keysCtx, n.q.b.tenant, lo, hi)
+	keysSpan.SetAttributes(attribute.Int("storage.keys", len(keys)))
+	xspan.End(keysSpan, err)
 	if err != nil {
 		return nil, conditions, false // best effort: fall back to in-memory filtering.
 	}
