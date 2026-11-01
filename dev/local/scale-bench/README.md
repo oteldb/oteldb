@@ -136,6 +136,8 @@ the configured bounded client count. Random hosts advance with the query time; r
 keep the same host and timestamp, with the first two refreshes marked as warmups. Resource and
 queue sampling continues throughout. `soak-dashboards.jsonl` records every query and complete or
 partial load, including refresh lateness; `soak-summary.json` records the phase times and loads.
+`soak-freshness.json` repeats the all-host and two-minute sample-history gate after the soak,
+while ingestion is still running, and records its evaluation timestamp.
 Completion of the script is not an SLO pass: check all loads, individual timings, freshness,
 accepted versus offered points, queue trends, OOM events and exit state.
 For an image with direct native ingestion enabled, use

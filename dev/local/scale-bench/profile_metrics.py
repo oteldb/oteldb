@@ -25,6 +25,17 @@ def fetch(url, destination, timeout=15):
         return False
 
 
+def freshness(nodes, end):
+    readiness = {}
+    for server in harness["SERVERS"]:
+        hosts = harness["query"](server, 'count(node_uname_info{job="node_exporter"})', end, nocache=True)
+        samples = harness["query"](server,
+            'min(count_over_time(node_uname_info{job="node_exporter"}[120s]))', end, nocache=True)
+        readiness[server] = {"hosts": hosts, "history": samples,
+            "ready": harness["number"](hosts) == nodes and harness["number"](samples) >= 6}
+    return {"end": end, "servers": readiness}
+
+
 def dashboard_soak(args, directory, servers, capture):
     """Refresh full dashboards while the caller samples the live write queue and resources."""
     queries = harness["dashboard"](True)
@@ -207,15 +218,8 @@ def main():
                 time.sleep(min(15, max(0, args.seconds - (time.monotonic() - start))))
             capture(time.monotonic() - start, container)
             end = int((time.time() - 30) // 15 * 15)
-            readiness = {}
-            history = []
-            for server in harness["SERVERS"]:
-                hosts = harness["query"](server, 'count(node_uname_info{job="node_exporter"})', end, nocache=True)
-                samples = harness["query"](server,
-                    'min(count_over_time(node_uname_info{job="node_exporter"}[120s]))', end, nocache=True)
-                history.append(samples)
-                readiness[server] = {"hosts": hosts, "history": samples,
-                    "ready": harness["number"](hosts) == args.nodes and harness["number"](samples) >= 6}
+            readiness = freshness(args.nodes, end)["servers"]
+            history = [gate["history"] for gate in readiness.values()]
             (directory / "freshness-final.json").write_text(json.dumps(history, indent=2) + "\n")
             (directory / "gate-summary.json").write_text(json.dumps(readiness, indent=2) + "\n")
             if not args.live_queries:
@@ -264,6 +268,9 @@ def main():
                     dashboard_soak(args, directory,
                         [server for server, gate in readiness.items() if gate["ready"]],
                         lambda: capture(time.monotonic() - start, container))
+                    final_end = int((time.time() - 30) // 15 * 15)
+                    (directory / "soak-freshness.json").write_text(
+                        json.dumps(freshness(args.nodes, final_end), indent=2) + "\n")
     finally:
         ids = dc("ps", "-aq", capture_output=True).stdout.split()
         if ids:
