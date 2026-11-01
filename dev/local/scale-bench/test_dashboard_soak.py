@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import runpy
 import tempfile
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -26,11 +27,23 @@ class Clock:
         self.now += seconds
 
 
+class ClockEvent(threading.Event):
+    def __init__(self, clock):
+        super().__init__()
+        self.clock = clock
+
+    def wait(self, timeout=None):
+        if not self.is_set():
+            self.clock.sleep(timeout)
+        return self.is_set()
+
+
 class DashboardSoakTest(unittest.TestCase):
     def setUp(self):
         self.soak = runpy.run_path(str(HERE / "profile_metrics.py"))["dashboard_soak"]
         self.harness = self.soak.__globals__["harness"]
         self.clock = Clock()
+        self.stop = ClockEvent(self.clock)
         self.args = SimpleNamespace(seed=1, nodes=10000, jobs=4, query_budget=60,
                                     soak_seconds=45, refresh_interval=15)
         self.queries = [{"expr": 'up{instance="$node"}', "instant": True}] * 6
@@ -44,7 +57,7 @@ class DashboardSoakTest(unittest.TestCase):
             with patch.dict(self.soak.__globals__, {"time": self.clock}), \
                  patch.dict(self.harness, {"dashboard": lambda _: self.queries}), \
                  patch.dict(self.harness["load_dashboard"].__globals__, {"query": query, "time": self.clock}):
-                summary = self.soak(self.args, Path(tmp), ["oteldb", "victoriametrics"], capture)
+                summary = self.soak(self.args, Path(tmp), ["oteldb", "victoriametrics"], capture, self.stop)
             rows = [json.loads(line) for line in (Path(tmp) / "soak-dashboards.jsonl").read_text().splitlines()]
             self.assertEqual(json.loads((Path(tmp) / "soak-summary.json").read_text()), summary)
         loads = summary["loads"]
@@ -68,7 +81,8 @@ class DashboardSoakTest(unittest.TestCase):
                  patch.dict(self.harness, {"dashboard": lambda _: self.queries,
                                           "load_dashboard": Mock(side_effect=TimeoutError("worker failed"))}):
                 with self.assertRaisesRegex(TimeoutError, "worker failed"):
-                    self.soak(self.args, Path(tmp), ["oteldb"], Mock())
+                    self.soak(self.args, Path(tmp), ["oteldb"], Mock(), self.stop)
+        self.assertTrue(self.stop.is_set())
 
     def test_completion_between_timeout_and_done_check(self):
         pending = Mock()
@@ -80,9 +94,24 @@ class DashboardSoakTest(unittest.TestCase):
         runner.submit.return_value = pending
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(self.soak.__globals__, {"ThreadPoolExecutor": Mock(return_value=runner)}):
-                summary = self.soak(self.args, Path(tmp), ["oteldb"], Mock())
+                summary = self.soak(self.args, Path(tmp), ["oteldb"], Mock(), self.stop)
         self.assertEqual(summary["loads"], [])
         self.assertEqual(pending.result.call_count, 2)
+
+    def test_failed_loads_are_not_successful_latency_samples(self):
+        self.args.soak_seconds = 15
+        query = lambda *args: {"ok": False, "empty": False, "ms": .1, "error": "connection refused"}
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(self.soak.__globals__, {"time": self.clock}), \
+                 patch.dict(self.harness, {"dashboard": lambda _: self.queries}), \
+                 patch.dict(self.harness["load_dashboard"].__globals__, {"query": query, "time": self.clock}), \
+                 patch("builtins.print") as printed:
+                summary = self.soak(self.args, Path(tmp), ["oteldb"], Mock(), self.stop)
+        self.assertEqual(len(summary["loads"]), 2)
+        self.assertTrue(all(load["complete"] and not load["successful"] for load in summary["loads"]))
+        self.assertEqual(summary["successful_loads"], [])
+        self.assertEqual(summary["latency_ms"]["oteldb"]["random"], {"samples": 0, "p50": None, "p95": None})
+        self.assertIn("6 errors, FAILED", printed.call_args_list[0].args[0])
 
 
 if __name__ == "__main__":

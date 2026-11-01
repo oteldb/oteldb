@@ -3,17 +3,144 @@
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from contextlib import contextmanager
 import json
+import math
 import os
 from pathlib import Path
 import random
 import runpy
 import shutil
+import statistics
 import subprocess
+import threading
 import time
 
 HERE = Path(__file__).resolve().parent
 harness = runpy.run_path(str(HERE / "run.py"))
+
+
+class BenchmarkStopped(RuntimeError):
+    pass
+
+
+def check_container(container, directory, stop, phase):
+    try:
+        state = json.loads(subprocess.check_output(["docker", "inspect", container], timeout=12))[0]["State"]
+    except BaseException:
+        stop.set()
+        raise
+    if not state.get("Running") or state.get("OOMKilled"):
+        stop.set()
+        (directory / "early-exit.json").write_text(json.dumps(
+            dict(state, phase=phase, observed_unix=time.time()), indent=2) + "\n")
+        raise RuntimeError(f"benchmark container exited during {phase}: "
+                           f"Running={state.get('Running')}, OOMKilled={state.get('OOMKilled')}, "
+                           f"exit={state.get('ExitCode')}")
+
+
+@contextmanager
+def stop_on_error(stop):
+    try:
+        yield
+    except BaseException:
+        stop.set()
+        raise
+
+
+def run_monitored(work, capture, stop):
+    with stop_on_error(stop):
+        capture()
+        with ThreadPoolExecutor(1) as runner, stop_on_error(stop):
+            pending = runner.submit(work)
+            while True:
+                try:
+                    result = pending.result(timeout=15)
+                    break
+                except FutureTimeout:
+                    if pending.done():
+                        result = pending.result()
+                        break
+                    capture()
+        capture()
+        return result
+
+
+class StoppablePool:
+    def __init__(self, pool, stop):
+        self.pool, self.stop = pool, stop
+
+    def map(self, execute, items):
+        if self.stop.is_set():
+            return ()
+
+        def checked(item):
+            if self.stop.is_set():
+                return None
+            try:
+                return execute(item)
+            except BenchmarkStopped:
+                return None
+
+        return (row for row in self.pool.map(checked, items) if row is not None)
+
+
+class StoppableSubprocess:
+    """Cancel the harness's owned otelbench process without waiting its full query budget."""
+    def __init__(self, stop):
+        self.stop = stop
+
+    def __getattr__(self, name):
+        return getattr(subprocess, name)
+
+    def run(self, command, timeout, check=False, **kwargs):
+        if self.stop.is_set():
+            raise BenchmarkStopped("benchmark canceled")
+        deadline = time.monotonic() + timeout
+        process = subprocess.Popen(command, **kwargs)
+        try:
+            while True:
+                if self.stop.is_set():
+                    raise BenchmarkStopped("benchmark canceled")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(command, timeout)
+                try:
+                    code = process.wait(timeout=min(.2, remaining))
+                except subprocess.TimeoutExpired:
+                    continue
+                if check and code:
+                    raise subprocess.CalledProcessError(code, command)
+                return subprocess.CompletedProcess(command, code)
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+
+
+@contextmanager
+def cancellation_hooks(stop):
+    # run.py owns the query workers and otelbench calls; restore its isolated globals afterward.
+    namespace = harness["load_dashboard"].__globals__
+    original_query, original_subprocess = namespace["query"], namespace["subprocess"]
+    direct_query = harness["query"]
+
+    def checked_query(*args, **kwargs):
+        if stop.is_set():
+            raise BenchmarkStopped("benchmark canceled")
+        return original_query(*args, **kwargs)
+
+    namespace["query"], namespace["subprocess"] = checked_query, StoppableSubprocess(stop)
+    harness["query"] = checked_query
+    try:
+        yield
+    finally:
+        namespace["query"], namespace["subprocess"] = original_query, original_subprocess
+        harness["query"] = direct_query
 
 
 def configure_tracing(config, endpoint, network, ratio, service_name):
@@ -39,7 +166,9 @@ def configure_tracing(config, endpoint, network, ratio, service_name):
         networks["trace-collector"] = None
 
 
-def fetch(url, destination, timeout=15):
+def fetch(url, destination, timeout=15, stop=None):
+    if stop is not None and stop.is_set():
+        return False
     try:
         destination.write_bytes(harness["get"](url, timeout))
         return True
@@ -81,8 +210,10 @@ def finish_run(dc, directory, keep_data):
                     dc("down", "--volumes", capture_output=True)
 
 
-def dashboard_soak(args, directory, servers, capture):
+def dashboard_soak(args, directory, servers, capture, stop=None):
     """Refresh full dashboards while the caller samples the live write queue and resources."""
+    stop = stop if stop is not None else threading.Event()
+    measured = []
     queries = harness["dashboard"](True)
     hosts = list(range(1, args.nodes))
     random.Random(args.seed + args.nodes).shuffle(hosts)
@@ -92,23 +223,24 @@ def dashboard_soak(args, directory, servers, capture):
     cached_end = int((time.time() - 30) // 15 * 15)
 
     def refresh():
-        measured = []
         trial = 0
         with (directory / "soak-dashboards.jsonl").open("w") as output:
-            with ThreadPoolExecutor(args.jobs) as clients:
-                while time.monotonic() < deadline:
+            with ThreadPoolExecutor(args.jobs) as clients, stop_on_error(stop):
+                checked_clients = StoppablePool(clients, stop)
+                while not stop.is_set() and time.monotonic() < deadline:
                     scheduled = started + trial * args.refresh_interval
                     lateness = max(0, time.monotonic() - scheduled)
                     end = int((time.time() - 30) // 15 * 15)
                     for server in servers:
                         for mode in ["random", "cached"]:
-                            if time.monotonic() >= deadline:
+                            if stop.is_set() or time.monotonic() >= deadline:
                                 break
                             host = f"host-{hosts[trial % len(hosts)]}" if mode == "random" else "host-0"
                             query_end = end if mode == "random" else cached_end
                             rows, load = harness["load_dashboard"](
                                 server, host, query_end, mode, trial, mode == "cached" and trial < 2,
-                                queries, clients, args, min(deadline, time.monotonic() + args.query_budget))
+                                queries, checked_clients, args, min(deadline, time.monotonic() + args.query_budget))
+                            load["successful"] = load["complete"] and load["errors"] == 0
                             load.update(elapsed=time.monotonic() - started, lateness_s=lateness,
                                         end=query_end)
                             for row in rows:
@@ -117,30 +249,33 @@ def dashboard_soak(args, directory, servers, capture):
                             output.flush()
                             measured.append(load)
                             print(f"  soak {server} {mode}/{trial}: {load['queries']}/{len(queries)} "
-                                  f"queries, {load['wall_ms']:.1f}ms", flush=True)
+                                  f"queries, {load['errors']} errors, "
+                                  f"{'OK' if load['successful'] else 'FAILED'}, "
+                                  f"{load['wall_ms']:.1f}ms elapsed", flush=True)
                     trial += 1
                     delay = min(deadline, started + trial * args.refresh_interval) - time.monotonic()
                     if delay > 0:
-                        time.sleep(delay)
+                        stop.wait(delay)
         return measured
 
-    capture()
-    with ThreadPoolExecutor(1) as runner:
-        pending = runner.submit(refresh)
-        while True:
-            try:
-                loads = pending.result(timeout=15)
-                break
-            except FutureTimeout:
-                if pending.done():
-                    loads = pending.result()
-                    break
-                capture()
-    capture()
-    summary = {"started_unix": started_unix, "ended_unix": time.time(),
-               "elapsed_s": time.monotonic() - started,
-               "refresh_interval_s": args.refresh_interval, "loads": loads}
-    (directory / "soak-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    try:
+        run_monitored(refresh, capture, stop)
+    finally:
+        successful = [load for load in measured if load["successful"] and not load["warmup"]]
+        latency = {}
+        for server in servers:
+            latency[server] = {}
+            for mode in ["random", "cached"]:
+                values = sorted(load["wall_ms"] for load in successful
+                                if load["server"] == server and load["mode"] == mode)
+                latency[server][mode] = {"samples": len(values),
+                    "p50": statistics.median(values) if values else None,
+                    "p95": values[math.ceil(len(values) * .95)-1] if values else None}
+        summary = {"started_unix": started_unix, "ended_unix": time.time(),
+                   "elapsed_s": time.monotonic() - started, "stopped": stop.is_set(),
+                   "refresh_interval_s": args.refresh_interval, "loads": measured,
+                   "successful_loads": successful, "latency_ms": latency}
+        (directory / "soak-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary
 
 
@@ -219,7 +354,11 @@ def main():
     def dc(*cmd, **kwargs):
         return subprocess.run(compose + list(cmd), env=env, text=True, check=True, **kwargs)
 
+    stop = threading.Event()
+    phase = "ingestion"
+
     def capture(elapsed, container):
+        check_container(container, directory, stop, phase)
         label = f"{elapsed:06.1f}"
         for server, port in [("oteldb", 19464), ("vmagent", 18429), ("victoriametrics", 18428)]:
             fetch(f"http://127.0.0.1:{port}/metrics", directory / f"{label}-{server}.metrics", 5)
@@ -228,9 +367,10 @@ def main():
                  "/sys/fs/cgroup/memory.events", "/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory.peak",
                  "/sys/fs/cgroup/cpu.pressure", "/sys/fs/cgroup/io.pressure"]
         command = 'for p in ' + ' '.join(paths) + '; do echo "PATH=$p"; cat "$p"; done'
-        result = subprocess.run(["docker", "exec", container, "sh", "-c", command], text=True, capture_output=True)
+        result = subprocess.run(["docker", "exec", container, "sh", "-c", command], text=True, capture_output=True, timeout=12)
         with (directory / "resources.jsonl").open("a") as output:
             output.write(json.dumps({"elapsed": elapsed, "time": time.time(), "raw": result.stdout}) + "\n")
+        check_container(container, directory, stop, phase)
         return harness["query"]("oteldb", 'count(node_uname_info{job="node_exporter"})', time.time())
 
     print(f"Results: {directory}", flush=True)
@@ -245,7 +385,8 @@ def main():
         assert limits["Memory"] == limits["MemorySwap"] == 16 << 30
         start = time.monotonic()
         taken = set()
-        with ThreadPoolExecutor(4) as pool:
+        sample = lambda: capture(time.monotonic() - start, container)
+        with cancellation_hooks(stop), ThreadPoolExecutor(4) as pool, stop_on_error(stop):
             futures = []
             while time.monotonic() - start < args.seconds:
                 elapsed = time.monotonic() - start
@@ -255,63 +396,67 @@ def main():
                     if elapsed >= threshold and threshold not in taken:
                         taken.add(threshold)
                         futures.append(pool.submit(fetch, "http://127.0.0.1:19010/debug/pprof/heap",
-                                                   directory / f"{threshold}-heap.pb.gz"))
+                                                   directory / f"{threshold}-heap.pb.gz", stop=stop))
                         futures.append(pool.submit(fetch, "http://127.0.0.1:19010/debug/pprof/goroutine?debug=2",
-                                                   directory / f"{threshold}-goroutines.txt"))
+                                                   directory / f"{threshold}-goroutines.txt", stop=stop))
                         if threshold in [120, 300] and args.trace_seconds > 0:
                             futures.append(pool.submit(fetch,
                                 f"http://127.0.0.1:19010/debug/pprof/trace?seconds={args.trace_seconds}",
-                                directory / f"{threshold}.trace", args.trace_seconds + 20))
+                                directory / f"{threshold}.trace", args.trace_seconds + 20, stop=stop))
                         if threshold in [60, 240]:
                             for kind in ["profile", "allocs"]:
                                 futures.append(pool.submit(fetch,
                                     f"http://127.0.0.1:19010/debug/pprof/{kind}?seconds=30",
-                                    directory / f"{threshold}-{kind}.pb.gz", 45))
-                state = json.loads(subprocess.check_output(["docker", "inspect", container]))[0]["State"]
-                if not state["Running"]:
-                    (directory / "early-exit.json").write_text(json.dumps(state, indent=2) + "\n")
-                    break
-                time.sleep(min(15, max(0, args.seconds - (time.monotonic() - start))))
+                                    directory / f"{threshold}-{kind}.pb.gz", 45, stop=stop))
+                stop.wait(min(15, max(0, args.seconds - (time.monotonic() - start))))
             capture(time.monotonic() - start, container)
             end = int((time.time() - 30) // 15 * 15)
-            readiness = freshness(args.nodes, end)["servers"]
+            phase = "freshness"
+            readiness = run_monitored(lambda: freshness(args.nodes, end), sample, stop)["servers"]
             history = [gate["history"] for gate in readiness.values()]
             (directory / "freshness-final.json").write_text(json.dumps(history, indent=2) + "\n")
             (directory / "gate-summary.json").write_text(json.dumps(readiness, indent=2) + "\n")
             if not args.live_queries:
                 dc("stop", "-t", "20", "vmagent", capture_output=True)
-                time.sleep(15)
+                phase = "quiescent"
+                stop.wait(15)
                 fetch("http://127.0.0.1:19010/debug/pprof/heap?gc=1", directory / "quiescent-gc.heap.pb.gz", 30)
                 capture(time.monotonic() - start, container)
             for future in futures:
-                future.result()
+                run_monitored(future.result, sample, stop)
             if args.queries:
+                phase = "queries"
                 query_start = time.time()
                 query_profiles = []
                 if args.query_profile_seconds > 0:
                     for kind in ["profile", "allocs"]:
                         query_profiles.append(pool.submit(fetch,
                             f"http://127.0.0.1:19010/debug/pprof/{kind}?seconds={args.query_profile_seconds}",
-                            directory / f"query-{kind}.pb.gz", args.query_profile_seconds + 20))
+                            directory / f"query-{kind}.pb.gz", args.query_profile_seconds + 20, stop=stop))
                 queries = harness["dashboard"]()
                 (directory / "queries.json").write_text(json.dumps(queries, indent=2) + "\n")
                 with (directory / "requests.jsonl").open("w") as output:
                     for server, gate in readiness.items():
                         if gate["ready"]:
-                            harness["benchmark"](server, args.nodes, end, queries, args, output)
+                            run_monitored(lambda: harness["benchmark"](server, args.nodes, end, queries, args, output),
+                                          sample, stop)
                         else:
                             print(f"Skipping {server} dashboard: freshness gate failed", flush=True)
                 if args.dashboard_loads:
                     outcomes = {}
                     for server, gate in readiness.items():
                         if gate["ready"]:
-                            outcomes[server] = harness["dashboard_loads"](server, args.nodes, end, args, directory)
+                            outcomes[server] = run_monitored(
+                                lambda: harness["dashboard_loads"](server, args.nodes, end, args, directory), sample, stop)
+                            for load in outcomes[server]:
+                                load["successful"] = load["complete"] and load["errors"] == 0
                     (directory / "dashboard-loads.json").write_text(json.dumps(outcomes, indent=2) + "\n")
                 if args.otelbench:
                     outcomes = {}
                     for server, gate in readiness.items():
                         if gate["ready"]:
-                            outcomes[server] = harness["otelbench_dashboard"](server, args.nodes, end, args, directory)
+                            outcomes[server] = run_monitored(
+                                lambda: harness["otelbench_dashboard"](server, args.nodes, end, args, directory), sample, stop)
                     (directory / "otelbench.json").write_text(json.dumps(outcomes, indent=2) + "\n")
                 (directory / "query-phase.json").write_text(json.dumps({
                     "start": query_start, "end": time.time(), "live_ingestion": args.live_queries,
@@ -319,15 +464,18 @@ def main():
                 if args.live_queries:
                     capture(time.monotonic() - start, container)
                 for future in query_profiles:
-                    future.result()
+                    run_monitored(future.result, sample, stop)
                 if args.soak_seconds:
+                    phase = "soak"
                     dashboard_soak(args, directory,
                         [server for server, gate in readiness.items() if gate["ready"]],
-                        lambda: capture(time.monotonic() - start, container))
+                        sample, stop)
+                    phase = "soak freshness"
                     final_end = int((time.time() - 30) // 15 * 15)
                     (directory / "soak-freshness.json").write_text(
-                        json.dumps(freshness(args.nodes, final_end), indent=2) + "\n")
+                        json.dumps(run_monitored(lambda: freshness(args.nodes, final_end), sample, stop), indent=2) + "\n")
     finally:
+        stop.set()
         finish_run(dc, directory, args.keep_data)
     retained = "Retained database volumes and profiles" if args.keep_data else "Removed database volumes; retained profiles"
     print(f"{retained} in {directory}", flush=True)
