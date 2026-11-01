@@ -141,6 +141,15 @@ class ProfileFailFastTest(unittest.TestCase):
         process.terminate.assert_called_once()
         process.kill.assert_not_called()
 
+    def test_completed_profiles_do_not_trigger_monitoring_work(self):
+        future = Mock()
+        future.done.return_value = True
+        future.result.return_value = "saved profile"
+        check = Mock()
+        self.assertEqual(self.profile["wait_for_profile"](future, check, threading.Event()), "saved profile")
+        check.assert_not_called()
+        future.result.assert_called_once_with()
+
     def test_soak_death_attempts_owned_cleanup_and_keep_data_is_explicit(self):
         for keep_data in [False, True]:
             with self.subTest(keep_data=keep_data), tempfile.TemporaryDirectory() as tmp:
@@ -153,12 +162,13 @@ class ProfileFailFastTest(unittest.TestCase):
                     {"target": "/etc/oteldb.yml", "source": "unused"}]},
                     "vmagent": {"command": ["-remoteWrite.url=http://oteldb:19291/api/v1/write"]}}}
                 dead = False
-                calls = []
+                calls, inspections = [], []
 
                 def check_output(command, **kwargs):
                     if "--format" in command:
                         return json.dumps(config).encode()
                     if command[:2] == ["docker", "inspect"]:
+                        inspections.append(command)
                         return json.dumps([{"State": {"Running": not dead, "OOMKilled": dead,
                                                        "ExitCode": 137 if dead else 0},
                                             "HostConfig": {"NanoCpus": 8_000_000_000,
@@ -178,7 +188,8 @@ class ProfileFailFastTest(unittest.TestCase):
 
                 arguments = ["profile_metrics.py", "--image", "fake-image", "--binary", str(binary),
                              "--config", str(config_file), "--nodes", "8", "--seconds", "0",
-                             "--queries", "--live-queries", "--soak-seconds", "15"]
+                             "--queries", "--live-queries", "--dashboard-loads", "--otelbench",
+                             "--soak-seconds", "15"]
                 if keep_data:
                     arguments.append("--keep-data")
                 query = Mock(return_value={"value": "8", "ok": True, "empty": False})
@@ -189,10 +200,17 @@ class ProfileFailFastTest(unittest.TestCase):
                      patch.dict(self.globals, {"HERE": directory, "fetch": Mock(return_value=True),
                                                "dashboard_soak": die_during_soak}), \
                      patch.dict(self.harness, {"SERVERS": ["oteldb"], "query": query,
-                                               "dashboard": Mock(return_value=[]), "benchmark": Mock()}), \
+                                               "dashboard": Mock(return_value=[]), "benchmark": Mock(),
+                                               "dashboard_loads": Mock(return_value=[]),
+                                               "otelbench_dashboard": Mock(return_value={})}), \
                      patch.dict(namespace, {"query": query}):
                     with self.assertRaisesRegex(RuntimeError, "exited during soak"):
                         self.profile["main"]()
+                # Preserve one warmup snapshot + two readiness queries + one live-query snapshot.
+                # Per-operation health monitoring must neither query nor sample /proc again.
+                self.assertEqual(query.call_count, 4)
+                self.assertEqual(sum(call[:2] == ["docker", "exec"] for call in calls), 2)
+                self.assertGreater(len(inspections), 8, "query phases still need cheap state checks")
                 down = [call for call in calls if "down" in call]
                 self.assertEqual(len(down), 0 if keep_data else 1)
                 if down:

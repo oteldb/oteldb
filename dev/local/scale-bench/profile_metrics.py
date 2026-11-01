@@ -66,6 +66,12 @@ def run_monitored(work, capture, stop):
         return result
 
 
+def wait_for_profile(future, check, stop):
+    if future.done():
+        return future.result()
+    return run_monitored(future.result, check, stop)
+
+
 class StoppablePool:
     def __init__(self, pool, stop):
         self.pool, self.stop = pool, stop
@@ -386,6 +392,7 @@ def main():
         start = time.monotonic()
         taken = set()
         sample = lambda: capture(time.monotonic() - start, container)
+        check = lambda: check_container(container, directory, stop, phase)
         with cancellation_hooks(stop), ThreadPoolExecutor(4) as pool, stop_on_error(stop):
             futures = []
             while time.monotonic() - start < args.seconds:
@@ -412,7 +419,7 @@ def main():
             capture(time.monotonic() - start, container)
             end = int((time.time() - 30) // 15 * 15)
             phase = "freshness"
-            readiness = run_monitored(lambda: freshness(args.nodes, end), sample, stop)["servers"]
+            readiness = run_monitored(lambda: freshness(args.nodes, end), check, stop)["servers"]
             history = [gate["history"] for gate in readiness.values()]
             (directory / "freshness-final.json").write_text(json.dumps(history, indent=2) + "\n")
             (directory / "gate-summary.json").write_text(json.dumps(readiness, indent=2) + "\n")
@@ -420,10 +427,11 @@ def main():
                 dc("stop", "-t", "20", "vmagent", capture_output=True)
                 phase = "quiescent"
                 stop.wait(15)
-                fetch("http://127.0.0.1:19010/debug/pprof/heap?gc=1", directory / "quiescent-gc.heap.pb.gz", 30)
+                run_monitored(lambda: fetch("http://127.0.0.1:19010/debug/pprof/heap?gc=1",
+                                            directory / "quiescent-gc.heap.pb.gz", 30), check, stop)
                 capture(time.monotonic() - start, container)
             for future in futures:
-                run_monitored(future.result, sample, stop)
+                wait_for_profile(future, check, stop)
             if args.queries:
                 phase = "queries"
                 query_start = time.time()
@@ -439,7 +447,7 @@ def main():
                     for server, gate in readiness.items():
                         if gate["ready"]:
                             run_monitored(lambda: harness["benchmark"](server, args.nodes, end, queries, args, output),
-                                          sample, stop)
+                                          check, stop)
                         else:
                             print(f"Skipping {server} dashboard: freshness gate failed", flush=True)
                 if args.dashboard_loads:
@@ -447,7 +455,7 @@ def main():
                     for server, gate in readiness.items():
                         if gate["ready"]:
                             outcomes[server] = run_monitored(
-                                lambda: harness["dashboard_loads"](server, args.nodes, end, args, directory), sample, stop)
+                                lambda: harness["dashboard_loads"](server, args.nodes, end, args, directory), check, stop)
                             for load in outcomes[server]:
                                 load["successful"] = load["complete"] and load["errors"] == 0
                     (directory / "dashboard-loads.json").write_text(json.dumps(outcomes, indent=2) + "\n")
@@ -456,7 +464,7 @@ def main():
                     for server, gate in readiness.items():
                         if gate["ready"]:
                             outcomes[server] = run_monitored(
-                                lambda: harness["otelbench_dashboard"](server, args.nodes, end, args, directory), sample, stop)
+                                lambda: harness["otelbench_dashboard"](server, args.nodes, end, args, directory), check, stop)
                     (directory / "otelbench.json").write_text(json.dumps(outcomes, indent=2) + "\n")
                 (directory / "query-phase.json").write_text(json.dumps({
                     "start": query_start, "end": time.time(), "live_ingestion": args.live_queries,
@@ -464,7 +472,7 @@ def main():
                 if args.live_queries:
                     capture(time.monotonic() - start, container)
                 for future in query_profiles:
-                    run_monitored(future.result, sample, stop)
+                    wait_for_profile(future, check, stop)
                 if args.soak_seconds:
                     phase = "soak"
                     dashboard_soak(args, directory,
@@ -473,7 +481,7 @@ def main():
                     phase = "soak freshness"
                     final_end = int((time.time() - 30) // 15 * 15)
                     (directory / "soak-freshness.json").write_text(
-                        json.dumps(run_monitored(lambda: freshness(args.nodes, final_end), sample, stop), indent=2) + "\n")
+                        json.dumps(run_monitored(lambda: freshness(args.nodes, final_end), check, stop), indent=2) + "\n")
     finally:
         stop.set()
         finish_run(dc, directory, args.keep_data)
