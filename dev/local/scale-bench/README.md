@@ -30,6 +30,10 @@ quota, 16-GiB memory limit, no swap, and `GOMEMLIMIT=14GiB`. These are quotas on
 shared host, not dedicated cores. The load generator has a separate 8-vCPU/12-GiB
 budget; its failure is reported separately from server failures.
 
+Set `OTELDB_BENCH_GOMEMLIMIT=10GiB` to compare native Go heap pressure with more
+space available for the file cache. This changes only oteldb's Go soft limit;
+both database cgroups retain the same CPU, physical-memory and swap limits.
+
 Every scale starts with fresh Docker volumes. Oteldb uses the existing
 `embedded-bench/oteldb.yml`: `storage.backend=file`, persistent WAL and compressed
 parts, 10s flush cadence. No S3, ClickHouse, or ephemeral storage engine is involved.

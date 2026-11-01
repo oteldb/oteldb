@@ -44,7 +44,7 @@ services:
       - oteldb-data:/data
     environment:
       GOMAXPROCS: "8"
-      GOMEMLIMIT: 14GiB
+      GOMEMLIMIT: ${OTELDB_BENCH_GOMEMLIMIT:-14GiB}
       PPROF_ADDR: 0.0.0.0:9010
       OTEL_LOG_LEVEL: info
       OTEL_METRICS_EXPORTER: prometheus
