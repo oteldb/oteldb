@@ -33,6 +33,8 @@ budget; its failure is reported separately from server failures.
 Set `OTELDB_BENCH_GOMEMLIMIT=10GiB` to compare native Go heap pressure with more
 space available for the file cache. This changes only oteldb's Go soft limit;
 both database cgroups retain the same CPU, physical-memory and swap limits.
+Cache, query and build budgets also derive from this soft limit; pin them explicitly
+when isolating the runtime heap/file-cache tradeoff.
 
 Every scale starts with fresh Docker volumes. Oteldb uses the existing
 `embedded-bench/oteldb.yml`: `storage.backend=file`, persistent WAL and compressed
