@@ -13,6 +13,25 @@ scopes still convert for tenant callbacks. Requests with exemplars, decomposed t
 or clustered storage use the existing whole-request conversion path. The pooled
 projector releases borrowed input after the synchronous write returns.
 
+`remote_write.enabled: true` enables `/api/v1/write` on oteldb's Prometheus listener when
+`metrics_backend: storage` (or `--embedded`) is selected. It uses the existing pooled direct
+decoder and native metrics sink, bypassing pdata and the Collector pipeline. It inherits
+Prometheus/global authentication and does not apply Collector processors or mirror exporters.
+The Collector remote-write receiver remains independently configurable.
+
+```yaml
+remote_write:
+  enabled: true
+  time_threshold: 24h
+  max_body_bytes: 64MiB
+  max_decoded_bytes: 256MiB
+```
+
+The endpoint is disabled by default. Zero limits select the decoder defaults shown above;
+negative limits are rejected. Successful writes return 204 after the native sink returns;
+write errors retain the decoder's retryable HTTP status behavior. Reused decode buffers stay
+borrowed only through the synchronous storage write.
+
 ## Caches / optimizations are opt-out for oteldb
 
 The storage library keeps these opt-in (it's a general-purpose library whose default is the
@@ -176,6 +195,10 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   differently for `count` vs `sum` vs `rate`), so the correct home is either a weight-aware fold
   in the library `query/promql` queryable or a dedicated pushdown — a design decision deferred
   with sampling itself.
+- **Flush size:** `storage.flush_threshold_bytes` (→ `storage.WithFlushThresholdBytes`) controls
+  the per-engine sample-byte trigger independently of `storage.flush_interval`. Zero keeps the
+  library default of 64 MiB. Raising the interval alone does not postpone size-triggered flushes.
+  Resident identity state, buffer overhead and frozen inputs require additional memory.
 - **Merge memory:** `storage.merge_memory_bytes` (→ `storage.WithMergeMemory`) caps what all
   concurrent merges together hold, and with it the size a merged part reaches before it is sealed.
   It is the write-side counterpart of `decode_memory_bytes`: on a backend that takes objects whole

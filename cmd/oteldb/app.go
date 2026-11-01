@@ -316,6 +316,10 @@ func (app *App) trySetupLoki() error {
 }
 
 func (app *App) trySetupProm() error {
+	direct, err := app.remoteWriteMiddleware()
+	if err != nil {
+		return err
+	}
 	q := app.metricsQuerier
 	if q == nil {
 		return nil
@@ -334,7 +338,11 @@ func (app *App) trySetupProm() error {
 		return err
 	}
 
-	addOgen(app, "prom", s, cfg.Bind, cfg.Auth, promhandler.PatchForm)
+	middlewares := []httpmiddleware.Middleware{promhandler.PatchForm}
+	if direct != nil {
+		middlewares = append([]httpmiddleware.Middleware{direct}, middlewares...)
+	}
+	addOgen(app, "prom", s, cfg.Bind, cfg.Auth, middlewares...)
 	return nil
 }
 

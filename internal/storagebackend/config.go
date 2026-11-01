@@ -28,6 +28,9 @@ type Config struct {
 	// FlushInterval is the max age of unflushed head data before it is flushed to a part.
 	// Zero uses the engine default. Ignored for the ephemeral memory backend.
 	FlushInterval time.Duration `json:"flush_interval" yaml:"flush_interval"`
+	// FlushThresholdBytes triggers a flush when buffered samples reach this size.
+	// Zero uses the engine default. Ignored for the ephemeral memory backend.
+	FlushThresholdBytes xbytes.Bytes `json:"flush_threshold_bytes" yaml:"flush_threshold_bytes"`
 	// LogQueryParallelism enables concurrent materialization of LogQL query results across up to
 	// this many workers. Zero or one (default) keeps the sequential path. Opt-in.
 	LogQueryParallelism int `json:"log_query_parallelism" yaml:"log_query_parallelism"`

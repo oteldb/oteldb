@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,6 +11,35 @@ import (
 	"github.com/oteldb/oteldb/internal/storagebackend"
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
+
+func TestStorageFlushConfigYAML(t *testing.T) {
+	for _, tc := range []struct {
+		name, threshold string
+		want            xbytes.Bytes
+		invalid         bool
+	}{
+		{name: "default"},
+		{name: "larger head", threshold: "512MiB", want: 512 << 20},
+		{name: "invalid size", threshold: "manyBytes", invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := "storage:\n  backend: file\n  dir: /data\n  flush_interval: 30s\n"
+			if tc.threshold != "" {
+				data += "  flush_threshold_bytes: " + tc.threshold + "\n"
+			}
+			path := filepath.Join(t.TempDir(), "oteldb.yml")
+			require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+			cfg, err := loadConfig(path)
+			if tc.invalid {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, 30*time.Second, cfg.Storage.FlushInterval)
+			require.Equal(t, tc.want, cfg.Storage.FlushThresholdBytes)
+		})
+	}
+}
 
 // TestStorageClusterConfigYAML checks the cluster block parses from the documented YAML shape via
 // the real config loader.
