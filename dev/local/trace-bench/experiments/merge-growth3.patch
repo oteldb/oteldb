@@ -1,0 +1,9 @@
+diff --git a/recordengine/compact.go b/recordengine/compact.go
+index c440399..7c5ad03 100644
+--- a/recordengine/compact.go
++++ b/recordengine/compact.go
+@@ -15,0 +16 @@ const (
++	mergeGrowthMultiplier = 3.0
+@@ -180 +181 @@ func runQualifies(run []*part, total int64, m float64) bool {
+-	return m >= minMergeMultiplier
++	return m >= mergeGrowthMultiplier

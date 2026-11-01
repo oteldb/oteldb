@@ -1,0 +1,20 @@
+File: oteldb
+Build ID: a0557c8ec580d3ae105c16adf35717d8c81abbdb
+Type: alloc_space
+Time: 2026-10-31 02:22:51 MSK
+Showing nodes accounting for 6063.19MB, 65.86% of 9205.77MB total
+Dropped 556 nodes (cum <= 46.03MB)
+Showing top 12 nodes out of 193
+      flat  flat%   sum%        cum   cum%
+ 1186.70MB 12.89% 12.89%  1186.70MB 12.89%  github.com/oteldb/storage/recordengine.(*byteCol).appendCell
+  719.36MB  7.81% 20.70%   719.36MB  7.81%  slices.Grow[go.shape.[]uint8,go.shape.uint8] (inline)
+  651.44MB  7.08% 27.78%   651.44MB  7.08%  github.com/klauspost/compress/zstd.encoderOptions.encoder
+  623.70MB  6.78% 34.56%   623.70MB  6.78%  io.ReadAll
+  516.92MB  5.62% 40.17%   526.42MB  5.72%  github.com/oteldb/storage/signal.appendLenBytes
+  436.51MB  4.74% 44.91%   919.42MB  9.99%  github.com/klauspost/compress/zstd.(*Encoder).encodeAll
+  416.80MB  4.53% 49.44%   416.80MB  4.53%  github.com/klauspost/compress/zstd.(*fastBase).ensureHist (inline)
+  379.72MB  4.12% 53.57%   694.61MB  7.55%  github.com/oteldb/storage/block.decompressKept
+  294.24MB  3.20% 56.76%   294.24MB  3.20%  github.com/oteldb/storage/encoding/compress.reserve (inline)
+  290.56MB  3.16% 59.92%   292.56MB  3.18%  github.com/oteldb/storage/backend/file.(*File).ReadAt
+  276.92MB  3.01% 62.93%   276.92MB  3.01%  github.com/oteldb/storage/recordengine.(*byteCol).ensureBytes
+  270.32MB  2.94% 65.86%   270.32MB  2.94%  slices.Clone[go.shape.[]uint8,go.shape.uint8]
