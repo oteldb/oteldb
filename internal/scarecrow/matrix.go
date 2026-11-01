@@ -3,6 +3,7 @@ package scarecrow
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -21,10 +22,8 @@ type matrixFold struct {
 	fnName string
 	fn     rangeFunc
 	rng    time.Duration
-	offset time.Duration
-	// at pins the evaluation timestamp (the @ modifier); see [vectorSelect].
-	at *int64
-	ec *EvalContext
+	refs   []int64
+	ec     *EvalContext
 
 	// param is the function's second scalar argument (quantile_over_time's q, predict_linear's
 	// duration), nil for every other range function.
@@ -41,6 +40,7 @@ type matrixFold struct {
 	wt []int64
 	wv []float64
 	ww []float64
+	w  window
 }
 
 func newMatrixFold(
@@ -53,8 +53,7 @@ func newMatrixFold(
 		fnName: fnName,
 		fn:     fn,
 		rng:    rng,
-		offset: offset,
-		at:     at,
+		refs:   refTimes(ec.Steps, offset, at),
 		param:  param,
 		ec:     ec,
 	}
@@ -193,7 +192,7 @@ func dropMetricName(ls labels.Labels) labels.Labels {
 func (o *matrixFold) fold(s *Samples) {
 	var (
 		rngMs  = o.rng.Milliseconds()
-		refs   = refTimes(o.ec.Steps, o.offset, o.at)
+		refs   = o.refs
 		lo, hi int
 	)
 
@@ -233,9 +232,23 @@ func (o *matrixFold) fold(s *Samples) {
 	}
 }
 
-// buildWindow copies samples [lo,hi) into the reusable scratch window, dropping staleness
-// markers, which range functions never fold.
+// buildWindow borrows samples until the next call, filtering stale markers into scratch when needed.
 func (o *matrixFold) buildWindow(s *Samples, lo, hi int, rangeStart, rangeEnd, rngMs, evalMs int64) *window {
+	o.w = window{
+		T:          s.T[lo:hi],
+		V:          s.V[lo:hi],
+		RangeStart: rangeStart,
+		RangeEnd:   rangeEnd,
+		RangeMs:    rngMs,
+		EvalMs:     evalMs,
+	}
+	if s.Weights != nil {
+		o.w.W = s.Weights[lo:hi]
+	}
+	if !slices.ContainsFunc(o.w.V, isStale) {
+		return &o.w
+	}
+
 	o.wt = o.wt[:0]
 	o.wv = o.wv[:0]
 	o.ww = o.ww[:0]
@@ -253,17 +266,9 @@ func (o *matrixFold) buildWindow(s *Samples, lo, hi int, rangeStart, rangeEnd, r
 		}
 	}
 
-	w := &window{
-		T:          o.wt,
-		V:          o.wv,
-		RangeStart: rangeStart,
-		RangeEnd:   rangeEnd,
-		RangeMs:    rngMs,
-		EvalMs:     evalMs,
-	}
+	o.w.T, o.w.V = o.wt, o.wv
 	if s.Weights != nil {
-		w.W = o.ww
+		o.w.W = o.ww
 	}
-
-	return w
+	return &o.w
 }
