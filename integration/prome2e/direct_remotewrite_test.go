@@ -85,6 +85,18 @@ func TestDirectRemoteWriteFileBackend(t *testing.T) {
 				require.Equal(t, tt.want, value)
 			})
 		}
+		t.Run("range grouped counts", func(t *testing.T) {
+			result, err := client.GetQueryRange(ctx, promapi.GetQueryRangeParams{
+				Query: `count(count(direct_metric{instance=~"host-1|host-2"}) by(instance))`,
+				Start: "1700000000", End: "1700000060", Step: promapi.NewOptString("15s"),
+			})
+			require.NoError(t, err)
+			require.Len(t, result.Data.Matrix.Result, 1)
+			require.Len(t, result.Data.Matrix.Result[0].Values, 5)
+			for _, point := range result.Data.Matrix.Result[0].Values {
+				require.Equal(t, 2.0, point.V)
+			}
+		})
 	}
 	t.Run("head and parts", check)
 	require.NoError(t, store.Admin().Flush(ctx, "default", signal.Metric))

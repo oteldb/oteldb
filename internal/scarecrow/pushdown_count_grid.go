@@ -5,10 +5,20 @@ import (
 	"context"
 	"slices"
 
+	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
 func (o *countSeriesBy) loadGrid(ctx context.Context, grid WindowGrid) error {
+	if counter, ok := o.grid.(GridSeriesCounter); ok {
+		counts, err := counter.CountSeriesGrid(ctx, grid, o.by, o.matchers)
+		if !errors.Is(err, ErrCountGridUnsupported) {
+			if err != nil {
+				return err
+			}
+			return o.setGridCounts(ctx, grid, counts)
+		}
+	}
 	series, err := aggregateGrid(ctx, o.ec, o.grid, grid, o.matchers)
 	if err != nil {
 		return err

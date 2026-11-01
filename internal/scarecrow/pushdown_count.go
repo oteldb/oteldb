@@ -136,6 +136,27 @@ func (o *countSeries) count(ctx context.Context, refs []int64, lookback int64) e
 // countGrid answers every step from one grid call: a series counts at a step when it has any
 // sample in that step's window, which is exactly a non-zero aggregate count.
 func (o *countSeries) countGrid(ctx context.Context, grid WindowGrid) error {
+	if counter, ok := o.grid.(GridSeriesCounter); ok {
+		counts, err := counter.CountSeriesGrid(ctx, grid, "", o.matchers)
+		if !errors.Is(err, ErrCountGridUnsupported) {
+			if err != nil {
+				return err
+			}
+			values := counts[""]
+			if len(counts) > 1 || len(counts) == 1 && len(values) != grid.NumSteps {
+				return errors.New("count grid returned invalid ungrouped counts")
+			}
+			if err := o.ec.charge(grid.NumSteps); err != nil {
+				return err
+			}
+			for step, n := range values {
+				if n != 0 {
+					o.out.Set(step, float64(n))
+				}
+			}
+			return nil
+		}
+	}
 	series, err := aggregateGrid(ctx, o.ec, o.grid, grid, o.matchers)
 	if err != nil {
 		return err
