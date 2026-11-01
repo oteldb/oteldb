@@ -91,7 +91,7 @@ type GridAggregate struct {
 // once and slides them into every overlapping window, making the cost proportional to the data in
 // range rather than to range/step times it.
 //
-// A scanner implementing this supersedes [AggregateScanner], [SeriesCounter] and
+// Range counts prefer [GridSeriesCounter] when available. Otherwise this supersedes [SeriesCounter] and
 // [GroupedSeriesCounter] for range queries; those remain for instant queries (one step, where the
 // per-window call is exactly right). A range count without this capability uses the ordinary
 // selector and aggregation path.
