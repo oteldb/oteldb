@@ -71,6 +71,8 @@ func TestDirectRemoteWriteFileBackend(t *testing.T) {
 			{"sum", "sum(direct_metric)", 18},
 			{"first request retained", `direct_metric{instance="host-1"}`, 7},
 			{"second request retained", `direct_metric{instance="host-2"}`, 11},
+			{"finite host set", `sum(direct_metric{instance=~"host-1|host-2"})`, 18},
+			{"finite host set with missing value", `sum(direct_metric{instance=~"host-1|absent"})`, 7},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				result, err := client.GetQuery(ctx, promapi.GetQueryParams{
