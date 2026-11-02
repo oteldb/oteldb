@@ -84,6 +84,32 @@ class DashboardSoakTest(unittest.TestCase):
                     self.soak(self.args, Path(tmp), ["oteldb"], Mock(), self.stop)
         self.assertTrue(self.stop.is_set())
 
+    def test_sliding_cached_window_keeps_host_and_advances_time(self):
+        self.args.cached_window = "sliding"
+        self.args.soak_end_lag = 60
+        query = lambda server, expr, end, instant, nocache: {
+            "server": server, "query": expr, "end": end, "nocache": nocache,
+            "ms": 1, "ok": True, "empty": False}
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(self.soak.__globals__, {"time": self.clock}), \
+                 patch.dict(self.harness, {"dashboard": lambda _: self.queries}), \
+                 patch.dict(self.harness["load_dashboard"].__globals__, {"query": query, "time": self.clock}):
+                summary = self.soak(self.args, Path(tmp), ["oteldb", "victoriametrics"], Mock(), self.stop)
+            rows = [json.loads(line) for line in (Path(tmp) / "soak-dashboards.jsonl").read_text().splitlines()]
+        self.assertEqual(summary["cached_window"], "sliding")
+        self.assertEqual(summary["end_lag_s"], 60)
+        self.assertEqual(summary["step_s"], 15)
+        for server in ["oteldb", "victoriametrics"]:
+            cached = [row for row in summary["loads"] if row["server"] == server and row["mode"] == "cached"]
+            self.assertEqual({row["host"] for row in cached}, {"host-0"})
+            self.assertEqual(len({row["end"] for row in cached}), 3)
+            self.assertEqual({row["time_window"] for row in cached}, {"sliding"})
+            self.assertEqual([row["end"] for row in cached], [1699999935, 1699999950, 1699999965])
+        requests = [row for row in rows if row["kind"] == "query"]
+        self.assertTrue(all(not row["nocache"] for row in requests if row["mode"] == "cached"))
+        self.assertTrue(all(row["nocache"] for row in requests
+                            if row["server"] == "victoriametrics" and row["mode"] == "random"))
+
     def test_completion_between_timeout_and_done_check(self):
         pending = Mock()
         pending.result.side_effect = [TimeoutError(), []]

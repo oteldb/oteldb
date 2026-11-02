@@ -226,7 +226,9 @@ def dashboard_soak(args, directory, servers, capture, stop=None):
     started = time.monotonic()
     started_unix = time.time()
     deadline = started + args.soak_seconds
-    cached_end = int((time.time() - 30) // 15 * 15)
+    end_lag = getattr(args, "soak_end_lag", 30)
+    cached_end = int((time.time() - end_lag) // 15 * 15)
+    cached_window = getattr(args, "cached_window", "fixed")
 
     def refresh():
         trial = 0
@@ -236,19 +238,20 @@ def dashboard_soak(args, directory, servers, capture, stop=None):
                 while not stop.is_set() and time.monotonic() < deadline:
                     scheduled = started + trial * args.refresh_interval
                     lateness = max(0, time.monotonic() - scheduled)
-                    end = int((time.time() - 30) // 15 * 15)
+                    end = int((time.time() - end_lag) // 15 * 15)
                     for server in servers:
                         for mode in ["random", "cached"]:
                             if stop.is_set() or time.monotonic() >= deadline:
                                 break
                             host = f"host-{hosts[trial % len(hosts)]}" if mode == "random" else "host-0"
-                            query_end = end if mode == "random" else cached_end
+                            query_end = end if mode == "random" or cached_window == "sliding" else cached_end
                             rows, load = harness["load_dashboard"](
                                 server, host, query_end, mode, trial, mode == "cached" and trial < 2,
                                 queries, checked_clients, args, min(deadline, time.monotonic() + args.query_budget))
                             load["successful"] = load["complete"] and load["errors"] == 0
                             load.update(elapsed=time.monotonic() - started, lateness_s=lateness,
-                                        end=query_end)
+                                        end=query_end,
+                                        time_window="sliding" if mode == "random" else cached_window)
                             for row in rows:
                                 output.write(json.dumps(row) + "\n")
                             output.write(json.dumps(load) + "\n")
@@ -279,6 +282,8 @@ def dashboard_soak(args, directory, servers, capture, stop=None):
                     "p95": values[math.ceil(len(values) * .95)-1] if values else None}
         summary = {"started_unix": started_unix, "ended_unix": time.time(),
                    "elapsed_s": time.monotonic() - started, "stopped": stop.is_set(),
+                   "cached_window": cached_window,
+                   "end_lag_s": end_lag, "step_s": 15,
                    "refresh_interval_s": args.refresh_interval, "loads": measured,
                    "successful_loads": successful, "latency_ms": latency}
         (directory / "soak-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
@@ -311,6 +316,10 @@ def main():
     parser.add_argument("--otelbench", action="store_true", help="also run the complete dashboard for ready servers")
     parser.add_argument("--soak-seconds", type=int, default=0, help="sustained dashboard refresh duration after the query phase")
     parser.add_argument("--refresh-interval", type=float, default=15, help="seconds between sustained dashboard refreshes")
+    parser.add_argument("--cached-window", choices=["fixed", "sliding"], default="fixed",
+                        help="fixed or advancing time range for the repeated host during soak; both allow result caching")
+    parser.add_argument("--soak-end-lag", type=float, default=30,
+                        help="seconds behind now for dashboard soak queries (default: 30, step: 15s)")
     parser.add_argument("--keep-data", action="store_true", help="retain stopped benchmark containers and database volumes")
     args = parser.parse_args()
     if not 0 <= args.trace_sample_ratio <= 1:
@@ -321,6 +330,8 @@ def main():
         parser.error("--live-queries requires --queries")
     if args.soak_seconds < 0 or args.refresh_interval <= 0:
         parser.error("soak duration must be non-negative and refresh interval must be positive")
+    if not math.isfinite(args.soak_end_lag) or args.soak_end_lag < 0:
+        parser.error("--soak-end-lag must be finite and non-negative")
     if args.soak_seconds and (not args.live_queries or args.nodes < 2):
         parser.error("--soak-seconds requires --live-queries and at least two nodes")
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())

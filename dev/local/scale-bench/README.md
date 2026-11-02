@@ -163,6 +163,12 @@ the configured bounded client count. Random hosts advance with the query time; r
 keep the same host and timestamp, with the first two refreshes marked as warmups. Resource and
 queue sampling continues throughout. `soak-dashboards.jsonl` records every query and complete or
 partial load, including refresh lateness; `soak-summary.json` records the phase times and loads.
+Use `--cached-window sliding` to keep the repeated host while advancing its range on each refresh.
+This permits measuring partial rollup-cache reuse; random-host requests still bypass VM's rollup cache.
+`--soak-end-lag` defaults to 30 seconds, and the step is 15 seconds. The Compose configuration
+sets VM's `-search.cacheTimestampOffset=15s`; VM's default is five minutes. Record this lag and
+offset when interpreting cache hits. Each load records `time_window`; the summary records the
+cached-window choice, end lag and step. The default fixed-window workload is unchanged.
 `soak-freshness.json` repeats the all-host and two-minute sample-history gate after the soak,
 while ingestion is still running, and records its evaluation timestamp.
 Completion of the script is not an SLO pass: check all loads, individual timings, freshness,
