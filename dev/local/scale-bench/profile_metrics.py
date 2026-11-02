@@ -18,6 +18,34 @@ import time
 
 HERE = Path(__file__).resolve().parent
 harness = runpy.run_path(str(HERE / "run.py"))
+HOST_COUNT_QUERY = 'count(node_uname_info{job="node_exporter"})'
+
+
+def host_count_workload(mode):
+    return {"soak_enabled": mode == "on", "other_capture_phases_enabled": True,
+            "server": "oteldb", "expression": HOST_COUNT_QUERY, "instant": True,
+            "evaluation_time": "probe start wall clock", "nocache": False,
+            "server_timeout_s": 10, "http_timeout_s": 12,
+            "soak_schedule": "before/after soak and after each 15s pending wait; capture duration adds to interval",
+            "resource_captures_enabled": True, "readiness_queries_unchanged": True}
+
+
+def host_count_probe(directory, elapsed, phase):
+    started = time.time()
+    start = time.monotonic()
+    result = None
+    try:
+        result = harness["query"]("oteldb", HOST_COUNT_QUERY, started)
+        return result
+    except BaseException as exc:
+        result = {"ok": False, "error": str(exc), "exception": type(exc).__name__}
+        raise
+    finally:
+        row = {"phase": phase, "elapsed": elapsed, "started_unix": started,
+               "ended_unix": time.time(), "wall_ms": (time.monotonic() - start) * 1000,
+               "result": result}
+        with (directory / "monitor-host-count.jsonl").open("a") as output:
+            output.write(json.dumps(row) + "\n")
 
 
 class BenchmarkStopped(RuntimeError):
@@ -283,6 +311,7 @@ def dashboard_soak(args, directory, servers, capture, stop=None):
         summary = {"started_unix": started_unix, "ended_unix": time.time(),
                    "elapsed_s": time.monotonic() - started, "stopped": stop.is_set(),
                    "cached_window": cached_window,
+                   "host_count_monitor": host_count_workload(getattr(args, "soak_host_count", "on")),
                    "end_lag_s": end_lag, "step_s": 15,
                    "refresh_interval_s": args.refresh_interval, "loads": measured,
                    "successful_loads": successful, "latency_ms": latency}
@@ -320,6 +349,8 @@ def main():
                         help="fixed or advancing time range for the repeated host during soak; both allow result caching")
     parser.add_argument("--soak-end-lag", type=float, default=30,
                         help="seconds behind now for dashboard soak queries (default: 30, step: 15s)")
+    parser.add_argument("--soak-host-count", choices=["on", "off"], default="on",
+                        help="extra oteldb-only host count during soak captures (default: on); health/resource captures and readiness are unchanged")
     parser.add_argument("--keep-data", action="store_true", help="retain stopped benchmark containers and database volumes")
     args = parser.parse_args()
     if not 0 <= args.trace_sample_ratio <= 1:
@@ -363,6 +394,8 @@ def main():
     database["ports"].append({"target": 8090, "published": "19809", "host_ip": "127.0.0.1", "protocol": "tcp"})
     (directory / "compose.json").write_text(json.dumps(config, indent=2) + "\n")
     (directory / "options.json").write_text(json.dumps(vars(args), indent=2) + "\n")
+    (directory / "monitoring-workload.json").write_text(
+        json.dumps(host_count_workload(args.soak_host_count), indent=2) + "\n")
     shutil.copyfile(args.binary, directory / "oteldb")
     (directory / "buildinfo.txt").write_bytes(subprocess.check_output(["go", "version", "-m", str(directory / "oteldb")]))
     (directory / "image.json").write_bytes(subprocess.check_output(["docker", "image", "inspect", args.image]))
@@ -388,7 +421,8 @@ def main():
         with (directory / "resources.jsonl").open("a") as output:
             output.write(json.dumps({"elapsed": elapsed, "time": time.time(), "raw": result.stdout}) + "\n")
         check_container(container, directory, stop, phase)
-        return harness["query"]("oteldb", 'count(node_uname_info{job="node_exporter"})', time.time())
+        if phase != "soak" or args.soak_host_count == "on":
+            return host_count_probe(directory, elapsed, phase)
 
     print(f"Results: {directory}", flush=True)
     try:

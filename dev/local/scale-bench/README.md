@@ -171,6 +171,15 @@ offset when interpreting cache hits. Each load records `time_window`; the summar
 cached-window choice, end lag and step. The default fixed-window workload is unchanged.
 `soak-freshness.json` repeats the all-host and two-minute sample-history gate after the soak,
 while ingestion is still running, and records its evaluation timestamp.
+Soak monitoring also runs an extra **oteldb-only**
+`count(node_uname_info{job="node_exporter"})` query by default. Use
+`--soak-host-count off` to omit that query during soak; health/resource captures,
+initial/final readiness gates and the 242 dashboard targets stay unchanged.
+`monitoring-workload.json` and the soak summary record this choice;
+`monitor-host-count.jsonl` records each executed monitoring count's phase, start/end,
+duration and result. Monitoring runs before/after soak and after each 15-second pending
+wait, with capture duration added to the interval. This is auxiliary workload, and
+changing it is not an engine optimization.
 Completion of the script is not an SLO pass: check all loads, individual timings, freshness,
 accepted versus offered points, queue trends, OOM events and exit state.
 For an image with direct native ingestion enabled, use
