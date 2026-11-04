@@ -91,7 +91,7 @@ require (
 	github.com/oteldb/storage v0.52.0
 	github.com/pierrec/lz4/v4 v4.1.33
 	github.com/prometheus/client_golang v1.25.0
-	github.com/prometheus/common v0.72.1
+	github.com/prometheus/common v0.73.1
 	github.com/prometheus/prometheus v0.315.1
 	github.com/schollz/progressbar/v3 v3.19.1
 	github.com/sergi/go-diff v1.4.0
@@ -179,6 +179,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/kubelet v0.164.1 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.160.0 // indirect
 	github.com/oracle/oci-go-sdk/v65 v65.124.1 // indirect
+	github.com/pandatix/go-abnf v0.5.3 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/sony/gobreaker/v2 v2.4.0 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
