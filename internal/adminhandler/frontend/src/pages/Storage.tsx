@@ -14,7 +14,7 @@ import {
   Rule,
   UsageBar,
 } from "../components/ui";
-import { fmtBytes, fmtNum, fmtTime } from "../lib/format";
+import { fmtBytes, fmtDur, fmtNum, fmtTime } from "../lib/format";
 import type {
   CacheStats,
   ClusterMember,
@@ -202,24 +202,120 @@ const SIGNAL_COLUMNS: TableColumnConfig<EngineSignalStats>[] = [
   { id: "max_time", name: head("max time"), template: (s) => fmtTime(s.max_time) },
 ];
 
+const RETENTION_COLUMNS: TableColumnConfig<EngineSignalStats>[] = [
+  { id: "signal", name: head("signal"), primary: true },
+  {
+    id: "retention_age",
+    name: head("read age limit"),
+    template: (s) =>
+      s.retention_policy == null
+        ? "—"
+        : s.retention_policy.max_age_seconds > 0
+          ? fmtDur(s.retention_policy.max_age_seconds)
+          : "unlimited",
+  },
+  {
+    id: "retention_signal_bytes",
+    name: head("signal budget"),
+    align: "end",
+    template: (s) => (s.retention_policy?.max_bytes ? fmtBytes(s.retention_policy.max_bytes) : "—"),
+  },
+  {
+    id: "retention_pooled_bytes",
+    name: head("pooled budget"),
+    align: "end",
+    template: (s) =>
+      s.retention_policy?.pooled_max_bytes ? fmtBytes(s.retention_policy.pooled_max_bytes) : "—",
+  },
+  { id: "retain_from", name: head("last cleanup target"), template: (s) => fmtTime(s.retain_from) },
+  {
+    id: "retention_bound_by",
+    name: head("target bound"),
+    template: (s) =>
+      s.retention_bound_by == null
+        ? "—"
+        : {
+            none: "no local target",
+            age: "age",
+            signal_bytes: "signal bytes",
+            pooled_bytes: "pooled bytes",
+          }[s.retention_bound_by],
+  },
+  {
+    id: "retention_lag_seconds",
+    name: head("physical cleanup lag"),
+    align: "end",
+    template: (s) =>
+      s.retention_lag_seconds == null ? (
+        "—"
+      ) : (
+        <ErrCount bad={s.retention_lag_seconds > 0}>
+          {s.retention_lag_seconds > 0 && s.retention_lag_seconds < 1
+            ? `${s.retention_lag_seconds.toFixed(3)} s`
+            : fmtDur(s.retention_lag_seconds)}
+        </ErrCount>
+      ),
+  },
+];
+
+function RetentionAdmission({ enabled }: { enabled?: boolean }) {
+  return (
+    <Panel title="Retention admission" sub="expired writes">
+      <Flex direction="column" gap={3}>
+        <Text variant="subheader-1">
+          {enabled == null
+            ? "Mixed or unavailable"
+            : enabled
+              ? "Rejecting expired writes"
+              : "Accepting expired writes"}
+        </Text>
+        <Text variant="body-1" color="secondary">
+          {enabled == null ? "Select a node to inspect its admission setting. " : ""}
+          Read age limits apply independently of physical cleanup. Write rejection is optional and
+          off by default.
+        </Text>
+      </Flex>
+    </Panel>
+  );
+}
+
 function Tenant({ t }: { t: TenantStats }) {
   const a = t.admission;
-  const rejected = a.rejected_ooo + a.rejected_rate + a.rejected_cardinality + a.rejected_in_flight;
+  const rejected =
+    a.rejected_ooo +
+    a.rejected_rate +
+    a.rejected_cardinality +
+    a.rejected_in_flight +
+    (a.rejected_retention ?? 0);
   return (
     <Panel
       title={t.tenant}
       sub={`${fmtNum(t.total_series)} series · ${fmtNum(t.total_parts)} parts`}
       actions={
-        <Flex alignItems="center" gap={2}>
+        <Flex alignItems="center" gap={2} wrap>
           <Text variant="body-1" color="secondary">
             accepted <Mono>{fmtNum(a.accepted)}</Mono>
           </Text>
           {rejected ? <ErrCount bad>{`rejected ${fmtNum(rejected)}`}</ErrCount> : null}
+          {a.rejected_retention != null ? (
+            <Text variant="body-1" color="secondary">
+              expired writes <Mono>{fmtNum(a.rejected_retention)}</Mono>
+            </Text>
+          ) : null}
         </Flex>
       }
       scroll
     >
-      <Table data={t.signals} columns={SIGNAL_COLUMNS} getRowId="signal" />
+      <Flex direction="column" gap={4}>
+        <Table data={t.signals} columns={SIGNAL_COLUMNS} getRowId="signal" />
+        <Text variant="subheader-2">Retention</Text>
+        <Table data={t.signals} columns={RETENTION_COLUMNS} getRowId="signal" />
+        <Text variant="body-1" color="secondary">
+          The cleanup target is the last locally requested cutoff. Replicas have no local target. A
+          positive lag means older data remains stored; age-expired rows are already hidden from
+          reads. Byte budgets apply per node; the pooled budget is shared across signals.
+        </Text>
+      </Flex>
     </Panel>
   );
 }
@@ -337,6 +433,9 @@ export function Storage() {
             </Col>
             <Col size={COL}>
               <MaintenanceLoop m={eng.maintenance} />
+            </Col>
+            <Col size={COL}>
+              <RetentionAdmission enabled={eng.reject_out_of_retention} />
             </Col>
             {eng.cluster ? (
               <Col size={COL}>
