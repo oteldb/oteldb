@@ -31,9 +31,17 @@ load 10s
   join_duplicate{l="unused",id="two"} 2 3 4
   tuple_left{l="a",x="1"} 1 2 3
   tuple_left{l="b",x="2"} 2 3 4
+  tuple_left{l="d",x="4"} 5 6 7
   tuple_right{l="a",x="1"} 2 3 4
   tuple_right{l="b",x="2"} 3 4 5
   tuple_right{l="a",x="2"} 4 5 6
+  tuple_right{l="c",x="3"} 5 6 7
+  absent_left{x="1",id="one"} 1 2 3
+  absent_left{l="",x="1",id="two"} 2 3 4
+  absent_left{l="unmatched",x="2",id="three"} 3 4 5
+  absent_right{x="1",node="one"} 4 5 6
+  absent_right{x="3",node="two"} 5 6 7
+  absent_right{l="unmatched",x="3",node="three"} 6 7 8
 `
 
 type binopScanSpy struct {
@@ -114,12 +122,11 @@ func TestBinopSelectorNarrowing(t *testing.T) {
 	}
 }
 
-func TestBinopSelectorNarrowingFallback(t *testing.T) {
+func TestBinopSelectorNarrowingFallbackAndTuples(t *testing.T) {
 	t.Parallel()
 	st := promqltest.LoadedStorage(t, binopNarrowCorpus)
 	t.Cleanup(func() { require.NoError(t, st.Close()) })
 	for _, query := range []string{
-		`join_left * on(l,id) group_left(node) join_right`,
 		`join_left * ignoring(id,node) group_left(node) join_right`,
 		`abs(join_left) * on(l) group_left(node) join_right`,
 		`join_left and on(l) join_right`,
@@ -139,16 +146,25 @@ func TestBinopSelectorNarrowingFallback(t *testing.T) {
 		query   string
 		fetched map[string]int
 	}{
-		{`join_empty * on(l) group_left(node) join_right`, map[string]int{"join_empty": 2, "join_right": 3}},
+		{`join_empty * on(l) group_left(node) join_right`, map[string]int{}},
 		{`join_left * on() group_left(node) join_right{l="a.b"}`, map[string]int{"join_left": 3, "join_right": 1}},
 		{`tuple_left * on(l,x) tuple_right`, map[string]int{"tuple_left": 2, "tuple_right": 3}},
+		{`absent_left * on(l,x) group_left(node) absent_right`, map[string]int{"absent_left": 2, "absent_right": 1}},
+		{`join_left * on(l,id) group_left(node) join_right`, map[string]int{}},
 	} {
 		t.Run(tt.query, func(t *testing.T) {
-			spy := &binopScanSpy{Scanner: scarecrow.NewQueryableScanner(st), fetched: make(map[string]int)}
-			engine := scarecrow.NewEngine(scarecrow.Opts{NewScanner: func(storage.Queryable) scarecrow.Scanner { return spy }})
-			requireSameValue(t, execInstant(t, upstreamEngine(), st, tt.query, time.Unix(20, 0)),
-				execInstant(t, engine, st, tt.query, time.Unix(20, 0)))
-			require.Equal(t, tt.fetched, spy.fetched)
+			for _, instant := range []bool{true, false} {
+				spy := &binopScanSpy{Scanner: scarecrow.NewQueryableScanner(st), fetched: make(map[string]int)}
+				engine := scarecrow.NewEngine(scarecrow.Opts{NewScanner: func(storage.Queryable) scarecrow.Scanner { return spy }})
+				if instant {
+					requireSameValue(t, execInstant(t, upstreamEngine(), st, tt.query, time.Unix(20, 0)),
+						execInstant(t, engine, st, tt.query, time.Unix(20, 0)))
+				} else {
+					requireSameValue(t, execRange(t, upstreamEngine(), st, tt.query, time.Unix(0, 0), time.Unix(20, 0), 10*time.Second),
+						execRange(t, engine, st, tt.query, time.Unix(0, 0), time.Unix(20, 0), 10*time.Second))
+				}
+				require.Equal(t, tt.fetched, spy.fetched)
+			}
 		})
 	}
 }
@@ -157,14 +173,20 @@ func TestBinopNarrowingPreservesUnmatchedDuplicateError(t *testing.T) {
 	t.Parallel()
 	st := promqltest.LoadedStorage(t, binopNarrowCorpus)
 	t.Cleanup(func() { require.NoError(t, st.Close()) })
-	spy := &binopScanSpy{Scanner: scarecrow.NewQueryableScanner(st), fetched: make(map[string]int), checkSchemas: true}
-	ours := scarecrow.NewEngine(scarecrow.Opts{NewScanner: func(storage.Queryable) scarecrow.Scanner { return spy }})
-	query := `join_left * on(l) group_left() join_duplicate`
-	for _, engine := range []promql.QueryEngine{ours, upstreamEngine()} {
-		q, err := engine.NewInstantQuery(t.Context(), st, nil, query, time.Unix(20, 0))
-		require.NoError(t, err)
-		require.Error(t, q.Exec(t.Context()).Err)
-		q.Close()
+	for _, query := range []string{
+		`join_left * on(l) group_left() join_duplicate`,
+		`join_left * on(l,missing) group_left() join_duplicate`,
+	} {
+		t.Run(query, func(t *testing.T) {
+			spy := &binopScanSpy{Scanner: scarecrow.NewQueryableScanner(st), fetched: make(map[string]int), checkSchemas: true}
+			ours := scarecrow.NewEngine(scarecrow.Opts{NewScanner: func(storage.Queryable) scarecrow.Scanner { return spy }})
+			for _, engine := range []promql.QueryEngine{ours, upstreamEngine()} {
+				q, err := engine.NewInstantQuery(t.Context(), st, nil, query, time.Unix(20, 0))
+				require.NoError(t, err)
+				require.Error(t, q.Exec(t.Context()).Err)
+				q.Close()
+			}
+			require.Zero(t, spy.queries, "the complete schema must be validated before any values are read")
+		})
 	}
-	require.Zero(t, spy.queries, "the complete schema must be validated before any values are read")
 }
