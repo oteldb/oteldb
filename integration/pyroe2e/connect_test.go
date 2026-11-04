@@ -114,6 +114,7 @@ func TestQuerierServiceConnect(t *testing.T) {
 	})
 
 	t.Run("SelectMergeProfile", func(t *testing.T) {
+		//nolint:staticcheck // Keep compatibility coverage for legacy Pyroscope clients.
 		resp, err := client.SelectMergeProfile(ctx, connect.NewRequest(&querierv1.SelectMergeProfileRequest{
 			ProfileTypeID: profileTypeID, Start: startMs, End: endMs,
 		}))
