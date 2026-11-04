@@ -11,8 +11,8 @@ import (
 //
 // This is the ragged level. It never crosses an [Operator] boundary: only the two selector
 // leaves consume it, folding it into a [Column] and releasing it immediately. Exactly one
-// series' samples are live at a time regardless of query cardinality, so the raw level is O(1)
-// in series.
+// series' samples are borrowed per iterator or fold worker at a time, so raw residency is bounded
+// by the worker count rather than query cardinality.
 //
 // The slices are borrowed from the scanner and are invalid after the next [SeriesIterator.Next]
 // or after Close.
@@ -64,4 +64,27 @@ type Scanner interface {
 	Scan(ctx context.Context, mint, maxt int64, matchers []*labels.Matcher) (SeriesIterator, error)
 
 	Close() error
+}
+
+// PartitionScanner can distribute a single scan among independent consumers without rescanning
+// or copying samples. It returns exactly workers iterators, all of which must be closed.
+// Scanners without this capability retain serial evaluation.
+type PartitionScanner interface {
+	ScanPartitions(ctx context.Context, mint, maxt int64, matchers []*labels.Matcher, workers int) ([]PartitionIterator, error)
+}
+
+// QueryBudgetScanner installs one query-wide memory allowance before planning or execution.
+// Implementations preserve an allowance already present on ctx.
+type QueryBudgetScanner interface {
+	WithQueryBudget(ctx context.Context) context.Context
+}
+
+// PartitionIterator borrows at most one series. Position identifies its most recent sample's
+// zero-based position in the original unpartitioned stream; positions across partitions form
+// one contiguous sequence and increase within each partition. Release ends the current borrow
+// before the next Next, allowing consumers to wait without retaining raw storage buffers.
+type PartitionIterator interface {
+	SeriesIterator
+	Position() int
+	Release()
 }

@@ -695,27 +695,41 @@ contiguously. The `Transpose` operator an earlier draft required here does not e
 
 Three axes, and one structural rule.
 
-**The rule: concurrency lives in exactly one operator.** `Concurrent` runs its child in a
-goroutine feeding a bounded channel of columns; every other operator is single-threaded and
-synchronous. Nothing else spawns goroutines, nothing else blocks on anything it does not own.
-This is what makes the engine deadlock-free by construction. The prototype instead sprinkled
-`errgroup` across `BinaryOperator` and `FunctionOperator` and spent four commits on the
-consequences (`86048053 perf(scarecrow): fix deadlock in binary operator`, `96bbf094
-fix(scarecrow): fix deadlocks and multi-block streaming in operators`).
+Concurrency has two bounded forms: `Concurrent` prefetches an independent subtree, and raw
+matrix folds evaluate independent series on workers. Both use the same process-wide try-only
+semaphore. Every producer is joined on Close; storage buffers are released before waiting on
+column consumers.
 
-1. **Series sharding.** A selector's series set is partitioned into N shards, each an
-   independent pipeline. Under series-major this is a clean map-reduce: each shard accumulates
-   into its own private accumulator and the shards' accumulators merge elementwise at the end
-   (`sum`/`count`/`min`/`max` always; `avg` as sum+count; `topk`/`quantile` need the full set
-   and act as shard barriers). The merge is itself an `AddF64`-shaped kernel over
-   `groups × steps`. This is the axis that actually scales.
+1. **Series folds.** A scanner may implement `PartitionScanner` to distribute one scan across
+   consumers without rescanning. Native storage serializes pulls from one fetch iterator, then
+   workers convert timestamps and fold different series concurrently. Each worker owns at most
+   one raw batch and one column. The merger retains at most one column per worker and restores
+   original scan order before aggregation. Columns, borrowed native batches, timestamp
+   conversion buffers and owned stale-window scratch reserve the query's byte budget;
+   insufficient memory or concurrency slots retain serial evaluation.
+
+   Raw batches are released before publishing columns. Conversion and stale-window buffers
+   are reused per worker, remain charged while retained, and are released on Close. A native
+   scanner installs one query allowance before schemas and chunks; an existing caller allowance
+   is preserved. Head reservation pressure selects serial evaluation; later storage or scratch
+   reservation failures fail the query rather than exceeding that allowance.
+
+   This deliberately adapts #1193's proposed private-accumulator merge: Kahan summation,
+   overflow-sensitive averages and variance are order-dependent, so partial aggregate merges
+   cannot preserve serial results. Parallelizing their expensive input folds keeps the original
+   aggregation arithmetic and requires no extra `groups × steps` accumulator.
+
+   Audited range functions with at least four series and 32 steps are eligible. `mad_over_time`
+   retains serial evaluation because its median scratch is not budgeted for workers.
+   Scalar-parameter functions, subqueries, pushdowns and scanners without this capability remain
+   serial. Plain selectors remain serial too. No worker partitions the step axis.
 2. **Independent subtrees.** Binop LHS/RHS, function arguments, and each subquery get a
    `Concurrent` wrapper — overlapping their storage latency, which is the dominant cost.
 3. **Storage fan-out.** Already inside `oteldb/storage` (parts, cluster). The engine must not
    duplicate it.
 
-A single process-wide semaphore sized to `GOMAXPROCS` bounds concurrent `Concurrent`
-operators across all in-flight queries, so a 50-subtree query does not spawn 50 scanners.
+A single process-wide semaphore sized to the initial `GOMAXPROCS` bounds producers across all
+in-flight queries; a fold also caps its worker count at the current `GOMAXPROCS`.
 
 ## 7. Kernels and SIMD
 
@@ -1008,10 +1022,9 @@ Each milestone ends with a number: upstream `promqltest` files passing.
   than waiting, so contention costs parallelism and never liveness. That is what keeps the
   deadlock-freedom claim true under a bounded limiter.
 
-  **Still to do in M4:** series sharding as map-reduce over accumulators, and CSE with a bounded
-  `Tee`. Sharding is deliberately deferred until M5 wires the columnar seam — over a
-  `storage.Queryable` each shard would re-scan every series and filter, parallelizing CPU while
-  multiplying I/O, which is the wrong trade to bake in.
+  Native raw matrix folds now parallelize independent series through `PartitionScanner`,
+  retaining one fetch and ordered aggregation (§6). Queryable fallback reads remain serial,
+  avoiding multiplied I/O. Wider pipeline sharding and CSE with a bounded `Tee` remain deferred.
 
   **CSE, and why the `Tee` must be allowed to give up.** `a / sum(a)`, `rate(x[5m]) /
   sum(rate(x[5m]))` and every ratio-of-itself scrape a subexpression twice. The fix is to plan it

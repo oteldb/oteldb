@@ -61,6 +61,14 @@ var (
 
 func (s *scarecrowScanner) Close() error { return nil }
 
+func (s *scarecrowScanner) WithQueryBudget(ctx context.Context) context.Context {
+	return s.b.src.WithQueryBudget(fetch.WithScope(ctx, s.scope))
+}
+
+func (s rawScarecrowScanner) WithQueryBudget(ctx context.Context) context.Context {
+	return s.counter.WithQueryBudget(ctx)
+}
+
 // AggregateGrid implements [scarecrow.GridAggregateScanner]: it answers a whole PromQL step grid
 // with one [storage.Storage.AggregateMetricsWindowNamed] call, which folds each series' samples
 // once into step-wide buckets and slides them into every overlapping window.
@@ -273,6 +281,14 @@ func (s *scarecrowScanner) Series(
 func (s *scarecrowScanner) Scan(
 	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
 ) (scarecrow.SeriesIterator, error) {
+	it, err := s.openFetch(ctx, mint, maxt, matchers)
+	if err != nil {
+		return nil, err
+	}
+	return &batchIterator{it: it, matchers: matchers}, nil
+}
+
+func (s *scarecrowScanner) openFetch(ctx context.Context, mint, maxt int64, matchers []*labels.Matcher) (fetch.Iterator, error) {
 	const nsPerMs = int64(time.Millisecond)
 
 	it, err := s.b.src.Fetcher(s.b.tenant).Fetch(ctx, fetch.Request{
@@ -287,7 +303,7 @@ func (s *scarecrowScanner) Scan(
 		return nil, errors.Wrap(err, "fetch")
 	}
 
-	return &batchIterator{it: it, matchers: matchers}, nil
+	return it, nil
 }
 
 // batchIterator adapts a [fetch.Iterator] to [scarecrow.SeriesIterator], one series at a time.
@@ -340,26 +356,23 @@ func (it *batchIterator) Next(ctx context.Context) (*scarecrow.Samples, error) {
 		}
 
 		it.release()
-		it.prev = b
-
-		const nsPerMs = int64(time.Millisecond)
-
-		if cap(it.ts) < len(b.Timestamps) {
-			it.ts = make([]int64, len(b.Timestamps))
-		}
-		it.ts = it.ts[:len(b.Timestamps)]
-		for j, t := range b.Timestamps {
-			it.ts[j] = t / nsPerMs
-		}
-
-		it.cur = scarecrow.Samples{
-			Labels:  lset,
-			T:       it.ts,
-			V:       b.Values,
-			Weights: b.ScaleFactors,
-		}
+		it.setBatch(b)
 
 		return &it.cur, nil
+	}
+}
+
+func (it *batchIterator) setBatch(b *fetch.Batch) {
+	it.prev = b
+	if cap(it.ts) < len(b.Timestamps) {
+		it.ts = make([]int64, len(b.Timestamps))
+	}
+	it.ts = it.ts[:len(b.Timestamps)]
+	for j, t := range b.Timestamps {
+		it.ts[j] = t / int64(time.Millisecond)
+	}
+	it.cur = scarecrow.Samples{
+		Labels: storagepromql.PromLabels(b.Series), T: it.ts, V: b.Values, Weights: b.ScaleFactors,
 	}
 }
 
@@ -369,8 +382,10 @@ func (it *batchIterator) release() {
 		return
 	}
 
-	it.prev.Release()
+	batch := it.prev
 	it.prev = nil
+	it.cur = scarecrow.Samples{}
+	batch.Release()
 }
 
 func (it *batchIterator) Close() error {

@@ -321,6 +321,9 @@ func (q *query) exec(ctx context.Context) (parser.Value, error) {
 
 	scanner := q.engine.opts.NewScanner(q.queryable)
 	defer func() { _ = scanner.Close() }()
+	if scoped, ok := scanner.(QueryBudgetScanner); ok {
+		ctx = scoped.WithQueryBudget(ctx)
+	}
 
 	// A string literal is not a series at all, so it bypasses the operator tree entirely.
 	if lit, ok := unwrapStringLiteral(expr); ok {

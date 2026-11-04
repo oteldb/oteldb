@@ -36,6 +36,10 @@ type matrixFold struct {
 	iter SeriesIterator
 	out  Column
 
+	parallel      *parallelFold
+	parallelTried bool
+	slots         *semaphore
+
 	// Scratch buffers for the per-step window, reused across steps and series.
 	wt []int64
 	wv []float64
@@ -56,6 +60,7 @@ func newMatrixFold(
 		refs:   refTimes(ec.Steps, offset, at),
 		param:  param,
 		ec:     ec,
+		slots:  concurrencySlots,
 	}
 }
 
@@ -73,6 +78,9 @@ func (o *matrixFold) Children() []Operator {
 
 func (o *matrixFold) Close() error {
 	var err error
+	if o.parallel != nil {
+		err = o.parallel.Close()
+	}
 	if o.iter != nil {
 		err = o.iter.Close()
 		o.iter = nil
@@ -132,6 +140,14 @@ func (o *matrixFold) Next(ctx context.Context) (*Column, error) {
 		}
 
 		o.paramVals = vals
+	}
+	if !o.parallelTried {
+		if err := o.startParallel(ctx); err != nil {
+			return nil, err
+		}
+	}
+	if o.parallel != nil {
+		return o.parallel.Next(ctx)
 	}
 
 	if o.iter == nil {
