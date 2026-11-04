@@ -366,4 +366,20 @@ func TestMemoryArchetypes(t *testing.T) {
 		})
 		t.Logf("F  %d series, %d steps, 1:1 join, chunked(2000): %s", series, steps, chunked)
 	})
+
+	t.Run("G_chunked_join_working_set", func(t *testing.T) {
+		// Reduce the join to one output series so materializing the answer cannot hide the
+		// build side's working set. The answer grows by only 192 KiB across these ranges.
+		for _, steps := range []int{2_048, 16_384} {
+			for _, chunk := range []int{-1, 256} {
+				g := &genScanner{series: 128, samples: steps, stepMs: 15_000, jobs: 1}
+				r := measure(t, func() any {
+					return runQueryOpts(t, scarecrow.Opts{ChunkSteps: chunk}, g,
+						`sum(metric / on(instance, job) metric)`, time.Unix(0, 0),
+						time.Unix(int64(steps-1)*15, 0), 15*time.Second)
+				})
+				t.Logf("G  128 series, %d steps, chunk %d, reduced join: %s", steps, chunk, r)
+			}
+		}
+	})
 }
