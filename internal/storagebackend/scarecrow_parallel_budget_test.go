@@ -59,6 +59,9 @@ func TestScarecrowParallelNativeQueryBudget(t *testing.T) {
 	require.NoError(t, storagebackend.New(store).ConsumeMetrics(t.Context(), metrics))
 	for _, name := range []string{"automatic", "tiny", "near-full"} {
 		t.Run(name, func(t *testing.T) {
+			if name == "automatic" && previous < 2 {
+				t.Skip("parallel head reservation requires at least two process concurrency slots")
+			}
 			source := &budgetSpy{Source: store}
 			backend := storagebackend.NewQuery(source, storagebackend.WithOverTimePushdown(false))
 			scanner := &partitionBudgetSpy{Scanner: backend.ScarecrowScanner()}

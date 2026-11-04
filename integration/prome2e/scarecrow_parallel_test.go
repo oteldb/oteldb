@@ -84,6 +84,9 @@ func (it *parallelFileIterator) Next(ctx context.Context) (*scarecrow.Samples, e
 }
 
 func TestScarecrowParallelFoldNativeFileHTTP(t *testing.T) {
+	if runtime.GOMAXPROCS(0) < 2 {
+		t.Skip("native fold overlap requires at least two process concurrency slots")
+	}
 	previous := runtime.GOMAXPROCS(4)
 	t.Cleanup(func() { runtime.GOMAXPROCS(previous) })
 	for _, state := range []string{"head", "reopened-parts"} {
