@@ -721,7 +721,8 @@ column consumers.
 
    Audited range functions with at least four series and 32 steps are eligible. `mad_over_time`
    retains serial evaluation because its median scratch is not budgeted for workers.
-   Scalar-parameter functions, subqueries, pushdowns and scanners without this capability remain
+   `predict_linear` shares its resolved, immutable scalar parameter grid with the workers.
+   `quantile_over_time`, subqueries, pushdowns and scanners without this capability remain
    serial. Plain selectors remain serial too. No worker partitions the step axis.
 2. **Independent subtrees.** Binop LHS/RHS, function arguments, and each subquery get a
    `Concurrent` wrapper — overlapping their storage latency, which is the dominant cost.

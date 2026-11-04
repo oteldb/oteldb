@@ -355,7 +355,7 @@ func TestParallelFoldAggregateFloatOrder(t *testing.T) {
 func TestParallelFoldDenseWeightedStaleWindows(t *testing.T) {
 	previous := runtime.GOMAXPROCS(4)
 	t.Cleanup(func() { runtime.GOMAXPROCS(previous) })
-	for _, name := range []string{"sum_over_time", "avg_over_time", "count_over_time", "stddev_over_time", "stdvar_over_time", "min_over_time", "max_over_time", "rate", "irate", "delta", "changes", "resets"} {
+	for _, name := range []string{"sum_over_time", "avg_over_time", "count_over_time", "stddev_over_time", "stdvar_over_time", "min_over_time", "max_over_time", "rate", "irate", "delta", "changes", "resets", "predict_linear"} {
 		t.Run(name, func(t *testing.T) {
 			var want [][]uint64
 			for _, parallel := range []bool{false, true} {
@@ -378,6 +378,17 @@ func TestParallelFoldDenseWeightedStaleWindows(t *testing.T) {
 				fold := parallelTestFold(scanner)
 				fold.rng = time.Minute
 				fold.fnName, fold.fn = name, rangeFuncs[name]
+				if name == "predict_linear" {
+					fold.paramVals = make([]float64, fold.ec.NumSteps())
+					for step := range fold.paramVals {
+						fold.paramVals[step] = float64(step) - 17.5
+						if step%13 == 0 {
+							fold.paramVals[step] = math.NaN()
+						} else if step%17 == 0 {
+							fold.paramVals[step] = math.Inf(1)
+						}
+					}
+				}
 				budget := readbudget.New(1 << 20)
 				ctx := readbudget.With(t.Context(), budget)
 				var got [][]uint64
@@ -396,6 +407,7 @@ func TestParallelFoldDenseWeightedStaleWindows(t *testing.T) {
 				require.NoError(t, fold.Close())
 				require.EqualValues(t, 1<<20, budget.Remaining())
 				if parallel {
+					require.NotNil(t, fold.parallel)
 					require.Equal(t, want, got)
 				} else {
 					want = got
