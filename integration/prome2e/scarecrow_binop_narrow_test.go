@@ -30,6 +30,7 @@ type binopFetchSource struct {
 	storagebackend.Source
 	mu      sync.Mutex
 	fetched map[string]int
+	samples map[string]int
 }
 
 func (s *binopFetchSource) Fetcher(tenants ...signal.TenantID) fetch.Fetcher {
@@ -58,7 +59,11 @@ func (it *binopFetchIterator) Next(ctx context.Context) (*fetch.Batch, error) {
 	b, err := it.Iterator.Next(ctx)
 	if err == nil {
 		it.source.mu.Lock()
-		it.source.fetched[storagepromql.PromLabels(b.Series).Get("__name__")]++
+		name := storagepromql.PromLabels(b.Series).Get("__name__")
+		it.source.fetched[name]++
+		if it.source.samples != nil {
+			it.source.samples[name] += len(b.Values)
+		}
 		it.source.mu.Unlock()
 	}
 	return b, err
@@ -131,11 +136,12 @@ func TestScarecrowBinopNarrowingNativeFileHTTP(t *testing.T) {
 				{`join_cpu * on(instance) group_left(node) join_meta`, 2, 1, 2, 2},
 				{`join_meta * on(instance) group_right(node) join_cpu`, 2, 1, 2, 2},
 				{`join_cpu < bool on(instance) group_left(node) join_meta`, 2, 1, 2, 0},
-				{`join_cpu * on(instance,job) group_left(node) join_meta`, 3, 16, 2, 2},
+				{`join_cpu * on(instance,job) group_left(node) join_meta`, 2, 1, 2, 2},
+				{`join_cpu * on(instance,missing) group_left(node) join_meta`, 2, 1, 2, 2},
 				{`join_cpu and on(instance) join_meta`, 3, 16, 2, 1},
 			} {
 				t.Run(tt.query, func(t *testing.T) {
-					source := &binopFetchSource{Source: store, fetched: make(map[string]int)}
+					source := &binopFetchSource{Source: store, fetched: make(map[string]int), samples: make(map[string]int)}
 					handler, err := queryapi.NewPrometheus(queryapi.PrometheusOptions{Querier: storagebackend.NewQuery(source)})
 					require.NoError(t, err)
 					server := httptest.NewServer(handler)
@@ -159,6 +165,8 @@ func TestScarecrowBinopNarrowingNativeFileHTTP(t *testing.T) {
 					}
 					require.Equal(t, tt.cpu, source.fetched["join_cpu"])
 					require.Equal(t, tt.meta, source.fetched["join_meta"])
+					require.Equal(t, tt.cpu*3, source.samples["join_cpu"])
+					require.Equal(t, tt.meta*3, source.samples["join_meta"])
 				})
 			}
 		})
@@ -175,6 +183,8 @@ func BenchmarkBinopNarrowingNativeFile(b *testing.B) {
 			}})
 			for _, tt := range []struct{ name, query string }{
 				{"sparse", `join_cpu * on(instance) group_left(node) join_meta`},
+				{"tuple", `join_cpu * on(instance,job) group_left(node) join_meta`},
+				{"absent", `join_cpu * on(instance,missing) group_left(node) join_meta`},
 				{"dense", `join_meta * on(instance) join_meta`},
 				{"dense_distinct", `join_meta * on(instance) join_meta_alt`},
 				{"unchanged", `join_meta + join_meta`},

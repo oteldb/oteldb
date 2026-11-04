@@ -621,21 +621,24 @@ timestamps or values. What is resident is only the build side's **values**.
 
 Three ways to shrink or remove that, in descending value-per-effort.
 
-**1. Join narrowing ([#1191](https://github.com/oteldb/oteldb/issues/1191)) — implementable
-today, and symmetric.** Both sides' series are enumerated
-at plan time, so the exact intersection of matching signatures is known before a single value is
-fetched. Both scans can then be restricted to it: an unmatched build-side series is never
-probed, and an unmatched probe-side series is dropped by `pairOf == -1` anyway. For
-`a * on(job) b` where `a` spans 10k jobs and `b` covers 50, both sides fetch 50.
+**1. Join narrowing ([#1191](https://github.com/oteldb/oteldb/issues/1191)).** Direct
+selectors under an arithmetic/comparison vector binop enumerate and validate both complete input
+schemas before fetching. The matched signatures supply necessary per-label regexp filters to
+both scans, preserving schema references and the join's exact residual matching.
 
-The engine currently does the weaker half of this — it declines to *retain* an unprobed
-build-side series (`vectorBinop.probed`), but storage has already fetched it. Narrowing turns
-"fetch and discard" into "never fetch".
+For a single nonempty `on(job)` label, matched jobs `{a,b}` are represented exactly by
+`job=~"a|b"`. For multiple matching labels, independent regexps describe a Cartesian superset:
+matched tuples `(a,1)` and `(b,2)` also admit `(a,2)` and `(b,1)` at fetch time. The existing join
+rejects those cross-tuples. This reduces I/O when the matched label domains shrink; it does not
+provide exact tuple pruning before decode.
 
-Precondition: **`on(...)` matching only.** The signature is then a fixed label set, so
-"signature ∈ set" becomes an index-safe matcher (`job=~"a|b|c"`). Under `ignoring(...)` the
-signature is "every label except these", which no single matcher expresses — that case needs a
-series-ID set on `fetch.Request`, which is the one real argument for adding one.
+A matching label whose accepted values include empty/absent is left unrestricted; the other
+labels can still prune safely. An empty signature intersection skips both scans. Empty `on()`,
+`ignoring(...)`, set operators and arbitrary subtrees retain their existing paths. Identical
+selectors bypass the optimization. Dense distinct-selector joins still pay the complete-schema
+barrier before fetching; avoiding that barrier generally requires speculative reads or a stronger
+storage capability. Exact multi-label/absent membership needs a series-ID or tuple set on
+`fetch.Request`, which is deferred.
 
 **2. Caller-specified scan order — removes the build table entirely.** If both sides were
 delivered sorted by matching signature, the join becomes a sort-merge: co-iterate, nothing

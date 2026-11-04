@@ -427,7 +427,7 @@ func (o *vectorBinop) Schema(ctx context.Context) (*Schema, error) {
 	}
 
 	if deferStart {
-		o.narrowSelectors(manySchema, oneSchema)
+		o.narrowSelectors(manySchema)
 		// Start both producers only after the complete schemas have passed validation.
 		if _, err := o.many.Schema(ctx); err != nil {
 			return nil, err
