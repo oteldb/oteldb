@@ -23,6 +23,9 @@ import (
 type vectorSelect struct {
 	scanner  Scanner
 	matchers []*labels.Matcher
+	// scanMatchers narrows value fetching after the full schema has resolved.
+	scanMatchers []*labels.Matcher
+	scanNone     bool
 	// emitTimestamp makes the selector report each chosen sample's own timestamp in seconds
 	// instead of its value. It backs timestamp(<selector>), whose result is a property of the
 	// sample rather than of the step — the same device upstream calls SelectTimestamp.
@@ -149,7 +152,7 @@ func (o *vectorSelect) Next(ctx context.Context) (*Column, error) {
 		return nil, err
 	}
 
-	if len(o.ec.Steps) == 0 || schema.Len() == 0 {
+	if len(o.ec.Steps) == 0 || schema.Len() == 0 || o.scanNone {
 		return nil, nil
 	}
 
@@ -162,7 +165,11 @@ func (o *vectorSelect) Next(ctx context.Context) (*Column, error) {
 			attribute.Int64("promql.maxt", maxt),
 		)
 
-		it, err := o.scanner.Scan(scanCtx, mint, maxt, o.matchers)
+		matchers := o.matchers
+		if o.scanMatchers != nil {
+			matchers = o.scanMatchers
+		}
+		it, err := o.scanner.Scan(scanCtx, mint, maxt, matchers)
 
 		// The span covers opening the scan, not draining it: the iterator outlives this call and
 		// is consumed lazily across many Next calls, so ending it here is the honest boundary.
