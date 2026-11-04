@@ -17,7 +17,7 @@
   "dependencies": {
     "@gravity-ui/charts": "^1.71.0",
     "@gravity-ui/icons": "^2.23.0",
-    "@gravity-ui/navigation": "^6.3.1",
+    "@gravity-ui/navigation": "^7.1.3",
     "@gravity-ui/uikit": "^7.47.1",
     "@tanstack/react-query": "^5.105.1",
     "react": "^19.3.1",
