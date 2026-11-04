@@ -20,6 +20,11 @@ export interface AdmissionStats {
   rejected_cardinality: number;
   /** Rejected due to in-flight admission pressure. */
   rejected_in_flight: number;
+  /**
+   * Rejected as older than the signal's retention age; absent on older nodes.
+   * @minimum 0
+   */
+  rejected_retention?: number;
   sampled_dropped: number;
   overflowed: number;
 }

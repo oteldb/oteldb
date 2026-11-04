@@ -7,6 +7,8 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Signal } from './signal';
+import type { RetentionBound } from './retentionBound';
+import type { SignalRetentionPolicy } from './signalRetentionPolicy';
 
 /**
  * Per-signal engine statistics for a tenant.
@@ -25,6 +27,15 @@ export interface EngineSignalStats {
   sealed_parts: number;
   min_time?: string;
   max_time?: string;
+  /** Last authorized requested physical-cleanup cutoff; absent without a local target, including on replicas. */
+  retain_from?: string;
+  retention_bound_by?: RetentionBound;
+  /**
+   * Physical expiry lag behind the requested cleanup target, not logical read visibility. Cluster views report the maximum owner lag.
+   * @minimum 0
+   */
+  retention_lag_seconds?: number;
+  retention_policy?: SignalRetentionPolicy;
   merge_running: boolean;
   /** Unsealed parts a merge may still take (parts - sealed_parts). */
   merge_backlog: number;
