@@ -38,6 +38,7 @@ func (a *Aggregator) GetStorage(ctx context.Context, params adminapi.GetStorageP
 	tenants := map[string]*adminapi.TenantStats{}
 	var order []string
 	var haveEngine bool
+	var admission retentionAdmissionState
 
 	for _, r := range answers {
 		if !r.ok() {
@@ -52,6 +53,7 @@ func (a *Aggregator) GetStorage(ctx context.Context, params adminapi.GetStorageP
 			continue
 		}
 		haveEngine = true
+		admission.add(e.RejectOutOfRetention)
 
 		addCaches(&engine.Caches, e.Caches)
 		addMaintenance(&engine.Maintenance, e.Maintenance)
@@ -79,6 +81,7 @@ func (a *Aggregator) GetStorage(ctx context.Context, params adminapi.GetStorageP
 	for _, name := range order {
 		engine.Tenants = append(engine.Tenants, *tenants[name])
 	}
+	engine.RejectOutOfRetention = admission.result()
 	stats.Engine = adminapi.NewOptEngineStats(engine)
 
 	return stats, nil
@@ -169,10 +172,19 @@ func addTenantStats(into *adminapi.TenantStats, from adminapi.TenantStats) {
 	into.Admission.RejectedRate += from.Admission.RejectedRate
 	into.Admission.RejectedCardinality += from.Admission.RejectedCardinality
 	into.Admission.RejectedInFlight += from.Admission.RejectedInFlight
+	if n, known := from.Admission.RejectedRetention.Get(); known {
+		into.Admission.RejectedRetention = adminapi.NewOptInt64(into.Admission.RejectedRetention.Or(0) + n)
+	}
 	into.Admission.SampledDropped += from.Admission.SampledDropped
 	into.Admission.Overflowed += from.Admission.Overflowed
 
 	for _, s := range from.Signals {
+		if !s.RetainFrom.IsSet() {
+			s.RetentionLagSeconds.Reset()
+			if s.RetentionBoundBy.IsSet() {
+				s.RetentionBoundBy = adminapi.NewOptRetentionBound(adminapi.RetentionBoundNone)
+			}
+		}
 		i, found := slices.BinarySearchFunc(into.Signals, s.Signal,
 			func(e adminapi.EngineSignalStats, want adminapi.Signal) int { return cmp.Compare(e.Signal, want) },
 		)
@@ -186,6 +198,7 @@ func addTenantStats(into *adminapi.TenantStats, from adminapi.TenantStats) {
 }
 
 func addSignalStats(into *adminapi.EngineSignalStats, from adminapi.EngineSignalStats) {
+	addRetentionStats(into, from)
 	into.Series += from.Series
 	into.HeadItems += from.HeadItems
 	into.HeadBytes += from.HeadBytes

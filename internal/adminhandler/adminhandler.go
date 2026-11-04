@@ -190,7 +190,11 @@ func (a *AdminAPI) GetStorage(ctx context.Context, _ adminapi.GetStorageParams) 
 		ClickhouseEnabled: a.opts.ClickHouseEnabled,
 	}
 	if a.opts.Engine != nil {
-		stats.Engine = adminapi.NewOptEngineStats(mapEngineStats(a.opts.Engine.Inspect()))
+		engine := mapEngineStats(a.opts.Engine.Inspect())
+		if provider, ok := a.opts.Engine.(RetentionPolicyProvider); ok {
+			mapRetentionPolicies(&engine, provider)
+		}
+		stats.Engine = adminapi.NewOptEngineStats(engine)
 	}
 	if a.opts.CHStorage != nil {
 		tables, err := a.collectCHStats(ctx)
