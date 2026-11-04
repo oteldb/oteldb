@@ -13,15 +13,12 @@ export default defineConfig({
       target: "./src/api/admin.ts",
       schemas: "./src/api/model",
       client: "react-query",
+      httpClient: "axios",
       // Same-origin: the admin API is served alongside the UI, so paths stay
       // relative (the spec's absolute server URL is ignored) via the mutator.
       baseUrl: "",
       clean: true,
-      prettier: false,
       override: {
-        query: {
-          useQuery: true,
-        },
         mutator: {
           path: "./src/lib/fetcher.ts",
           name: "customFetch",
