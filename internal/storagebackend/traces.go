@@ -28,8 +28,8 @@ var (
 	_ traceqlengine.Querier = (*TraceQuerier)(nil)
 )
 
-// SelectSpansets resolves candidate traces, filters their retained extents using a narrow scan,
-// then materializes surviving traces. The engine rechecks all predicates and applies the limit.
+// SelectSpansets materializes candidate traces once, then filters their retained extents.
+// The engine rechecks all predicates and applies the limit.
 func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.SelectSpansetsParams) (iterators.Iterator[traceqlengine.Trace], error) {
 	ctx = q.b.queryContext(ctx)
 
@@ -41,16 +41,10 @@ func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.
 		return iterators.Empty[traceqlengine.Trace](), nil
 	}
 
-	if needsTraceExtents(params) {
-		if !pushed {
-			traceIDs = map[otelstorage.TraceID]struct{}{}
-			lo, hi := fetchWindow(params.Start, params.End)
-			if err := q.collectTraceIDs(ctx, lo, hi, traceFilter{}, traceIDs); err != nil {
-				return nil, err
-			}
-		}
-		traceIDs, err = q.filterTraceExtents(ctx, params, traceIDs)
-		if err != nil {
+	if !pushed && (!params.Start.IsZero() || !params.End.IsZero()) {
+		traceIDs = map[otelstorage.TraceID]struct{}{}
+		lo, hi := fetchWindow(params.Start, params.End)
+		if err := q.collectTraceIDs(ctx, lo, hi, traceFilter{}, traceIDs); err != nil {
 			return nil, err
 		}
 		if len(traceIDs) == 0 {
@@ -63,18 +57,44 @@ func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.
 		return nil, err
 	}
 
-	order := make([]otelstorage.TraceID, 0)
-	byTrace := map[otelstorage.TraceID][]tracestorage.Span{}
+	checkExtents := needsTraceExtents(params)
+	indices := make(map[otelstorage.TraceID]int)
+	var traces []traceqlengine.Trace
+	var extents []traceExtent
 	for _, span := range spans {
-		if _, ok := byTrace[span.TraceID]; !ok {
-			order = append(order, span.TraceID)
+		i, found := indices[span.TraceID]
+		if !found {
+			i = len(traces)
+			indices[span.TraceID] = i
+			traces = append(traces, traceqlengine.Trace{TraceID: span.TraceID})
+			if checkExtents {
+				extents = append(extents, traceExtent{start: span.Start.AsTime(), end: span.End.AsTime()})
+			}
 		}
-		byTrace[span.TraceID] = append(byTrace[span.TraceID], span)
+		traces[i].Spans = append(traces[i].Spans, span)
+		if checkExtents {
+			extent := &extents[i]
+			if start := span.Start.AsTime(); start.Before(extent.start) {
+				extent.start = start
+			}
+			if end := span.End.AsTime(); end.After(extent.end) {
+				extent.end = end
+			}
+		}
 	}
-
-	traces := make([]traceqlengine.Trace, 0, len(order))
-	for _, id := range order {
-		traces = append(traces, traceqlengine.Trace{TraceID: id, Spans: byTrace[id]})
+	if checkExtents {
+		keepDuration := traceExtentPredicate(params.TraceDurationMatchers)
+		kept := traces[:0]
+		for i, trace := range traces {
+			extent := extents[i]
+			if !params.ContainsTrace(extent.start, extent.end) ||
+				(q.b.traceQLPushdown && !keepDuration(extent.end.Sub(extent.start))) {
+				continue
+			}
+			kept = append(kept, trace)
+		}
+		clear(traces[len(kept):])
+		traces = kept
 	}
 	return iterators.Slice(traces), nil
 }

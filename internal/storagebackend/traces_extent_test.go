@@ -136,26 +136,17 @@ func TestTraceExtentRetainedSpans(t *testing.T) {
 					require.NoError(t, err)
 					require.Len(t, got.Traces, tt.count)
 					require.Equal(t, want, got)
-					if tt.count == 0 {
-						return
+					require.Len(t, source.requests, 2, "candidate resolution precedes one retained-trace materialization")
+					for _, request := range source.requests {
+						require.NotEqual(t, []string{sigtrace.ColTraceID, sigtrace.ColDuration}, request.Projection, "duration must not add a separate timing scan")
 					}
 					last := source.requests[len(source.requests)-1]
 					require.Equal(t, int64(-1<<63), last.Start)
 					require.Equal(t, int64(1<<63-1), last.End)
-					var extent *fetch.Request
-					for i := range source.requests {
-						r := &source.requests[i]
-						if len(r.Projection) == 2 {
-							extent = r
-						}
-					}
-					require.NotNil(t, extent)
-					require.ElementsMatch(t, []string{sigtrace.ColTraceID, sigtrace.ColDuration}, extent.Projection)
-					require.Equal(t, int64(-1<<63), extent.Start)
 					if tt.name == "gap" {
 						for i := byte(1); i <= 4; i++ {
 							id := pcommon.TraceID{15: i}
-							require.Equal(t, i == 1, last.Conditions[0].Match(signal.StringValue(id[:])))
+							require.True(t, last.Conditions[0].Match(signal.StringValue(id[:])), "duration is evaluated after candidate materialization")
 						}
 					}
 				})
@@ -181,4 +172,48 @@ func TestTraceExtentUnboundedBareNoPrepass(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got.Traces, 2)
 	require.Len(t, source.requests, 1)
+}
+
+func TestTraceExtentDirectSecondaryBounds(t *testing.T) {
+	t.Parallel()
+	store, window := projectionTraceFixture(t)
+	base := window.Start.Add(time.Second)
+	late := ptrace.NewTraces()
+	rs := late.ResourceSpans().AppendEmpty()
+	rs.Resource().Attributes().PutStr("service.name", "late")
+	span := rs.ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+	span.SetTraceID(pcommon.TraceID{15: 1})
+	span.SetSpanID(pcommon.SpanID{7: 3})
+	span.SetParentSpanID(pcommon.SpanID{7: 1})
+	span.SetStartTimestamp(pcommon.NewTimestampFromTime(base.Add(2 * time.Second)))
+	span.SetEndTimestamp(pcommon.NewTimestampFromTime(base.Add(3 * time.Second)))
+	require.NoError(t, storagebackend.New(store).ConsumeTraces(t.Context(), late))
+	for _, tt := range []struct {
+		name     string
+		params   traceqlengine.SelectSpansetsParams
+		id       byte
+		requests int
+	}{
+		{"containment", traceqlengine.SelectSpansetsParams{Start: window.Start, End: window.End}, 2, 2},
+		{"minimum", traceqlengine.SelectSpansetsParams{MinDuration: 2 * time.Second}, 1, 1},
+		{"maximum", traceqlengine.SelectSpansetsParams{MaxDuration: time.Second}, 2, 1},
+		{"inclusive", traceqlengine.SelectSpansetsParams{MinDuration: 3 * time.Second, MaxDuration: 3 * time.Second}, 1, 1},
+		{"none", traceqlengine.SelectSpansetsParams{MaxDuration: time.Millisecond}, 0, 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			source := &traceProjectionSource{Source: store}
+			querier := storagebackend.NewQuery(source).Traces()
+			iterator, err := querier.SelectSpansets(t.Context(), tt.params)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, iterator.Close()) }()
+			var trace traceqlengine.Trace
+			if tt.id != 0 {
+				require.True(t, iterator.Next(&trace))
+				require.Equal(t, tt.id, trace.TraceID[15])
+			}
+			require.False(t, iterator.Next(&trace))
+			require.NoError(t, iterator.Err())
+			require.Len(t, source.requests, tt.requests)
+		})
+	}
 }
