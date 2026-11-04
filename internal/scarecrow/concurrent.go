@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-// concurrencyLimit bounds how many [concurrent] operators may run a producer goroutine at once,
+// concurrencySlots bounds producer goroutines across [concurrent] operators and matrix folds,
 // across every in-flight query in the process. Without it a query with many independent
 // subtrees would spawn a scanner per subtree and multiply storage pressure by the fan-out.
 var concurrencySlots = newSemaphore(max(1, runtime.GOMAXPROCS(0)))
@@ -39,11 +39,8 @@ const prefetchDepth = 4
 // concurrent runs its child on its own goroutine, letting the child's work — most importantly
 // its storage latency — overlap with the parent's.
 //
-// This is the *only* operator in the engine that starts a goroutine. Every other operator is
-// single-threaded and synchronous, and nothing blocks on anything it does not own, which is
-// what makes the engine deadlock-free by construction rather than by inspection. The prototype
-// instead spread errgroups across its binary and function operators and spent four commits on
-// the resulting deadlocks.
+// Matrix folds also use this process-wide slot budget for independent series. Acquisition is
+// always try-only, so nested pipelines fall back to synchronous evaluation under contention.
 //
 // It cannot hand out its child's borrowed column, since the child overwrites that on its next
 // call, so each column is copied into a ring this operator owns. The ring is sized so a slot is
