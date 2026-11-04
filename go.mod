@@ -323,7 +323,7 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/foxboron/go-tpm-keyfiles v0.0.0-20260427185012-515ba073c4c1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
-	github.com/fvbommel/sortorder v1.1.0 // indirect
+	github.com/fvbommel/sortorder v1.2.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.4 // indirect
 	github.com/gammazero/deque v1.2.1 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
