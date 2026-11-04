@@ -22,7 +22,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cheggaaa/pb/v3 v3.2.1
 	github.com/cilium/cilium v1.20.4
-	github.com/docker/cli v29.7.2+incompatible
+	github.com/docker/cli v29.9.2+incompatible
 	github.com/dustin/go-humanize v1.1.0
 	github.com/fatih/color v1.19.0
 	github.com/go-faster/errors v0.8.0
@@ -324,7 +324,7 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/foxboron/go-tpm-keyfiles v0.0.0-20260427185012-515ba073c4c1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
-	github.com/fvbommel/sortorder v1.1.0 // indirect
+	github.com/fvbommel/sortorder v1.2.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.4 // indirect
 	github.com/gammazero/deque v1.2.1 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
