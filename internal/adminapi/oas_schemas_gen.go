@@ -462,6 +462,43 @@ func (s *ClusterNodes) SetNodes(val []ClusterNodeStatus) {
 	s.Nodes = val
 }
 
+// Ref: #/components/schemas/ClusterRebalanceMove
+type ClusterRebalanceMove struct {
+	Shard   string   `json:"shard"`
+	Added   []string `json:"added"`
+	Removed []string `json:"removed"`
+}
+
+// GetShard returns the value of Shard.
+func (s *ClusterRebalanceMove) GetShard() string {
+	return s.Shard
+}
+
+// GetAdded returns the value of Added.
+func (s *ClusterRebalanceMove) GetAdded() []string {
+	return s.Added
+}
+
+// GetRemoved returns the value of Removed.
+func (s *ClusterRebalanceMove) GetRemoved() []string {
+	return s.Removed
+}
+
+// SetShard sets the value of Shard.
+func (s *ClusterRebalanceMove) SetShard(val string) {
+	s.Shard = val
+}
+
+// SetAdded sets the value of Added.
+func (s *ClusterRebalanceMove) SetAdded(val []string) {
+	s.Added = val
+}
+
+// SetRemoved sets the value of Removed.
+func (s *ClusterRebalanceMove) SetRemoved(val []string) {
+	s.Removed = val
+}
+
 // One (tenant, signal)'s footprint across the cluster. The logical figures deduplicate by part id; the
 // physical ones do not, and their ratio is the replication actually achieved — which is not the
 // configured factor while a rebalance is in flight or a replica is missing.
@@ -586,16 +623,33 @@ func (s *ClusterSignalStorage) SetNodes(val []ClusterNodeSignalStorage) {
 	s.Nodes = val
 }
 
-// Cluster membership, present only in cluster mode.
+// A node-reported cluster view. Aggregate legacy members come from the first reporting node and owned
+// is a union of compaction claims; new health and placement fields remain per-node in node_reports.
 // Ref: #/components/schemas/ClusterStats
 type ClusterStats struct {
-	// This node's ring id.
+	// This node's reported cluster address; empty in aggregate totals.
 	Self    string          `json:"self"`
 	Members []ClusterMember `json:"members"`
-	// Shard keys owned by this node.
-	Owned    []string         `json:"owned"`
-	PartSync OptPartSyncStats `json:"part_sync"`
-	Ec       OptECStats       `json:"ec"`
+	// Held compaction-claim shard keys, not replica owner sets. Aggregate totals contain a union of
+	// reported claims.
+	Owned []string `json:"owned"`
+	// This node uses peer mirroring for a private backend; unknown on older nodes.
+	PrivateBackend OptBool `json:"private_backend"`
+	// This node reports itself absent from its local member set.
+	SelfAbsent OptBool `json:"self_absent"`
+	// This node cannot prove its membership lease and refuses primary writes.
+	Fenced OptBool `json:"fenced"`
+	// Cumulative membership re-registrations by this node.
+	Rejoins OptInt64 `json:"rejoins"`
+	// Local membership fence deadline; zero means no lease, absent means unknown.
+	FenceDeadlineUnixNano OptInt64 `json:"fence_deadline_unix_nano"`
+	// Last owner-set changes enacted by this node; not a predictive preview.
+	LastRebalance []ClusterRebalanceMove `json:"last_rebalance"`
+	// Node-reported owner sets for local engine, held-claim and last-plan shard keys. Not a complete
+	// cluster inventory.
+	Placements []ShardPlacement `json:"placements"`
+	PartSync   OptPartSyncStats `json:"part_sync"`
+	Ec         OptECStats       `json:"ec"`
 }
 
 // GetSelf returns the value of Self.
@@ -611,6 +665,41 @@ func (s *ClusterStats) GetMembers() []ClusterMember {
 // GetOwned returns the value of Owned.
 func (s *ClusterStats) GetOwned() []string {
 	return s.Owned
+}
+
+// GetPrivateBackend returns the value of PrivateBackend.
+func (s *ClusterStats) GetPrivateBackend() OptBool {
+	return s.PrivateBackend
+}
+
+// GetSelfAbsent returns the value of SelfAbsent.
+func (s *ClusterStats) GetSelfAbsent() OptBool {
+	return s.SelfAbsent
+}
+
+// GetFenced returns the value of Fenced.
+func (s *ClusterStats) GetFenced() OptBool {
+	return s.Fenced
+}
+
+// GetRejoins returns the value of Rejoins.
+func (s *ClusterStats) GetRejoins() OptInt64 {
+	return s.Rejoins
+}
+
+// GetFenceDeadlineUnixNano returns the value of FenceDeadlineUnixNano.
+func (s *ClusterStats) GetFenceDeadlineUnixNano() OptInt64 {
+	return s.FenceDeadlineUnixNano
+}
+
+// GetLastRebalance returns the value of LastRebalance.
+func (s *ClusterStats) GetLastRebalance() []ClusterRebalanceMove {
+	return s.LastRebalance
+}
+
+// GetPlacements returns the value of Placements.
+func (s *ClusterStats) GetPlacements() []ShardPlacement {
+	return s.Placements
 }
 
 // GetPartSync returns the value of PartSync.
@@ -636,6 +725,41 @@ func (s *ClusterStats) SetMembers(val []ClusterMember) {
 // SetOwned sets the value of Owned.
 func (s *ClusterStats) SetOwned(val []string) {
 	s.Owned = val
+}
+
+// SetPrivateBackend sets the value of PrivateBackend.
+func (s *ClusterStats) SetPrivateBackend(val OptBool) {
+	s.PrivateBackend = val
+}
+
+// SetSelfAbsent sets the value of SelfAbsent.
+func (s *ClusterStats) SetSelfAbsent(val OptBool) {
+	s.SelfAbsent = val
+}
+
+// SetFenced sets the value of Fenced.
+func (s *ClusterStats) SetFenced(val OptBool) {
+	s.Fenced = val
+}
+
+// SetRejoins sets the value of Rejoins.
+func (s *ClusterStats) SetRejoins(val OptInt64) {
+	s.Rejoins = val
+}
+
+// SetFenceDeadlineUnixNano sets the value of FenceDeadlineUnixNano.
+func (s *ClusterStats) SetFenceDeadlineUnixNano(val OptInt64) {
+	s.FenceDeadlineUnixNano = val
+}
+
+// SetLastRebalance sets the value of LastRebalance.
+func (s *ClusterStats) SetLastRebalance(val []ClusterRebalanceMove) {
+	s.LastRebalance = val
+}
+
+// SetPlacements sets the value of Placements.
+func (s *ClusterStats) SetPlacements(val []ShardPlacement) {
+	s.Placements = val
 }
 
 // SetPartSync sets the value of PartSync.
@@ -1054,6 +1178,26 @@ type EngineSignalStats struct {
 	WalSegments int64 `json:"wal_segments"`
 	// Open WAL segment size.
 	WalBytes int64 `json:"wal_bytes"`
+	// This node cannot answer beyond its known complete shard data; absent on older nodes and aggregate
+	// totals.
+	HasReadGap OptBool `json:"has_read_gap"`
+	// Read gap boundary; -9223372036854775808 means no parts were known complete. Meaningful while
+	// has_read_gap is true.
+	ReadGapAfterUnixNano OptInt64 `json:"read_gap_after_unix_nano"`
+	// This node refuses writes because its backend is out of space.
+	OutOfSpace OptBool `json:"out_of_space"`
+	// Current local repair obligations.
+	WantedParts OptInt64 `json:"wanted_parts"`
+	// Current acknowledged missing parts; affected queries may be short.
+	Holes OptInt64 `json:"holes"`
+	// Durable cumulative loss count reported by this shard copy.
+	LostParts OptUint64 `json:"lost_parts"`
+	// This engine cannot commit because its last bucket-index load failed.
+	IndexFenced OptBool `json:"index_fenced"`
+	// The local index-load error behind index_fenced.
+	IndexLoadError OptString `json:"index_load_error"`
+	// The first index commit for this node's current claim has not landed.
+	TenureUnestablished OptBool `json:"tenure_unestablished"`
 }
 
 // GetSignal returns the value of Signal.
@@ -1151,6 +1295,51 @@ func (s *EngineSignalStats) GetWalBytes() int64 {
 	return s.WalBytes
 }
 
+// GetHasReadGap returns the value of HasReadGap.
+func (s *EngineSignalStats) GetHasReadGap() OptBool {
+	return s.HasReadGap
+}
+
+// GetReadGapAfterUnixNano returns the value of ReadGapAfterUnixNano.
+func (s *EngineSignalStats) GetReadGapAfterUnixNano() OptInt64 {
+	return s.ReadGapAfterUnixNano
+}
+
+// GetOutOfSpace returns the value of OutOfSpace.
+func (s *EngineSignalStats) GetOutOfSpace() OptBool {
+	return s.OutOfSpace
+}
+
+// GetWantedParts returns the value of WantedParts.
+func (s *EngineSignalStats) GetWantedParts() OptInt64 {
+	return s.WantedParts
+}
+
+// GetHoles returns the value of Holes.
+func (s *EngineSignalStats) GetHoles() OptInt64 {
+	return s.Holes
+}
+
+// GetLostParts returns the value of LostParts.
+func (s *EngineSignalStats) GetLostParts() OptUint64 {
+	return s.LostParts
+}
+
+// GetIndexFenced returns the value of IndexFenced.
+func (s *EngineSignalStats) GetIndexFenced() OptBool {
+	return s.IndexFenced
+}
+
+// GetIndexLoadError returns the value of IndexLoadError.
+func (s *EngineSignalStats) GetIndexLoadError() OptString {
+	return s.IndexLoadError
+}
+
+// GetTenureUnestablished returns the value of TenureUnestablished.
+func (s *EngineSignalStats) GetTenureUnestablished() OptBool {
+	return s.TenureUnestablished
+}
+
 // SetSignal sets the value of Signal.
 func (s *EngineSignalStats) SetSignal(val Signal) {
 	s.Signal = val
@@ -1244,6 +1433,51 @@ func (s *EngineSignalStats) SetWalSegments(val int64) {
 // SetWalBytes sets the value of WalBytes.
 func (s *EngineSignalStats) SetWalBytes(val int64) {
 	s.WalBytes = val
+}
+
+// SetHasReadGap sets the value of HasReadGap.
+func (s *EngineSignalStats) SetHasReadGap(val OptBool) {
+	s.HasReadGap = val
+}
+
+// SetReadGapAfterUnixNano sets the value of ReadGapAfterUnixNano.
+func (s *EngineSignalStats) SetReadGapAfterUnixNano(val OptInt64) {
+	s.ReadGapAfterUnixNano = val
+}
+
+// SetOutOfSpace sets the value of OutOfSpace.
+func (s *EngineSignalStats) SetOutOfSpace(val OptBool) {
+	s.OutOfSpace = val
+}
+
+// SetWantedParts sets the value of WantedParts.
+func (s *EngineSignalStats) SetWantedParts(val OptInt64) {
+	s.WantedParts = val
+}
+
+// SetHoles sets the value of Holes.
+func (s *EngineSignalStats) SetHoles(val OptInt64) {
+	s.Holes = val
+}
+
+// SetLostParts sets the value of LostParts.
+func (s *EngineSignalStats) SetLostParts(val OptUint64) {
+	s.LostParts = val
+}
+
+// SetIndexFenced sets the value of IndexFenced.
+func (s *EngineSignalStats) SetIndexFenced(val OptBool) {
+	s.IndexFenced = val
+}
+
+// SetIndexLoadError sets the value of IndexLoadError.
+func (s *EngineSignalStats) SetIndexLoadError(val OptString) {
+	s.IndexLoadError = val
+}
+
+// SetTenureUnestablished sets the value of TenureUnestablished.
+func (s *EngineSignalStats) SetTenureUnestablished(val OptBool) {
+	s.TenureUnestablished = val
 }
 
 // Embedded oteldb/storage engine statistics.
@@ -2479,6 +2713,52 @@ func (o OptTraceID) Or(d TraceID) TraceID {
 	return d
 }
 
+// NewOptUint64 returns new OptUint64 with value set to v.
+func NewOptUint64(v uint64) OptUint64 {
+	return OptUint64{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptUint64 is optional uint64.
+type OptUint64 struct {
+	Value uint64
+	Set   bool
+}
+
+// IsSet returns true if OptUint64 was set.
+func (o OptUint64) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptUint64) Reset() {
+	var v uint64
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptUint64) SetTo(v uint64) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptUint64) Get() (v uint64, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptUint64) Or(d uint64) uint64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // One part column's physical description and the size it takes on the backend.
 // Ref: #/components/schemas/PartColumn
 type PartColumn struct {
@@ -2979,6 +3259,33 @@ func (s *RuntimeStats) SetMemLimitBytes(val OptInt64) {
 	s.MemLimitBytes = val
 }
 
+// Ref: #/components/schemas/ShardPlacement
+type ShardPlacement struct {
+	Shard string `json:"shard"`
+	// Node ids in routing slot order, according to the reporting node.
+	Owners []string `json:"owners"`
+}
+
+// GetShard returns the value of Shard.
+func (s *ShardPlacement) GetShard() string {
+	return s.Shard
+}
+
+// GetOwners returns the value of Owners.
+func (s *ShardPlacement) GetOwners() []string {
+	return s.Owners
+}
+
+// SetShard sets the value of Shard.
+func (s *ShardPlacement) SetShard(val string) {
+	s.Shard = val
+}
+
+// SetOwners sets the value of Owners.
+func (s *ShardPlacement) SetOwners(val []string) {
+	s.Owners = val
+}
+
 // Telemetry signal.
 // Ref: #/components/schemas/Signal
 type Signal string
@@ -3255,6 +3562,77 @@ func (s *SignalRetentionPolicy) SetPooledMaxBytes(val int64) {
 
 type SpanID string
 
+// One node's storage observation; missing and legacy fields remain unknown.
+// Ref: #/components/schemas/StorageNodeReport
+type StorageNodeReport struct {
+	Node            string           `json:"node"`
+	Addr            OptString        `json:"addr"`
+	Status          ClusterNodeState `json:"status"`
+	Error           OptString        `json:"error"`
+	DurationSeconds OptFloat64       `json:"duration_seconds"`
+	Engine          OptEngineStats   `json:"engine"`
+}
+
+// GetNode returns the value of Node.
+func (s *StorageNodeReport) GetNode() string {
+	return s.Node
+}
+
+// GetAddr returns the value of Addr.
+func (s *StorageNodeReport) GetAddr() OptString {
+	return s.Addr
+}
+
+// GetStatus returns the value of Status.
+func (s *StorageNodeReport) GetStatus() ClusterNodeState {
+	return s.Status
+}
+
+// GetError returns the value of Error.
+func (s *StorageNodeReport) GetError() OptString {
+	return s.Error
+}
+
+// GetDurationSeconds returns the value of DurationSeconds.
+func (s *StorageNodeReport) GetDurationSeconds() OptFloat64 {
+	return s.DurationSeconds
+}
+
+// GetEngine returns the value of Engine.
+func (s *StorageNodeReport) GetEngine() OptEngineStats {
+	return s.Engine
+}
+
+// SetNode sets the value of Node.
+func (s *StorageNodeReport) SetNode(val string) {
+	s.Node = val
+}
+
+// SetAddr sets the value of Addr.
+func (s *StorageNodeReport) SetAddr(val OptString) {
+	s.Addr = val
+}
+
+// SetStatus sets the value of Status.
+func (s *StorageNodeReport) SetStatus(val ClusterNodeState) {
+	s.Status = val
+}
+
+// SetError sets the value of Error.
+func (s *StorageNodeReport) SetError(val OptString) {
+	s.Error = val
+}
+
+// SetDurationSeconds sets the value of DurationSeconds.
+func (s *StorageNodeReport) SetDurationSeconds(val OptFloat64) {
+	s.DurationSeconds = val
+}
+
+// SetEngine sets the value of Engine.
+func (s *StorageNodeReport) SetEngine(val OptEngineStats) {
+	s.Engine = val
+}
+
 // Storage statistics for the embedded engine (primary) and ClickHouse (deprecated).
 // Ref: #/components/schemas/StorageStats
 type StorageStats struct {
@@ -3264,6 +3642,8 @@ type StorageStats struct {
 	ClickhouseEnabled bool               `json:"clickhouse_enabled"`
 	Engine            OptEngineStats     `json:"engine"`
 	Clickhouse        OptClickHouseStats `json:"clickhouse"`
+	// Per-node observations from the existing storage fanout; absent on direct node responses.
+	NodeReports []StorageNodeReport `json:"node_reports"`
 }
 
 // GetStorageEnabled returns the value of StorageEnabled.
@@ -3286,6 +3666,11 @@ func (s *StorageStats) GetClickhouse() OptClickHouseStats {
 	return s.Clickhouse
 }
 
+// GetNodeReports returns the value of NodeReports.
+func (s *StorageStats) GetNodeReports() []StorageNodeReport {
+	return s.NodeReports
+}
+
 // SetStorageEnabled sets the value of StorageEnabled.
 func (s *StorageStats) SetStorageEnabled(val bool) {
 	s.StorageEnabled = val
@@ -3304,6 +3689,11 @@ func (s *StorageStats) SetEngine(val OptEngineStats) {
 // SetClickhouse sets the value of Clickhouse.
 func (s *StorageStats) SetClickhouse(val OptClickHouseStats) {
 	s.Clickhouse = val
+}
+
+// SetNodeReports sets the value of NodeReports.
+func (s *StorageStats) SetNodeReports(val []StorageNodeReport) {
+	s.NodeReports = val
 }
 
 // One group's share of a signal's storage.
