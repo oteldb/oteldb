@@ -52,7 +52,7 @@ export function Panel({
     <Card view="outlined" className="panel">
       <Flex direction="column" gap={4} height="100%">
         {(title != null || actions != null) && (
-          <Flex alignItems="baseline" justifyContent="space-between" gap={3}>
+          <Flex alignItems="baseline" justifyContent="space-between" gap={3} wrap>
             <Flex alignItems="baseline" gap={2} minWidth={0} wrap>
               {title != null && <Text variant="subheader-2">{title}</Text>}
               {sub != null && (

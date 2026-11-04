@@ -27,6 +27,7 @@ import (
 	"github.com/oteldb/storage/cluster"
 	"github.com/oteldb/storage/cluster/etcd"
 	"github.com/oteldb/storage/reliability"
+	"github.com/oteldb/storage/tenant"
 
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
@@ -101,20 +102,29 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		opts = append(opts, clusterOpt)
 	}
 
-	if tenancyOpt, err := tenancyOption(cfg.Policy); err != nil {
+	resolver, err := tenancyResolver(cfg.Policy)
+	if err != nil {
 		return nil, nil, errors.Wrap(err, "storage policy")
-	} else if tenancyOpt != nil {
-		opts = append(opts, tenancyOpt)
+	}
+	if resolver != nil {
+		opts = append(opts, storage.WithTenancy(resolver))
 		lg.Info("Applying embedded storage tenancy policy",
 			zap.Int("precision_tiers", len(cfg.Policy.Precision)),
 			zap.Int("downsample_tiers", len(cfg.Policy.Downsample)),
-			zap.Bool("recompress", cfg.Policy.Recompress != nil),
-			zap.Bool("ec", cfg.Policy.EC != nil),
+			zap.Bool("recompress", cfg.Policy.Recompress != nil), zap.Bool("ec", cfg.Policy.EC != nil),
 			zap.Duration("retention_max_age", retentionMaxAge(cfg.Policy.Retention)),
 			zap.Int("retention_signal_budgets", retentionSignalBudgets(cfg.Policy.Retention)),
 			zap.Bool("limits", cfg.Policy.Limits != nil),
 		)
 		warnECInert(cfg.Cluster, cfg.Policy, lg)
+	} else {
+		resolver = tenant.Default()
+	}
+	resolved := resolver.Resolve("default")
+	logRetentionPolicy(lg, resolved.Retention, cfg.RejectOutOfRetention)
+	warnRetentionPolicy(lg, cfg.Policy, resolved.Retention)
+	if cfg.RejectOutOfRetention {
+		opts = append(opts, storage.WithRejectOutOfRetention())
 	}
 
 	caches := resolveCacheSettings(cfg)
@@ -136,12 +146,15 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		zap.Int64("decode_memory_bytes", caches.DecodeMemory),
 		zap.Int64("merge_memory_bytes", caches.MergeMemory),
 		zap.Bool("aggregate_stats", caches.AggregateStats),
+		zap.Bool("reject_out_of_retention", cfg.RejectOutOfRetention),
 	)
 	b := New(store,
 		WithLogParallelism(cfg.LogQueryParallelism),
 		WithMeterProvider(m.MeterProvider()),
 		WithTracerProvider(m.TracerProvider()),
 	)
+	b.policyResolver = resolver
+	b.rejectOutOfRetention = cfg.RejectOutOfRetention
 	return b, store.Close, nil
 }
 

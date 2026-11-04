@@ -169,19 +169,50 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   **Implemented** in `internal/storagebackend/policy.go` (`tenancyOption` → `storage.WithTenancy`):
   the `storage.policy` config block exposes `precision[]{after,bits}`,
   `downsample[]{after,interval,agg}`, `recompress{after,level}`, `ec{data,parity,after}`,
-  `retention{max_age,max_bytes,max_bytes_per_signal}`
+  `retention{max_age,max_bytes,signals.<signal>.{max_age,max_bytes}}`
   and `limits{ingest_bytes_per_second,max_in_flight_bytes,max_series,max_series_soft,max_part_size,
   max_merge_part_size}`. `max_part_size` bounds a *flushed* part's uncompressed estimate;
   `max_merge_part_size` bounds a *merged* part's compressed size on disk, and left at zero is
   derived from the backend's free space.
   oteldb runs the embedded engine single-tenant, so a static `tenant.ResolverFunc` returns one
-  policy for every tenant — retention is therefore one global window, not per-tenant.
-  Both `retention.max_age` and `retention.max_bytes` are enforced by the library.
-  `retention.max_bytes_per_signal` maps a signal name (`metric`, `log`, `trace`, `profile`,
-  `exemplar`) to its own byte budget, bounding that signal from its parts alone. `max_bytes` is
-  pooled, so without it one signal's growth moves the cutoff for all of them; both apply when both
-  are set, and a signal is trimmed to whichever binds first. The newest part of each budgeted signal
-  is never dropped, so the floor is one part per signal.
+  policy for every tenant; each signal can set its own age and byte bounds.
+  `retention.signals` accepts `metric`, `log`, `trace`, `profile` and `exemplar`.
+  A positive signal age replaces `max_age`, longer or shorter; zero inherits the default.
+  Signal and pooled byte bounds both apply. A signal byte bound above a positive pooled bound,
+  unknown signal names and negative bounds are startup errors. The newest part of each budgeted
+  signal remains a storage floor.
+
+  The old `retention.max_bytes_per_signal` key is rejected, including an empty or null value.
+  Migrate each entry to `retention.signals.<signal>.max_bytes`:
+
+  ```yaml
+  storage:
+    reject_out_of_retention: false
+    policy:
+      retention:
+        max_age: 720h
+        max_bytes: 100GB
+        signals:
+          metric: {max_age: 2160h, max_bytes: 30GB}
+          log: {max_age: 168h, max_bytes: 40GB}
+          trace: {max_age: 72h, max_bytes: 20GB}
+          exemplar: {max_age: 72h}
+  ```
+
+  Age limits filter facade reads immediately; physical cleanup and byte-budget enforcement are
+  eventual. `storage.reject_out_of_retention` optionally refuses expired writes before they mint
+  identities/WAL rows; it defaults off to preserve backfill. Rejections appear as
+  `out_of_retention` in admission statistics and metrics. Startup logs report effective ages and
+  budgets for all signals, and warn if exemplars outlive traces or a metric policy tier starts
+  after the metric retention window.
+
+  The storage library's native `Write*` calls return admission counts. The embedded Collector
+  sink currently discards those counts and returns success when storage returns no error, even
+  when admission sheds some records. Inspect/admission metrics expose these rejections; the
+  Collector OTLP response does not. A configured batch processor can acknowledge requests before
+  storage admission runs. The native OTLP handler used by `odbingest` reports decoder drops through
+  OTLP partial success, but its error-only sink also does not propagate storage admission counts.
+
   `ec` is an age tier like `recompress`, but for durability: cold parts are stored as `data`+`parity`
   Reed-Solomon shards, one per cluster node, instead of RF full copies. It applies only under
   `storage.cluster` with `private_backend` — on a shared object store the store owns durability and

@@ -101,10 +101,10 @@ storage:
     retention:
       max_age: 720h
       max_bytes: 100GB
-      max_bytes_per_signal:
-        log: 40GB
-        trace: 20GB
-        metric: 30GB
+      signals:
+        log: {max_age: 168h, max_bytes: 40GB}
+        trace: {max_age: 72h, max_bytes: 20GB}
+        metric: {max_age: 2160h, max_bytes: 30GB}
     limits:
       ingest_bytes_per_second: 10MB
       max_series: 1000000
@@ -130,10 +130,10 @@ storage:
 	require.Equal(t, &storagebackend.RetentionConfig{
 		MaxAge:   720 * time.Hour,
 		MaxBytes: 100_000_000_000,
-		MaxBytesPerSignal: map[string]xbytes.Bytes{
-			"log":    40_000_000_000,
-			"trace":  20_000_000_000,
-			"metric": 30_000_000_000,
+		Signals: map[string]storagebackend.SignalRetentionConfig{
+			"log":    {MaxAge: 168 * time.Hour, MaxBytes: 40_000_000_000},
+			"trace":  {MaxAge: 72 * time.Hour, MaxBytes: 20_000_000_000},
+			"metric": {MaxAge: 2160 * time.Hour, MaxBytes: 30_000_000_000},
 		},
 	}, p.Retention)
 	require.Equal(t, &storagebackend.LimitsConfig{
@@ -212,4 +212,23 @@ storage:
 	require.Equal(t, new(xbytes.Bytes(64<<20)), cfg.Storage.DecodeCacheBytes)
 	require.Equal(t, new(xbytes.Bytes(256<<20)), cfg.Storage.DecodeMemoryBytes)
 	require.Equal(t, new(false), cfg.Storage.AggregateStats)
+}
+
+func TestRemovedRetentionBudgetConfig(t *testing.T) {
+	for _, value := range []string{"null", "{}", "{log: 1GB}"} {
+		t.Run(value, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "oteldb.yml")
+			require.NoError(t, os.WriteFile(path, []byte("storage:\n  policy:\n    retention:\n      max_bytes_per_signal: "+value+"\n"), 0o600))
+			_, err := loadConfig(path)
+			require.ErrorContains(t, err, "retention.signals.<signal>.max_bytes")
+		})
+	}
+}
+
+func TestRetentionAdmissionConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "oteldb.yml")
+	require.NoError(t, os.WriteFile(path, []byte("storage:\n  reject_out_of_retention: true\n"), 0o600))
+	cfg, err := loadConfig(path)
+	require.NoError(t, err)
+	require.True(t, cfg.Storage.RejectOutOfRetention)
 }

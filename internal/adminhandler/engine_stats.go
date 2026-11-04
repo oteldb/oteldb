@@ -55,6 +55,7 @@ func mapTenantStats(t storage.TenantStats) adminapi.TenantStats {
 			RejectedRate:        t.Admission.RejectedRate,
 			RejectedCardinality: t.Admission.RejectedCardinality,
 			RejectedInFlight:    t.Admission.RejectedInFlight,
+			RejectedRetention:   adminapi.NewOptInt64(t.Admission.RejectedRetention),
 			SampledDropped:      t.Admission.SampledDropped,
 			Overflowed:          t.Admission.Overflowed,
 		},
@@ -83,6 +84,15 @@ func mapSignalStats(s storage.SignalStats) adminapi.EngineSignalStats {
 		Wal:             s.WAL,
 		WalSegments:     int64(s.WALSegments),
 		WalBytes:        s.WALBytes,
+	}
+	es.RetentionBoundBy = adminapi.NewOptRetentionBound(adminapi.RetentionBound(s.RetentionBoundBy.String()))
+	if s.RetainFromUnixNano > 0 {
+		es.RetainFrom = adminapi.NewOptDateTime(time.Unix(0, s.RetainFromUnixNano).UTC())
+		lag := 0.0
+		if s.Parts > 0 && s.MinTimeUnixNano < s.RetainFromUnixNano {
+			lag = float64(s.RetainFromUnixNano)/1e9 - float64(s.MinTimeUnixNano)/1e9
+		}
+		es.RetentionLagSeconds = adminapi.NewOptFloat64(lag)
 	}
 	if s.MinTimeUnixNano > 0 {
 		es.MinTime = adminapi.NewOptDateTime(time.Unix(0, s.MinTimeUnixNano).UTC())

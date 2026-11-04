@@ -458,6 +458,9 @@ components:
           $ref: "#/components/schemas/MaintenanceStats"
         cluster:
           $ref: "#/components/schemas/ClusterStats"
+        reject_out_of_retention:
+          type: boolean
+          description: "Whether expired-write admission is enabled; omitted when configuration is unknown or differs across reporting nodes."
     MaintenanceStats:
       type: object
       description: >
@@ -557,6 +560,19 @@ components:
         max_time:
           type: string
           format: date-time
+        retain_from:
+          type: string
+          format: date-time
+          description: "Last authorized requested physical-cleanup cutoff; absent without a local target, including on replicas."
+        retention_bound_by:
+          $ref: "#/components/schemas/RetentionBound"
+        retention_lag_seconds:
+          type: number
+          format: double
+          minimum: 0
+          description: "Physical expiry lag behind the requested cleanup target, not logical read visibility. Cluster views report the maximum owner lag."
+        retention_policy:
+          $ref: "#/components/schemas/SignalRetentionPolicy"
         merge_running:
           type: boolean
         merge_backlog:
@@ -585,6 +601,33 @@ components:
           type: integer
           format: int64
           description: "Open WAL segment size."
+    RetentionBound:
+      type: string
+      description: "Policy bound behind a requested cleanup cutoff."
+      enum: [none, age, signal_bytes, pooled_bytes]
+    SignalRetentionPolicy:
+      type: object
+      description: "Configured effective signal age and per-node byte bounds. Zero means no age or separate byte bound."
+      required:
+        - max_age_seconds
+        - max_bytes
+        - pooled_max_bytes
+      properties:
+        max_age_seconds:
+          type: number
+          format: double
+          minimum: 0
+          description: "Effective signal age after inheritance; zero retains forever."
+        max_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Signal-specific stored-byte bound; zero leaves only the pooled bound."
+        pooled_max_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Tenant stored-byte bound pooled across signals on this node; zero is unbounded."
     AdmissionStats:
       type: object
       description: "Ingestion admission counters for a tenant."
@@ -616,6 +659,11 @@ components:
           type: integer
           format: int64
           description: "Rejected due to in-flight admission pressure."
+        rejected_retention:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Rejected as older than the signal's retention age; absent on older nodes."
         sampled_dropped:
           type: integer
           format: int64

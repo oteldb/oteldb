@@ -232,6 +232,12 @@ func (s *AdmissionStats) encodeFields(e *jx.Encoder) {
 		e.Int64(s.RejectedInFlight)
 	}
 	{
+		if s.RejectedRetention.Set {
+			e.FieldStart("rejected_retention")
+			s.RejectedRetention.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("sampled_dropped")
 		e.Int64(s.SampledDropped)
 	}
@@ -241,14 +247,15 @@ func (s *AdmissionStats) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfAdmissionStats = [7]string{
+var jsonFieldsNameOfAdmissionStats = [8]string{
 	0: "accepted",
 	1: "rejected_ooo",
 	2: "rejected_rate",
 	3: "rejected_cardinality",
 	4: "rejected_in_flight",
-	5: "sampled_dropped",
-	6: "overflowed",
+	5: "rejected_retention",
+	6: "sampled_dropped",
+	7: "overflowed",
 }
 
 // Decode decodes AdmissionStats from json.
@@ -320,8 +327,18 @@ func (s *AdmissionStats) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"rejected_in_flight\"")
 			}
+		case "rejected_retention":
+			if err := func() error {
+				s.RejectedRetention.Reset()
+				if err := s.RejectedRetention.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"rejected_retention\"")
+			}
 		case "sampled_dropped":
-			requiredBitSet[0] |= 1 << 5
+			requiredBitSet[0] |= 1 << 6
 			if err := func() error {
 				v, err := d.Int64()
 				s.SampledDropped = int64(v)
@@ -333,7 +350,7 @@ func (s *AdmissionStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"sampled_dropped\"")
 			}
 		case "overflowed":
-			requiredBitSet[0] |= 1 << 6
+			requiredBitSet[0] |= 1 << 7
 			if err := func() error {
 				v, err := d.Int64()
 				s.Overflowed = int64(v)
@@ -354,7 +371,7 @@ func (s *AdmissionStats) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b01111111,
+		0b11011111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -2725,6 +2742,30 @@ func (s *EngineSignalStats) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.RetainFrom.Set {
+			e.FieldStart("retain_from")
+			s.RetainFrom.Encode(e, json.EncodeDateTime)
+		}
+	}
+	{
+		if s.RetentionBoundBy.Set {
+			e.FieldStart("retention_bound_by")
+			s.RetentionBoundBy.Encode(e)
+		}
+	}
+	{
+		if s.RetentionLagSeconds.Set {
+			e.FieldStart("retention_lag_seconds")
+			s.RetentionLagSeconds.Encode(e)
+		}
+	}
+	{
+		if s.RetentionPolicy.Set {
+			e.FieldStart("retention_policy")
+			s.RetentionPolicy.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("merge_running")
 		e.Bool(s.MergeRunning)
 	}
@@ -2754,7 +2795,7 @@ func (s *EngineSignalStats) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfEngineSignalStats = [15]string{
+var jsonFieldsNameOfEngineSignalStats = [19]string{
 	0:  "signal",
 	1:  "series",
 	2:  "head_items",
@@ -2763,13 +2804,17 @@ var jsonFieldsNameOfEngineSignalStats = [15]string{
 	5:  "sealed_parts",
 	6:  "min_time",
 	7:  "max_time",
-	8:  "merge_running",
-	9:  "merge_backlog",
-	10: "merge_candidates",
-	11: "merge_cap_bytes",
-	12: "wal",
-	13: "wal_segments",
-	14: "wal_bytes",
+	8:  "retain_from",
+	9:  "retention_bound_by",
+	10: "retention_lag_seconds",
+	11: "retention_policy",
+	12: "merge_running",
+	13: "merge_backlog",
+	14: "merge_candidates",
+	15: "merge_cap_bytes",
+	16: "wal",
+	17: "wal_segments",
+	18: "wal_bytes",
 }
 
 // Decode decodes EngineSignalStats from json.
@@ -2777,7 +2822,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode EngineSignalStats to nil")
 	}
-	var requiredBitSet [2]uint8
+	var requiredBitSet [3]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -2871,8 +2916,48 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"max_time\"")
 			}
+		case "retain_from":
+			if err := func() error {
+				s.RetainFrom.Reset()
+				if err := s.RetainFrom.Decode(d, json.DecodeDateTime); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"retain_from\"")
+			}
+		case "retention_bound_by":
+			if err := func() error {
+				s.RetentionBoundBy.Reset()
+				if err := s.RetentionBoundBy.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"retention_bound_by\"")
+			}
+		case "retention_lag_seconds":
+			if err := func() error {
+				s.RetentionLagSeconds.Reset()
+				if err := s.RetentionLagSeconds.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"retention_lag_seconds\"")
+			}
+		case "retention_policy":
+			if err := func() error {
+				s.RetentionPolicy.Reset()
+				if err := s.RetentionPolicy.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"retention_policy\"")
+			}
 		case "merge_running":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[1] |= 1 << 4
 			if err := func() error {
 				v, err := d.Bool()
 				s.MergeRunning = bool(v)
@@ -2884,7 +2969,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"merge_running\"")
 			}
 		case "merge_backlog":
-			requiredBitSet[1] |= 1 << 1
+			requiredBitSet[1] |= 1 << 5
 			if err := func() error {
 				v, err := d.Int64()
 				s.MergeBacklog = int64(v)
@@ -2896,7 +2981,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"merge_backlog\"")
 			}
 		case "merge_candidates":
-			requiredBitSet[1] |= 1 << 2
+			requiredBitSet[1] |= 1 << 6
 			if err := func() error {
 				v, err := d.Int64()
 				s.MergeCandidates = int64(v)
@@ -2908,7 +2993,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"merge_candidates\"")
 			}
 		case "merge_cap_bytes":
-			requiredBitSet[1] |= 1 << 3
+			requiredBitSet[1] |= 1 << 7
 			if err := func() error {
 				v, err := d.Int64()
 				s.MergeCapBytes = int64(v)
@@ -2920,7 +3005,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"merge_cap_bytes\"")
 			}
 		case "wal":
-			requiredBitSet[1] |= 1 << 4
+			requiredBitSet[2] |= 1 << 0
 			if err := func() error {
 				v, err := d.Bool()
 				s.Wal = bool(v)
@@ -2932,7 +3017,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"wal\"")
 			}
 		case "wal_segments":
-			requiredBitSet[1] |= 1 << 5
+			requiredBitSet[2] |= 1 << 1
 			if err := func() error {
 				v, err := d.Int64()
 				s.WalSegments = int64(v)
@@ -2944,7 +3029,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"wal_segments\"")
 			}
 		case "wal_bytes":
-			requiredBitSet[1] |= 1 << 6
+			requiredBitSet[2] |= 1 << 2
 			if err := func() error {
 				v, err := d.Int64()
 				s.WalBytes = int64(v)
@@ -2964,9 +3049,10 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
-	for i, mask := range [2]uint8{
+	for i, mask := range [3]uint8{
 		0b00111111,
-		0b01111111,
+		0b11110000,
+		0b00000111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -3043,13 +3129,20 @@ func (s *EngineStats) encodeFields(e *jx.Encoder) {
 			s.Cluster.Encode(e)
 		}
 	}
+	{
+		if s.RejectOutOfRetention.Set {
+			e.FieldStart("reject_out_of_retention")
+			s.RejectOutOfRetention.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfEngineStats = [4]string{
+var jsonFieldsNameOfEngineStats = [5]string{
 	0: "tenants",
 	1: "caches",
 	2: "maintenance",
 	3: "cluster",
+	4: "reject_out_of_retention",
 }
 
 // Decode decodes EngineStats from json.
@@ -3108,6 +3201,16 @@ func (s *EngineStats) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"cluster\"")
+			}
+		case "reject_out_of_retention":
+			if err := func() error {
+				s.RejectOutOfRetention.Reset()
+				if err := s.RejectOutOfRetention.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"reject_out_of_retention\"")
 			}
 		default:
 			return d.Skip()
@@ -3939,6 +4042,41 @@ func (s *MaintenanceStats) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes bool as json.
+func (o OptBool) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Bool(bool(o.Value))
+}
+
+// Decode decodes bool from json.
+func (o *OptBool) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptBool to nil")
+	}
+	o.Set = true
+	v, err := d.Bool()
+	if err != nil {
+		return err
+	}
+	o.Value = bool(v)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptBool) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptBool) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes ClickHouseStats as json.
 func (o OptClickHouseStats) Encode(e *jx.Encoder) {
 	if !o.Set {
@@ -4307,6 +4445,72 @@ func (s OptPartSyncStats) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *OptPartSyncStats) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RetentionBound as json.
+func (o OptRetentionBound) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Str(string(o.Value))
+}
+
+// Decode decodes RetentionBound from json.
+func (o *OptRetentionBound) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptRetentionBound to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptRetentionBound) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptRetentionBound) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes SignalRetentionPolicy as json.
+func (o OptSignalRetentionPolicy) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes SignalRetentionPolicy from json.
+func (o *OptSignalRetentionPolicy) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptSignalRetentionPolicy to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptSignalRetentionPolicy) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptSignalRetentionPolicy) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -5083,6 +5287,50 @@ func (s *RecordSignal) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes RetentionBound as json.
+func (s RetentionBound) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes RetentionBound from json.
+func (s *RetentionBound) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RetentionBound to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch RetentionBound(v) {
+	case RetentionBoundNone:
+		*s = RetentionBoundNone
+	case RetentionBoundAge:
+		*s = RetentionBoundAge
+	case RetentionBoundSignalBytes:
+		*s = RetentionBoundSignalBytes
+	case RetentionBoundPooledBytes:
+		*s = RetentionBoundPooledBytes
+	default:
+		*s = RetentionBound(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s RetentionBound) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RetentionBound) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode implements json.Marshaler.
 func (s *RuntimeStats) Encode(e *jx.Encoder) {
 	e.ObjStart()
@@ -5762,6 +6010,136 @@ func (s *SignalInfo) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *SignalInfo) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *SignalRetentionPolicy) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *SignalRetentionPolicy) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("max_age_seconds")
+		e.Float64(s.MaxAgeSeconds)
+	}
+	{
+		e.FieldStart("max_bytes")
+		e.Int64(s.MaxBytes)
+	}
+	{
+		e.FieldStart("pooled_max_bytes")
+		e.Int64(s.PooledMaxBytes)
+	}
+}
+
+var jsonFieldsNameOfSignalRetentionPolicy = [3]string{
+	0: "max_age_seconds",
+	1: "max_bytes",
+	2: "pooled_max_bytes",
+}
+
+// Decode decodes SignalRetentionPolicy from json.
+func (s *SignalRetentionPolicy) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode SignalRetentionPolicy to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "max_age_seconds":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Float64()
+				s.MaxAgeSeconds = float64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"max_age_seconds\"")
+			}
+		case "max_bytes":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Int64()
+				s.MaxBytes = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"max_bytes\"")
+			}
+		case "pooled_max_bytes":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Int64()
+				s.PooledMaxBytes = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"pooled_max_bytes\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode SignalRetentionPolicy")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000111,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfSignalRetentionPolicy) {
+					name = jsonFieldsNameOfSignalRetentionPolicy[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *SignalRetentionPolicy) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *SignalRetentionPolicy) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

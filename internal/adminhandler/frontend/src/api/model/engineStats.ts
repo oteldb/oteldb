@@ -19,4 +19,6 @@ export interface EngineStats {
   caches: CacheStats;
   maintenance: MaintenanceStats;
   cluster?: ClusterStats;
+  /** Whether expired-write admission is enabled; omitted when configuration is unknown or differs across reporting nodes. */
+  reject_out_of_retention?: boolean;
 }

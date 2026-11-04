@@ -28,6 +28,7 @@ import (
 	storagepromql "github.com/oteldb/storage/query/promql"
 	"github.com/oteldb/storage/signal"
 	"github.com/oteldb/storage/signal/metric"
+	storagetenant "github.com/oteldb/storage/tenant"
 
 	"github.com/oteldb/oteldb/internal/metricstorage"
 )
@@ -61,8 +62,10 @@ type Backend struct {
 	// valid for the life of the series; it is bounded by resident cardinality.
 	labels *storagepromql.LabelCache
 	// dropped counts records the OTLP conversion refused. Nil unless [WithMeterProvider] was given.
-	dropped otelmetric.Int64Counter
-	tracer  trace.Tracer
+	dropped              otelmetric.Int64Counter
+	tracer               trace.Tracer
+	policyResolver       storagetenant.Resolver
+	rejectOutOfRetention bool
 }
 
 // Option configures a [Backend].
