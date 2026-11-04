@@ -7,18 +7,34 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ClusterMember } from './clusterMember';
+import type { ClusterRebalanceMove } from './clusterRebalanceMove';
+import type { ShardPlacement } from './shardPlacement';
 import type { PartSyncStats } from './partSyncStats';
 import type { ECStats } from './eCStats';
 
 /**
- * Cluster membership, present only in cluster mode.
+ * A node-reported cluster view. Aggregate legacy members come from the first reporting node and owned is a union of compaction claims; new health and placement fields remain per-node in node_reports.
  */
 export interface ClusterStats {
-  /** This node's ring id. */
+  /** This node's reported cluster address; empty in aggregate totals. */
   self: string;
   members: ClusterMember[];
-  /** Shard keys owned by this node. */
+  /** Held compaction-claim shard keys, not replica owner sets. Aggregate totals contain a union of reported claims. */
   owned: string[];
+  /** This node uses peer mirroring for a private backend; unknown on older nodes. */
+  private_backend?: boolean;
+  /** This node reports itself absent from its local member set. */
+  self_absent?: boolean;
+  /** This node cannot prove its membership lease and refuses primary writes. */
+  fenced?: boolean;
+  /** Cumulative membership re-registrations by this node. */
+  rejoins?: number;
+  /** Local membership fence deadline; zero means no lease, absent means unknown. */
+  fence_deadline_unix_nano?: number;
+  /** Last owner-set changes enacted by this node; not a predictive preview. */
+  last_rebalance?: ClusterRebalanceMove[];
+  /** Node-reported owner sets for local engine, held-claim and last-plan shard keys. Not a complete cluster inventory. */
+  placements?: ShardPlacement[];
   part_sync?: PartSyncStats;
   ec?: ECStats;
 }

@@ -440,6 +440,29 @@ components:
           $ref: "#/components/schemas/EngineStats"
         clickhouse:
           $ref: "#/components/schemas/ClickHouseStats"
+        node_reports:
+          type: array
+          description: "Per-node observations from the existing storage fanout; absent on direct node responses."
+          items:
+            $ref: "#/components/schemas/StorageNodeReport"
+    StorageNodeReport:
+      type: object
+      description: "One node's storage observation; missing and legacy fields remain unknown."
+      required: [node, status]
+      properties:
+        node:
+          type: string
+        addr:
+          type: string
+        status:
+          $ref: "#/components/schemas/ClusterNodeState"
+        error:
+          type: string
+        duration_seconds:
+          type: number
+          format: double
+        engine:
+          $ref: "#/components/schemas/EngineStats"
     EngineStats:
       type: object
       description: "Embedded oteldb/storage engine statistics."
@@ -601,6 +624,37 @@ components:
           type: integer
           format: int64
           description: "Open WAL segment size."
+        has_read_gap:
+          type: boolean
+          description: "This node cannot answer beyond its known complete shard data; absent on older nodes and aggregate totals."
+        read_gap_after_unix_nano:
+          type: integer
+          format: int64
+          description: "Read gap boundary; -9223372036854775808 means no parts were known complete. Meaningful while has_read_gap is true."
+        out_of_space:
+          type: boolean
+          description: "This node refuses writes because its backend is out of space."
+        wanted_parts:
+          type: integer
+          format: int64
+          description: "Current local repair obligations."
+        holes:
+          type: integer
+          format: int64
+          description: "Current acknowledged missing parts; affected queries may be short."
+        lost_parts:
+          type: integer
+          format: uint64
+          description: "Durable cumulative loss count reported by this shard copy."
+        index_fenced:
+          type: boolean
+          description: "This engine cannot commit because its last bucket-index load failed."
+        index_load_error:
+          type: string
+          description: "The local index-load error behind index_fenced."
+        tenure_unestablished:
+          type: boolean
+          description: "The first index commit for this node's current claim has not landed."
     RetentionBound:
       type: string
       description: "Policy bound behind a requested cleanup cutoff."
@@ -701,7 +755,7 @@ components:
           description: "Cached blocks."
     ClusterStats:
       type: object
-      description: "Cluster membership, present only in cluster mode."
+      description: "A node-reported cluster view. Aggregate legacy members come from the first reporting node and owned is a union of compaction claims; new health and placement fields remain per-node in node_reports."
       required:
         - self
         - members
@@ -709,20 +763,72 @@ components:
       properties:
         self:
           type: string
-          description: "This node's ring id."
+          description: "This node's reported cluster address; empty in aggregate totals."
         members:
           type: array
           items:
             $ref: "#/components/schemas/ClusterMember"
         owned:
           type: array
-          description: "Shard keys owned by this node."
+          description: "Held compaction-claim shard keys, not replica owner sets. Aggregate totals contain a union of reported claims."
           items:
             type: string
+        private_backend:
+          type: boolean
+          description: "This node uses peer mirroring for a private backend; unknown on older nodes."
+        self_absent:
+          type: boolean
+          description: "This node reports itself absent from its local member set."
+        fenced:
+          type: boolean
+          description: "This node cannot prove its membership lease and refuses primary writes."
+        rejoins:
+          type: integer
+          format: int64
+          description: "Cumulative membership re-registrations by this node."
+        fence_deadline_unix_nano:
+          type: integer
+          format: int64
+          description: "Local membership fence deadline; zero means no lease, absent means unknown."
+        last_rebalance:
+          type: array
+          description: "Last owner-set changes enacted by this node; not a predictive preview."
+          items:
+            $ref: "#/components/schemas/ClusterRebalanceMove"
+        placements:
+          type: array
+          description: "Node-reported owner sets for local engine, held-claim and last-plan shard keys. Not a complete cluster inventory."
+          items:
+            $ref: "#/components/schemas/ShardPlacement"
         part_sync:
           $ref: "#/components/schemas/PartSyncStats"
         ec:
           $ref: "#/components/schemas/ECStats"
+    ShardPlacement:
+      type: object
+      required: [shard, owners]
+      properties:
+        shard:
+          type: string
+        owners:
+          type: array
+          description: "Node ids in routing slot order, according to the reporting node."
+          items:
+            type: string
+    ClusterRebalanceMove:
+      type: object
+      required: [shard, added, removed]
+      properties:
+        shard:
+          type: string
+        added:
+          type: array
+          items:
+            type: string
+        removed:
+          type: array
+          items:
+            type: string
     PartSyncStats:
       type: object
       description: >

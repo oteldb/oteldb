@@ -85,6 +85,17 @@ func mapSignalStats(s storage.SignalStats) adminapi.EngineSignalStats {
 		WalSegments:     int64(s.WALSegments),
 		WalBytes:        s.WALBytes,
 	}
+	es.HasReadGap = adminapi.NewOptBool(s.HasReadGap)
+	es.OutOfSpace = adminapi.NewOptBool(s.OutOfSpace)
+	es.WantedParts = adminapi.NewOptInt64(int64(s.WantedParts))
+	es.Holes = adminapi.NewOptInt64(int64(s.Holes))
+	es.LostParts = adminapi.NewOptUint64(s.LostParts)
+	es.IndexFenced = adminapi.NewOptBool(s.IndexFenced)
+	es.IndexLoadError = adminapi.NewOptString(s.IndexLoadError)
+	es.TenureUnestablished = adminapi.NewOptBool(s.TenureUnestablished)
+	if s.HasReadGap {
+		es.ReadGapAfterUnixNano = adminapi.NewOptInt64(s.ReadGapAfterUnixNano)
+	}
 	es.RetentionBoundBy = adminapi.NewOptRetentionBound(adminapi.RetentionBound(s.RetentionBoundBy.String()))
 	if s.RetainFromUnixNano > 0 {
 		es.RetainFrom = adminapi.NewOptDateTime(time.Unix(0, s.RetainFromUnixNano).UTC())
@@ -105,9 +116,16 @@ func mapSignalStats(s storage.SignalStats) adminapi.EngineSignalStats {
 
 func mapClusterStats(c storage.ClusterStats) adminapi.ClusterStats {
 	cs := adminapi.ClusterStats{
-		Self:    c.Self,
-		Owned:   c.Owned,
-		Members: make([]adminapi.ClusterMember, 0, len(c.Members)),
+		Self:                  c.Self,
+		Owned:                 c.Owned,
+		Members:               make([]adminapi.ClusterMember, 0, len(c.Members)),
+		PrivateBackend:        adminapi.NewOptBool(c.PrivateBackend),
+		SelfAbsent:            adminapi.NewOptBool(c.SelfAbsent),
+		Fenced:                adminapi.NewOptBool(c.Fenced),
+		Rejoins:               adminapi.NewOptInt64(c.Rejoins),
+		FenceDeadlineUnixNano: adminapi.NewOptInt64(c.FenceDeadlineUnixNano),
+		LastRebalance:         make([]adminapi.ClusterRebalanceMove, 0, len(c.LastRebalance)),
+		Placements:            make([]adminapi.ShardPlacement, 0, len(c.Placements)),
 	}
 	if cs.Owned == nil {
 		cs.Owned = []string{}
@@ -121,6 +139,16 @@ func mapClusterStats(c storage.ClusterStats) adminapi.ClusterStats {
 			cm.Addr = adminapi.NewOptString(m.Addr)
 		}
 		cs.Members = append(cs.Members, cm)
+	}
+	for _, move := range c.LastRebalance {
+		cs.LastRebalance = append(cs.LastRebalance, adminapi.ClusterRebalanceMove{
+			Shard: move.Shard, Added: append([]string{}, move.Added...), Removed: append([]string{}, move.Removed...),
+		})
+	}
+	for _, placement := range c.Placements {
+		cs.Placements = append(cs.Placements, adminapi.ShardPlacement{
+			Shard: placement.Shard, Owners: append([]string{}, placement.Owners...),
+		})
 	}
 	if ps := c.PartSync; ps != nil {
 		cs.PartSync = adminapi.NewOptPartSyncStats(mapPartSyncStats(*ps))

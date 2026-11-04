@@ -265,7 +265,13 @@ func TestUnaddressedResponsesUnchanged(t *testing.T) {
 		got, err := a.GetStorage(t.Context(), adminapi.GetStorageParams{})
 		require.NoError(t, err)
 
-		assert.JSONEq(t, `{"storage_enabled": true, "clickhouse_enabled": false}`, encodeJSON(t, got))
+		require.Len(t, got.NodeReports, 2)
+		for i := range got.NodeReports {
+			got.NodeReports[i].Addr.Reset()
+			got.NodeReports[i].DurationSeconds.Reset()
+		}
+		assert.JSONEq(t, `{"storage_enabled": true, "clickhouse_enabled": false,
+			"node_reports": [{"node":"a","status":"ok"},{"node":"b","status":"ok"}]}`, encodeJSON(t, got))
 	})
 
 	t.Run("efficiency", func(t *testing.T) {

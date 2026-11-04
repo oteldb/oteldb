@@ -2,6 +2,7 @@ import { Alert, Col, Flex, Row, Table, Text } from "@gravity-ui/uikit";
 import type { ColProps, TableColumnConfig } from "@gravity-ui/uikit";
 import { useGetEfficiency, useGetStorage } from "../api/admin";
 import { useSelectedNode } from "../lib/node";
+import { StorageCluster } from "../components/StorageCluster";
 import {
   Chip,
   ErrCount,
@@ -17,8 +18,6 @@ import {
 import { fmtBytes, fmtDur, fmtNum, fmtTime } from "../lib/format";
 import type {
   CacheStats,
-  ClusterMember,
-  ClusterStats,
   ECStats,
   EngineSignalStats,
   MaintenanceStats,
@@ -104,28 +103,6 @@ function ErasureCoding({ ec }: { ec: ECStats }) {
           ["read reconstructs", count(ec.reconstructs, ec.reconstruct_errors)],
         ]}
       />
-    </Panel>
-  );
-}
-
-function Cluster({ cluster }: { cluster: ClusterStats }) {
-  const columns: TableColumnConfig<ClusterMember>[] = [
-    {
-      id: "id",
-      name: head("member"),
-      template: (m) => (
-        <Flex alignItems="center" gap={2}>
-          <Mono>{m.id}</Mono>
-          {m.id === cluster.self ? <Chip on>self</Chip> : null}
-        </Flex>
-      ),
-    },
-    { id: "zone", name: head("zone"), template: (m) => m.zone || "—" },
-    { id: "addr", name: head("addr"), template: (m) => <Mono>{m.addr || "—"}</Mono> },
-  ];
-  return (
-    <Panel title="Cluster" sub={`${cluster.owned.length} owned shards`} scroll>
-      <Table data={cluster.members} columns={columns} getRowId="id" />
     </Panel>
   );
 }
@@ -423,8 +400,16 @@ export function Storage() {
           <Alert
             theme="info"
             view="outlined"
-            title="The embedded engine is not active"
-            message="Start oteldb with --embedded to serve signals from it."
+            title={
+              data.node_reports != null
+                ? "No embedded engine snapshots available"
+                : "The embedded engine is not active"
+            }
+            message={
+              data.node_reports != null
+                ? "No responding member reported an engine snapshot. Check the node observations below."
+                : "Start oteldb with --embedded to serve signals from it."
+            }
           />
         ) : (
           <Row space="4" spaceRow="4">
@@ -437,11 +422,6 @@ export function Storage() {
             <Col size={COL}>
               <RetentionAdmission enabled={eng.reject_out_of_retention} />
             </Col>
-            {eng.cluster ? (
-              <Col size={COL}>
-                <Cluster cluster={eng.cluster} />
-              </Col>
-            ) : null}
             {eng.cluster?.part_sync ? (
               <Col size={COL}>
                 <PartSync ps={eng.cluster.part_sync} />
@@ -455,6 +435,8 @@ export function Storage() {
           </Row>
         )}
       </Flex>
+
+      <StorageCluster data={data} />
 
       {eng?.tenants.length ? (
         <Flex direction="column" gap={3}>
