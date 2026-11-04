@@ -374,13 +374,18 @@ func (o *vectorBinop) Schema(ctx context.Context) (*Schema, error) {
 	if o.schema != nil {
 		return o.schema, nil
 	}
+	many, one := o.many, o.one
+	deferStart := o.canNarrowSelectors()
+	if deferStart {
+		many, one = binopSelector(many), binopSelector(one)
+	}
 
-	manySchema, err := o.many.Schema(ctx)
+	manySchema, err := many.Schema(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	oneSchema, err := o.one.Schema(ctx)
+	oneSchema, err := one.Schema(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -414,9 +419,29 @@ func (o *vectorBinop) Schema(ctx context.Context) (*Schema, error) {
 		o.oneOf[i] = oneRef
 		o.probed[oneRef] = true
 
-		series = append(series, resultLabels(ls, oneSchema.At(oneRef), o.op, o.matching, o.returnB))
+		if deferStart {
+			series = append(series, labels.EmptyLabels())
+		} else {
+			series = append(series, resultLabels(ls, oneSchema.At(oneRef), o.op, o.matching, o.returnB))
+		}
 	}
 
+	if deferStart {
+		o.narrowSelectors(manySchema, oneSchema)
+		// Start both producers only after the complete schemas have passed validation.
+		if _, err := o.many.Schema(ctx); err != nil {
+			return nil, err
+		}
+		if _, err := o.one.Schema(ctx); err != nil {
+			return nil, err
+		}
+		// Rendering output labels can overlap fetching once matching and pruning are frozen.
+		for ref, ls := range manySchema.Series {
+			if out := o.pairOf[ref]; out >= 0 {
+				series[out] = resultLabels(ls, oneSchema.At(o.oneOf[ref]), o.op, o.matching, o.returnB)
+			}
+		}
+	}
 	o.schema = NewSchema(series)
 
 	return o.schema, nil

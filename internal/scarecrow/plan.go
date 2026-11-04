@@ -362,6 +362,11 @@ func (p *planner) buildSubquery(sq *parser.SubqueryExpr) (Operator, *EvalContext
 // resolveSchemas walks the tree depth-first, forcing each operator to resolve its schema before
 // execution begins.
 func resolveSchemas(ctx context.Context, op Operator) error {
+	if binop, ok := op.(*vectorBinop); ok && binop.canNarrowSelectors() {
+		// This parent resolves both leaves before starting either concurrent producer.
+		_, err := binop.Schema(ctx)
+		return err
+	}
 	for _, c := range op.Children() {
 		if err := resolveSchemas(ctx, c); err != nil {
 			return err
