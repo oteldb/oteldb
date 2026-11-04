@@ -132,8 +132,10 @@ type AdmissionStats struct {
 	RejectedCardinality int64 `json:"rejected_cardinality"`
 	// Rejected due to in-flight admission pressure.
 	RejectedInFlight int64 `json:"rejected_in_flight"`
-	SampledDropped   int64 `json:"sampled_dropped"`
-	Overflowed       int64 `json:"overflowed"`
+	// Rejected as older than the signal's retention age; absent on older nodes.
+	RejectedRetention OptInt64 `json:"rejected_retention"`
+	SampledDropped    int64    `json:"sampled_dropped"`
+	Overflowed        int64    `json:"overflowed"`
 }
 
 // GetAccepted returns the value of Accepted.
@@ -159,6 +161,11 @@ func (s *AdmissionStats) GetRejectedCardinality() int64 {
 // GetRejectedInFlight returns the value of RejectedInFlight.
 func (s *AdmissionStats) GetRejectedInFlight() int64 {
 	return s.RejectedInFlight
+}
+
+// GetRejectedRetention returns the value of RejectedRetention.
+func (s *AdmissionStats) GetRejectedRetention() OptInt64 {
+	return s.RejectedRetention
 }
 
 // GetSampledDropped returns the value of SampledDropped.
@@ -194,6 +201,11 @@ func (s *AdmissionStats) SetRejectedCardinality(val int64) {
 // SetRejectedInFlight sets the value of RejectedInFlight.
 func (s *AdmissionStats) SetRejectedInFlight(val int64) {
 	s.RejectedInFlight = val
+}
+
+// SetRejectedRetention sets the value of RejectedRetention.
+func (s *AdmissionStats) SetRejectedRetention(val OptInt64) {
+	s.RejectedRetention = val
 }
 
 // SetSampledDropped sets the value of SampledDropped.
@@ -1017,10 +1029,18 @@ type EngineSignalStats struct {
 	// Flushed immutable parts.
 	Parts int64 `json:"parts"`
 	// Parts already at the merge cap, which no merge reconsiders.
-	SealedParts  int64       `json:"sealed_parts"`
-	MinTime      OptDateTime `json:"min_time"`
-	MaxTime      OptDateTime `json:"max_time"`
-	MergeRunning bool        `json:"merge_running"`
+	SealedParts int64       `json:"sealed_parts"`
+	MinTime     OptDateTime `json:"min_time"`
+	MaxTime     OptDateTime `json:"max_time"`
+	// Last authorized requested physical-cleanup cutoff; absent without a local target, including on
+	// replicas.
+	RetainFrom       OptDateTime       `json:"retain_from"`
+	RetentionBoundBy OptRetentionBound `json:"retention_bound_by"`
+	// Physical expiry lag behind the requested cleanup target, not logical read visibility. Cluster views
+	// report the maximum owner lag.
+	RetentionLagSeconds OptFloat64               `json:"retention_lag_seconds"`
+	RetentionPolicy     OptSignalRetentionPolicy `json:"retention_policy"`
+	MergeRunning        bool                     `json:"merge_running"`
 	// Unsealed parts a merge may still take (parts - sealed_parts).
 	MergeBacklog int64 `json:"merge_backlog"`
 	// Parts the next merge would select. Zero with a non-zero merge_backlog is the stuck state: parts
@@ -1074,6 +1094,26 @@ func (s *EngineSignalStats) GetMinTime() OptDateTime {
 // GetMaxTime returns the value of MaxTime.
 func (s *EngineSignalStats) GetMaxTime() OptDateTime {
 	return s.MaxTime
+}
+
+// GetRetainFrom returns the value of RetainFrom.
+func (s *EngineSignalStats) GetRetainFrom() OptDateTime {
+	return s.RetainFrom
+}
+
+// GetRetentionBoundBy returns the value of RetentionBoundBy.
+func (s *EngineSignalStats) GetRetentionBoundBy() OptRetentionBound {
+	return s.RetentionBoundBy
+}
+
+// GetRetentionLagSeconds returns the value of RetentionLagSeconds.
+func (s *EngineSignalStats) GetRetentionLagSeconds() OptFloat64 {
+	return s.RetentionLagSeconds
+}
+
+// GetRetentionPolicy returns the value of RetentionPolicy.
+func (s *EngineSignalStats) GetRetentionPolicy() OptSignalRetentionPolicy {
+	return s.RetentionPolicy
 }
 
 // GetMergeRunning returns the value of MergeRunning.
@@ -1151,6 +1191,26 @@ func (s *EngineSignalStats) SetMaxTime(val OptDateTime) {
 	s.MaxTime = val
 }
 
+// SetRetainFrom sets the value of RetainFrom.
+func (s *EngineSignalStats) SetRetainFrom(val OptDateTime) {
+	s.RetainFrom = val
+}
+
+// SetRetentionBoundBy sets the value of RetentionBoundBy.
+func (s *EngineSignalStats) SetRetentionBoundBy(val OptRetentionBound) {
+	s.RetentionBoundBy = val
+}
+
+// SetRetentionLagSeconds sets the value of RetentionLagSeconds.
+func (s *EngineSignalStats) SetRetentionLagSeconds(val OptFloat64) {
+	s.RetentionLagSeconds = val
+}
+
+// SetRetentionPolicy sets the value of RetentionPolicy.
+func (s *EngineSignalStats) SetRetentionPolicy(val OptSignalRetentionPolicy) {
+	s.RetentionPolicy = val
+}
+
 // SetMergeRunning sets the value of MergeRunning.
 func (s *EngineSignalStats) SetMergeRunning(val bool) {
 	s.MergeRunning = val
@@ -1193,6 +1253,9 @@ type EngineStats struct {
 	Caches      CacheStats       `json:"caches"`
 	Maintenance MaintenanceStats `json:"maintenance"`
 	Cluster     OptClusterStats  `json:"cluster"`
+	// Whether expired-write admission is enabled; omitted when configuration is unknown or differs across
+	// reporting nodes.
+	RejectOutOfRetention OptBool `json:"reject_out_of_retention"`
 }
 
 // GetTenants returns the value of Tenants.
@@ -1215,6 +1278,11 @@ func (s *EngineStats) GetCluster() OptClusterStats {
 	return s.Cluster
 }
 
+// GetRejectOutOfRetention returns the value of RejectOutOfRetention.
+func (s *EngineStats) GetRejectOutOfRetention() OptBool {
+	return s.RejectOutOfRetention
+}
+
 // SetTenants sets the value of Tenants.
 func (s *EngineStats) SetTenants(val []TenantStats) {
 	s.Tenants = val
@@ -1233,6 +1301,11 @@ func (s *EngineStats) SetMaintenance(val MaintenanceStats) {
 // SetCluster sets the value of Cluster.
 func (s *EngineStats) SetCluster(val OptClusterStats) {
 	s.Cluster = val
+}
+
+// SetRejectOutOfRetention sets the value of RejectOutOfRetention.
+func (s *EngineStats) SetRejectOutOfRetention(val OptBool) {
+	s.RejectOutOfRetention = val
 }
 
 // Error occurred while processing request.
@@ -2176,6 +2249,98 @@ func (o OptPartSyncStats) Or(d PartSyncStats) PartSyncStats {
 	return d
 }
 
+// NewOptRetentionBound returns new OptRetentionBound with value set to v.
+func NewOptRetentionBound(v RetentionBound) OptRetentionBound {
+	return OptRetentionBound{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptRetentionBound is optional RetentionBound.
+type OptRetentionBound struct {
+	Value RetentionBound
+	Set   bool
+}
+
+// IsSet returns true if OptRetentionBound was set.
+func (o OptRetentionBound) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptRetentionBound) Reset() {
+	var v RetentionBound
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptRetentionBound) SetTo(v RetentionBound) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptRetentionBound) Get() (v RetentionBound, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptRetentionBound) Or(d RetentionBound) RetentionBound {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptSignalRetentionPolicy returns new OptSignalRetentionPolicy with value set to v.
+func NewOptSignalRetentionPolicy(v SignalRetentionPolicy) OptSignalRetentionPolicy {
+	return OptSignalRetentionPolicy{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptSignalRetentionPolicy is optional SignalRetentionPolicy.
+type OptSignalRetentionPolicy struct {
+	Value SignalRetentionPolicy
+	Set   bool
+}
+
+// IsSet returns true if OptSignalRetentionPolicy was set.
+func (o OptSignalRetentionPolicy) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptSignalRetentionPolicy) Reset() {
+	var v SignalRetentionPolicy
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptSignalRetentionPolicy) SetTo(v SignalRetentionPolicy) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptSignalRetentionPolicy) Get() (v SignalRetentionPolicy, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptSignalRetentionPolicy) Or(d SignalRetentionPolicy) SignalRetentionPolicy {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptSpanID returns new OptSpanID with value set to v.
 func NewOptSpanID(v SpanID) OptSpanID {
 	return OptSpanID{
@@ -2639,6 +2804,63 @@ func (s *RecordSignal) UnmarshalText(data []byte) error {
 	}
 }
 
+// Policy bound behind a requested cleanup cutoff.
+// Ref: #/components/schemas/RetentionBound
+type RetentionBound string
+
+const (
+	RetentionBoundNone        RetentionBound = "none"
+	RetentionBoundAge         RetentionBound = "age"
+	RetentionBoundSignalBytes RetentionBound = "signal_bytes"
+	RetentionBoundPooledBytes RetentionBound = "pooled_bytes"
+)
+
+// AllValues returns all RetentionBound values.
+func (RetentionBound) AllValues() []RetentionBound {
+	return []RetentionBound{
+		RetentionBoundNone,
+		RetentionBoundAge,
+		RetentionBoundSignalBytes,
+		RetentionBoundPooledBytes,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s RetentionBound) MarshalText() ([]byte, error) {
+	switch s {
+	case RetentionBoundNone:
+		return []byte(s), nil
+	case RetentionBoundAge:
+		return []byte(s), nil
+	case RetentionBoundSignalBytes:
+		return []byte(s), nil
+	case RetentionBoundPooledBytes:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *RetentionBound) UnmarshalText(data []byte) error {
+	switch RetentionBound(data) {
+	case RetentionBoundNone:
+		*s = RetentionBoundNone
+		return nil
+	case RetentionBoundAge:
+		*s = RetentionBoundAge
+		return nil
+	case RetentionBoundSignalBytes:
+		*s = RetentionBoundSignalBytes
+		return nil
+	case RetentionBoundPooledBytes:
+		*s = RetentionBoundPooledBytes
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Ref: #/components/schemas/RuntimeStats
 type RuntimeStats struct {
 	Goroutines int64 `json:"goroutines"`
@@ -2988,6 +3210,47 @@ func (s *SignalInfo) SetQueryable(val bool) {
 // SetBind sets the value of Bind.
 func (s *SignalInfo) SetBind(val OptString) {
 	s.Bind = val
+}
+
+// Configured effective signal age and per-node byte bounds. Zero means no age or separate byte bound.
+// Ref: #/components/schemas/SignalRetentionPolicy
+type SignalRetentionPolicy struct {
+	// Effective signal age after inheritance; zero retains forever.
+	MaxAgeSeconds float64 `json:"max_age_seconds"`
+	// Signal-specific stored-byte bound; zero leaves only the pooled bound.
+	MaxBytes int64 `json:"max_bytes"`
+	// Tenant stored-byte bound pooled across signals on this node; zero is unbounded.
+	PooledMaxBytes int64 `json:"pooled_max_bytes"`
+}
+
+// GetMaxAgeSeconds returns the value of MaxAgeSeconds.
+func (s *SignalRetentionPolicy) GetMaxAgeSeconds() float64 {
+	return s.MaxAgeSeconds
+}
+
+// GetMaxBytes returns the value of MaxBytes.
+func (s *SignalRetentionPolicy) GetMaxBytes() int64 {
+	return s.MaxBytes
+}
+
+// GetPooledMaxBytes returns the value of PooledMaxBytes.
+func (s *SignalRetentionPolicy) GetPooledMaxBytes() int64 {
+	return s.PooledMaxBytes
+}
+
+// SetMaxAgeSeconds sets the value of MaxAgeSeconds.
+func (s *SignalRetentionPolicy) SetMaxAgeSeconds(val float64) {
+	s.MaxAgeSeconds = val
+}
+
+// SetMaxBytes sets the value of MaxBytes.
+func (s *SignalRetentionPolicy) SetMaxBytes(val int64) {
+	s.MaxBytes = val
+}
+
+// SetPooledMaxBytes sets the value of PooledMaxBytes.
+func (s *SignalRetentionPolicy) SetPooledMaxBytes(val int64) {
+	s.PooledMaxBytes = val
 }
 
 type SpanID string
