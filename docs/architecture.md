@@ -374,3 +374,22 @@ Legend / file pointers
 - `internal/otelreceiver/` — protocol receivers and translation logic (e.g. `receiver.go`, `prometheusremotewritereceiver/`).
 - `internal/otelstorage/` — helpers for id/hash/timestamp normalization (`id.go`, `hash.go`, `attrs.go`).
 - `internal/chstorage/` — schema, inserters and ClickHouse client (`_golden/*.sql`, `inserter_*.go`, `clickhouse.go`).
+
+## Native trace search extents
+
+The embedded `storagebackend` resolves candidate trace IDs using windowed span predicates, then
+reads only their IDs, timestamps and durations across the retained history. It combines every
+candidate's spans across services, parts and the live head before applying duration and window
+containment bounds. Only surviving traces are materialized; the TraceQL engine rechecks predicates.
+No trace extent is denormalized at ingestion, so later batches extend the next query's extent.
+
+This is the extent of the retained spans, not a guarantee that every originally emitted span is
+present: expiry or missing ingestion can shorten it. Query windows retain the engine's containment
+semantics: the whole retained extent must fit, rather than merely overlap. Integer range hints on
+physical span duration apply only to span predicates; they cannot reject a trace duration predicate.
+Routed numeric hints use the storage library's superset response with requester residual filtering.
+
+Trace-ID conditions explicitly declare their fixed physical column dependency. Cluster peers keep
+the narrow extent projection because it includes that column, while requester residual filtering
+still verifies every returned ID. Unmarked or attribute conditions retain full-column fallback;
+callbacks also keep peer row limits disabled.

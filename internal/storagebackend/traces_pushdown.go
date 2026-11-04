@@ -161,7 +161,9 @@ func lowerSpanMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 
 	switch attr := m.Attribute; attr.Prop {
 	case traceql.SpanDuration:
-		return one(spanCondition(sigtrace.ColDuration, durationStatic, pred))
+		f := spanCondition(sigtrace.ColDuration, durationStatic, pred)
+		f.conditions[0].Int64Range = durationRangeHint(m.Op, m.Static)
+		return one(f)
 	case traceql.SpanName:
 		f := spanCondition(sigtrace.ColName, stringStatic, pred)
 		rawStringConditionHints(&f.conditions[0], m.Op, m.Static)
@@ -209,8 +211,8 @@ func lowerSpanMatcher(m traceql.SpanMatcher) ([]traceFilter, bool) {
 //
 // # Rootless traces
 //
-// A trace whose root span was never ingested (or starts outside the query window — the span fetch is
-// windowed) has no parentless span, and the engine reports its root name and service as empty. This
+// A trace whose root span is not retained has no parentless span, and the engine reports its root
+// name and service as empty. This
 // filter cannot select such a trace, so a predicate that accepts the empty string is not pushed at
 // all; every other predicate is false on it in the engine too, and dropping it is exact. A trace
 // with several parentless spans is covered as a superset: the term matches on any of them, and the

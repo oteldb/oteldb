@@ -19,6 +19,7 @@ import (
 	"github.com/oteldb/storage/cluster"
 	"github.com/oteldb/storage/query/fetch"
 	"github.com/oteldb/storage/signal"
+	sigtrace "github.com/oteldb/storage/signal/trace"
 
 	"github.com/oteldb/oteldb/internal/logql/logqlengine"
 	"github.com/oteldb/oteldb/internal/storagebackend"
@@ -148,13 +149,16 @@ func TestTraceHintsReachPeer(t *testing.T) {
 			require.Equal(t, want, got)
 			require.NotEmpty(t, got.Traces)
 			reads := src.snapshot()
-			require.Len(t, reads, 2)
+			require.Len(t, reads, 3)
 			require.Equal(t, tt.firstRows, reads[0].rows)
-			require.Equal(t, tt.secondRows, reads[1].rows, "the owner must apply the resolved trace set before returning spans")
-			require.Len(t, reads[1].request.Conditions, 1)
-			require.Len(t, reads[1].request.Conditions[0].AnyEqual, tt.setSize)
-			for _, id := range reads[1].request.Conditions[0].AnyEqual {
-				require.Len(t, id, 16)
+			require.ElementsMatch(t, []string{sigtrace.ColTraceID, sigtrace.ColDuration}, reads[1].request.Projection)
+			for _, read := range reads[1:] {
+				require.Equal(t, tt.secondRows, read.rows, "the owner must apply the resolved trace set to extents and materialization")
+				require.Len(t, read.request.Conditions, 1)
+				require.Len(t, read.request.Conditions[0].AnyEqual, tt.setSize)
+				for _, id := range read.request.Conditions[0].AnyEqual {
+					require.Len(t, id, 16)
+				}
 			}
 		})
 	}

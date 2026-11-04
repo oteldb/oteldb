@@ -33,13 +33,16 @@ type SelectSpansetsParams struct {
 	// Time range to query, optional.
 	Start, End time.Time
 
-	// Trace duration, querier should ignore field, if it is zero.
-	// TODO(tdakkota): probably, we can put it as SpanMatcher with traceDuration attribute
-	//	but it would not work properly with OpOr.
+	// Bounds on the whole retained trace duration. Zero disables the corresponding bound.
 	MinDuration time.Duration
 	MaxDuration time.Duration
 
 	Limit int
+}
+
+// ContainsTrace reports whether the retained trace extent satisfies the window and duration bounds.
+func (p SelectSpansetsParams) ContainsTrace(start, end time.Time) bool {
+	return (timeRange{start: p.Start, end: p.End, min: p.MinDuration, max: p.MaxDuration}).within(start, end)
 }
 
 // MemoryQuerier is a simple in-memory querier, used for tests.

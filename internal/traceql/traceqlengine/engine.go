@@ -139,7 +139,7 @@ func (e *Engine) evalExpr(ctx context.Context, expr traceql.Expr, params EvalPar
 
 		var (
 			// The trace's root is its parentless span, if it has one at all: a trace whose root was
-			// never ingested (or starts outside the query window) has no root name or service, exactly
+			// not retained has no root name or service, exactly
 			// as Tempo reports it. The extent is taken over every span either way.
 			root  *tracestorage.Span
 			start = elem.Spans[0].Start.AsTime()

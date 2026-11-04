@@ -27,8 +27,16 @@ func tagSearchConditions(tags map[string]string, opts tracestorage.SearchTagsOpt
 		conditions = append(conditions, condition)
 	}
 	if opts.MinDuration > 0 || opts.MaxDuration > 0 {
+		rangeHint := &fetch.Int64Range{}
+		if opts.MinDuration > 0 {
+			rangeHint.Lower = &fetch.Int64Bound{Value: int64(opts.MinDuration), Inclusive: true}
+		}
+		if opts.MaxDuration > 0 {
+			rangeHint.Upper = &fetch.Int64Bound{Value: int64(opts.MaxDuration), Inclusive: true}
+		}
 		conditions = append(conditions, fetch.Condition{
-			Column: sigtrace.ColDuration,
+			Column:     sigtrace.ColDuration,
+			Int64Range: rangeHint,
 			Match: func(v signal.Value) bool {
 				duration := time.Duration(v.Int())
 				return (opts.MinDuration <= 0 || duration >= opts.MinDuration) &&
