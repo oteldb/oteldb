@@ -32,7 +32,7 @@ func (a *Aggregator) GetStorage(ctx context.Context, params adminapi.GetStorageP
 		return nil, err
 	}
 
-	stats := &adminapi.StorageStats{}
+	stats := &adminapi.StorageStats{NodeReports: storageNodeReports(answers)}
 	engine := adminapi.EngineStats{Tenants: []adminapi.TenantStats{}}
 
 	tenants := map[string]*adminapi.TenantStats{}
@@ -113,7 +113,7 @@ func addMaintenance(into *adminapi.MaintenanceStats, from adminapi.MaintenanceSt
 }
 
 // mergeClusterStats folds a node's cluster view into the aggregate. Membership is a cluster-level
-// fact and is taken from the first node that reports it; the part-sync and erasure-coding counters
+// observation and is taken from the first node that reports it; the part-sync and erasure-coding counters
 // are per-node tallies of cluster work and are summed. Self stays empty: the aggregator is not a
 // ring member, and naming one node there would read as the cluster having a single identity.
 func mergeClusterStats(into *adminapi.OptClusterStats, from adminapi.ClusterStats) {
@@ -179,6 +179,7 @@ func addTenantStats(into *adminapi.TenantStats, from adminapi.TenantStats) {
 	into.Admission.Overflowed += from.Admission.Overflowed
 
 	for _, s := range from.Signals {
+		clearNodeSignalState(&s)
 		if !s.RetainFrom.IsSet() {
 			s.RetentionLagSeconds.Reset()
 			if s.RetentionBoundBy.IsSet() {

@@ -3,6 +3,30 @@
 Integration work for `go-faster/oteldb` to exploit the `github.com/oteldb/storage`
 library's improvements: caches, aggregate pushdown, and lossy precision.
 
+## Cluster observations
+
+`GET /api/v1/storage` on a storage node reports its own ring membership, held compaction claims,
+local-known shard replica/EC owner sets, membership fencing and the last enacted rebalance plan.
+`placements` covers local engine keys, held claims and last-plan keys; it is not a complete cluster
+inventory. `owned` names compaction claims and must not be read as all replica owners. Rebalance
+moves describe the last enacted changes, not a predictive dry run.
+
+Per-signal fields expose read gaps, missing/acknowledged-lost parts, index fencing, unestablished
+claim tenure and backend space failures. `read_gap_after_unix_nano` preserves the signed boundary;
+its minimum int64 value means no parts were known complete. Missing fields on older nodes mean
+unknown, while a new node reports explicit false/zero values. These observations distinguish a
+node that disclaims incomplete data from proof that the cluster has no data.
+
+The query-only aggregator uses its existing storage fanout to return `node_reports`, including
+unreachable nodes. Each entry keeps that node's `engine` snapshot and its own ring/placement
+view. New health and placement fields stay out of aggregate totals. Legacy aggregate membership
+comes from the first reporting node and `owned` unions reported compaction claims; neither is a
+consensus view. `?node=` continues to forward one node's response unchanged.
+
+`private_backend` reports configured peer mirroring. A node-local backend with that option off
+is rejected when storage opens, so there is no live `NodeLocalBackendUnshared` flag to report.
+These snapshots add no etcd, backend or peer requests beyond the aggregator's existing fanout.
+
 ## Metric ingestion
 
 The native backend hashes local gauge/sum pdata points before converting their
