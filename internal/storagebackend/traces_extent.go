@@ -24,7 +24,7 @@ func needsTraceExtents(params traceqlengine.SelectSpansetsParams) bool {
 	if !params.Start.IsZero() || !params.End.IsZero() || params.MinDuration != 0 || params.MaxDuration != 0 {
 		return true
 	}
-	for _, matcher := range params.Matchers {
+	for _, matcher := range params.TraceDurationMatchers {
 		if matcher.Attribute.Prop == traceql.TraceDuration && matcher.Op != 0 {
 			return true
 		}
@@ -91,7 +91,7 @@ func (q *TraceQuerier) filterTraceExtents(
 		batch.Release()
 	}
 
-	keepDuration := traceExtentPredicate(params.Op, params.Matchers)
+	keepDuration := traceExtentPredicate(params.TraceDurationMatchers)
 	for id := range ids {
 		extent, ok := extents[id]
 		if !ok || !params.ContainsTrace(extent.start, extent.end) ||
@@ -102,36 +102,24 @@ func (q *TraceQuerier) filterTraceExtents(
 	return ids, nil
 }
 
-func traceExtentPredicate(op traceql.SpansetOp, matchers []traceql.SpanMatcher) func(time.Duration) bool {
+func traceExtentPredicate(matchers []traceql.SpanMatcher) func(time.Duration) bool {
 	var preds []func(traceql.Static) bool
 	for _, m := range matchers {
-		var pred func(traceql.Static) bool
-		if m.Attribute.Prop == traceql.TraceDuration && !m.Attribute.Parent && m.Op != 0 {
-			pred, _ = staticPredicate(m.Op, m.Static)
-		}
-		if pred == nil {
-			if op != traceql.SpansetOpAnd {
-				return func(time.Duration) bool { return true }
-			}
+		if m.Attribute.Prop != traceql.TraceDuration || m.Attribute.Parent || m.Op == 0 {
 			continue
 		}
-		preds = append(preds, pred)
+		if pred, ok := staticPredicate(m.Op, m.Static); ok {
+			preds = append(preds, pred)
+		}
 	}
 	return func(duration time.Duration) bool {
-		if len(preds) == 0 {
-			return true
-		}
 		var value traceql.Static
 		value.SetDuration(duration)
 		for _, pred := range preds {
-			matches := pred(value)
-			if op == traceql.SpansetOpAnd && !matches {
+			if !pred(value) {
 				return false
 			}
-			if op != traceql.SpansetOpAnd && matches {
-				return true
-			}
 		}
-		return op == traceql.SpansetOpAnd
+		return true
 	}
 }

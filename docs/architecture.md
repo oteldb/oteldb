@@ -382,6 +382,9 @@ reads only their IDs, timestamps and durations across the retained history. It c
 candidate's spans across services, parts and the live head before applying duration and window
 containment bounds. Only surviving traces are materialized; the TraceQL engine rechecks predicates.
 No trace extent is denormalized at ingestion, so later batches extend the next query's extent.
+Only direct duration comparisons under positive conjunctions in the initial spanset filter become
+extent hints. Boolean wrappers and unions retain full residual evaluation; lossy matcher extraction
+cannot establish a required duration predicate.
 
 This is the extent of the retained spans, not a guarantee that every originally emitted span is
 present: expiry or missing ingestion can shorten it. Query windows retain the engine's containment

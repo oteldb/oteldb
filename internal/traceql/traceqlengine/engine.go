@@ -252,13 +252,14 @@ func (r timeRange) within(start, end time.Time) bool {
 func extractPredicates(expr traceql.Expr, params EvalParams) SelectSpansetsParams {
 	op, matchers := traceql.ExtractMatchers(expr)
 	return SelectSpansetsParams{
-		Op:          op,
-		Matchers:    matchers,
-		Fields:      referencedFields(expr),
-		Start:       params.Start,
-		End:         params.End,
-		MinDuration: params.MinDuration,
-		MaxDuration: params.MaxDuration,
-		Limit:       params.Limit,
+		Op:                    op,
+		Matchers:              matchers,
+		TraceDurationMatchers: traceql.ExtractTraceDurationMatchers(expr),
+		Fields:                referencedFields(expr),
+		Start:                 params.Start,
+		End:                   params.End,
+		MinDuration:           params.MinDuration,
+		MaxDuration:           params.MaxDuration,
+		Limit:                 params.Limit,
 	}
 }

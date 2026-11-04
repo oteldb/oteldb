@@ -26,6 +26,8 @@ type Querier interface {
 type SelectSpansetsParams struct {
 	Op       traceql.SpansetOp // OpAnd, OpOr
 	Matchers []traceql.SpanMatcher
+	// TraceDurationMatchers are necessary conjuncts verified against the expression AST.
+	TraceDurationMatchers []traceql.SpanMatcher
 	// Fields are the attributes and intrinsics needed by evaluation and the search response.
 	// Nil requests full spans; a non-nil empty slice needs only identity, timing and root metadata.
 	Fields []traceql.Attribute
