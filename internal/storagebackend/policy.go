@@ -38,11 +38,11 @@ type PolicyConfig struct {
 	// of storing RF full copies. Like Recompress it is an age tier, so recent data stays full-copy
 	// for fast local reads. Nil ⇒ full-copy replication.
 	EC *ECConfig `json:"ec" yaml:"ec"`
-	// Retention bounds how much data is kept, by age and by size: at merge, parts past the age
-	// cutoff or over a byte budget — pooled or per-signal — are dropped whole. Nil ⇒ retain forever.
+	// Retention bounds readable age and eventually cleans up stored data by age and bytes.
+	// Nil retains forever.
 	Retention *RetentionConfig `json:"retention" yaml:"retention"`
-	// Limits are the operational admission-control limits: over-budget writes are shed and reported
-	// as OTLP partial success rather than buffered. Nil ⇒ unlimited.
+	// Limits shed over-budget writes; admission statistics report the rejected records.
+	// The Collector sink currently acknowledges these writes without OTLP partial success. Nil is unlimited.
 	Limits *LimitsConfig `json:"limits" yaml:"limits"`
 }
 
@@ -122,9 +122,8 @@ type SignalRetentionConfig struct {
 	MaxBytes xbytes.Bytes  `json:"max_bytes" yaml:"max_bytes"`
 }
 
-// LimitsConfig configures the per-tenant operational limits. They are lossless admission control:
-// over-budget samples are shed and reported via OTLP partial success (RESOURCE_EXHAUSTED), so an
-// overload degrades rather than OOMs. Zero values mean "no limit".
+// LimitsConfig bounds per-tenant ingestion by shedding over-budget writes.
+// Rejections appear in storage admission statistics, not the Collector response. Zero is unlimited.
 type LimitsConfig struct {
 	// IngestBytesPerSecond caps the ingest rate (a token bucket bursting to one second of budget).
 	IngestBytesPerSecond xbytes.Bytes `json:"ingest_bytes_per_second" yaml:"ingest_bytes_per_second"`

@@ -206,6 +206,13 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   budgets for all signals, and warn if exemplars outlive traces or a metric policy tier starts
   after the metric retention window.
 
+  The storage library's native `Write*` calls return admission counts. The embedded Collector
+  sink currently discards those counts and returns success when storage returns no error, even
+  when admission sheds some records. Inspect/admission metrics expose these rejections; the
+  Collector OTLP response does not. A configured batch processor can acknowledge requests before
+  storage admission runs. The native OTLP handler used by `odbingest` reports decoder drops through
+  OTLP partial success, but its error-only sink also does not propagate storage admission counts.
+
   `ec` is an age tier like `recompress`, but for durability: cold parts are stored as `data`+`parity`
   Reed-Solomon shards, one per cluster node, instead of RF full copies. It applies only under
   `storage.cluster` with `private_backend` — on a shared object store the store owns durability and
