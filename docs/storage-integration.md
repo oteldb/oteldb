@@ -77,6 +77,22 @@ sane-sizing logic lives there and oteldb just opts into the bundle.
 > `aggregate_stats: false` disables the sidecar. Config block: `storage.{read_cache_bytes,
 > decode_cache_bytes,aggregate_stats}`.
 
+Native metric scanners share overlapping series enumeration, aggregates and count grids across
+queries. The first overlapping call supplies the snapshot; canceling one caller leaves work running
+for the others, and canceling every caller stops it. Admission never waits for a sharing slot.
+Streaming raw sample scans and their parallel folds keep their existing ownership and memory bounds.
+Metadata flights retain their revision because a later raw scan takes a fresh view; sources without
+a revision bypass metadata coalescing. Followers already holding decode quota compute independently.
+
+Completed native results use a 64 MiB LRU (`storage.native_query_cache_bytes: 0` disables it), capped
+at 4 MiB per entry. Keys include source/backend identity, tenant, full matchers, operation and window
+grid. Local storage revisions invalidate on writes, replay, reset and part publication; age retention
+limits reuse to the earliest input timestamp plus the current age policy. There is no freshness TTL.
+Clustered or custom sources without a revision capability do not reuse completed results. Custom
+sources must explicitly opt into sharing after applying authorization. Setting
+`storage.native_query_sharing: false` disables both in-flight sharing and the completed cache.
+Raw `rate`/`irate` folds remain uncached.
+
 ## Aggregate pushdown for `*_over_time` (headline integration)
 
 Call the facade instead of raw-fetch-and-fold:

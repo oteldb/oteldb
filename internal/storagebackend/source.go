@@ -15,6 +15,8 @@ import (
 // Source is the read seam [Backend] serves every query API from. *[storage.Storage] implements it,
 // and so does a routed view of a storage cluster (see cmd/odbselect), which is what lets the same
 // query engines run on a node that holds no data.
+// Native result caching additionally recognizes [storage.Storage.MetricReadRevision]; sources without it
+// can share overlapping operations but never reuse completed results.
 //
 // It is deliberately read-only: ingestion, maintenance and the statistics views need engine-local
 // state and are reached through the concrete engine instead (see [New] versus [NewQuery]).

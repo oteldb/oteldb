@@ -18,6 +18,7 @@ import (
 // ScarecrowScanner returns a [scarecrow.Scanner] backed by the storage engine's native fetch seam.
 //
 // It reads fetch.Batch directly and borrows value columns without per-sample iterator dispatch.
+// Each scanner owns a private query scope; caller contexts cannot share it across backends.
 func (b *Backend) ScarecrowScanner() scarecrow.Scanner {
 	scanner := &scarecrowScanner{b: b, scope: fetch.NewScope()}
 	if !b.overTimePushdown {
@@ -78,7 +79,7 @@ func (s rawScarecrowScanner) WithQueryBudget(ctx context.Context) context.Contex
 //
 // The grid's anchor matters: storage would otherwise evaluate on the absolute grid (multiples of
 // Step from the epoch) and answer at timestamps the query never asked about.
-func (s *scarecrowScanner) AggregateGrid(
+func (s *scarecrowScanner) aggregateGrid(
 	ctx context.Context, grid scarecrow.WindowGrid, matchers []*labels.Matcher,
 ) ([]scarecrow.GridAggregate, error) {
 	const nsPerMs = int64(time.Millisecond)
@@ -153,7 +154,7 @@ func (s *scarecrowScanner) AggregateGrid(
 // from the stats sidecar ([storage.Storage.AggregateMetricsNamed]) instead of a raw fetch-and-fold
 // . The caller ([scarecrow]'s aggregateOverTime operator) drops
 // the metric name itself, so the labels returned here are unfiltered.
-func (s *scarecrowScanner) AggregateOverTime(
+func (s *scarecrowScanner) aggregateOverTime(
 	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
 ) ([]scarecrow.WindowAggregate, error) {
 	const nsPerMs = int64(time.Millisecond)
@@ -197,7 +198,7 @@ func (s *scarecrowScanner) AggregateOverTime(
 
 // CountSeries implements [scarecrow.SeriesCounter], delegating to the same
 // [storagepromql.Queryable]-backed CountSeries.
-func (s *scarecrowScanner) CountSeries(
+func (s *scarecrowScanner) countSeries(
 	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
 ) (uint64, error) {
 	// Scarecrow excludes the lower bound; the storage count seam includes it.
@@ -220,7 +221,7 @@ func (s *scarecrowScanner) CountSeries(
 
 // CountSeriesBy implements [scarecrow.GroupedSeriesCounter], delegating to the same
 // [storagepromql.Queryable]-backed CountSeriesBy.
-func (s *scarecrowScanner) CountSeriesBy(
+func (s *scarecrowScanner) countSeriesBy(
 	ctx context.Context, mint, maxt int64, label string, matchers []*labels.Matcher,
 ) (map[string]uint64, error) {
 	mint++
@@ -248,7 +249,7 @@ func (s *scarecrowScanner) CountSeriesBy(
 // every sample of every matching series and threw them all away to keep the labels. That is what
 // made `{__name__=~".+"}` over 3h fail: the schema pass alone exhausted the process before the
 // engine's sample budget had been charged a single sample.
-func (s *scarecrowScanner) Series(
+func (s *scarecrowScanner) series(
 	ctx context.Context, mint, maxt int64, matchers []*labels.Matcher,
 ) ([]labels.Labels, error) {
 	const nsPerMs = int64(time.Millisecond)

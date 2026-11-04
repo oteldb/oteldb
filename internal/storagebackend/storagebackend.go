@@ -60,7 +60,10 @@ type Backend struct {
 	// labels.Labels set is built once per series and reused across queries instead of rebuilt and
 	// re-scanned by GC every query. The cache is keyed by content-addressed series id, so an entry is
 	// valid for the life of the series; it is bounded by resident cardinality.
-	labels *storagepromql.LabelCache
+	labels           *storagepromql.LabelCache
+	sharing          *nativeQuerySharing
+	disableSharing   bool
+	nativeCacheBytes int64
 	// dropped counts records the OTLP conversion refused. Nil unless [WithMeterProvider] was given.
 	dropped              otelmetric.Int64Counter
 	tracer               trace.Tracer
@@ -99,15 +102,20 @@ func WithTraceQLPushdown(enabled bool) Option {
 func New(store *storage.Storage, opts ...Option) *Backend {
 	b := NewQuery(store, opts...)
 	b.store = store
+	if b.sharing == nil && !b.disableSharing {
+		b.sharing = newNativeQuerySharing(64, 4<<20)
+		b.sharing.maxCacheBytes = b.nativeCacheBytes
+	}
 	return b
 }
 
 // NewQuery returns a read-only Backend over src. It serves the same query APIs as [New], but every
 // method that needs engine-local state — the ingestion sinks, maintenance, and the statistics views
-// — refuses with [ErrNoEngine]. It is what a stateless query node is built from.
+// — refuses with [ErrNoEngine]. Native sharing over custom sources requires [WithNativeQuerySharing].
 func NewQuery(src Source, opts ...Option) *Backend {
 	b := &Backend{
 		src:              src,
+		nativeCacheBytes: defaultNativeQueryCacheBytes,
 		overTimePushdown: true,
 		traceQLPushdown:  true,
 		labels:           storagepromql.NewLabelCache(),
@@ -115,6 +123,9 @@ func NewQuery(src Source, opts ...Option) *Backend {
 	}
 	for _, opt := range opts {
 		opt(b)
+	}
+	if b.sharing != nil {
+		b.sharing.maxCacheBytes = b.nativeCacheBytes
 	}
 	return b
 }
