@@ -369,7 +369,7 @@ func TestMemoryArchetypes(t *testing.T) {
 
 	t.Run("G_chunked_join_working_set", func(t *testing.T) {
 		// Reduce the join to one output series so materializing the answer cannot hide the
-		// build side's working set. The answer grows by only 192 KiB across these ranges.
+		// build side's working set. The answer grows by only 224 KiB across these ranges.
 		for _, steps := range []int{2_048, 16_384} {
 			for _, chunk := range []int{-1, 256} {
 				g := &genScanner{series: 128, samples: steps, stepMs: 15_000, jobs: 1}
