@@ -93,7 +93,10 @@ func TestNativeSparsePagedQuery(t *testing.T) {
 
 	check := func(t *testing.T) {
 		t.Helper()
-		_, client := setupDB(t, integration.TraceProvider(t), storagebackend.New(store))
+		// Measure index paging without completed results from the preceding query.
+		_, client := setupDB(t, integration.TraceProvider(t), storagebackend.New(store,
+			storagebackend.WithNativeQueryCache(0),
+		))
 		const (
 			system = `sum by(instance)(irate(sparse_paged_cpu_seconds_total{instance="host-0",job="node_exporter",mode="system"}[1m]))`
 			all    = `sum by(instance)(irate(sparse_paged_cpu_seconds_total{instance="host-0",job="node_exporter"}[1m]))`
