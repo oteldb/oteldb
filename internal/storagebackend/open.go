@@ -149,7 +149,11 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 	}
 	b.policyResolver = resolver
 	b.rejectOutOfRetention = cfg.RejectOutOfRetention
-	return b, store.Close, nil
+	closeStore := func(ctx context.Context) error {
+		b.CloseQueryCache()
+		return store.Close(ctx)
+	}
+	return b, closeStore, nil
 }
 
 // warnUnflushedWAL reports the one thing a read-only open gives up: whatever the engine has

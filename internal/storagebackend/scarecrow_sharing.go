@@ -1,23 +1,25 @@
 package storagebackend
 
 import (
-	"container/list"
 	"context"
 	"maps"
 	"math"
+	"runtime"
 	"slices"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
+	"github.com/go-faster/errors"
+	singleflight "github.com/go-faster/sdk/singleflightx"
+	"github.com/maypok86/otter"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/zeebo/xxh3"
 
 	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/query/fetch"
 	"github.com/oteldb/storage/signal"
 
+	"github.com/oteldb/oteldb/internal/memsize"
 	"github.com/oteldb/oteldb/internal/scarecrow"
 )
 
@@ -40,19 +42,19 @@ func WithNativeQueryCache(bytes int64) Option {
 }
 
 type nativeCacheEntry struct {
-	key   nativeQueryKey
 	value any
 	bytes int64
 }
 
 type nativeQuerySharing struct {
 	producers      map[*fetch.Scope]int
-	cache          map[nativeQueryKey]*list.Element
-	lru            list.List
-	cacheBytes     int64
+	cache          *otter.Cache[nativeQueryKey, *nativeCacheEntry]
 	maxCacheBytes  int64
+	closed         bool
+	cleanup        runtime.Cleanup
 	mu             sync.Mutex
 	calls          map[nativeQueryKey]*nativeQueryCall
+	flight         singleflight.Group[*nativeQueryCall, nativeSharedResult]
 	maxOperations  int
 	active         int
 	maxResultBytes int64
@@ -64,18 +66,18 @@ type nativeQueryKey struct {
 	cacheable         bool
 	revisionAvailable bool
 	operation         string
-	matchers          string
+	matchers          xxh3.Uint128
 	label             string
 	grid              scarecrow.WindowGrid
 }
 
 type nativeQueryCall struct {
-	scope     *fetch.Scope
-	done      chan struct{}
-	cancel    context.CancelFunc
-	waiters   int
+	scope   *fetch.Scope
+	waiters int
+}
+
+type nativeSharedResult struct {
 	value     any
-	err       error
 	oversized bool
 }
 
@@ -83,68 +85,16 @@ func newNativeQuerySharing(operations int, resultBytes int64) *nativeQuerySharin
 	if operations <= 0 || resultBytes <= 0 {
 		return nil
 	}
-	return &nativeQuerySharing{producers: make(map[*fetch.Scope]int), cache: make(map[nativeQueryKey]*list.Element), calls: make(map[nativeQueryKey]*nativeQueryCall), maxOperations: operations, maxResultBytes: resultBytes}
+	return &nativeQuerySharing{producers: make(map[*fetch.Scope]int), calls: make(map[nativeQueryKey]*nativeQueryCall), maxOperations: operations, maxResultBytes: resultBytes}
 }
 
-func nativeKey(operation string, grid scarecrow.WindowGrid, label string, matchers []*labels.Matcher) nativeQueryKey {
-	parts := make([]string, len(matchers))
-	for i, m := range matchers {
-		parts[i] = strconv.Itoa(int(m.Type)) + ":" + strconv.Quote(m.Name) + ":" + strconv.Quote(m.Value)
-	}
-	slices.Sort(parts)
-	return nativeQueryKey{operation: operation, grid: grid, label: label, matchers: strings.Join(parts, ";")}
+// nativeProducerContext preserves the first read's values with SDK-owned cancellation.
+type nativeProducerContext struct {
+	context.Context
+	values context.Context
 }
 
-func (s *scarecrowScanner) sharingKey(operation string, grid scarecrow.WindowGrid, label string, matchers []*labels.Matcher) nativeQueryKey {
-	key := nativeKey(operation, grid, label, matchers)
-	key.tenant = s.b.tenant
-	if s.b.sharing.maxCacheBytes <= 0 && operation != "series" {
-		return key
-	}
-	source, ok := s.b.src.(interface {
-		MetricReadRevision(signal.TenantID, int64) (storage.MetricReadRevision, bool)
-	})
-	if !ok {
-		return key
-	}
-	start := grid.Start
-	switch operation {
-	case "aggregate-grid", "count-grid":
-		if grid.Width <= 0 || start < math.MinInt64+grid.Width {
-			return key
-		}
-		start = start - grid.Width + 1
-	case "series":
-		if start == 0 && grid.Width == 0 {
-			start = math.MinInt64
-		}
-	default:
-		if start == math.MaxInt64 {
-			return key
-		}
-		start++
-	}
-	const nsPerMs = int64(time.Millisecond)
-	if start < math.MinInt64/nsPerMs || start > math.MaxInt64/nsPerMs {
-		return key
-	}
-	key.revision, key.revisionAvailable = source.MetricReadRevision(s.b.tenant, start*nsPerMs)
-	key.cacheable = key.revisionAvailable && s.b.sharing.maxCacheBytes > 0
-	return key
-}
-
-func (g *nativeQuerySharing) put(key nativeQueryKey, value any, bytes int64) {
-	for g.cacheBytes > g.maxCacheBytes-bytes {
-		oldest := g.lru.Back()
-		entry := oldest.Value.(*nativeCacheEntry)
-		delete(g.cache, entry.key)
-		g.cacheBytes -= entry.bytes
-		g.lru.Remove(oldest)
-	}
-	entry := &nativeCacheEntry{key: key, value: value, bytes: bytes}
-	g.cache[key] = g.lru.PushFront(entry)
-	g.cacheBytes += bytes
-}
+func (c nativeProducerContext) Value(key any) any { return c.values.Value(key) }
 
 func (s *scarecrowScanner) sharingContext(ctx context.Context) context.Context {
 	// Producer accounting is per Backend, so callers cannot rebind this scanner's private scope.
@@ -177,14 +127,22 @@ func shareNative[T any](ctx context.Context, group *nativeQuerySharing, key nati
 	flightKey.cacheable = false
 	flightKey.revisionAvailable = false
 	group.mu.Lock()
-	if entry, hit := group.cache[key]; key.cacheable && hit {
-		group.lru.MoveToFront(entry)
-		value := entry.Value.(*nativeCacheEntry).value.(T)
-		group.mu.Unlock()
-		return clone(value), nil
+	if key.cacheable {
+		if cache := group.completedCache(); cache != nil {
+			if entry, hit := cache.Get(key); hit {
+				group.mu.Unlock()
+				return clone(entry.value.(T)), nil
+			}
+		}
 	}
 	call, found := group.calls[flightKey]
 	var releaseScope func()
+	releaseGuard := func() {
+		if releaseScope != nil {
+			releaseScope()
+			releaseScope = nil
+		}
+	}
 	if found {
 		scope := fetch.ScopeFrom(ctx)
 		if scope != nil && scope != call.scope {
@@ -202,98 +160,84 @@ func shareNative[T any](ctx context.Context, group *nativeQuerySharing, key nati
 				group.mu.Unlock()
 				return compute(ctx)
 			}
-			// Keep this empty scope excluded until the wait ends: another branch must not
-			// acquire the quota this caller's shared producer is waiting for.
+			// The guard excludes a first reservation while this scope waits on another producer.
 			releaseScope = scope.Abort
 		}
 	}
-	defer func() {
-		if releaseScope != nil {
-			releaseScope()
-		}
-	}()
+	defer releaseGuard()
 	if !found && group.active >= group.maxOperations {
 		group.mu.Unlock()
 		return compute(ctx)
 	}
 	if !found {
-		workCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-		call = &nativeQueryCall{done: make(chan struct{}), cancel: cancel, scope: fetch.ScopeFrom(ctx)}
+		call = &nativeQueryCall{scope: fetch.ScopeFrom(ctx)}
 		group.calls[flightKey] = call
 		group.active++
 		if call.scope != nil {
 			group.producers[call.scope]++
 		}
-		go func() {
-			value, err := compute(workCtx)
-			var bytes int64
-			if err == nil {
-				bytes = size(value) + int64(len(key.matchers)+len(key.label)+len(key.tenant)) + 2*int64(unsafe.Sizeof(nativeCacheEntry{})) + int64(unsafe.Sizeof(list.Element{}))
-			}
-			group.mu.Lock()
-			group.active--
-			if call.scope != nil {
-				group.producers[call.scope]--
-				if group.producers[call.scope] == 0 {
-					delete(group.producers, call.scope)
-				}
-			}
-			call.value, call.err = value, err
-			call.oversized = err == nil && bytes > group.maxResultBytes
-			unexpired := key.revision.ValidUntil == 0 || time.Now().UnixNano() < key.revision.ValidUntil
-			if err == nil && !call.oversized && key.cacheable && unexpired && workCtx.Err() == nil && bytes <= group.maxCacheBytes {
-				group.put(key, value, bytes)
-			}
-			if group.calls[flightKey] == call {
-				delete(group.calls, flightKey)
-			}
-			close(call.done)
-			group.mu.Unlock()
-			cancel()
-		}()
 	}
 	call.waiters++
+	// Register with SDK before unlocking: the registry creator must supply the producer scope.
+	resultCh := group.flight.DoChanContext(ctx, call, func(sharedCtx context.Context) (nativeSharedResult, error) {
+		workCtx := nativeProducerContext{Context: sharedCtx, values: context.WithoutCancel(ctx)}
+		value, err := compute(workCtx)
+		var bytes int64
+		if err == nil {
+			bytes = nativeCacheCost(key, size(value))
+		}
+		oversized := err == nil && bytes > group.maxResultBytes
+		group.mu.Lock()
+		group.active--
+		if call.scope != nil {
+			group.producers[call.scope]--
+			if group.producers[call.scope] == 0 {
+				delete(group.producers, call.scope)
+			}
+		}
+		unexpired := key.revision.ValidUntil == 0 || time.Now().UnixNano() < key.revision.ValidUntil
+		if err == nil && !oversized && key.cacheable && unexpired && workCtx.Err() == nil && bytes <= group.maxCacheBytes && bytes <= math.MaxUint32 {
+			group.cacheResult(key, value, bytes)
+		}
+		if group.calls[flightKey] == call {
+			delete(group.calls, flightKey)
+		}
+		group.mu.Unlock()
+		return nativeSharedResult{value: value, oversized: oversized}, err
+	})
 	group.mu.Unlock()
 	defer func() {
 		group.mu.Lock()
 		call.waiters--
-		if call.waiters == 0 {
-			call.cancel()
-			if group.calls[flightKey] == call {
-				delete(group.calls, flightKey)
-			}
+		if call.waiters == 0 && group.calls[flightKey] == call {
+			delete(group.calls, flightKey)
 		}
 		group.mu.Unlock()
 	}()
+	var result singleflight.Result[nativeSharedResult]
 	select {
 	case <-ctx.Done():
 		return zero, ctx.Err()
-	case <-call.done:
+	case result = <-resultCh:
 	}
 	if err := ctx.Err(); err != nil {
 		return zero, err
 	}
-	if call.err != nil {
-		return zero, call.err
-	}
-	value := call.value.(T)
-	if call.oversized {
-		if found {
-			if releaseScope != nil {
-				releaseScope()
-				releaseScope = nil
-			}
+	if result.Err != nil {
+		if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
+			releaseGuard()
 			return compute(ctx)
 		}
-		return value, nil
+		return zero, result.Err
 	}
-	return clone(value), nil
-}
-
-func labelsBytes(ls labels.Labels) int64 {
-	n := int64(unsafe.Sizeof(ls))
-	ls.Range(func(l labels.Label) { n += int64(len(l.Name)+len(l.Value)) + int64(unsafe.Sizeof(l)) })
-	return n
+	if result.Val.oversized {
+		if found {
+			releaseGuard()
+			return compute(ctx)
+		}
+		return result.Val.value.(T), nil
+	}
+	return clone(result.Val.value.(T)), nil
 }
 
 func (s *scarecrowScanner) Series(ctx context.Context, mint, maxt int64, matchers []*labels.Matcher) ([]labels.Labels, error) {
@@ -303,9 +247,9 @@ func (s *scarecrowScanner) Series(ctx context.Context, mint, maxt int64, matcher
 	return shareNative(s.sharingContext(ctx), s.b.sharing, s.sharingKey("series", scarecrow.WindowGrid{Start: mint, Width: maxt}, "", matchers),
 		func(ctx context.Context) ([]labels.Labels, error) { return s.series(ctx, mint, maxt, matchers) },
 		func(values []labels.Labels) (n int64) {
-			n += int64(cap(values)) * int64(unsafe.Sizeof(labels.Labels{}))
+			n += memsize.Slice(values)
 			for _, ls := range values {
-				n += labelsBytes(ls)
+				n += labelPayloadBytes(ls)
 			}
 			return n
 		},
@@ -327,9 +271,9 @@ func (s *scarecrowScanner) AggregateGrid(ctx context.Context, grid scarecrow.Win
 			return s.aggregateGrid(ctx, grid, matchers)
 		},
 		func(values []scarecrow.GridAggregate) (n int64) {
-			n += int64(cap(values)) * int64(unsafe.Sizeof(scarecrow.GridAggregate{}))
+			n += memsize.Slice(values)
 			for _, value := range values {
-				n += labelsBytes(value.Labels) + int64(unsafe.Sizeof(value)) + int64(cap(value.Windows))*int64(unsafe.Sizeof(scarecrow.Aggregate{}))
+				n += labelPayloadBytes(value.Labels) + memsize.Slice(value.Windows)
 			}
 			return n
 		},
@@ -352,9 +296,9 @@ func (s *scarecrowScanner) AggregateOverTime(ctx context.Context, mint, maxt int
 			return s.aggregateOverTime(ctx, mint, maxt, matchers)
 		},
 		func(values []scarecrow.WindowAggregate) (n int64) {
-			n += int64(cap(values)) * int64(unsafe.Sizeof(scarecrow.WindowAggregate{}))
+			n += memsize.Slice(values)
 			for _, value := range values {
-				n += labelsBytes(value.Labels) + int64(unsafe.Sizeof(value))
+				n += labelPayloadBytes(value.Labels)
 			}
 			return n
 		},
@@ -385,9 +329,9 @@ func (s *scarecrowScanner) CountSeriesBy(ctx context.Context, mint, maxt int64, 
 			return s.countSeriesBy(ctx, mint, maxt, label, matchers)
 		},
 		func(values map[string]uint64) (n int64) {
-			n = 512
+			n = memsize.Map(values)
 			for key := range values {
-				n += int64(len(key)) + 128
+				n += int64(len(key))
 			}
 			return n
 		},
@@ -403,9 +347,9 @@ func (s *scarecrowScanner) CountSeriesGrid(ctx context.Context, grid scarecrow.W
 			return s.countSeriesGrid(ctx, grid, label, matchers)
 		},
 		func(values map[string][]uint64) (n int64) {
-			n = 512
+			n = memsize.Map(values)
 			for key, value := range values {
-				n += int64(len(key)) + int64(cap(value))*8 + 128
+				n += int64(len(key)) + memsize.Slice(value)
 			}
 			return n
 		},

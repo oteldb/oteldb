@@ -83,6 +83,7 @@ func benchmarkNativeQuerySharing(b *testing.B, workload, reuse string, sharing b
 		options = append(options, storagebackend.WithNativeQuerySharing(0, 0))
 	}
 	backend := storagebackend.New(store, options...)
+	b.Cleanup(func() { backend.CloseQueryCache() })
 	queryEngine := scarecrow.NewEngine(scarecrow.Opts{NewScanner: func(storage.Queryable) scarecrow.Scanner { return backend.ScarecrowScanner() }})
 	verify := true
 	panel := func(host int) {
@@ -126,6 +127,7 @@ func benchmarkNativeQuerySharing(b *testing.B, workload, reuse string, sharing b
 	}
 	panel(63)
 	verify = false
+	backend.CloseQueryCache()
 	backend = storagebackend.New(store, options...)
 	if reuse == "cached" {
 		panel(0)
@@ -135,6 +137,7 @@ func benchmarkNativeQuerySharing(b *testing.B, workload, reuse string, sharing b
 	for b.Loop() {
 		if reuse == "fresh-host" && iteration != 0 && iteration%64 == 0 {
 			b.StopTimer()
+			backend.CloseQueryCache()
 			backend = storagebackend.New(store, options...)
 			b.StartTimer()
 		}

@@ -33,6 +33,7 @@ func TestScarecrowSharingNativeFileHTTP(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, store.Close(context.WithoutCancel(t.Context()))) })
 			backend := storagebackend.New(store)
+			t.Cleanup(func() { backend.CloseQueryCache() })
 			base := time.Unix(2_000_000, 0).UTC()
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()

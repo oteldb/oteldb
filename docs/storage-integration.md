@@ -84,14 +84,16 @@ Streaming raw sample scans and their parallel folds keep their existing ownershi
 Metadata flights retain their revision because a later raw scan takes a fresh view; sources without
 a revision bypass metadata coalescing. Followers already holding decode quota compute independently.
 
-Completed native results use a 64 MiB LRU (`storage.native_query_cache_bytes: 0` disables it), capped
-at 4 MiB per entry. Keys include source/backend identity, tenant, full matchers, operation and window
-grid. Local storage revisions invalidate on writes, replay, reset and part publication; age retention
+Completed native results use a 64 MiB cost-bounded Otter cache (`storage.native_query_cache_bytes: 0` disables it), capped
+at 4 MiB per entry. Keys include source/backend identity, tenant, canonical matcher fingerprints,
+operation and window grid. Local storage revisions invalidate on writes, replay, reset and part publication; age retention
 limits reuse to the earliest input timestamp plus the current age policy. There is no freshness TTL.
 Clustered or custom sources without a revision capability do not reuse completed results. Custom
 sources must explicitly opt into sharing after applying authorization. Setting
 `storage.native_query_sharing: false` disables both in-flight sharing and the completed cache.
-Raw `rate`/`irate` folds remain uncached.
+Raw `rate`/`irate` folds remain uncached. A healthy caller retries a shared context error once with
+its own scope. `Open` closes the cache at shutdown; caller-owned `New`/`NewQuery` backends should call
+`CloseQueryCache` after serving stops. Runtime cleanup is a fallback for abandoned handles.
 
 ## Aggregate pushdown for `*_over_time` (headline integration)
 

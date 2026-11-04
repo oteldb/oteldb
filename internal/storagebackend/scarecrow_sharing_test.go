@@ -1,7 +1,6 @@
 package storagebackend
 
 import (
-	"container/list"
 	"context"
 	"slices"
 	"sync"
@@ -9,7 +8,6 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
-	"unsafe"
 
 	"github.com/go-faster/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -32,6 +30,7 @@ func TestNativeSharingCancellation(t *testing.T) {
 		t.Run(map[bool]string{false: "follower", true: "leader"}[cancelLeader], func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				group := newNativeQuerySharing(1, 1024)
+				t.Cleanup(group.closeCache)
 				key := nativeQueryKey{operation: "test"}
 				var calls atomic.Int32
 				release := make(chan struct{})
@@ -86,6 +85,7 @@ func TestNativeSharingLastWaiterCancellation(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		group := newNativeQuerySharing(1, 1024)
+		t.Cleanup(group.closeCache)
 		ctx, cancel := context.WithCancel(t.Context())
 		finished := make(chan struct{})
 		go func() {
@@ -121,6 +121,7 @@ func TestNativeSharingLimitsAndOwnership(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				group := newNativeQuerySharing(tt.operations, tt.bytes)
+				t.Cleanup(group.closeCache)
 				release := make(chan struct{})
 				var calls atomic.Int32
 				compute := func(context.Context) ([]int, error) { calls.Add(1); <-release; return []int{42}, t.Context().Err() }
@@ -152,6 +153,7 @@ func TestNativeSharingSaturation(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		group := newNativeQuerySharing(1, 1024)
+		t.Cleanup(group.closeCache)
 		ctx, cancel := context.WithCancel(t.Context())
 		exit := make(chan struct{})
 		go func() {
@@ -249,6 +251,7 @@ func TestNativeSharingSixModeDenominator(t *testing.T) {
 		release := make(chan struct{})
 		source := &sharedNativeSource{release: release}
 		backend := NewQuery(sharedTestSource{source}, WithNativeQuerySharing(64, 1<<20))
+		t.Cleanup(backend.CloseQueryCache)
 		queryEngine := scarecrow.NewEngine(scarecrow.Opts{NewScanner: func(storage.Queryable) scarecrow.Scanner { return backend.ScarecrowScanner() }})
 		var wg sync.WaitGroup
 		for mode := range 6 {
@@ -274,6 +277,7 @@ func TestNativeSharingScopeAndBudget(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		group := newNativeQuerySharing(1, 1024)
+		t.Cleanup(group.closeCache)
 		scope := fetch.NewScope()
 		budget := readbudget.New(100)
 		ctx := readbudget.With(fetch.WithScope(t.Context(), scope), budget)
@@ -292,6 +296,7 @@ func TestNativeSharingErrorsAreNotCached(t *testing.T) {
 	t.Parallel()
 	errExpected := errors.New("read failed")
 	group := newNativeQuerySharing(1, 1024)
+	t.Cleanup(group.closeCache)
 	for range 2 {
 		_, err := shareNative(t.Context(), group, nativeQueryKey{}, func(context.Context) (int, error) { return 0, errExpected }, func(int) int64 { return 8 }, func(n int) int { return n })
 		require.ErrorIs(t, err, errExpected)
@@ -338,6 +343,7 @@ func TestNativeSharingCompletedCache(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			group := newNativeQuerySharing(8, tt.resultBytes)
+			t.Cleanup(group.closeCache)
 			group.maxCacheBytes = tt.cacheBytes
 			key := nativeQueryKey{operation: "cache", cacheable: true}
 			calls := 0
@@ -349,7 +355,9 @@ func TestNativeSharingCompletedCache(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, []int{42}, second)
 			require.Equal(t, tt.want, calls)
-			require.LessOrEqual(t, group.cacheBytes, group.maxCacheBytes)
+			if group.cache != nil {
+				require.LessOrEqual(t, int64(group.cache.Capacity()), group.maxCacheBytes)
+			}
 			require.Empty(t, group.calls, "completed cache retains values, never request contexts or budgets")
 		})
 	}
@@ -357,18 +365,30 @@ func TestNativeSharingCompletedCache(t *testing.T) {
 
 func TestNativeSharingCacheEviction(t *testing.T) {
 	t.Parallel()
-	group := newNativeQuerySharing(8, 4096)
-	group.maxCacheBytes = 2*int64(unsafe.Sizeof(nativeCacheEntry{})) + int64(unsafe.Sizeof(list.Element{})) + 8
-	first := nativeQueryKey{cacheable: true, grid: scarecrow.WindowGrid{Start: 1}}
-	second := nativeQueryKey{cacheable: true, grid: scarecrow.WindowGrid{Start: 2}}
-	calls := 0
-	for _, key := range []nativeQueryKey{first, first, second, first} {
-		_, err := shareNative(t.Context(), group, key, func(ctx context.Context) (int, error) { calls++; return 42, ctx.Err() }, func(int) int64 { return 8 }, func(n int) int { return n })
-		require.NoError(t, err)
-		require.LessOrEqual(t, group.cacheBytes, group.maxCacheBytes)
-	}
-	require.Equal(t, 3, calls)
-	require.Len(t, group.cache, 1)
+	synctest.Test(t, func(t *testing.T) {
+		group := newNativeQuerySharing(8, 4096)
+		t.Cleanup(group.closeCache)
+		group.maxCacheBytes = 4096
+		calls := 0
+		read := func(start int64) {
+			_, err := shareNative(t.Context(), group, nativeQueryKey{cacheable: true, grid: scarecrow.WindowGrid{Start: start}}, func(ctx context.Context) (int, error) { calls++; return 42, ctx.Err() }, func(int) int64 { return 8 }, func(n int) int { return n })
+			require.NoError(t, err)
+		}
+		read(1)
+		read(1)
+		require.Equal(t, 1, calls)
+		for i := range 64 {
+			read(int64(i + 2))
+			synctest.Wait()
+		}
+		var bytes int64
+		group.cache.Range(func(_ nativeQueryKey, e *nativeCacheEntry) bool { bytes += e.bytes; return true })
+		require.LessOrEqual(t, bytes, group.maxCacheBytes)
+		require.Less(t, group.cache.Size(), 33)
+		before := calls
+		read(1)
+		require.Equal(t, before+1, calls, "the old completed result was evicted")
+	})
 }
 
 type cachedTestSource struct {
@@ -390,6 +410,7 @@ func TestNativeSharingAgeDeadline(t *testing.T) {
 		now := time.Now().UnixNano()
 		source := &cachedTestSource{sharedTestSource: sharedTestSource{delegate}, revision: nativestorage.MetricReadRevision{ValidUntil: now + 2}, now: now}
 		backend := NewQuery(source, WithNativeQuerySharing(8, 4096))
+		t.Cleanup(backend.CloseQueryCache)
 		grid := scarecrow.WindowGrid{Start: 100_000, Step: 15_000, Width: 60_000, NumSteps: 2}
 		read := func() {
 			_, err := backend.ScarecrowScanner().(scarecrow.GridSeriesCounter).CountSeriesGrid(t.Context(), grid, "cpu", nil)
@@ -435,6 +456,7 @@ func TestNativeSharingAcknowledgedWrite(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, store.Close(context.WithoutCancel(t.Context()))) })
 	source := &cacheCountSource{Storage: store}
 	backend := NewQuery(source, WithNativeQuerySharing(8, 4096))
+	t.Cleanup(backend.CloseQueryCache)
 	write := func(cpu string) {
 		var md metric.Metrics
 		m := md.AddResource().AddScope().AddMetric()
@@ -473,6 +495,7 @@ func TestNativeSharingCommonFold(t *testing.T) {
 	delegate := &sharedNativeSource{release: release}
 	source := &cachedTestSource{sharedTestSource: sharedTestSource{delegate}}
 	backend := NewQuery(source, WithNativeQuerySharing(8, 1<<20))
+	t.Cleanup(backend.CloseQueryCache)
 	queryEngine := scarecrow.NewEngine(scarecrow.Opts{NewScanner: func(storage.Queryable) scarecrow.Scanner { return backend.ScarecrowScanner() }})
 	for _, function := range []string{"sum", "avg", "min", "max", "stddev", "stdvar"} {
 		q, err := queryEngine.NewRangeQuery(t.Context(), backend, nil, function+`(avg_over_time(cpu_seconds[1m]))`, time.Unix(100, 0), time.Unix(160, 0), 15*time.Second)
@@ -498,6 +521,7 @@ func TestNativeSharingOverlappingWrite(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		group := newNativeQuerySharing(8, 4096)
+		t.Cleanup(group.closeCache)
 		group.maxCacheBytes = 4096
 		eng := engine.New(engine.Config{})
 		key := func() nativeQueryKey {

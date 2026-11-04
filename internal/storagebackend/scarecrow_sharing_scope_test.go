@@ -58,6 +58,7 @@ func TestNativeSharingHeldRawAdmission(t *testing.T) {
 				require.NoError(t, store.Admin().Flush(t.Context(), "", signal.Metric))
 			}
 			backend := New(store, WithNativeQueryCache(0))
+			t.Cleanup(backend.CloseQueryCache)
 			synctest.Test(t, func(t *testing.T) {
 				leader := backend.ScarecrowScanner().(*scarecrowScanner)
 				follower := backend.ScarecrowScanner().(*scarecrowScanner)
@@ -108,6 +109,7 @@ func TestNativeSharingJoinExcludesConcurrentAdmission(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		group := newNativeQuerySharing(8, 4096)
+		t.Cleanup(group.closeCache)
 		leaderScope, followerScope := fetch.NewScope(), fetch.NewScope()
 		release := make(chan struct{})
 		compute := func(ctx context.Context) (int, error) { <-release; return 42, ctx.Err() }
@@ -153,6 +155,7 @@ func TestNativeSharingSameScopeJoin(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		group := newNativeQuerySharing(8, 4096)
+		t.Cleanup(group.closeCache)
 		scope := fetch.NewScope()
 		ctx := fetch.WithScope(t.Context(), scope)
 		release := make(chan struct{})
@@ -183,6 +186,7 @@ func TestNativeSharingOversizedFollowerReleasesScope(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		group := newNativeQuerySharing(8, 1)
+		t.Cleanup(group.closeCache)
 		leaderScope, followerScope := fetch.NewScope(), fetch.NewScope()
 		release := make(chan struct{})
 		var calls atomic.Int32
@@ -237,6 +241,7 @@ func TestNativeSharingMetadataWrite(t *testing.T) {
 		release := make(chan struct{})
 		source := &metadataSnapshotSource{Storage: store, release: release}
 		backend := NewQuery(source, WithNativeQuerySharing(8, 4096))
+		t.Cleanup(backend.CloseQueryCache)
 		oldDone := make(chan struct{})
 		go func() {
 			defer close(oldDone)
@@ -274,6 +279,7 @@ func TestNativeSharingProducerScopeCycle(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		group := newNativeQuerySharing(8, 4096)
+		t.Cleanup(group.closeCache)
 		scopeA, scopeB := fetch.NewScope(), fetch.NewScope()
 		gate := make(chan struct{})
 		defer func() { cancel(); close(gate) }()
