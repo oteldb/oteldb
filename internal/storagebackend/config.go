@@ -9,6 +9,8 @@ import (
 // Config configures the embedded storage engine (used when
 // a signal is served by the embedded engine).
 type Config struct {
+	// RejectOutOfRetention rejects expired writes through admission. False preserves backfill.
+	RejectOutOfRetention bool `json:"reject_out_of_retention" yaml:"reject_out_of_retention"`
 	// Backend is the engine backend: "memory" (default, ephemeral), "file", or "s3".
 	Backend string `json:"backend" yaml:"backend"`
 	// Dir is the base data directory for the file backend: parts live in <dir>/parts and the

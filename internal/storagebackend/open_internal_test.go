@@ -14,6 +14,7 @@ import (
 
 	"github.com/oteldb/storage"
 	"github.com/oteldb/storage/signal"
+	"github.com/oteldb/storage/tenant"
 
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
@@ -120,10 +121,10 @@ func TestTenancyOption(t *testing.T) {
 			Retention: &RetentionConfig{
 				MaxAge:   90 * 24 * time.Hour,
 				MaxBytes: 1 << 30,
-				MaxBytesPerSignal: map[string]xbytes.Bytes{
-					"log":    256 << 20,
-					"trace":  128 << 20,
-					"metric": 512 << 20,
+				Signals: map[string]SignalRetentionConfig{
+					"log":    {MaxBytes: 256 << 20},
+					"trace":  {MaxBytes: 128 << 20},
+					"metric": {MaxBytes: 512 << 20},
 				},
 			},
 			Limits: &LimitsConfig{
@@ -164,11 +165,11 @@ func TestTenancyOption(t *testing.T) {
 
 		require.Equal(t, 90*24*time.Hour, p.Retention.MaxAge)
 		require.Equal(t, int64(1<<30), p.Retention.MaxBytes)
-		require.Equal(t, map[signal.Signal]int64{
-			signal.Log:    256 << 20,
-			signal.Trace:  128 << 20,
-			signal.Metric: 512 << 20,
-		}, p.Retention.MaxBytesPerSignal)
+		require.Equal(t, map[signal.Signal]tenant.SignalRetention{
+			signal.Log:    {MaxBytes: 256 << 20},
+			signal.Trace:  {MaxBytes: 128 << 20},
+			signal.Metric: {MaxBytes: 512 << 20},
+		}, p.Retention.PerSignal)
 
 		require.Equal(t, int64(10<<20), p.Limits.IngestBytesPerSecond)
 		require.Equal(t, int64(64<<20), p.Limits.MaxInFlightBytes)
@@ -193,9 +194,9 @@ func TestTenancyOption(t *testing.T) {
 	t.Run("PerSignalBudgetsOnlyInstallResolver", func(t *testing.T) {
 		opt, err := tenancyOption(&PolicyConfig{
 			Retention: &RetentionConfig{
-				MaxBytesPerSignal: map[string]xbytes.Bytes{
-					"profile":  64 << 20,
-					"exemplar": 16 << 20,
+				Signals: map[string]SignalRetentionConfig{
+					"profile":  {MaxBytes: 64 << 20},
+					"exemplar": {MaxBytes: 16 << 20},
 				},
 			},
 		})
@@ -205,15 +206,15 @@ func TestTenancyOption(t *testing.T) {
 
 		p := o.Tenancy.Resolve("default")
 		require.Zero(t, p.Retention.MaxBytes, "a per-signal budget does not imply a pooled one")
-		require.Equal(t, map[signal.Signal]int64{
-			signal.Profile:  64 << 20,
-			signal.Exemplar: 16 << 20,
-		}, p.Retention.MaxBytesPerSignal)
+		require.Equal(t, map[signal.Signal]tenant.SignalRetention{
+			signal.Profile:  {MaxBytes: 64 << 20},
+			signal.Exemplar: {MaxBytes: 16 << 20},
+		}, p.Retention.PerSignal)
 	})
 
 	t.Run("UnknownSignalBudgetIsAnError", func(t *testing.T) {
 		_, err := tenancyOption(&PolicyConfig{
-			Retention: &RetentionConfig{MaxBytesPerSignal: map[string]xbytes.Bytes{"logs": 1 << 30}},
+			Retention: &RetentionConfig{Signals: map[string]SignalRetentionConfig{"logs": {MaxBytes: 1 << 30}}},
 		})
 		require.ErrorIs(t, err, signal.ErrUnknownSignal)
 	})
@@ -222,7 +223,7 @@ func TestTenancyOption(t *testing.T) {
 	// retention — the opposite of what the setting names.
 	t.Run("NegativeSignalBudgetIsAnError", func(t *testing.T) {
 		_, err := tenancyOption(&PolicyConfig{
-			Retention: &RetentionConfig{MaxBytesPerSignal: map[string]xbytes.Bytes{"log": negativeBytes}},
+			Retention: &RetentionConfig{Signals: map[string]SignalRetentionConfig{"log": {MaxBytes: negativeBytes}}},
 		})
 		require.Error(t, err)
 	})
@@ -237,9 +238,9 @@ func TestTenancyOption(t *testing.T) {
 	// A present-but-zero budget is inert in the library (it ignores non-positive budgets), so the
 	// startup log must not report it as a configured budget.
 	t.Run("ZeroSignalBudgetIsNotCounted", func(t *testing.T) {
-		cfg := &RetentionConfig{MaxBytesPerSignal: map[string]xbytes.Bytes{
-			"log":   0,
-			"trace": 1 << 30,
+		cfg := &RetentionConfig{Signals: map[string]SignalRetentionConfig{
+			"log":   {MaxBytes: 0},
+			"trace": {MaxBytes: 1 << 30},
 		}}
 		require.Equal(t, 1, retentionSignalBudgets(cfg))
 	})
