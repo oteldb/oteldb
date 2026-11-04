@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/oteldb/storage/cluster"
 	"github.com/oteldb/storage/signal"
 	"github.com/oteldb/storage/tenant"
 )
@@ -15,6 +16,7 @@ func (b *Backend) RetentionPolicy(id signal.TenantID) (tenant.Retention, bool) {
 	if b.policyResolver == nil {
 		return tenant.Retention{}, false
 	}
+	id = signal.TenantID(cluster.TenantOfShard(id).String())
 	policy := b.policyResolver.Resolve(id).Retention
 	policy.PerSignal = maps.Clone(policy.PerSignal)
 	return policy, true

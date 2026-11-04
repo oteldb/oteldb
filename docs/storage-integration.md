@@ -174,8 +174,20 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   max_merge_part_size}`. `max_part_size` bounds a *flushed* part's uncompressed estimate;
   `max_merge_part_size` bounds a *merged* part's compressed size on disk, and left at zero is
   derived from the backend's free space.
-  oteldb runs the embedded engine single-tenant, so a static `tenant.ResolverFunc` returns one
-  policy for every tenant; each signal can set its own age and byte bounds.
+  `storage.policy` is the fallback for tenants without an override. `storage.tenants` maps
+  normalized storage tenant IDs to policy overrides; `default` names the default tenant.
+  Each override replaces any supplied top-level block (`retention`, `limits`, `downsample`,
+  `precision`, `recompress`, `ec`) whole; omitted or null blocks inherit the fallback. Lists
+  set to `[]` disable inherited tiers; `retention: {}` and `limits: {}` remove inherited bounds.
+  Each resolved policy is validated at startup, with errors naming the tenant.
+  A resolver is installed even when only tenant overrides are configured; unlisted tenants
+  then retain the unlimited library default. Shard keys resolve through their real tenant
+  in the storage library. Policy maps are loaded once at startup, with no hot reload.
+  All cluster nodes must share the same configuration: a shard owner decides its policy.
+
+  odbingest already routes writes by tenant. Native query paths still read only `default`
+  (tracked in #820); per-tenant retention governs stored non-default data before those tenants
+  are queryable. Each signal can set its own age and byte bounds.
   `retention.signals` accepts `metric`, `log`, `trace`, `profile` and `exemplar`.
   A positive signal age replaces `max_age`, longer or shorter; zero inherits the default.
   Signal and pooled byte bounds both apply. A signal byte bound above a positive pooled bound,
@@ -197,13 +209,20 @@ residual for identity enumeration; they cannot be applied as stream attributes.
           log: {max_age: 168h, max_bytes: 40GB}
           trace: {max_age: 72h, max_bytes: 20GB}
           exemplar: {max_age: 72h}
+    tenants:
+      team-a:
+        retention:  # Replaces the entire default retention block; limits and tiers inherit.
+          max_age: 2160h
+          signals:
+            log: {max_age: 720h}
   ```
 
   Age limits filter facade reads immediately; physical cleanup and byte-budget enforcement are
   eventual. `storage.reject_out_of_retention` optionally refuses expired writes before they mint
   identities/WAL rows; it defaults off to preserve backfill. Rejections appear as
   `out_of_retention` in admission statistics and metrics. Startup logs report effective ages and
-  budgets for all signals, and warn if exemplars outlive traces or a metric policy tier starts
+  budgets for all signals per overridden tenant (`tenant: "*"` is the fallback), and warn if
+  exemplars outlive traces or a metric policy tier starts
   after the metric retention window.
 
   The storage library's native `Write*` calls return admission counts. The embedded Collector

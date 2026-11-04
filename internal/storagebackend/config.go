@@ -75,9 +75,11 @@ type Config struct {
 	// metric part so range-covering aggregates — and the *_over_time pushdown — can be answered
 	// without decoding. Enabled by default; set to false to disable.
 	AggregateStats *bool `json:"aggregate_stats" yaml:"aggregate_stats"`
-	// Policy configures the per-tenant merge-time storage policy: age-tiered lossy float precision,
-	// downsampling, and cold-data recompression. Empty ⇒ the library default (lossless, no rollup).
+	// Policy is the fallback storage policy for tenants without an override.
+	// Empty uses the library default (unlimited, lossless, no rollup).
 	Policy *PolicyConfig `json:"policy" yaml:"policy"`
+	// Tenants overrides whole policy blocks by normalized tenant ID. Unset blocks inherit Policy.
+	Tenants map[string]*PolicyConfig `json:"tenants" yaml:"tenants"`
 	// ReadOnly opens the engine for reading only: no WAL (so no recovery of an unflushed head, and
 	// no checkpoint that discards segments), no maintenance loop (so no flush, merge or retention),
 	// and no cluster membership. It is set by a tool, never by a config file, which is why it has no

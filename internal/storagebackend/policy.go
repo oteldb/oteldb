@@ -17,10 +17,7 @@ import (
 // PolicyConfig configures the per-tenant storage policy applied to the embedded engine's
 // background merges: age-tiered lossy float precision, downsampling, cold-data recompression, and
 // cold-data erasure coding.
-// The storage library resolves these per-tenant via a [tenant.Resolver] callback; oteldb runs the
-// embedded engine single-tenant (every signal routes to the "default" tenant), so this one policy
-// is resolved for every tenant. Empty ⇒ no tenancy resolver is installed (the library default:
-// lossless, no rollup, no recompression).
+// Unset tenant override blocks inherit the corresponding default policy blocks.
 type PolicyConfig struct {
 	// Precision is the age-tiered lossy float-compression policy: each tier re-encodes, at merge,
 	// the value column of parts older than After to retain only Bits significant mantissa bits, so
@@ -171,14 +168,6 @@ func retentionPerSignal(cfg map[string]SignalRetentionConfig) (map[signal.Signal
 	return bounds, nil
 }
 
-// retentionMaxAge reports the configured retention window, or zero when retention is disabled.
-func retentionMaxAge(cfg *RetentionConfig) time.Duration {
-	if cfg == nil {
-		return 0
-	}
-	return cfg.MaxAge
-}
-
 // retentionSignalBudgets reports how many signals carry their own byte budget. A zero entry is
 // inert in the library, so it is not counted: the startup log reports what is enforced.
 func retentionSignalBudgets(cfg *RetentionConfig) int {
@@ -233,11 +222,9 @@ func (cfg *PolicyConfig) empty() bool {
 		cfg.Limits == nil)
 }
 
-// tenancyOption builds the storage tenancy option from the policy config, or returns (nil, nil)
-// when no policy is configured. The resolved policy is applied to every tenant — oteldb runs the
-// embedded engine single-tenant, so a static resolver suffices.
+// tenancyOption builds the storage tenancy option for a default policy.
 func tenancyOption(cfg *PolicyConfig) (storage.Option, error) {
-	resolver, err := tenancyResolver(cfg)
+	resolver, err := tenancyResolver(cfg, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -245,17 +232,6 @@ func tenancyOption(cfg *PolicyConfig) (storage.Option, error) {
 		return nil, nil
 	}
 	return storage.WithTenancy(resolver), nil
-}
-
-func tenancyResolver(cfg *PolicyConfig) (tenant.Resolver, error) {
-	if cfg.empty() {
-		return nil, nil
-	}
-	policy, err := cfg.policy()
-	if err != nil {
-		return nil, err
-	}
-	return tenant.ResolverFunc(func(signal.TenantID) tenant.Policy { return policy }), nil
 }
 
 // policy translates the config into a [tenant.Policy]. It validates the downsample aggregation

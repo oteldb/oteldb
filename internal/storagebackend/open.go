@@ -40,6 +40,11 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		return nil, nil, errors.Wrap(err, "storage")
 	}
 
+	resolver, err := tenancyResolver(cfg.Policy, cfg.Tenants)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "storage policy")
+	}
+
 	layout, err := cfg.Layout()
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "resolve storage layout")
@@ -102,27 +107,12 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		opts = append(opts, clusterOpt)
 	}
 
-	resolver, err := tenancyResolver(cfg.Policy)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "storage policy")
-	}
 	if resolver != nil {
 		opts = append(opts, storage.WithTenancy(resolver))
-		lg.Info("Applying embedded storage tenancy policy",
-			zap.Int("precision_tiers", len(cfg.Policy.Precision)),
-			zap.Int("downsample_tiers", len(cfg.Policy.Downsample)),
-			zap.Bool("recompress", cfg.Policy.Recompress != nil), zap.Bool("ec", cfg.Policy.EC != nil),
-			zap.Duration("retention_max_age", retentionMaxAge(cfg.Policy.Retention)),
-			zap.Int("retention_signal_budgets", retentionSignalBudgets(cfg.Policy.Retention)),
-			zap.Bool("limits", cfg.Policy.Limits != nil),
-		)
-		warnECInert(cfg.Cluster, cfg.Policy, lg)
 	} else {
 		resolver = tenant.Default()
 	}
-	resolved := resolver.Resolve("default")
-	logRetentionPolicy(lg, resolved.Retention, cfg.RejectOutOfRetention)
-	warnRetentionPolicy(lg, cfg.Policy, resolved.Retention)
+	logTenantPolicies(cfg, resolver, lg)
 	if cfg.RejectOutOfRetention {
 		opts = append(opts, storage.WithRejectOutOfRetention())
 	}
