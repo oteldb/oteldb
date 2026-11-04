@@ -28,25 +28,8 @@ var (
 	_ traceqlengine.Querier = (*TraceQuerier)(nil)
 )
 
-// SelectSpansets implements [traceqlengine.Querier]. It returns the traces whose spans fall in the
-// window, grouped by trace id; the TraceQL engine evaluates the spanset matchers on the result.
-//
-// The query's span matchers are first lowered to storage filters ([buildTracePushdown]) and run as a
-// trace_id-only scan, so only the candidate traces are materialized with their attributes, events
-// and links. The candidate set is a superset of the result and whole traces are returned, so the
-// engine sees exactly what a full window scan would give it — structural operators and the
-// spanset-level intrinsics still work. Nothing pushable (a bare `{}`, a `traceDuration` bound)
-// falls back to the full window scan.
-//
-// Resolving the candidates is itself a scan (of the filter columns and trace_id, not of the
-// attribute/event/link blobs), so a predicate that matches nearly every trace pays for it without
-// pruning anything: on the golden corpus a selective query is ~4x faster and a match-everything one
-// ~18% slower than the plain scan.
-//
-// params.Limit is deliberately not applied here: it counts *matching* traces, and the candidate set
-// is only a superset of them. Truncating it in scan order would cap the result at "however many of
-// the first N candidates happen to match", which for a selective query is usually fewer than N and
-// often zero. The engine applies the limit once the matchers have run.
+// SelectSpansets resolves candidate traces, filters their retained extents using a narrow scan,
+// then materializes surviving traces. The engine rechecks all predicates and applies the limit.
 func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.SelectSpansetsParams) (iterators.Iterator[traceqlengine.Trace], error) {
 	ctx = q.b.queryContext(ctx)
 
@@ -58,7 +41,24 @@ func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.
 		return iterators.Empty[traceqlengine.Trace](), nil
 	}
 
-	spans, err := q.scanProjectedSpans(ctx, params.Start, params.End, traceIDs, traceProjection(params.Fields))
+	if needsTraceExtents(params) {
+		if !pushed {
+			traceIDs = map[otelstorage.TraceID]struct{}{}
+			lo, hi := fetchWindow(params.Start, params.End)
+			if err := q.collectTraceIDs(ctx, lo, hi, traceFilter{}, traceIDs); err != nil {
+				return nil, err
+			}
+		}
+		traceIDs, err = q.filterTraceExtents(ctx, params, traceIDs)
+		if err != nil {
+			return nil, err
+		}
+		if len(traceIDs) == 0 {
+			return iterators.Empty[traceqlengine.Trace](), nil
+		}
+	}
+
+	spans, err := q.scanProjectedSpans(ctx, time.Time{}, time.Time{}, traceIDs, traceProjection(params.Fields))
 	if err != nil {
 		return nil, err
 	}
@@ -668,7 +668,8 @@ func (q *TraceQuerier) scanProjectedSpans(
 // traceIDCondition keeps the requested traces and carries their raw IDs as equality/set hints.
 func traceIDCondition(traceIDs map[otelstorage.TraceID]struct{}) fetch.Condition {
 	cond := fetch.Condition{
-		Column: sigtrace.ColTraceID,
+		Column:         sigtrace.ColTraceID,
+		PhysicalColumn: true,
 		Match: func(v signal.Value) bool {
 			raw := v.Str()
 			if len(raw) != len(otelstorage.TraceID{}) {

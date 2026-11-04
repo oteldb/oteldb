@@ -9,7 +9,7 @@ services:
     image: ghcr.io/oteldb/oteldb
     build:
       context: ../../../
-      dockerfile: dev/Dockerfile
+      dockerfile: ./dev/deploy/deploy.Dockerfile
     command:
       - --embedded
     environment:

@@ -162,7 +162,7 @@ func (h *TempoAPI) searchTraceQL(ctx context.Context, query string, params tempo
 
 	resp, err = h.engine.Eval(ctx, query, traceqlengine.EvalParams{
 		MinDuration: params.MinDuration.Or(0),
-		MaxDuration: params.MinDuration.Or(0),
+		MaxDuration: params.MaxDuration.Or(0),
 		Start:       start,
 		End:         end,
 		Limit:       params.Limit.Or(20),
