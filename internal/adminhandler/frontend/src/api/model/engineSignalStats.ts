@@ -50,4 +50,22 @@ export interface EngineSignalStats {
   wal_segments: number;
   /** Open WAL segment size. */
   wal_bytes: number;
+  /** This node cannot answer beyond its known complete shard data; absent on older nodes and aggregate totals. */
+  has_read_gap?: boolean;
+  /** Read gap boundary; -9223372036854775808 means no parts were known complete. Meaningful while has_read_gap is true. */
+  read_gap_after_unix_nano?: number;
+  /** This node refuses writes because its backend is out of space. */
+  out_of_space?: boolean;
+  /** Current local repair obligations. */
+  wanted_parts?: number;
+  /** Current acknowledged missing parts; affected queries may be short. */
+  holes?: number;
+  /** Durable cumulative loss count reported by this shard copy. */
+  lost_parts?: number;
+  /** This engine cannot commit because its last bucket-index load failed. */
+  index_fenced?: boolean;
+  /** The local index-load error behind index_fenced. */
+  index_load_error?: string;
+  /** The first index commit for this node's current claim has not landed. */
+  tenure_unestablished?: boolean;
 }

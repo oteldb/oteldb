@@ -8,6 +8,7 @@
  */
 import type { EngineStats } from './engineStats';
 import type { ClickHouseStats } from './clickHouseStats';
+import type { StorageNodeReport } from './storageNodeReport';
 
 /**
  * Storage statistics for the embedded engine (primary) and ClickHouse (deprecated).
@@ -19,4 +20,6 @@ export interface StorageStats {
   clickhouse_enabled: boolean;
   engine?: EngineStats;
   clickhouse?: ClickHouseStats;
+  /** Per-node observations from the existing storage fanout; absent on direct node responses. */
+  node_reports?: StorageNodeReport[];
 }
