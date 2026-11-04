@@ -133,8 +133,10 @@ func TestScarecrowParallelFoldNativeFileHTTP(t *testing.T) {
 				want  float64
 			}{
 				{`avg(rate(parallel_counter[1m]))`, 0.3},
+				{`avg(predict_linear(parallel_counter[1m], time())) / (time()*0.3 + (time()-2000000)*0.3)`, 1},
 				{`avg(rate(parallel_counter[1m])) / avg(rate(parallel_counter[1m]))`, 1},
 			} {
+				before := querier.partitions.Load()
 				response, err := client.GetQueryRange(t.Context(), promapi.GetQueryRangeParams{
 					Query: tt.query,
 					Start: getPromTS(pcommon.NewTimestampFromTime(base.Add(15 * time.Minute))),
@@ -142,6 +144,7 @@ func TestScarecrowParallelFoldNativeFileHTTP(t *testing.T) {
 					Step:  promapi.NewOptString("15s"),
 				})
 				require.NoError(t, err)
+				require.Greater(t, querier.partitions.Load(), before, tt.query)
 				require.Equal(t, promapi.MatrixData, response.Data.Type)
 				require.Len(t, response.Data.Matrix.Result, 1)
 				require.Len(t, response.Data.Matrix.Result[0].Values, 61)

@@ -67,6 +67,7 @@ var parallelRangeFuncs = map[string]bool{
 	"changes":               true,
 	"resets":                true,
 	"deriv":                 true,
+	"predict_linear":        true,
 	"ts_of_first_over_time": true,
 	"ts_of_last_over_time":  true,
 	"ts_of_max_over_time":   true,
@@ -76,7 +77,7 @@ var parallelRangeFuncs = map[string]bool{
 func (o *matrixFold) startParallel(ctx context.Context) error {
 	o.parallelTried = true
 	src, ok := o.src.(*scannerSource)
-	if !ok || o.param != nil || !parallelRangeFuncs[o.fnName] || o.schema.Len() < 4 || o.ec.NumSteps() < 32 {
+	if !ok || !parallelRangeFuncs[o.fnName] || o.schema.Len() < 4 || o.ec.NumSteps() < 32 {
 		return nil
 	}
 	scanner, ok := src.scanner.(PartitionScanner)
@@ -129,7 +130,7 @@ func (o *matrixFold) startParallel(ctx context.Context) error {
 			budget: budget,
 			op: matrixFold{
 				fn: o.fn, fnName: o.fnName, rng: o.rng, refs: o.refs, ec: o.ec,
-				schema: o.schema, byHash: o.byHash,
+				schema: o.schema, byHash: o.byHash, paramVals: o.paramVals,
 			},
 			ack: make(chan struct{}, 1),
 		}

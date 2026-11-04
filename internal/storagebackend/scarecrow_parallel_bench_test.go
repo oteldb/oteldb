@@ -41,7 +41,16 @@ func BenchmarkScarecrowSeriesFoldControl(b *testing.B) {
 	b.Run("short", func(b *testing.B) { benchmarkScarecrowSeriesFold(b, 30*time.Second, 15*time.Second, false) })
 }
 
+func BenchmarkScarecrowPredictLinear(b *testing.B) {
+	benchmarkScarecrowRangeFold(b, 30*time.Minute, 3*time.Second, false,
+		`avg(predict_linear(parallel_gauge[1h], scalar(vector(time()))))`)
+}
+
 func benchmarkScarecrowSeriesFold(b *testing.B, duration, interval time.Duration, stale bool) {
+	benchmarkScarecrowRangeFold(b, duration, interval, stale, `avg(avg_over_time(parallel_gauge[1h]))`)
+}
+
+func benchmarkScarecrowRangeFold(b *testing.B, duration, interval time.Duration, stale bool, expression string) {
 	ctx := context.Background()
 	store, err := oteldbstorage.InMemory()
 	require.NoError(b, err)
@@ -84,10 +93,10 @@ func benchmarkScarecrowSeriesFold(b *testing.B, duration, interval time.Duration
 				var err error
 				if interval == 0 {
 					query, err = engine.NewInstantQuery(ctx, backend, nil,
-						`avg(avg_over_time(parallel_gauge[1h]))`, base.Add(time.Hour))
+						expression, base.Add(time.Hour))
 				} else {
 					query, err = engine.NewRangeQuery(ctx, backend, nil,
-						`avg(avg_over_time(parallel_gauge[1h]))`,
+						expression,
 						base.Add(time.Hour), base.Add(time.Hour+duration), interval)
 				}
 				require.NoError(b, err)
