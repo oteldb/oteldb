@@ -26,3 +26,15 @@ updates:
     directory: "/"
     schedule:
       interval: daily
+  - package-ecosystem: bun
+    directory: "/internal/adminhandler/frontend"
+    schedule:
+      interval: daily
+    groups:
+      admin-ui:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
