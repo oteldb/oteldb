@@ -106,6 +106,7 @@ func (s *clusterSink) observeRejects(ctx context.Context, sig signal.Signal, rej
 		"out_of_order":  rej.OOO,
 		"max_series":    rej.Cardinality,
 		"max_in_flight": rej.InFlight,
+		"retention":     rej.Retention,
 	} {
 		if n > 0 {
 			s.rejected.Add(ctx, int64(n),
