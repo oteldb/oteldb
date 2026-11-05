@@ -129,12 +129,13 @@ func TestScarecrowParallelFoldNativeFileHTTP(t *testing.T) {
 			client, err := promapi.NewClient(server.URL, promapi.WithClient(server.Client()))
 			require.NoError(t, err)
 			for _, tt := range []struct {
-				query string
-				want  float64
+				query           string
+				want            float64
+				requireParallel bool
 			}{
-				{`avg(rate(parallel_counter[1m]))`, 0.3},
-				{`avg(predict_linear(parallel_counter[1m], time())) / (time()*0.3 + (time()-2000000)*0.3)`, 1},
-				{`avg(rate(parallel_counter[1m])) / avg(rate(parallel_counter[1m]))`, 1},
+				{`avg(rate(parallel_counter[1m]))`, 0.3, true},
+				{`avg(predict_linear(parallel_counter[1m], time())) / (time()*0.3 + (time()-2000000)*0.3)`, 1, false},
+				{`avg(rate(parallel_counter[1m])) / avg(rate(parallel_counter[1m]))`, 1, false},
 			} {
 				before := querier.partitions.Load()
 				response, err := client.GetQueryRange(t.Context(), promapi.GetQueryRangeParams{
@@ -144,7 +145,10 @@ func TestScarecrowParallelFoldNativeFileHTTP(t *testing.T) {
 					Step:  promapi.NewOptString("15s"),
 				})
 				require.NoError(t, err)
-				require.Greater(t, querier.partitions.Load(), before, tt.query)
+				// Nested query producers share the fold worker slots and may force serial fallback.
+				if tt.requireParallel {
+					require.Greater(t, querier.partitions.Load(), before, tt.query)
+				}
 				require.Equal(t, promapi.MatrixData, response.Data.Type)
 				require.Len(t, response.Data.Matrix.Result, 1)
 				require.Len(t, response.Data.Matrix.Result[0].Values, 61)

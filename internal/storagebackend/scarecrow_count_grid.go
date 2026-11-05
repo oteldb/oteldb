@@ -15,7 +15,7 @@ import (
 
 var _ scarecrow.GridSeriesCounter = (*scarecrowScanner)(nil)
 
-func (s *scarecrowScanner) CountSeriesGrid(ctx context.Context, grid scarecrow.WindowGrid, label string, matchers []*labels.Matcher) (map[string][]uint64, error) {
+func (s *scarecrowScanner) countSeriesGrid(ctx context.Context, grid scarecrow.WindowGrid, label string, matchers []*labels.Matcher) (map[string][]uint64, error) {
 	const nsPerMs = int64(time.Millisecond)
 	if grid.Start < math.MinInt64/nsPerMs || grid.Start > math.MaxInt64/nsPerMs ||
 		grid.Step <= 0 || grid.Step > math.MaxInt64/nsPerMs ||

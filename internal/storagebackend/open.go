@@ -140,12 +140,20 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 	)
 	b := New(store,
 		WithLogParallelism(cfg.LogQueryParallelism),
+		WithNativeQueryCache(resolveCacheBytes(cfg.NativeQueryCacheBytes, func() int64 { return defaultNativeQueryCacheBytes })),
 		WithMeterProvider(m.MeterProvider()),
 		WithTracerProvider(m.TracerProvider()),
 	)
+	if cfg.NativeQuerySharing != nil && !*cfg.NativeQuerySharing {
+		b.sharing = nil
+	}
 	b.policyResolver = resolver
 	b.rejectOutOfRetention = cfg.RejectOutOfRetention
-	return b, store.Close, nil
+	closeStore := func(ctx context.Context) error {
+		b.CloseQueryCache()
+		return store.Close(ctx)
+	}
+	return b, closeStore, nil
 }
 
 // warnUnflushedWAL reports the one thing a read-only open gives up: whatever the engine has

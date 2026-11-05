@@ -45,6 +45,10 @@ type Config struct {
 	// prefetch of a fetch's parts). Enabled by default, sized from available RAM; set to 0 to
 	// disable.
 	DecodeCacheBytes *xbytes.Bytes `json:"decode_cache_bytes" yaml:"decode_cache_bytes"`
+	// NativeQueryCacheBytes bounds completed native metric results. Unset uses 64 MiB; zero disables.
+	NativeQueryCacheBytes *xbytes.Bytes `json:"native_query_cache_bytes" yaml:"native_query_cache_bytes"`
+	// NativeQuerySharing deduplicates overlapping native metric reads. Unset enables it.
+	NativeQuerySharing *bool `json:"native_query_sharing" yaml:"native_query_sharing"`
 	// DecodeMemoryBytes caps the total in-flight decoded column bytes across concurrent metric
 	// queries (decode admission control, shared across tenants): a query reserves its estimated
 	// decode footprint before reading parts and blocks while the budget is exhausted, so query
@@ -159,6 +163,7 @@ func (cfg *Config) validate() error {
 	return checkBytes(
 		optionalBytes("read_cache_bytes", cfg.ReadCacheBytes),
 		optionalBytes("decode_cache_bytes", cfg.DecodeCacheBytes),
+		optionalBytes("native_query_cache_bytes", cfg.NativeQueryCacheBytes),
 		optionalBytes("decode_memory_bytes", cfg.DecodeMemoryBytes),
 		optionalBytes("max_query_bytes", cfg.MaxQueryBytes),
 		optionalBytes("merge_memory_bytes", cfg.MergeMemoryBytes),

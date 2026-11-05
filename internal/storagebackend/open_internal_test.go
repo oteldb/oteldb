@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-faster/sdk/app"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
@@ -23,6 +24,31 @@ import (
 // [xbytes.Bytes] rejects both an oversized size and a leading "-", which internal/xbytes covers —
 // so this is what a config built in Go can still carry past the guards.
 const negativeBytes xbytes.Bytes = -1
+
+func TestNativeQuerySharingConfig(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		cfg      Config
+		disabled bool
+		bytes    int64
+	}{
+		{"defaults", Config{}, false, defaultNativeQueryCacheBytes},
+		{"cache-disabled", Config{NativeQueryCacheBytes: new(xbytes.Bytes)}, false, 0},
+		{"sharing-disabled", Config{NativeQuerySharing: new(false)}, true, 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			backend, closeStore, err := Open(t.Context(), tt.cfg, zap.NewNop(), &app.Telemetry{})
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, closeStore(context.WithoutCancel(t.Context()))) })
+			if tt.disabled {
+				require.Nil(t, backend.sharing)
+				return
+			}
+			require.NotNil(t, backend.sharing)
+			require.Equal(t, tt.bytes, backend.sharing.maxCacheBytes)
+		})
+	}
+}
 
 // applyOption applies a storage.Option to a fresh Options and returns it, so tests can inspect what
 // clusterOption configured.
@@ -401,11 +427,12 @@ func TestS3Backend(t *testing.T) {
 func TestConfigValidate(t *testing.T) {
 	negative := negativeBytes
 	for name, cfg := range map[string]Config{
-		"ReadCacheBytes":    {ReadCacheBytes: &negative},
-		"DecodeCacheBytes":  {DecodeCacheBytes: &negative},
-		"DecodeMemoryBytes": {DecodeMemoryBytes: &negative},
-		"MaxQueryBytes":     {MaxQueryBytes: &negative},
-		"MergeMemoryBytes":  {MergeMemoryBytes: &negative},
+		"ReadCacheBytes":        {ReadCacheBytes: &negative},
+		"DecodeCacheBytes":      {DecodeCacheBytes: &negative},
+		"NativeQueryCacheBytes": {NativeQueryCacheBytes: &negative},
+		"DecodeMemoryBytes":     {DecodeMemoryBytes: &negative},
+		"MaxQueryBytes":         {MaxQueryBytes: &negative},
+		"MergeMemoryBytes":      {MergeMemoryBytes: &negative},
 	} {
 		t.Run(name, func(t *testing.T) {
 			require.ErrorIs(t, cfg.validate(), errNegativeBytes)

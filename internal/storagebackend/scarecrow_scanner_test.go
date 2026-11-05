@@ -48,6 +48,7 @@ func ingestScannerFixture(ctx context.Context, t *testing.T, base time.Time) *st
 	add("b", []time.Duration{-15 * time.Second, -5 * time.Second}, []float64{10, 20})
 
 	b := storagebackend.New(store)
+	t.Cleanup(b.CloseQueryCache)
 	require.NoError(t, b.ConsumeMetrics(ctx, md))
 
 	return b
