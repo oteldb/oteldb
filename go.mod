@@ -165,6 +165,7 @@ require (
 )
 
 require (
+	connectrpc.com/connect/v2 v2.0.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 v8.3.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v8 v8.0.0 // indirect
 	github.com/brunoscheufler/aws-ecs-metadata-go v0.0.0-20221221133751-67e37ae746cd // indirect
@@ -224,7 +225,7 @@ require (
 	cloud.google.com/go/compute v1.73.0 // indirect
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	connectrpc.com/connect v1.20.0
-	connectrpc.com/otelconnect v0.9.0
+	connectrpc.com/otelconnect v0.12.0
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.1 // indirect
