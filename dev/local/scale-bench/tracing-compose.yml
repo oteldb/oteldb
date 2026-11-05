@@ -1,0 +1,21 @@
+services:
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.22.0@sha256:836b967b5abcf1f7758066aa6b348619267a2f1459f72d472840570f9bd88a17
+    command: [--config=/etc/jaeger.yml]
+    cpus: 1
+    mem_limit: 1g
+    memswap_limit: 1g
+    environment:
+      GOMAXPROCS: 1
+      GOMEMLIMIT: 768MiB
+    ports:
+      - 127.0.0.1:17686:16686
+      - 127.0.0.1:14317:4317
+      - 127.0.0.1:14318:4318
+    volumes:
+      - ./jaeger.yml:/etc/jaeger.yml:ro
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${TRACE_SUBNET:-10.249.28.0/24}

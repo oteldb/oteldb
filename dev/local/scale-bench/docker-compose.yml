@@ -1,0 +1,84 @@
+services:
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    command: ["--web.max-requests=40"]
+    cpus: 1
+    mem_limit: 512m
+
+  node-cache:
+    image: nginx:1.27-alpine
+    depends_on: [node-exporter]
+    volumes:
+      - ../embedded-bench/node-cache.conf:/etc/nginx/nginx.conf:ro
+    cpus: 2
+    mem_limit: 512m
+
+  vmagent:
+    image: victoriametrics/vmagent:v1.141.0
+    depends_on: [node-cache, oteldb, victoriametrics]
+    volumes:
+      - ${BENCH_RUN_DIR}/scrape.yml:/etc/vmagent/scrape.yml:ro
+      - agent-data:/data
+    command:
+      - -promscrape.config=/etc/vmagent/scrape.yml
+      - -remoteWrite.url=http://oteldb:19291/api/v1/write
+      - -remoteWrite.url=http://victoriametrics:8428/api/v1/write
+      - -remoteWrite.tmpDataPath=/data
+      - -remoteWrite.maxDiskUsagePerURL=2GB
+      - -remoteWrite.queues=8
+      - -memory.allowedBytes=8GiB
+    environment:
+      GOMAXPROCS: "8"
+      GOMEMLIMIT: 10GiB
+    cpus: 8
+    mem_limit: 12g
+    memswap_limit: 12g
+    ports: ["127.0.0.1:18429:8429"]
+
+  oteldb:
+    image: ${OTELDB_BENCH_IMAGE:-local/oteldb:scale-bench}
+    pull_policy: never
+    command: ["--embedded", "--config=/etc/oteldb.yml"]
+    volumes:
+      - ../embedded-bench/oteldb.yml:/etc/oteldb.yml:ro
+      - oteldb-data:/data
+    environment:
+      GOMAXPROCS: "8"
+      GOMEMLIMIT: ${OTELDB_BENCH_GOMEMLIMIT:-14GiB}
+      PPROF_ADDR: 0.0.0.0:9010
+      OTEL_LOG_LEVEL: info
+      OTEL_METRICS_EXPORTER: prometheus
+      OTEL_EXPORTER_PROMETHEUS_HOST: 0.0.0.0
+      OTEL_EXPORTER_PROMETHEUS_PORT: "9464"
+      OTEL_LOGS_EXPORTER: none
+      OTEL_TRACES_EXPORTER: none
+    cpus: 8
+    mem_limit: 16g
+    memswap_limit: 16g
+    ports:
+      - "127.0.0.1:19090:9090"
+      - "127.0.0.1:19010:9010"
+      - "127.0.0.1:19133:13133"
+      - "127.0.0.1:19464:9464"
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.141.0
+    command:
+      - -storageDataPath=/data
+      - -retentionPeriod=1d
+      - -search.maxQueryDuration=10s
+      # The short live dataset must be old enough to exercise the response cache.
+      - -search.cacheTimestampOffset=15s
+    volumes: ["vm-data:/data"]
+    environment:
+      GOMAXPROCS: "8"
+      GOMEMLIMIT: 14GiB
+    cpus: 8
+    mem_limit: 16g
+    memswap_limit: 16g
+    ports: ["127.0.0.1:18428:8428"]
+
+volumes:
+  oteldb-data:
+  vm-data:
+  agent-data:
