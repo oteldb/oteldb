@@ -377,14 +377,17 @@ Legend / file pointers
 
 ## Native trace search extents
 
-The embedded `storagebackend` resolves candidate trace IDs using windowed span predicates, then
-reads only their IDs, timestamps and durations across the retained history. It combines every
-candidate's spans across services, parts and the live head before applying duration and window
-containment bounds. Only surviving traces are materialized; the TraceQL engine rechecks predicates.
+The embedded `storagebackend` first resolves candidate trace IDs using selective windowed span
+predicates. A bounded query without a pushable predicate scans only IDs in the window, so fetching
+retained context cannot materialize unrelated traces outside it. An unbounded query without a
+pushable predicate needs no ID pass. Candidate spans are fetched once across retained history.
+Grouping folds min-start/max-end before applying trace duration and window containment as secondary
+filters.
+The TraceQL engine rechecks predicates. There is no separate timing-column scan.
 No trace extent is denormalized at ingestion, so later batches extend the next query's extent.
 Only direct duration comparisons under positive conjunctions in the initial spanset filter become
-extent hints. Boolean wrappers and unions retain full residual evaluation; lossy matcher extraction
-cannot establish a required duration predicate.
+secondary extent predicates. Boolean wrappers and unions retain full residual evaluation; lossy
+matcher extraction cannot establish a required duration predicate.
 
 This is the extent of the retained spans, not a guarantee that every originally emitted span is
 present: expiry or missing ingestion can shorten it. Query windows retain the engine's containment
@@ -393,6 +396,5 @@ physical span duration apply only to span predicates; they cannot reject a trace
 Routed numeric hints use the storage library's superset response with requester residual filtering.
 
 Trace-ID conditions explicitly declare their fixed physical column dependency. Cluster peers keep
-the narrow extent projection because it includes that column, while requester residual filtering
-still verifies every returned ID. Unmarked or attribute conditions retain full-column fallback;
-callbacks also keep peer row limits disabled.
+requested projections containing that column, while requester residual filtering verifies every ID.
+Unmarked or attribute conditions retain full-column fallback; callbacks keep peer row limits disabled.
