@@ -1,0 +1,105 @@
+{
+  "workload": {
+    "image": "local/oteldb:trace-alloc-recompress",
+    "seconds": 300,
+    "rate": 1000000,
+    "payload": 512,
+    "services": 16,
+    "age": "0s"
+  },
+  "sender": {
+    "elapsed": 300.197363619,
+    "payload_bytes": 300196800,
+    "accepted_spans": 345600,
+    "rejected_spans": 0,
+    "failed_spans": 0,
+    "requests": 1350,
+    "payload_bytes_per_second": 999998.122505164
+  },
+  "limits": {
+    "NanoCpus": 8000000000,
+    "Memory": 17179869184,
+    "MemorySwap": 17179869184
+  },
+  "baseline": {
+    "label": "baseline",
+    "elapsed": 0.6851154320029309,
+    "rss_bytes": 69300224,
+    "cgroup_bytes": 37339136,
+    "heap_alloc_bytes": 5673848.0,
+    "allocated_bytes_total": 9128216.0,
+    "head_bytes": 0,
+    "identity_bytes": 0,
+    "flush_bytes": 0,
+    "merge_bytes": 0,
+    "merge_seconds": 0
+  },
+  "final": {
+    "label": "drain-45",
+    "elapsed": 348.7517713900015,
+    "rss_bytes": 176607232,
+    "cgroup_bytes": 298823680,
+    "heap_alloc_bytes": 90832080.0,
+    "allocated_bytes_total": 11133213216.0,
+    "head_bytes": 0.0,
+    "identity_bytes": 24849.0,
+    "flush_bytes": 271600736.0,
+    "merge_bytes": 399407069.0,
+    "merge_seconds": 13.000490736
+  },
+  "peak_sampled_rss_bytes": 344592384,
+  "cgroup_peak_bytes": 493150208,
+  "peak_sampled_heap_alloc_bytes": 232125688.0,
+  "peak_sampled_head_bytes": 9738720.0,
+  "peak_sampled_identity_bytes": 24849.0,
+  "merge_rewrite_factor": 1.4705669612029328,
+  "allocation_bytes_per_payload_byte": 37.05597461398656,
+  "stopped_state": {
+    "Status": "exited",
+    "Running": false,
+    "Paused": false,
+    "Restarting": false,
+    "OOMKilled": false,
+    "Dead": false,
+    "Pid": 0,
+    "ExitCode": 0,
+    "Error": "",
+    "StartedAt": "2026-10-30T22:24:32.275304595Z",
+    "FinishedAt": "2026-10-30T22:30:22.163410774Z"
+  },
+  "profile_inuse_bytes": {
+    "baseline": 9270682,
+    "steady": 75754690,
+    "loaded": 47339029,
+    "loaded-gc": 60547997,
+    "drained-gc": 55946398
+  },
+  "variant": "compression-fallback",
+  "final_storage": {
+    "signal": "traces",
+    "series": 16,
+    "head_items": 0,
+    "head_bytes": 0,
+    "parts": 3,
+    "sealed_parts": 0,
+    "min_time": "2026-10-30T22:24:32Z",
+    "max_time": "2026-10-30T22:29:32Z",
+    "merge_running": false,
+    "merge_backlog": 3,
+    "merge_candidates": 0,
+    "merge_cap_bytes": 17179869184,
+    "wal": true,
+    "wal_segments": 0,
+    "wal_bytes": 0
+  },
+  "merge_counters": {
+    "storage_merge_parts_in_sum": 68.0,
+    "storage_merge_total": 40.0
+  },
+  "image_id": "sha256:5791c1d3ad10a2f2bf0e530ac7b47717fcdf76225cfb84adc49f6474bb433129",
+  "image_labels": {
+    "dev.oteldb.storage.diff": "2bda7f79cbef4f9ed7c9c799365df2f7f590337ed0509419fe3afaf2cfdfa9c9",
+    "dev.oteldb.storage.revision": "920a3b39e976878169db2695f569d7a01526f423",
+    "org.opencontainers.image.revision": "d6f48518265cd95e7ee3d447b1f52cc6f7a0b18d"
+  }
+}

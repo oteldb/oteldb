@@ -1,0 +1,38 @@
+[
+  {
+    "mode": "pdata",
+    "request_bytes": 222368,
+    "spans": 256,
+    "samples": 6,
+    "median_ns_per_request": 148158.5,
+    "median_allocated_bytes": 460322.0,
+    "median_allocations": 7767.0
+  },
+  {
+    "mode": "pdata_to_native",
+    "request_bytes": 222368,
+    "spans": 256,
+    "samples": 6,
+    "median_ns_per_request": 334605.0,
+    "median_allocated_bytes": 988710.0,
+    "median_allocations": 13068.0
+  },
+  {
+    "mode": "direct_cold",
+    "request_bytes": 222368,
+    "spans": 256,
+    "samples": 6,
+    "median_ns_per_request": 142933.0,
+    "median_allocated_bytes": 352312.0,
+    "median_allocations": 247.0
+  },
+  {
+    "mode": "direct_to_native",
+    "request_bytes": 222368,
+    "spans": 256,
+    "samples": 6,
+    "median_ns_per_request": 113205.0,
+    "median_allocated_bytes": 15495.5,
+    "median_allocations": 133.0
+  }
+]

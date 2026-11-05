@@ -1,0 +1,22 @@
+storage:
+  backend: file
+  dir: /data
+  flush_interval: 10s
+admin:
+  bind: 0.0.0.0:8090
+health_check:
+  bind: 0.0.0.0:13133
+otelcol:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+  exporters:
+    oteldbexporter:
+      dsn: clickhouse://default:default@ignored:9000
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        exporters: [oteldbexporter]
