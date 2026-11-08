@@ -132,6 +132,7 @@ const (
 	// NOTE: keep this block append-only, the generated stringer indexes
 	// constants by position.
 	Compare // compare
+	With    // with
 )
 
 var tokens = map[string]TokenType{
@@ -222,6 +223,7 @@ var tokens = map[string]TokenType{
 	"histogram_over_time": HistogramOverTime,
 
 	"compare": Compare,
+	"with":    With,
 
 	"topk":    TopK,
 	"bottomk": BottomK,

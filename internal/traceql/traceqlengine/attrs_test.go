@@ -61,6 +61,7 @@ func TestReferencedFields(t *testing.T) {
 		{name: "scalar", query: `{} | avg(span.cost) + max(duration) > 1s`, fields: []string{"span.cost", "duration"}},
 		{name: "group", query: `{} | by(resource.service.name)`, fields: []string{"resource.service.name"}},
 		{name: "select", query: `{} | select(event.tag, link.tag)`, fields: []string{"event.tag", "link.tag"}},
+		{name: "hinted", query: `{resource.service.name="checkout"} | select(event.exception.message) with(most_recent=true)`, fields: []string{"resource.service.name", "event.exception.message"}},
 		{name: "duplicate", query: `{span.cost > 1 && span.cost < 3}`, fields: []string{"span.cost"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

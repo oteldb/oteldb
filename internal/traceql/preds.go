@@ -26,6 +26,8 @@ func (p *predExtractor) WalkAutocomplete(q autocompleteExpr) {
 
 func (p *predExtractor) walk(expr Expr) {
 	switch expr := expr.(type) {
+	case *HintedExpr:
+		p.walk(expr.Expr)
 	case *SpansetPipeline:
 		for _, stage := range expr.Pipeline {
 			p.walkStage(stage)

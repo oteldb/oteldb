@@ -42,6 +42,7 @@ func TestSearchTraceQLStatusCodes(t *testing.T) {
 			"{nestedSetParent<0 && true}", nil, http.StatusNotImplemented,
 		},
 		"unsupported child count": {"{childCount>1}", nil, http.StatusNotImplemented},
+		"unsupported query hint":  {"{} with(most_recent=true)", nil, http.StatusNotImplemented},
 		"syntax error":            {"{", nil, http.StatusBadRequest},
 		"lexer error":             {`{.foo="bar}`, nil, http.StatusBadRequest},
 		"budget exceeded": {
