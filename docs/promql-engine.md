@@ -4,6 +4,9 @@ Scarecrow is the PromQL engine for both native storage and ClickHouse. Native st
 columnar samples directly; ClickHouse supplies raw series through the Queryable adapter and
 rate-family results through a grid-aware scanner capability. The Thanos fork is retired.
 
+Other query languages can use its [shared metrics operators](./shared-metrics-operators.md)
+over already-bucketed columns; their source aggregation remains independent of PromQL.
+
 Status: implemented through M5 (selectors, range functions, aggregations including the
 full-set forms and `count_values`, binary operators, instant functions, subqueries, concurrent
 binop sides, storage pushdowns), plus M12 (the function tail), M13 (`absent`/`absent_over_time`)

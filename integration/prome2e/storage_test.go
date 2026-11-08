@@ -49,6 +49,7 @@ func TestStorageBackend(t *testing.T) {
 		empty bool
 	}{
 		{"CountAll", `count(prometheus_http_requests_total{})`, 51, false},
+		{"CountHugeTopK", `count(topk(9223372036854775807, prometheus_http_requests_total{}))`, 51, false},
 		{"CountRegexFilter", `count(prometheus_http_requests_total{handler=~".+"})`, 51, false},
 		{"CountSelectFilter", `count(prometheus_http_requests_total{handler="/api/v1/query"})`, 1, false},
 		{"CountExcludeFilter", `count(prometheus_http_requests_total{handler!="/api/v1/query"})`, 50, false},

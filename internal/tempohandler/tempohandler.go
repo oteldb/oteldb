@@ -92,7 +92,7 @@ func (h *TempoAPI) Query(ctx context.Context, params tempoapi.QueryParams) (*tem
 	if err != nil {
 		return nil, validationErr(ctx, err, "parse time range")
 	}
-	return nil, ht.ErrNotImplemented
+	return nil, queryErr(ctx, http.StatusNotImplemented, ht.ErrNotImplemented, "query metrics")
 }
 
 // QueryRange implements queryRange operation.
@@ -111,7 +111,7 @@ func (h *TempoAPI) QueryRange(ctx context.Context, params tempoapi.QueryRangePar
 	if err != nil {
 		return nil, validationErr(ctx, err, "parse time range")
 	}
-	return nil, ht.ErrNotImplemented
+	return nil, queryErr(ctx, http.StatusNotImplemented, ht.ErrNotImplemented, "query range metrics")
 }
 
 // Search implements search operation.

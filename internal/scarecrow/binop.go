@@ -158,6 +158,7 @@ type vectorScalarBinop struct {
 	// swap reports that the scalar was the left-hand operand.
 	swap    bool
 	returnB bool
+	options BinaryOptions
 
 	ec      *EvalContext
 	schema  *Schema
@@ -192,7 +193,7 @@ func (o *vectorScalarBinop) Schema(ctx context.Context) (*Schema, error) {
 
 	// Arithmetic and bool comparisons produce a different metric; a filtering comparison keeps
 	// the input series identity intact.
-	if !changesMetricSchema(o.op) && !o.returnB {
+	if (!changesMetricSchema(o.op) && !o.returnB) || o.options.PreserveMetricNames {
 		o.schema = in
 
 		return o.schema, nil
@@ -259,6 +260,13 @@ func (o *vectorScalarBinop) Next(ctx context.Context) (*Column, error) {
 			}
 		}
 
+		if o.options.NaNOnZeroDivision || o.options.NaNIsAbsent {
+			left, right := col.V, o.scalars
+			if o.swap {
+				left, right = right, left
+			}
+			o.options.normalize(&o.out, o.op, left, right)
+		}
 		if o.out.Empty() {
 			continue
 		}
@@ -325,6 +333,7 @@ type vectorBinop struct {
 	matching *parser.VectorMatching
 	returnB  bool
 	ec       *EvalContext
+	options  BinaryOptions
 
 	// After normalization many is the streaming side and one is the build side. swapped records
 	// that the original expression was one-to-many, so operand order is restored per sample.
@@ -389,8 +398,15 @@ func (o *vectorBinop) Schema(ctx context.Context) (*Schema, error) {
 	if err != nil {
 		return nil, err
 	}
+	if o.options.BroadcastUnlabelled && !hasUngroupedSeries(oneSchema) {
+		o.many, o.one = o.rhs, o.lhs
+		o.swapped = true
+		manySchema, oneSchema = oneSchema, manySchema
+	}
 
 	o.bySig = make(map[uint64]SeriesRef, oneSchema.Len())
+	var fallback SeriesRef
+	hasFallback := false
 	for i, ls := range oneSchema.Series {
 		sig := signature(ls, o.matching)
 		if _, dup := o.bySig[sig]; dup && o.matching.Card != parser.CardOneToOne {
@@ -400,6 +416,9 @@ func (o *vectorBinop) Schema(ctx context.Context) (*Schema, error) {
 		}
 
 		o.bySig[sig] = SeriesRef(i)
+		if o.options.BroadcastUnlabelled && dropMetricName(ls).IsEmpty() {
+			fallback, hasFallback = SeriesRef(i), true
+		}
 	}
 
 	var series []labels.Labels
@@ -410,6 +429,9 @@ func (o *vectorBinop) Schema(ctx context.Context) (*Schema, error) {
 
 	for i, ls := range manySchema.Series {
 		oneRef, ok := o.bySig[signature(ls, o.matching)]
+		if !ok && hasFallback {
+			oneRef, ok = fallback, true
+		}
 		if !ok {
 			o.pairOf[i] = -1
 			continue
@@ -422,7 +444,15 @@ func (o *vectorBinop) Schema(ctx context.Context) (*Schema, error) {
 		if deferStart {
 			series = append(series, labels.EmptyLabels())
 		} else {
-			series = append(series, resultLabels(ls, oneSchema.At(oneRef), o.op, o.matching, o.returnB))
+			outLabels := resultLabels(ls, oneSchema.At(oneRef), o.op, o.matching, o.returnB)
+			if o.options.PreserveMetricNames {
+				left, right := ls, oneSchema.At(oneRef)
+				if o.swapped {
+					left, right = right, left
+				}
+				outLabels = combinedMetricName(outLabels, left, right, o.op)
+			}
+			series = append(series, outLabels)
 		}
 	}
 
@@ -529,6 +559,13 @@ func (o *vectorBinop) Next(ctx context.Context) (*Column, error) {
 			}
 		}
 
+		if o.options.NaNOnZeroDivision || o.options.NaNIsAbsent {
+			left, right := col.V, oneCol.V
+			if o.swapped {
+				left, right = right, left
+			}
+			o.options.normalize(&o.out, o.op, left, right)
+		}
 		if o.out.Empty() {
 			continue
 		}

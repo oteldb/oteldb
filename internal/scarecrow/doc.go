@@ -8,5 +8,6 @@
 //
 // The package consumes the upstream github.com/prometheus/prometheus/promql/parser and
 // implements [github.com/prometheus/prometheus/promql.QueryEngine], so it is a drop-in for the
-// existing engine seam and can be driven by promqltest.
+// existing engine seam and can be driven by promqltest. The shared operator
+// constructors also accept already-bucketed columns from other query languages.
 package scarecrow

@@ -145,7 +145,7 @@ func (p *planner) buildAggregate(e *parser.AggregateExpr) (Operator, error) {
 		return newQuantileAgg(input, param, e, p.ec), nil
 	}
 
-	return newLimitAgg(input, param, e, p.ec), nil
+	return newLimitAgg(input, param, e.Op, e.Grouping, e.Without, p.ec), nil
 }
 
 func (p *planner) buildUnary(e *parser.UnaryExpr) (Operator, error) {
