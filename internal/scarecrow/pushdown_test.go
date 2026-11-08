@@ -177,10 +177,8 @@ func (s *pushdownScanner) window(
 			if !ok {
 				a = &scarecrow.WindowAggregate{
 					Labels: smp.Labels.Copy(),
-					Aggregate: scarecrow.Aggregate{
-						Min: math.Inf(1),
-						Max: math.Inf(-1),
-					},
+					Min:    math.Inf(1),
+					Max:    math.Inf(-1),
 				}
 				byKey[key] = a
 				order = append(order, key)

@@ -26,8 +26,8 @@ func TestEfficiencySpans(t *testing.T) {
 			Signals: []storage.SignalEfficiency{{Signal: signal.Metric, Parts: 2}},
 		}},
 		parts: []storage.PartDetail{
-			{PartInfo: storage.PartInfo{ID: "default/metrics/a", Series: 3, Rows: 10}, Bytes: 100},
-			{PartInfo: storage.PartInfo{ID: "default/metrics/b", Series: 4, Rows: 20}, Bytes: 200},
+			{ID: "default/metrics/a", Series: 3, Rows: 10, Bytes: 100},
+			{ID: "default/metrics/b", Series: 4, Rows: 20, Bytes: 200},
 		},
 	}
 

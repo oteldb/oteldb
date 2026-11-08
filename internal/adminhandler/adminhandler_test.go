@@ -240,15 +240,15 @@ func TestAdmin_EfficiencyParts(t *testing.T) {
 		}},
 		parts: []storage.PartDetail{
 			{
-				PartInfo: storage.PartInfo{ID: "default/metrics/a", Series: 3, Rows: 10},
-				Bytes:    100,
+				ID: "default/metrics/a", Series: 3, Rows: 10,
+				Bytes: 100,
 				Columns: []storage.ColumnInfo{
 					{Name: "timestamp", Kind: "int64", Codec: "delta", Compress: "zstd", Level: 3, Bytes: 40},
 					{Name: "value", Kind: "float64", Codec: "gorilla", Compress: "none", Bytes: 50},
 				},
 				OtherBytes: map[string]int64{"manifest": 4, "marks": 6},
 			},
-			{PartInfo: storage.PartInfo{ID: "default/metrics/b", Series: 4, Rows: 20}, Bytes: 200},
+			{ID: "default/metrics/b", Series: 4, Rows: 20, Bytes: 200},
 		},
 	}
 	ts := testServer(t, Options{Engine: eng})

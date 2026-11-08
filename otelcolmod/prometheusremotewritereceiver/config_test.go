@@ -45,18 +45,16 @@ func TestLoadConfig(t *testing.T) {
 		{
 			id: component.NewIDWithName(typ, ""),
 			expected: &Config{
-				ServerConfig: confighttp.ServerConfig{
-					NetAddr: confignet.AddrConfig{
-						Endpoint:  defaultBindEndpoint,
-						Transport: confignet.TransportTypeTCP,
-					},
-					TLS:                configoptional.None[configtls.ServerConfig](),
-					CORS:               configoptional.None[confighttp.CORSConfig](),
-					Auth:               configoptional.None[confighttp.AuthConfig](),
-					MaxRequestBodySize: 0,
-					IncludeMetadata:    false,
+				NetAddr: confignet.AddrConfig{
+					Endpoint:  defaultBindEndpoint,
+					Transport: confignet.TransportTypeTCP,
 				},
-				TimeThreshold: 24 * time.Hour,
+				TLS:                configoptional.None[configtls.ServerConfig](),
+				CORS:               configoptional.None[confighttp.CORSConfig](),
+				Auth:               configoptional.None[confighttp.AuthConfig](),
+				MaxRequestBodySize: 0,
+				IncludeMetadata:    false,
+				TimeThreshold:      24 * time.Hour,
 			},
 		},
 	}

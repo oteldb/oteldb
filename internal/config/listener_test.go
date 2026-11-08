@@ -24,12 +24,12 @@ func TestListenerShape(t *testing.T) {
 	}}
 
 	blocks := map[string]any{
-		"Prometheus":  &config.Prometheus{Listener: config.Listener{Bind: ":9090", Auth: auth}},
-		"Loki":        &config.Loki{Listener: config.Listener{Bind: ":3100", Auth: auth}},
-		"Tempo":       &config.Tempo{Listener: config.Listener{Bind: ":3200", Auth: auth}},
-		"Pyroscope":   &config.Pyroscope{Listener: config.Listener{Bind: ":4040", Auth: auth}},
-		"Admin":       &config.Admin{Listener: config.Listener{Bind: ":8090", Auth: auth}},
-		"HealthCheck": &config.HealthCheck{Listener: config.Listener{Bind: ":13133", Auth: auth}},
+		"Prometheus":  &config.Prometheus{Bind: ":9090", Auth: auth},
+		"Loki":        &config.Loki{Bind: ":3100", Auth: auth},
+		"Tempo":       &config.Tempo{Bind: ":3200", Auth: auth},
+		"Pyroscope":   &config.Pyroscope{Bind: ":4040", Auth: auth},
+		"Admin":       &config.Admin{Bind: ":8090", Auth: auth},
+		"HealthCheck": &config.HealthCheck{Bind: ":13133", Auth: auth},
 	}
 
 	for name, block := range blocks {
