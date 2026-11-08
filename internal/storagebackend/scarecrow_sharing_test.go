@@ -234,7 +234,7 @@ func (s *sharedNativeSource) AggregateMetricsWindowNamed(_ context.Context, _ si
 		}
 		windows := make([]engine.WindowAgg, 0)
 		for end := spec.Anchor; end <= req.End; end += spec.Step {
-			windows = append(windows, engine.WindowAgg{End: end, SeriesAgg: engine.SeriesAgg{Rows: 1, Count: 1, Sum: 4}})
+			windows = append(windows, engine.WindowAgg{End: end, Rows: 1, Count: 1, Sum: 4})
 		}
 		out = append(out, engine.NamedWindowAgg{Series: series, Windows: windows})
 	}

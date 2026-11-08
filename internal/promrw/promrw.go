@@ -269,18 +269,18 @@ func classify(name []byte) (unit []byte, cumulative bool) {
 // is a counter — so requiring two separators, as this used to, silently made every such series a
 // gauge while the same name with one more component became a sum.
 func suffixes(name []byte) (s1, s2 []byte) {
-	i := bytes.LastIndexByte(name, '_')
-	if i < 0 {
+	before, after, ok := bytes.CutLast(name, []byte{'_'})
+	if !ok {
 		return nil, nil
 	}
-	return lastComponent(name[:i]), name[i+1:]
+	return lastComponent(before), after
 }
 
 // lastComponent returns the last underscore-separated component of s, which is s itself when s has
 // no separator: in `seconds_total` the unit is the whole head.
 func lastComponent(s []byte) []byte {
-	if i := bytes.LastIndexByte(s, '_'); i >= 0 {
-		return s[i+1:]
+	if _, after, ok := bytes.CutLast(s, []byte{'_'}); ok {
+		return after
 	}
 	return s
 }

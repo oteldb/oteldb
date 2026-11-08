@@ -32,7 +32,7 @@ func TestRangeCountWithoutGridScansOnce(t *testing.T) {
 		t.Run(qs, func(t *testing.T) {
 			var scanner *countedWindowScanner
 			eng := scarecrow.NewEngine(scarecrow.Opts{NewScanner: func(q storage.Queryable) scarecrow.Scanner {
-				scanner = &countedWindowScanner{perWindowScanner: perWindowScanner{s: &pushdownScanner{Scanner: scarecrow.NewQueryableScanner(q)}}}
+				scanner = &countedWindowScanner{s: &pushdownScanner{Scanner: scarecrow.NewQueryableScanner(q)}}
 				return scanner
 			}})
 			execRange(t, eng, store, qs, time.Unix(0, 0), time.Unix(600, 0), time.Minute)

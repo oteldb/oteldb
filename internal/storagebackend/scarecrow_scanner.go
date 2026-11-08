@@ -183,13 +183,11 @@ func (s *scarecrowScanner) aggregateOverTime(
 
 		out = append(out, scarecrow.WindowAggregate{
 			Labels: lset,
-			Aggregate: scarecrow.Aggregate{
-				Count: la.Count,
-				Rows:  la.Rows,
-				Sum:   la.Sum,
-				Min:   la.Min,
-				Max:   la.Max,
-			},
+			Count:  la.Count,
+			Rows:   la.Rows,
+			Sum:    la.Sum,
+			Min:    la.Min,
+			Max:    la.Max,
 		})
 	}
 
