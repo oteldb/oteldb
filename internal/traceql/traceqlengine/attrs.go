@@ -37,6 +37,8 @@ func referencedFields(expr traceql.Expr) []traceql.Attribute {
 
 func collectExprAttrs(expr traceql.Expr, visit func(traceql.Attribute)) {
 	switch expr := expr.(type) {
+	case *traceql.HintedExpr:
+		collectExprAttrs(expr.Expr, visit)
 	case *traceql.BinaryExpr:
 		collectExprAttrs(expr.Left, visit)
 		collectExprAttrs(expr.Right, visit)

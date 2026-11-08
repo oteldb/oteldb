@@ -1345,10 +1345,22 @@ func FuzzParse(f *testing.F) {
 	for _, tt := range metricsTests {
 		f.Add(tt.input)
 	}
+	for _, tt := range hintTests {
+		f.Add(tt.input)
+	}
+	for _, tt := range drilldownMetricsTests {
+		f.Add(tt.query)
+	}
+	for _, input := range invalidHintTests {
+		f.Add(input)
+	}
 	f.Fuzz(func(t *testing.T, input string) {
 		defer func() {
 			if r := recover(); r != nil || t.Failed() {
 				t.Logf("Input:\n%s", input)
+				if r != nil {
+					panic(r)
+				}
 			}
 		}()
 

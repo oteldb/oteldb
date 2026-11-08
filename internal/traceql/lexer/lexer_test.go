@@ -16,6 +16,29 @@ type TestCase struct {
 
 var tests = []TestCase{
 	{
+		`with(sample=true)`,
+		[]Token{
+			{Type: With, Text: "with"},
+			{Type: OpenParen, Text: "("},
+			{Type: Ident, Text: "sample"},
+			{Type: Eq, Text: "="},
+			{Type: True, Text: "true"},
+			{Type: CloseParen, Text: ")"},
+		},
+		false,
+	},
+	{
+		`span.with resource.with .with "with" with_sampling`,
+		[]Token{
+			{Type: Ident, Text: "span.with"},
+			{Type: Ident, Text: "resource.with"},
+			{Type: Ident, Text: ".with"},
+			{Type: String, Text: "with"},
+			{Type: Ident, Text: "with_sampling"},
+		},
+		false,
+	},
+	{
 		`3h`,
 		[]Token{
 			{Type: Duration, Text: "3h"},

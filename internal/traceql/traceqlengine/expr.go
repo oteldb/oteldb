@@ -9,6 +9,8 @@ import (
 // BuildExpr builds given TraceQL expression.
 func BuildExpr(expr traceql.Expr) (Processor, error) {
 	switch expr := expr.(type) {
+	case *traceql.HintedExpr:
+		return nil, &UnsupportedError{Msg: "TraceQL query hints are not supported yet"}
 	case *traceql.BinaryExpr:
 		return BuildBinaryExpr(expr)
 	case *traceql.SpansetPipeline:

@@ -3,6 +3,9 @@ package traceql
 // ExtractTraceDurationMatchers returns necessary duration conjuncts from the initial span filter.
 // Boolean wrappers, unions and later pipeline stages remain residual predicates.
 func ExtractTraceDurationMatchers(expr Expr) []SpanMatcher {
+	if hinted, ok := expr.(*HintedExpr); ok {
+		expr = hinted.Expr
+	}
 	pipeline, ok := expr.(*SpansetPipeline)
 	if !ok || len(pipeline.Pipeline) == 0 {
 		return nil

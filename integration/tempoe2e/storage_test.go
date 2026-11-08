@@ -3,6 +3,7 @@ package tempoe2e_test
 import (
 	"context"
 	"io"
+	"net/http"
 	"slices"
 	"testing"
 
@@ -50,6 +51,21 @@ func TestStorageBackend(t *testing.T) {
 
 	tq := backend.Traces()
 	c := setupDB(t, provider, tq, tq)
+
+	t.Run("QueryHints", func(t *testing.T) {
+		for _, query := range []string{
+			`{status=error} | select(resource.service.name, event.exception.message) with(most_recent=true)`,
+			`{} with(most_recent=false)`,
+			`{} with(custom_hint=1)`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				_, err := c.Search(ctx, tempoapi.SearchParams{Q: tempoapi.NewOptString(query)})
+				var apiErr *tempoapi.ErrorStatusCode
+				require.ErrorAs(t, err, &apiErr)
+				require.Equal(t, http.StatusNotImplemented, apiErr.StatusCode)
+			})
+		}
+	})
 
 	// Every ingested trace is fetchable by id and returns all of its spans.
 	t.Run("TraceByID", func(t *testing.T) {

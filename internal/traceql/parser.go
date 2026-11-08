@@ -22,6 +22,10 @@ func Parse(input string) (Expr, error) {
 	if err != nil {
 		return nil, err
 	}
+	expr, err = p.parseQueryHints(expr)
+	if err != nil {
+		return nil, err
+	}
 	if t := p.peek(); t.Type != lexer.EOF {
 		return nil, p.unexpectedToken(t)
 	}
