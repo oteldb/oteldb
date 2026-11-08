@@ -33,6 +33,18 @@ type EvalContext struct {
 	annotations *annotationSink
 }
 
+// NewEvalContext creates a grid with a sample budget shared by its operators.
+// A nonpositive maxSamples disables the limit. Steps are borrowed and must not change.
+func NewEvalContext(steps []int64, maxSamples int) *EvalContext {
+	return &EvalContext{Steps: steps, Budget: newSampleBudget(maxSamples)}
+}
+
+// ChargeSamples accounts for numeric values emitted by an external column source.
+// Sources must separately enforce read and memory budgets inside storage.
+func (e *EvalContext) ChargeSamples(n int) error {
+	return e.charge(n)
+}
+
 // charge books n samples read from storage against the query's budget, returning
 // [promql.ErrTooManySamples] once it is exhausted. Selectors call it as they consume raw
 // samples, so the nil-budget case lives in one place.

@@ -54,12 +54,12 @@ type limitAgg struct {
 	out    Column
 }
 
-func newLimitAgg(input, param Operator, e *parser.AggregateExpr, ec *EvalContext) *limitAgg {
+func newLimitAgg(input, param Operator, op parser.ItemType, grouping []string, without bool, ec *EvalContext) *limitAgg {
 	return &limitAgg{
 		input:    input,
-		op:       e.Op,
-		grouping: e.Grouping,
-		without:  e.Without,
+		op:       op,
+		grouping: grouping,
+		without:  without,
 		param:    param,
 		ec:       ec,
 	}
@@ -144,6 +144,11 @@ func (o *limitAgg) load(ctx context.Context) error {
 
 	if slices.ContainsFunc(paramVals, math.IsNaN) {
 		return errors.New(nanMsg)
+	}
+	if o.op == parser.TOPK || o.op == parser.BOTTOMK {
+		for i, value := range paramVals {
+			paramVals[i] = max(0, min(value, float64(o.inSchema.Len())))
+		}
 	}
 
 	o.cells = make([][]limitEntry, o.numGroups*steps)
