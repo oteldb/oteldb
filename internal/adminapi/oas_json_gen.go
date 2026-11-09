@@ -3010,6 +3010,12 @@ func (s *EngineSignalStats) encodeFields(e *jx.Encoder) {
 		e.Int64(s.Series)
 	}
 	{
+		if s.SeriesComplete.Set {
+			e.FieldStart("series_complete")
+			s.SeriesComplete.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("head_items")
 		e.Int64(s.HeadItems)
 	}
@@ -3145,35 +3151,36 @@ func (s *EngineSignalStats) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfEngineSignalStats = [28]string{
+var jsonFieldsNameOfEngineSignalStats = [29]string{
 	0:  "signal",
 	1:  "series",
-	2:  "head_items",
-	3:  "head_bytes",
-	4:  "parts",
-	5:  "sealed_parts",
-	6:  "min_time",
-	7:  "max_time",
-	8:  "retain_from",
-	9:  "retention_bound_by",
-	10: "retention_lag_seconds",
-	11: "retention_policy",
-	12: "merge_running",
-	13: "merge_backlog",
-	14: "merge_candidates",
-	15: "merge_cap_bytes",
-	16: "wal",
-	17: "wal_segments",
-	18: "wal_bytes",
-	19: "has_read_gap",
-	20: "read_gap_after_unix_nano",
-	21: "out_of_space",
-	22: "wanted_parts",
-	23: "holes",
-	24: "lost_parts",
-	25: "index_fenced",
-	26: "index_load_error",
-	27: "tenure_unestablished",
+	2:  "series_complete",
+	3:  "head_items",
+	4:  "head_bytes",
+	5:  "parts",
+	6:  "sealed_parts",
+	7:  "min_time",
+	8:  "max_time",
+	9:  "retain_from",
+	10: "retention_bound_by",
+	11: "retention_lag_seconds",
+	12: "retention_policy",
+	13: "merge_running",
+	14: "merge_backlog",
+	15: "merge_candidates",
+	16: "merge_cap_bytes",
+	17: "wal",
+	18: "wal_segments",
+	19: "wal_bytes",
+	20: "has_read_gap",
+	21: "read_gap_after_unix_nano",
+	22: "out_of_space",
+	23: "wanted_parts",
+	24: "holes",
+	25: "lost_parts",
+	26: "index_fenced",
+	27: "index_load_error",
+	28: "tenure_unestablished",
 }
 
 // Decode decodes EngineSignalStats from json.
@@ -3207,8 +3214,18 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"series\"")
 			}
+		case "series_complete":
+			if err := func() error {
+				s.SeriesComplete.Reset()
+				if err := s.SeriesComplete.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"series_complete\"")
+			}
 		case "head_items":
-			requiredBitSet[0] |= 1 << 2
+			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				v, err := d.Int64()
 				s.HeadItems = int64(v)
@@ -3220,7 +3237,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"head_items\"")
 			}
 		case "head_bytes":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				v, err := d.Int64()
 				s.HeadBytes = int64(v)
@@ -3232,7 +3249,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"head_bytes\"")
 			}
 		case "parts":
-			requiredBitSet[0] |= 1 << 4
+			requiredBitSet[0] |= 1 << 5
 			if err := func() error {
 				v, err := d.Int64()
 				s.Parts = int64(v)
@@ -3244,7 +3261,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"parts\"")
 			}
 		case "sealed_parts":
-			requiredBitSet[0] |= 1 << 5
+			requiredBitSet[0] |= 1 << 6
 			if err := func() error {
 				v, err := d.Int64()
 				s.SealedParts = int64(v)
@@ -3316,7 +3333,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"retention_policy\"")
 			}
 		case "merge_running":
-			requiredBitSet[1] |= 1 << 4
+			requiredBitSet[1] |= 1 << 5
 			if err := func() error {
 				v, err := d.Bool()
 				s.MergeRunning = bool(v)
@@ -3328,7 +3345,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"merge_running\"")
 			}
 		case "merge_backlog":
-			requiredBitSet[1] |= 1 << 5
+			requiredBitSet[1] |= 1 << 6
 			if err := func() error {
 				v, err := d.Int64()
 				s.MergeBacklog = int64(v)
@@ -3340,7 +3357,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"merge_backlog\"")
 			}
 		case "merge_candidates":
-			requiredBitSet[1] |= 1 << 6
+			requiredBitSet[1] |= 1 << 7
 			if err := func() error {
 				v, err := d.Int64()
 				s.MergeCandidates = int64(v)
@@ -3352,7 +3369,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"merge_candidates\"")
 			}
 		case "merge_cap_bytes":
-			requiredBitSet[1] |= 1 << 7
+			requiredBitSet[2] |= 1 << 0
 			if err := func() error {
 				v, err := d.Int64()
 				s.MergeCapBytes = int64(v)
@@ -3364,7 +3381,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"merge_cap_bytes\"")
 			}
 		case "wal":
-			requiredBitSet[2] |= 1 << 0
+			requiredBitSet[2] |= 1 << 1
 			if err := func() error {
 				v, err := d.Bool()
 				s.Wal = bool(v)
@@ -3376,7 +3393,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"wal\"")
 			}
 		case "wal_segments":
-			requiredBitSet[2] |= 1 << 1
+			requiredBitSet[2] |= 1 << 2
 			if err := func() error {
 				v, err := d.Int64()
 				s.WalSegments = int64(v)
@@ -3388,7 +3405,7 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"wal_segments\"")
 			}
 		case "wal_bytes":
-			requiredBitSet[2] |= 1 << 2
+			requiredBitSet[2] |= 1 << 3
 			if err := func() error {
 				v, err := d.Int64()
 				s.WalBytes = int64(v)
@@ -3499,9 +3516,9 @@ func (s *EngineSignalStats) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [4]uint8{
-		0b00111111,
-		0b11110000,
-		0b00000111,
+		0b01111011,
+		0b11100000,
+		0b00001111,
 		0b00000000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
@@ -7884,6 +7901,12 @@ func (s *TenantStats) encodeFields(e *jx.Encoder) {
 		e.Int64(s.TotalSeries)
 	}
 	{
+		if s.TotalSeriesComplete.Set {
+			e.FieldStart("total_series_complete")
+			s.TotalSeriesComplete.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("total_parts")
 		e.Int64(s.TotalParts)
 	}
@@ -7901,12 +7924,13 @@ func (s *TenantStats) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfTenantStats = [5]string{
+var jsonFieldsNameOfTenantStats = [6]string{
 	0: "tenant",
 	1: "total_series",
-	2: "total_parts",
-	3: "admission",
-	4: "signals",
+	2: "total_series_complete",
+	3: "total_parts",
+	4: "admission",
+	5: "signals",
 }
 
 // Decode decodes TenantStats from json.
@@ -7942,8 +7966,18 @@ func (s *TenantStats) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"total_series\"")
 			}
+		case "total_series_complete":
+			if err := func() error {
+				s.TotalSeriesComplete.Reset()
+				if err := s.TotalSeriesComplete.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"total_series_complete\"")
+			}
 		case "total_parts":
-			requiredBitSet[0] |= 1 << 2
+			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				v, err := d.Int64()
 				s.TotalParts = int64(v)
@@ -7955,7 +7989,7 @@ func (s *TenantStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"total_parts\"")
 			}
 		case "admission":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				if err := s.Admission.Decode(d); err != nil {
 					return err
@@ -7965,7 +7999,7 @@ func (s *TenantStats) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"admission\"")
 			}
 		case "signals":
-			requiredBitSet[0] |= 1 << 4
+			requiredBitSet[0] |= 1 << 5
 			if err := func() error {
 				s.Signals = make([]EngineSignalStats, 0)
 				if err := d.Arr(func(d *jx.Decoder) error {
@@ -7992,7 +8026,7 @@ func (s *TenantStats) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00011111,
+		0b00111011,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

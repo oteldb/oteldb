@@ -1144,8 +1144,11 @@ func (s *EfficiencyStats) SetTenants(val []TenantEfficiency) {
 // Ref: #/components/schemas/EngineSignalStats
 type EngineSignalStats struct {
 	Signal Signal `json:"signal"`
-	// Distinct series/streams (head and flushed).
+	// Distinct series/streams (head and flushed); read with series_complete.
 	Series int64 `json:"series"`
+	// Whether series is a current exact count. False preserves the last complete count while historical
+	// metadata is unavailable or a recount failed. Absent on older nodes.
+	SeriesComplete OptBool `json:"series_complete"`
 	// Unflushed samples/records in the head.
 	HeadItems int64 `json:"head_items"`
 	// Head buffered bytes.
@@ -1208,6 +1211,11 @@ func (s *EngineSignalStats) GetSignal() Signal {
 // GetSeries returns the value of Series.
 func (s *EngineSignalStats) GetSeries() int64 {
 	return s.Series
+}
+
+// GetSeriesComplete returns the value of SeriesComplete.
+func (s *EngineSignalStats) GetSeriesComplete() OptBool {
+	return s.SeriesComplete
 }
 
 // GetHeadItems returns the value of HeadItems.
@@ -1348,6 +1356,11 @@ func (s *EngineSignalStats) SetSignal(val Signal) {
 // SetSeries sets the value of Series.
 func (s *EngineSignalStats) SetSeries(val int64) {
 	s.Series = val
+}
+
+// SetSeriesComplete sets the value of SeriesComplete.
+func (s *EngineSignalStats) SetSeriesComplete(val OptBool) {
+	s.SeriesComplete = val
 }
 
 // SetHeadItems sets the value of HeadItems.
@@ -3977,8 +3990,11 @@ func (s *TenantEfficiency) SetSignals(val []SignalEfficiency) {
 type TenantStats struct {
 	// Tenant identifier.
 	Tenant string `json:"tenant"`
-	// Sum of series across all signals.
+	// Sum of series across all signals; read with total_series_complete.
 	TotalSeries int64 `json:"total_series"`
+	// Whether every signal's series count is current and exact. False means the total includes preserved
+	// counts whose historical metadata is unavailable. Absent on older nodes.
+	TotalSeriesComplete OptBool `json:"total_series_complete"`
 	// Sum of flushed parts across all signals.
 	TotalParts int64               `json:"total_parts"`
 	Admission  AdmissionStats      `json:"admission"`
@@ -3993,6 +4009,11 @@ func (s *TenantStats) GetTenant() string {
 // GetTotalSeries returns the value of TotalSeries.
 func (s *TenantStats) GetTotalSeries() int64 {
 	return s.TotalSeries
+}
+
+// GetTotalSeriesComplete returns the value of TotalSeriesComplete.
+func (s *TenantStats) GetTotalSeriesComplete() OptBool {
+	return s.TotalSeriesComplete
 }
 
 // GetTotalParts returns the value of TotalParts.
@@ -4018,6 +4039,11 @@ func (s *TenantStats) SetTenant(val string) {
 // SetTotalSeries sets the value of TotalSeries.
 func (s *TenantStats) SetTotalSeries(val int64) {
 	s.TotalSeries = val
+}
+
+// SetTotalSeriesComplete sets the value of TotalSeriesComplete.
+func (s *TenantStats) SetTotalSeriesComplete(val OptBool) {
+	s.TotalSeriesComplete = val
 }
 
 // SetTotalParts sets the value of TotalParts.
