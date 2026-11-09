@@ -45,17 +45,22 @@ func setupDB(
 	provider trace.TracerProvider,
 	querier tracestorage.Querier,
 	engineQuerier traceqlengine.Querier,
+	engineOptions ...traceqlengine.Options,
 ) *tempoapi.Client {
 	var engine *traceqlengine.Engine
 	if engineQuerier != nil {
-		engine = traceqlengine.NewEngine(engineQuerier, traceqlengine.Options{
-			TracerProvider: provider,
-		})
+		opts := traceqlengine.Options{TracerProvider: provider}
+		if len(engineOptions) > 0 {
+			opts = engineOptions[0]
+			opts.TracerProvider = provider
+		}
+		engine = traceqlengine.NewEngine(engineQuerier, opts)
 	}
 	api := tempohandler.NewTempoAPI(querier, engine, tempohandler.TempoAPIOptions{
 		EnableAutocompleteQuery: true,
 	})
 	tempoh, err := tempoapi.NewServer(api,
+		tempoapi.WithErrorHandler(tempohandler.ErrorHandler),
 		tempoapi.WithTracerProvider(provider),
 	)
 	require.NoError(t, err)

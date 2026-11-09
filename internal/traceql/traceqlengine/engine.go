@@ -21,6 +21,7 @@ import (
 // Engine is a TraceQL evaluation engine.
 type Engine struct {
 	querier Querier
+	metrics metricsLimits
 
 	tracer trace.Tracer
 }
@@ -29,11 +30,31 @@ type Engine struct {
 type Options struct {
 	// TracerProvider provides OpenTelemetry tracer for this engine.
 	TracerProvider trace.TracerProvider
+	// MetricsMaxSteps bounds the range evaluation grid. Defaults to 11,000.
+	MetricsMaxSteps int
+	// MetricsMaxSeries bounds first-stage groups. Defaults to 10,000.
+	MetricsMaxSeries int
+	// MetricsMaxSamples bounds bucket values across query operands. Defaults to 1,000,000.
+	MetricsMaxSamples int
+	// MetricsMaxSpans bounds spans inspected across query operands. Defaults to 1,000,000.
+	MetricsMaxSpans int
 }
 
 func (o *Options) setDefaults() {
 	if o.TracerProvider == nil {
 		o.TracerProvider = otel.GetTracerProvider()
+	}
+	if o.MetricsMaxSteps <= 0 {
+		o.MetricsMaxSteps = 11_000
+	}
+	if o.MetricsMaxSeries <= 0 {
+		o.MetricsMaxSeries = 10_000
+	}
+	if o.MetricsMaxSamples <= 0 {
+		o.MetricsMaxSamples = 1_000_000
+	}
+	if o.MetricsMaxSpans <= 0 {
+		o.MetricsMaxSpans = 1_000_000
 	}
 }
 
@@ -43,6 +64,7 @@ func NewEngine(querier Querier, opts Options) *Engine {
 
 	return &Engine{
 		querier: querier,
+		metrics: metricsLimits{steps: opts.MetricsMaxSteps, series: opts.MetricsMaxSeries, samples: opts.MetricsMaxSamples, spans: opts.MetricsMaxSpans},
 		tracer:  opts.TracerProvider.Tracer("traceql.Engine"),
 	}
 }

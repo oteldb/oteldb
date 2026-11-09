@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-faster/sdk/zctx"
 	"github.com/go-logfmt/logfmt"
-	ht "github.com/ogen-go/ogen/http"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/exp/maps"
@@ -82,17 +81,7 @@ func (h *TempoAPI) Echo(_ context.Context) (tempoapi.EchoOK, error) {
 //
 // GET /api/metrics/query
 func (h *TempoAPI) Query(ctx context.Context, params tempoapi.QueryParams) (*tempoapi.InstantMetrics, error) {
-	_, _, err := parseQueryTimeRange(
-		time.Now(),
-		params.Start,
-		params.End,
-		params.Since,
-		time.Hour,
-	)
-	if err != nil {
-		return nil, validationErr(ctx, err, "parse time range")
-	}
-	return nil, queryErr(ctx, http.StatusNotImplemented, ht.ErrNotImplemented, "query metrics")
+	return h.queryMetrics(ctx, params)
 }
 
 // QueryRange implements queryRange operation.
@@ -101,17 +90,7 @@ func (h *TempoAPI) Query(ctx context.Context, params tempoapi.QueryParams) (*tem
 //
 // GET /api/metrics/query_range
 func (h *TempoAPI) QueryRange(ctx context.Context, params tempoapi.QueryRangeParams) (*tempoapi.RangeMetrics, error) {
-	_, _, err := parseQueryTimeRange(
-		time.Now(),
-		params.Start,
-		params.End,
-		params.Since,
-		time.Hour,
-	)
-	if err != nil {
-		return nil, validationErr(ctx, err, "parse time range")
-	}
-	return nil, queryErr(ctx, http.StatusNotImplemented, ht.ErrNotImplemented, "query range metrics")
+	return h.queryRangeMetrics(ctx, params)
 }
 
 // Search implements search operation.

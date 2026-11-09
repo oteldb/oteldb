@@ -31,6 +31,10 @@ var (
 // SelectSpansets materializes candidate traces once, then filters their retained extents.
 // The engine rechecks all predicates and applies the limit.
 func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.SelectSpansetsParams) (iterators.Iterator[traceqlengine.Trace], error) {
+	return q.selectSpansets(ctx, params, true)
+}
+
+func (q *TraceQuerier) selectSpansets(ctx context.Context, params traceqlengine.SelectSpansetsParams, contain bool) (iterators.Iterator[traceqlengine.Trace], error) {
 	ctx = q.b.queryContext(ctx)
 
 	traceIDs, pushed, err := q.candidateTraces(ctx, params)
@@ -87,7 +91,7 @@ func (q *TraceQuerier) SelectSpansets(ctx context.Context, params traceqlengine.
 		kept := traces[:0]
 		for i, trace := range traces {
 			extent := extents[i]
-			if !params.ContainsTrace(extent.start, extent.end) ||
+			if (contain && !params.ContainsTrace(extent.start, extent.end)) ||
 				(q.b.traceQLPushdown && !keepDuration(extent.end.Sub(extent.start))) {
 				continue
 			}

@@ -27,6 +27,7 @@ func NewTempo(opts TempoOptions) (*tempoapi.Server, error) {
 	handler := tempohandler.NewTempoAPI(opts.Querier, engine, tempohandler.TempoAPIOptions{})
 
 	return tempoapi.NewServer(handler,
+		tempoapi.WithErrorHandler(tempohandler.ErrorHandler),
 		tempoapi.WithAttributes(attribute.String("oteldb.api", "tempo")),
 		tempoapi.WithTracerProvider(opts.TracerProvider),
 		tempoapi.WithMeterProvider(opts.MeterProvider),

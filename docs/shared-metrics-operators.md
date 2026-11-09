@@ -28,8 +28,9 @@ First-stage schemas contain losslessly encoded group identities and remain stabl
 once returned. Prometheus string labels must not collapse typed TraceQL values,
 such as integer `1` and string `"1"`, into the same identity. The source or response
 adapter retains the typed label metadata and exemplars; numeric columns alone do
-not carry them. This change provides no concrete trace-storage source or Tempo
-response adapter, so the HTTP metrics endpoints remain unimplemented.
+not carry them. Native [count/rate metrics queries](./traceql-metrics.md) supply
+the concrete span source and Tempo response adapter. Other first-stage aggregates
+remain separate capabilities.
 
 ## Runtime contract
 
