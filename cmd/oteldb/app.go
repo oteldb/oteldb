@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -137,9 +138,14 @@ func newApp(ctx context.Context, cfg Config, m *sdkapp.Telemetry) (_ *App, err e
 			<-ctx.Done()
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			if err := closeStore(shutdownCtx); err != nil {
+			started := time.Now()
+			app.lg.Info("Embedded storage shutdown started", zap.Duration("timeout", 30*time.Second))
+			err := closeStore(shutdownCtx)
+			if err != nil {
+				app.lg.Warn("Embedded storage shutdown failed", zap.Duration("elapsed", time.Since(started)), zap.Error(err))
 				return errors.Wrap(err, "close storage")
 			}
+			app.lg.Info("Embedded storage shutdown completed", zap.Duration("elapsed", time.Since(started)))
 			return nil
 		}
 	}
@@ -506,10 +512,13 @@ func (app *App) Run(ctx context.Context) error {
 				}
 			}()
 			defer func() {
-				zctx.From(ctx).Debug("Service shut down",
-					zap.Error(rerr),
-					zap.String("service_key", k),
-				)
+				log := zctx.From(ctx)
+				fields := []zap.Field{zap.Error(rerr), zap.String("service_key", k)}
+				if ctx.Err() != nil {
+					log.Info("Service shut down", fields...)
+				} else {
+					log.Debug("Service shut down", fields...)
+				}
 				runningServicesMux.Lock()
 				delete(runningServices, k)
 				runningServicesMux.Unlock()
@@ -517,23 +526,20 @@ func (app *App) Run(ctx context.Context) error {
 			return s(ctx)
 		})
 	}
-	g.Go(func() error {
-		<-ctx.Done()
-		zctx.From(ctx).Debug("Application is shutting down")
-		ticker := time.NewTicker(time.Second * 5)
-		go func() {
-			defer ticker.Stop()
-			for range ticker.C {
-				runningServicesMux.Lock()
-				running := maps.Keys(runningServices)
-				runningServicesMux.Unlock()
-
-				zctx.From(ctx).Debug("Still shutting down",
-					zap.Strings("running_services", running),
-				)
-			}
-		}()
-		return nil
-	})
-	return g.Wait()
+	completed := make(chan struct{})
+	monitorDone := make(chan struct{})
+	go func() {
+		defer close(monitorDone)
+		monitorShutdown(ctx, completed, zctx.From(ctx), func() []string {
+			runningServicesMux.Lock()
+			running := maps.Keys(runningServices)
+			runningServicesMux.Unlock()
+			slices.Sort(running)
+			return running
+		})
+	}()
+	err := g.Wait()
+	close(completed)
+	<-monitorDone
+	return err
 }
