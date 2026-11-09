@@ -93,6 +93,7 @@ func (s *spanMetricsSource) Aggregation(ctx context.Context, agg *traceql.Metric
 	counts := map[metricsGroupKey]*scarecrow.Column{}
 	series := []labels.Labels{}
 	columns := []*scarecrow.Column{}
+	builder := labels.NewBuilder(labels.EmptyLabels())
 	newGroup := func(key metricsGroupKey) (*scarecrow.Column, error) {
 		if s.groups >= s.limits.series {
 			return nil, &MetricsLimitError{Msg: "metrics series limit exceeded"}
@@ -100,7 +101,8 @@ func (s *spanMetricsSource) Aggregation(ctx context.Context, agg *traceql.Metric
 		if err := ec.ChargeSamples(len(s.grid.steps)); err != nil {
 			return nil, &MetricsLimitError{Msg: err.Error()}
 		}
-		builder := labels.NewBuilder(labels.EmptyLabels())
+		builder.Reset(labels.EmptyLabels())
+		hasLabels := len(names) == 0
 		if len(names) == 0 {
 			builder.Set("__name__", agg.Op.String())
 		}
@@ -118,8 +120,9 @@ func (s *spanMetricsSource) Aggregation(ctx context.Context, agg *traceql.Metric
 				return nil, &MetricsLimitError{Msg: "metrics grouping labels exceed 8 MiB"}
 			}
 			builder.Set(name, encoded)
+			hasLabels = true
 		}
-		if builder.Labels().IsEmpty() {
+		if !hasLabels {
 			builder.Set(names[0], encodeMetricsLabel(traceql.Static{Type: traceql.TypeNil}))
 		}
 		column := scarecrow.NewColumn(scarecrow.SeriesRef(len(columns)), len(s.grid.steps))
