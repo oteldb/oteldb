@@ -12,8 +12,6 @@
 // architecture behind a build tag without touching execution code.
 package kernel
 
-import "math"
-
 // AddF64 computes dst[i] += src[i] over the whole slice. It is the accumulation step of every
 // sum-shaped aggregation: many series' columns fold into one group row, so the reduction across
 // series happens implicitly as columns accumulate.
@@ -49,20 +47,6 @@ func AddMaskedF64(dst []float64, dstValid []uint64, src []float64, srcValid []ui
 		}
 
 		dstValid[w] |= word
-	}
-}
-
-// ScaleF64 computes dst[i] *= f over the whole slice.
-func ScaleF64(dst []float64, f float64) {
-	for i := range dst {
-		dst[i] *= f
-	}
-}
-
-// AbsF64 computes dst[i] = |dst[i]| over the whole slice.
-func AbsF64(dst []float64) {
-	for i := range dst {
-		dst[i] = math.Abs(dst[i])
 	}
 }
 

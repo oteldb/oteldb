@@ -7,6 +7,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/oteldb/oteldb/internal/scarecrow/kernel"
 )
 
 // unaryFuncs are the instant functions that map one sample to one sample. They are the
@@ -52,13 +54,18 @@ type unaryFn struct {
 	input Operator
 	name  string
 	fn    func(float64) float64
+	batch func([]float64, []uint64)
 
 	schema *Schema
 	out    Column
 }
 
 func newUnaryFn(input Operator, name string, fn func(float64) float64) *unaryFn {
-	return &unaryFn{input: input, name: name, fn: fn}
+	o := &unaryFn{input: input, name: name, fn: fn}
+	if name == "abs" {
+		o.batch = kernel.AbsMaskedF64
+	}
+	return o
 }
 
 func (o *unaryFn) String() string { return fmt.Sprintf("UnaryFn(%s)", o.name) }
@@ -98,6 +105,10 @@ func (o *unaryFn) Next(ctx context.Context) (*Column, error) {
 	}
 
 	o.out.CopyFrom(col)
+	if o.batch != nil {
+		o.batch(o.out.V, o.out.Valid)
+		return &o.out, nil
+	}
 	for i := range o.out.V {
 		if o.out.IsSet(i) {
 			o.out.V[i] = o.fn(o.out.V[i])
