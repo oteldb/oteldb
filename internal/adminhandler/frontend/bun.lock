@@ -5,7 +5,7 @@
     "": {
       "name": "@oteldb/admin-frontend",
       "dependencies": {
-        "@gravity-ui/charts": "^1.72.0",
+        "@gravity-ui/charts": "^2.0.0",
         "@gravity-ui/icons": "^2.23.1",
         "@gravity-ui/navigation": "^7.1.3",
         "@gravity-ui/uikit": "^7.47.1",
@@ -117,9 +117,9 @@
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.12", "", {}, "sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww=="],
 
-    "@gravity-ui/charts": ["@gravity-ui/charts@1.72.0", "", { "dependencies": { "@bem-react/classname": "^1.6.0", "@gravity-ui/date-utils": "^2.5.4", "@gravity-ui/i18n": "^1.6.0", "@gravity-ui/icons": "^2.15.0", "csstype": "^3.2.3", "d3-array": "^3.2.4", "d3-axis": "^3.0.0", "d3-brush": "^3.0.0", "d3-color": "^3.1.0", "d3-delaunay": "^6.0.4", "d3-dispatch": "^3.0.1", "d3-hierarchy": "^3.1.2", "d3-interpolate": "^3.0.1", "d3-path": "^3.1.0", "d3-random": "^3.0.1", "d3-scale": "^4.0.2", "d3-selection": "^3.0.0", "d3-shape": "^3.2.0", "d3-time": "^3.1.0", "html-react-parser": "^5.2.17", "lodash": "^4.17.21", "tslib": "^2.6.2" }, "peerDependencies": { "@gravity-ui/uikit": "^7.0.0", "react": ">=17.0.0", "react-dom": ">=17.0.0" } }, "sha512-NhyLvGearWQEh/5fJ5Aws9770XwMIHHhPLh0v2Sc5/kEvzCFmAKIvX+OKRPtgyn6zphn1X6OxMLfhLOsEbPaoA=="],
+    "@gravity-ui/charts": ["@gravity-ui/charts@2.0.0", "", { "dependencies": { "@bem-react/classname": "^1.6.0", "@gravity-ui/date-utils": "^2.7.3", "@gravity-ui/i18n": "^1.6.0", "@gravity-ui/icons": "^2.23.1", "csstype": "^3.2.3", "d3-array": "^3.2.4", "d3-axis": "^3.0.0", "d3-brush": "^3.0.0", "d3-color": "^3.1.0", "d3-delaunay": "^6.0.4", "d3-dispatch": "^3.0.1", "d3-hierarchy": "^3.1.2", "d3-interpolate": "^3.0.1", "d3-path": "^3.1.0", "d3-random": "^3.0.1", "d3-scale": "^4.0.2", "d3-selection": "^3.0.0", "d3-shape": "^3.2.0", "d3-time": "^3.1.0", "es-toolkit": "^1.53.0", "html-react-parser": "^5.2.17", "tslib": "^2.6.2" }, "peerDependencies": { "@gravity-ui/uikit": "^8.0.0", "react": ">=18.0.0", "react-dom": ">=18.0.0" } }, "sha512-088rHK1+8iwAn2eRxQblfvWfNhe21ZnAbXl0wJtcFVeAEYBEjIx5d9y/p4xdI6519GrVS7CRZCoYKIrZq8vz3Q=="],
 
-    "@gravity-ui/date-utils": ["@gravity-ui/date-utils@2.7.1", "", { "dependencies": { "dayjs": "1.11.10" } }, "sha512-59wtREPWI63WcMq2HrkawiDoZfeJu1hi6NrO9LXNWHpFxecXyipNAf0QPlQYvsCEFW9Sledy8jSIhkl3Z75V8Q=="],
+    "@gravity-ui/date-utils": ["@gravity-ui/date-utils@2.7.3", "", { "dependencies": { "dayjs": "1.11.10" } }, "sha512-YML8BvMIKlGw9DzEBbZQaZzOX2xbB/CDtLg9GVeW/DH6K83DUTa/R3iylzGWEe/4QUGg49zGL5ho3Zv0bm90RA=="],
 
     "@gravity-ui/i18n": ["@gravity-ui/i18n@1.8.0", "", {}, "sha512-bVt/UGjL96Naw0h03QW+3z2tf6t4zvLh1j+eFzpdLlAIMeNu0dRjxn4X6EGtwhwKrfMyIfrlOqmLSroXtCNQAw=="],
 
@@ -402,6 +402,8 @@
     "domutils": ["domutils@3.2.2", "", { "dependencies": { "dom-serializer": "^2.0.0", "domelementtype": "^2.3.0", "domhandler": "^5.0.3" } }, "sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw=="],
 
     "entities": ["entities@7.0.1", "", {}, "sha512-TWrgLOFUQTH994YUyl1yT4uyavY5nNB5muff+RtWaqNVCAK408b5ZnnbNAUEWLTCpum9w6arT70i1XdQ4UeOPA=="],
+
+    "es-toolkit": ["es-toolkit@1.53.2", "", {}, "sha512-iUqZ+NlwH4jUgRmXZUxFBsV/9762TQEa1O4IXLFBmDEjVHScBytKuseX23I0+v9ShZ5MYxEx6WKNzm6IPnex8g=="],
 
     "esbuild": ["esbuild@0.28.2", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.28.2", "@esbuild/android-arm": "0.28.2", "@esbuild/android-arm64": "0.28.2", "@esbuild/android-x64": "0.28.2", "@esbuild/darwin-arm64": "0.28.2", "@esbuild/darwin-x64": "0.28.2", "@esbuild/freebsd-arm64": "0.28.2", "@esbuild/freebsd-x64": "0.28.2", "@esbuild/linux-arm": "0.28.2", "@esbuild/linux-arm64": "0.28.2", "@esbuild/linux-ia32": "0.28.2", "@esbuild/linux-loong64": "0.28.2", "@esbuild/linux-mips64el": "0.28.2", "@esbuild/linux-ppc64": "0.28.2", "@esbuild/linux-riscv64": "0.28.2", "@esbuild/linux-s390x": "0.28.2", "@esbuild/linux-x64": "0.28.2", "@esbuild/netbsd-arm64": "0.28.2", "@esbuild/netbsd-x64": "0.28.2", "@esbuild/openbsd-arm64": "0.28.2", "@esbuild/openbsd-x64": "0.28.2", "@esbuild/openharmony-arm64": "0.28.2", "@esbuild/sunos-x64": "0.28.2", "@esbuild/win32-arm64": "0.28.2", "@esbuild/win32-ia32": "0.28.2", "@esbuild/win32-x64": "0.28.2" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA=="],
 
