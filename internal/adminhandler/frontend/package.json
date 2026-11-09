@@ -15,7 +15,7 @@
     "lint": "biome check ."
   },
   "dependencies": {
-    "@gravity-ui/charts": "^1.72.0",
+    "@gravity-ui/charts": "^2.0.0",
     "@gravity-ui/icons": "^2.23.1",
     "@gravity-ui/navigation": "^7.1.3",
     "@gravity-ui/uikit": "^7.47.1",
