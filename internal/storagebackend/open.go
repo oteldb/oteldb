@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -150,8 +151,23 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 	b.policyResolver = resolver
 	b.rejectOutOfRetention = cfg.RejectOutOfRetention
 	closeStore := func(ctx context.Context) error {
+		started := time.Now()
+		lg.Info("Closing native query cache")
 		b.CloseQueryCache()
-		return store.Close(ctx)
+		lg.Info("Native query cache closed", zap.Duration("elapsed", time.Since(started)))
+		started = time.Now()
+		fields := []zap.Field{}
+		if deadline, ok := ctx.Deadline(); ok {
+			fields = append(fields, zap.Time("deadline", deadline), zap.Duration("remaining", time.Until(deadline)))
+		}
+		lg.Info("Closing storage engines", fields...)
+		err := store.Close(ctx)
+		if err != nil {
+			lg.Warn("Storage engines closed with error", zap.Duration("elapsed", time.Since(started)), zap.Error(err))
+		} else {
+			lg.Info("Storage engines closed", zap.Duration("elapsed", time.Since(started)))
+		}
+		return err
 	}
 	return b, closeStore, nil
 }
