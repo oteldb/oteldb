@@ -3,6 +3,8 @@ package storagebackend
 import (
 	"time"
 
+	"github.com/go-faster/errors"
+
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
 
@@ -75,6 +77,11 @@ type Config struct {
 	// Unlike the caches this is a pass-through: oteldb adds no default of its own, because the
 	// library already derives one from the same memory limit oteldb would read.
 	MergeMemoryBytes *xbytes.Bytes `json:"merge_memory_bytes" yaml:"merge_memory_bytes"`
+	// MetricDiskSeries keeps historical metric identities and postings in immutable parts. Opt-in.
+	MetricDiskSeries bool `json:"metric_disk_series" yaml:"metric_disk_series"`
+	// MetricResidentHeadBytes targets resident metric head memory in disk-index mode. Unset uses 128 MiB.
+	// One atomic batch may exceed this target; the next write applies pressure maintenance.
+	MetricResidentHeadBytes *xbytes.Bytes `json:"metric_resident_head_bytes" yaml:"metric_resident_head_bytes"`
 	// AggregateStats writes a per-series aggregate sidecar (count/sum/min/max) alongside each
 	// metric part so range-covering aggregates — and the *_over_time pushdown — can be answered
 	// without decoding. Enabled by default; set to false to disable.
@@ -160,14 +167,21 @@ type S3Config struct {
 // names, decode_memory_bytes most sharply: losing it removes the ceiling that keeps query
 // concurrency from driving the heap past GOMEMLIMIT.
 func (cfg *Config) validate() error {
-	return checkBytes(
+	if err := checkBytes(
 		optionalBytes("read_cache_bytes", cfg.ReadCacheBytes),
 		optionalBytes("decode_cache_bytes", cfg.DecodeCacheBytes),
 		optionalBytes("native_query_cache_bytes", cfg.NativeQueryCacheBytes),
 		optionalBytes("decode_memory_bytes", cfg.DecodeMemoryBytes),
 		optionalBytes("max_query_bytes", cfg.MaxQueryBytes),
 		optionalBytes("merge_memory_bytes", cfg.MergeMemoryBytes),
-	)
+		optionalBytes("metric_resident_head_bytes", cfg.MetricResidentHeadBytes),
+	); err != nil {
+		return err
+	}
+	if cfg.MetricResidentHeadBytes != nil && *cfg.MetricResidentHeadBytes == 0 {
+		return errors.New("metric_resident_head_bytes: must be positive")
+	}
+	return nil
 }
 
 // SetDefaults fills in the defaults for unset fields.
