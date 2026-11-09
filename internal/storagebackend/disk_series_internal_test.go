@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/go-faster/sdk/app"
 	"github.com/go-faster/yaml"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
@@ -20,8 +22,8 @@ func TestMetricDiskSeriesConfig(t *testing.T) {
 		parseError bool
 	}{
 		{name: "defaults", data: "{}"},
-		{name: "enabled", data: "metric_disk_series: true", enabled: true},
-		{name: "bounded", data: "metric_disk_series: true\nmetric_resident_head_bytes: 16 MiB", enabled: true, bytes: 16 << 20},
+		{name: "enabled", data: "backend: file\nmetric_disk_series: true", enabled: true},
+		{name: "bounded", data: "backend: file\nmetric_disk_series: true\nmetric_resident_head_bytes: 16 MiB", enabled: true, bytes: 16 << 20},
 		{name: "disabled", data: "metric_disk_series: false\nmetric_resident_head_bytes: 8 MiB", bytes: 8 << 20},
 		{name: "zero", data: "metric_resident_head_bytes: 0", err: "must be positive"},
 		{name: "negative", data: "metric_resident_head_bytes: -1 MiB", parseError: true},
@@ -49,7 +51,7 @@ func TestMetricDiskSeriesConfig(t *testing.T) {
 		})
 	}
 	var cfg Config
-	require.NoError(t, json.Unmarshal([]byte(`{"metric_disk_series":true,"metric_resident_head_bytes":"32 MiB"}`), &cfg))
+	require.NoError(t, json.Unmarshal([]byte(`{"backend":"file","metric_disk_series":true,"metric_resident_head_bytes":"32 MiB"}`), &cfg))
 	require.NoError(t, cfg.validate())
 	require.True(t, cfg.MetricDiskSeries)
 	require.EqualValues(t, 32<<20, *cfg.MetricResidentHeadBytes)
@@ -61,5 +63,20 @@ func TestMetricResidentHeadValidation(t *testing.T) {
 		cfg := Config{MetricResidentHeadBytes: new(value)}
 		err := cfg.validate()
 		require.ErrorContains(t, err, "metric_resident_head_bytes")
+	}
+}
+
+func TestMetricDiskSeriesRejectsMemoryBackend(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []string{"", "memory"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			cfg := Config{Backend: kind, MetricDiskSeries: true}
+			_, _, err := Open(t.Context(), cfg, zap.NewNop(), &app.Telemetry{})
+			require.ErrorContains(t, err, "metric_disk_series requires a file or s3 backend")
+		})
+	}
+	for _, kind := range []string{"file", "s3"} {
+		require.NoError(t, (&Config{Backend: kind, MetricDiskSeries: true}).validate())
 	}
 }

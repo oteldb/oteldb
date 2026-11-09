@@ -115,6 +115,7 @@ func TestAdmin_EngineStorage(t *testing.T) {
 			Admission: storage.AdmissionStats{Accepted: 100, RejectedOOO: 2},
 			Signals: []storage.SignalStats{{
 				Signal:          signal.Metric,
+				SeriesComplete:  true,
 				Series:          10,
 				HeadItems:       5,
 				HeadBytes:       2048,
@@ -160,10 +161,14 @@ func TestAdmin_EngineStorage(t *testing.T) {
 	tn := e.Tenants[0]
 	assert.Equal(t, "default", tn.Tenant)
 	assert.Equal(t, int64(10), tn.TotalSeries)
+	require.True(t, tn.TotalSeriesComplete.Set)
+	assert.True(t, tn.TotalSeriesComplete.Value)
 	assert.Equal(t, int64(3), tn.TotalParts)
 	assert.Equal(t, int64(100), tn.Admission.Accepted)
 	require.Len(t, tn.Signals, 1)
 	assert.Equal(t, adminapi.SignalMetrics, tn.Signals[0].Signal)
+	require.True(t, tn.Signals[0].SeriesComplete.Set)
+	assert.True(t, tn.Signals[0].SeriesComplete.Value)
 	assert.True(t, tn.Signals[0].MinTime.Set)
 	assert.Equal(t, int64(2), tn.Signals[0].SealedParts)
 	assert.Equal(t, int64(1), tn.Signals[0].MergeBacklog)

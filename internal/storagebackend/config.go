@@ -181,6 +181,9 @@ func (cfg *Config) validate() error {
 	if cfg.MetricResidentHeadBytes != nil && *cfg.MetricResidentHeadBytes == 0 {
 		return errors.New("metric_resident_head_bytes: must be positive")
 	}
+	if cfg.MetricDiskSeries && (cfg.Backend == "" || cfg.Backend == "memory") {
+		return errors.New("metric_disk_series requires a file or s3 backend")
+	}
 	return nil
 }
 

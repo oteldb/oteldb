@@ -526,7 +526,12 @@ components:
         total_series:
           type: integer
           format: int64
-          description: "Sum of series across all signals."
+          description: "Sum of series across all signals; read with total_series_complete."
+        total_series_complete:
+          type: boolean
+          description: >
+            Whether every signal's series count is current and exact. False means the total
+            includes preserved counts whose historical metadata is unavailable. Absent on older nodes.
         total_parts:
           type: integer
           format: int64
@@ -560,7 +565,12 @@ components:
         series:
           type: integer
           format: int64
-          description: "Distinct series/streams (head and flushed)."
+          description: "Distinct series/streams (head and flushed); read with series_complete."
+        series_complete:
+          type: boolean
+          description: >
+            Whether series is a current exact count. False preserves the last complete count
+            while historical metadata is unavailable or a recount failed. Absent on older nodes.
         head_items:
           type: integer
           format: int64
