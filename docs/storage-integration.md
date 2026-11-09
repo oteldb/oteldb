@@ -291,6 +291,12 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   the per-engine sample-byte trigger independently of `storage.flush_interval`. Zero keeps the
   library default of 64 MiB. Raising the interval alone does not postpone size-triggered flushes.
   Resident identity state, buffer overhead and frozen inputs require additional memory.
+- **Disk metric index:** `storage.metric_disk_series: true` keeps historical identities and postings
+  in immutable parts and evicts flushed metadata from the resident head. It is disabled by default.
+  `storage.metric_resident_head_bytes` accepts a positive byte size; unset uses the library's
+  128 MiB target. One atomic batch may exceed the target, and the next write applies pressure
+  maintenance. Large old WALs can require a larger target to replay without changing the journal.
+  Upgrade every reader before enabling this mode; existing part identities remain readable.
 - **Merge memory:** `storage.merge_memory_bytes` (→ `storage.WithMergeMemory`) caps what all
   concurrent merges together hold, and with it the size a merged part reaches before it is sealed.
   It is the write-side counterpart of `decode_memory_bytes`: on a backend that takes objects whole
