@@ -5,6 +5,8 @@ import (
 	"slices"
 
 	"github.com/prometheus/prometheus/model/value"
+
+	"github.com/oteldb/oteldb/internal/scarecrow/kernel"
 )
 
 // window is one step's slice of a series' raw samples, the input to every range function. T, V
@@ -437,9 +439,7 @@ func madOverTime(w *window) (float64, bool) {
 	median := quantile(0.5, append([]float64(nil), w.V...))
 
 	devs := make([]float64, w.Len())
-	for i, v := range w.V {
-		devs[i] = math.Abs(v - median)
-	}
+	kernel.AbsDiffF64(devs, w.V, median)
 
 	return quantile(0.5, devs), true
 }
