@@ -22,6 +22,7 @@ import (
 	"github.com/oteldb/oteldb/internal/pyroproxy"
 	"github.com/oteldb/oteldb/internal/pyroscopeapi"
 	"github.com/oteldb/oteldb/internal/tempoapi"
+	"github.com/oteldb/oteldb/internal/tempohandler"
 	"github.com/oteldb/oteldb/internal/tempoproxy"
 )
 
@@ -257,6 +258,7 @@ func (s *services) Tempo(m *app.Telemetry) error {
 
 	server, err := tempoapi.NewServer(
 		tempoproxy.NewServer(client),
+		tempoapi.WithErrorHandler(tempohandler.ErrorHandler),
 		tempoapi.WithTracerProvider(m.TracerProvider()),
 		tempoapi.WithMeterProvider(m.MeterProvider()),
 	)

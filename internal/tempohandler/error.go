@@ -39,8 +39,12 @@ func executionErr(ctx context.Context, err error, msg string) error {
 	_, isLexerErr := errors.Into[*lexer.Error](err)
 	_, isSyntaxErr := errors.Into[*traceql.SyntaxError](err)
 	_, isTypeErr := errors.Into[*traceql.TypeError](err)
-	if isLexerErr || isSyntaxErr || isTypeErr {
+	_, isMetricsParamErr := errors.Into[*traceqlengine.MetricsParamsError](err)
+	if isLexerErr || isSyntaxErr || isTypeErr || isMetricsParamErr {
 		return queryErr(ctx, http.StatusBadRequest, err, msg)
+	}
+	if _, ok := errors.Into[*traceqlengine.MetricsLimitError](err); ok {
+		return queryErr(ctx, http.StatusUnprocessableEntity, err, msg)
 	}
 
 	// A query the engine does not implement yet is valid TraceQL the server cannot answer.
