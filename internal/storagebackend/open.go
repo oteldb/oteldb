@@ -140,6 +140,7 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		zap.Bool("aggregate_stats", caches.AggregateStats),
 		zap.Bool("metric_disk_series", cfg.MetricDiskSeries),
 		zap.Int64("metric_resident_head_bytes", settings.MetricResidentHeadBytes),
+		zap.Int64("metric_series_cache_bytes", settings.MetricSeriesCacheBytes),
 		zap.Bool("reject_out_of_retention", cfg.RejectOutOfRetention),
 	)
 	b := New(store,
@@ -179,6 +180,9 @@ func storeOptions(cfg Config, caches cacheSettings) storage.Options {
 	opts := storage.Options{MaxQueryBytes: caches.MaxQuery, MetricDiskSeries: cfg.MetricDiskSeries}
 	if cfg.MetricResidentHeadBytes != nil {
 		opts.MetricResidentHeadBytes = int64(*cfg.MetricResidentHeadBytes)
+	}
+	if cfg.MetricSeriesCacheBytes != nil {
+		opts.MetricSeriesCacheBytes = int64(*cfg.MetricSeriesCacheBytes)
 	}
 	return opts
 }
