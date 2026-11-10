@@ -293,6 +293,9 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   Resident identity state, buffer overhead and frozen inputs require additional memory.
 - **Disk metric index:** `storage.metric_disk_series: true` keeps historical identities and postings
   in immutable parts and evicts flushed metadata from the resident head. It is disabled by default and requires a file or S3 backend.
+  `storage.metric_series_cache_bytes` accepts a positive byte size for each metric engine's
+  historical ID/watermark cache; unset uses the library's 512 MiB limit, allocated on demand.
+  This cache survives ordinary flushes and is separate from the resident head pressure target.
   `storage.metric_resident_head_bytes` accepts a positive byte size; unset uses the library's
   128 MiB target. One atomic batch may exceed the target, and the next write applies pressure
   maintenance. Large old WALs can require a larger target to replay without changing the journal.

@@ -82,6 +82,9 @@ type Config struct {
 	// MetricResidentHeadBytes targets resident metric head memory in disk-index mode. Unset uses 128 MiB.
 	// One atomic batch may exceed this target; the next write applies pressure maintenance.
 	MetricResidentHeadBytes *xbytes.Bytes `json:"metric_resident_head_bytes" yaml:"metric_resident_head_bytes"`
+	// MetricSeriesCacheBytes bounds historical ID/watermark cache memory per metric engine.
+	// Unset uses 512 MiB, allocated on demand; this is separate from the resident head target.
+	MetricSeriesCacheBytes *xbytes.Bytes `json:"metric_series_cache_bytes" yaml:"metric_series_cache_bytes"`
 	// AggregateStats writes a per-series aggregate sidecar (count/sum/min/max) alongside each
 	// metric part so range-covering aggregates — and the *_over_time pushdown — can be answered
 	// without decoding. Enabled by default; set to false to disable.
@@ -175,11 +178,15 @@ func (cfg *Config) validate() error {
 		optionalBytes("max_query_bytes", cfg.MaxQueryBytes),
 		optionalBytes("merge_memory_bytes", cfg.MergeMemoryBytes),
 		optionalBytes("metric_resident_head_bytes", cfg.MetricResidentHeadBytes),
+		optionalBytes("metric_series_cache_bytes", cfg.MetricSeriesCacheBytes),
 	); err != nil {
 		return err
 	}
 	if cfg.MetricResidentHeadBytes != nil && *cfg.MetricResidentHeadBytes == 0 {
 		return errors.New("metric_resident_head_bytes: must be positive")
+	}
+	if cfg.MetricSeriesCacheBytes != nil && *cfg.MetricSeriesCacheBytes == 0 {
+		return errors.New("metric_series_cache_bytes: must be positive")
 	}
 	if cfg.MetricDiskSeries && (cfg.Backend == "" || cfg.Backend == "memory") {
 		return errors.New("metric_disk_series requires a file or s3 backend")
