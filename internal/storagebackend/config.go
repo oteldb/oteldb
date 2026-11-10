@@ -79,6 +79,8 @@ type Config struct {
 	MergeMemoryBytes *xbytes.Bytes `json:"merge_memory_bytes" yaml:"merge_memory_bytes"`
 	// MetricDiskSeries keeps historical metric identities and postings in immutable parts. Opt-in.
 	MetricDiskSeries bool `json:"metric_disk_series" yaml:"metric_disk_series"`
+	// MetricSeriesChunks writes independent metric chunks and enables compatible encoded merges. Opt-in.
+	MetricSeriesChunks bool `json:"metric_series_chunks" yaml:"metric_series_chunks"`
 	// MetricResidentHeadBytes targets resident metric head memory in disk-index mode. Unset uses 128 MiB.
 	// One atomic batch may exceed this target; the next write applies pressure maintenance.
 	MetricResidentHeadBytes *xbytes.Bytes `json:"metric_resident_head_bytes" yaml:"metric_resident_head_bytes"`
