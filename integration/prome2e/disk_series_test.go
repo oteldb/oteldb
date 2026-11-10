@@ -25,9 +25,20 @@ import (
 
 func TestNativeDiskSeriesFileHTTPReopen(t *testing.T) {
 	t.Parallel()
+	for _, chunks := range []bool{false, true} {
+		t.Run("chunks="+strconv.FormatBool(chunks), func(t *testing.T) {
+			t.Parallel()
+			testNativeDiskSeriesFileHTTPReopen(t, chunks)
+		})
+	}
+}
+
+func testNativeDiskSeriesFileHTTPReopen(t *testing.T, chunks bool) {
+	t.Helper()
 	ctx := t.Context()
 	var cfg storagebackend.Config
 	require.NoError(t, yaml.Unmarshal([]byte("backend: file\nmetric_disk_series: true\nmetric_resident_head_bytes: 16 MiB\nread_cache_bytes: 0\nnative_query_cache_bytes: 0\n"), &cfg))
+	cfg.MetricSeriesChunks = chunks
 	cfg.Dir = t.TempDir()
 	cfg.FlushInterval = time.Hour
 	open := func() (*storagebackend.Backend, func(context.Context) error) {

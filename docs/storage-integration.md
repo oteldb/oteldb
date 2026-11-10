@@ -303,6 +303,9 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   Admin signal counts include `series_complete`; a false value means the preserved count is
   unavailable while historical metadata needs repair. Tenant totals expose `total_series_complete`.
   Missing fields identify older nodes that cannot report completeness.
+- **Independent metric chunks:** `storage.metric_series_chunks: true` writes independently framed
+  per-series timestamp/value chunks and enables encoded concatenation for eligible merges. It is
+  disabled by default; existing parts continue through the compatible decode path.
 - **Merge memory:** `storage.merge_memory_bytes` (→ `storage.WithMergeMemory`) caps what all
   concurrent merges together hold, and with it the size a merged part reaches before it is sealed.
   It is the write-side counterpart of `decode_memory_bytes`: on a backend that takes objects whole

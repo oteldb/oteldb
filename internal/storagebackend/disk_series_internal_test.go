@@ -19,11 +19,14 @@ func TestMetricDiskSeriesConfig(t *testing.T) {
 		enabled    bool
 		bytes      int64
 		cacheBytes int64
+		chunks     bool
 		err        string
 		parseError bool
 	}{
 		{name: "defaults", data: "{}"},
 		{name: "enabled", data: "backend: file\nmetric_disk_series: true", enabled: true},
+		{name: "chunks", data: "backend: file\nmetric_disk_series: true\nmetric_series_chunks: true", enabled: true, chunks: true},
+		{name: "chunks-independent", data: "backend: file\nmetric_series_chunks: true", chunks: true},
 		{name: "bounded", data: "backend: file\nmetric_disk_series: true\nmetric_resident_head_bytes: 16 MiB", enabled: true, bytes: 16 << 20},
 		{name: "disabled", data: "metric_disk_series: false\nmetric_resident_head_bytes: 8 MiB", bytes: 8 << 20},
 		{name: "zero", data: "metric_resident_head_bytes: 0", err: "must be positive"},
@@ -51,15 +54,17 @@ func TestMetricDiskSeriesConfig(t *testing.T) {
 			require.NoError(t, err)
 			opts := storeOptions(cfg, cacheSettings{MaxQuery: 123})
 			require.Equal(t, tc.enabled, opts.MetricDiskSeries)
+			require.Equal(t, tc.chunks, opts.MetricSeriesChunks)
 			require.Equal(t, tc.bytes, opts.MetricResidentHeadBytes)
 			require.Equal(t, tc.cacheBytes, opts.MetricSeriesCacheBytes)
 			require.EqualValues(t, 123, opts.MaxQueryBytes)
 		})
 	}
 	var cfg Config
-	require.NoError(t, json.Unmarshal([]byte(`{"backend":"file","metric_disk_series":true,"metric_resident_head_bytes":"32 MiB","metric_series_cache_bytes":"64 MiB"}`), &cfg))
+	require.NoError(t, json.Unmarshal([]byte(`{"backend":"file","metric_disk_series":true,"metric_series_chunks":true,"metric_resident_head_bytes":"32 MiB","metric_series_cache_bytes":"64 MiB"}`), &cfg))
 	require.NoError(t, cfg.validate())
 	require.True(t, cfg.MetricDiskSeries)
+	require.True(t, cfg.MetricSeriesChunks)
 	require.EqualValues(t, 32<<20, *cfg.MetricResidentHeadBytes)
 	require.EqualValues(t, 64<<20, *cfg.MetricSeriesCacheBytes)
 }
