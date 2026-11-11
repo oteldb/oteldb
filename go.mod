@@ -20,7 +20,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.9
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/cheggaaa/pb/v3 v3.2.1
+	github.com/cheggaaa/pb/v3 v3.3.0
 	github.com/cilium/cilium v1.20.4
 	github.com/docker/cli v29.9.2+incompatible
 	github.com/dustin/go-humanize v1.1.0
@@ -430,8 +430,8 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e // indirect
 	github.com/magefile/mage v1.17.2 // indirect
 	github.com/magiconair/properties v1.18.12 // indirect
-	github.com/mattn/go-colorable v0.1.15 // indirect
-	github.com/mattn/go-runewidth v0.0.27 // indirect
+	github.com/mattn/go-colorable v0.1.16 // indirect
+	github.com/mattn/go-runewidth v0.0.31 // indirect
 	github.com/mdlayher/socket v0.6.0 // indirect
 	github.com/mdlayher/vsock v1.3.0 // indirect
 	github.com/miekg/dns v1.1.73 // indirect
