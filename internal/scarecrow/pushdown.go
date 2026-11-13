@@ -22,8 +22,9 @@ import (
 //   - **No staleness markers.** The engine drops Prometheus staleness markers during the fold
 //     ([matrixFold.buildWindow]); a storage-side aggregate cannot, so it would count a stale
 //     series as present. Only a scanner over data that never carries markers may implement
-//     these — which is true of `oteldb/storage`, and is not true of the [NewQueryableScanner]
-//     adapter over an arbitrary Prometheus store.
+//     these. A source that can ingest markers must withdraw the capabilities before publishing
+//     them, including for queries already executing. The [NewQueryableScanner] adapter over an
+//     arbitrary Prometheus store does not expose these capabilities.
 //
 // Implementations must also apply the *full* matcher set. The storage facade pushes only the
 // index-safe subset and re-checks the rest; that re-check belongs behind this interface, so the
