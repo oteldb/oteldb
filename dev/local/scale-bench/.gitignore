@@ -1,4 +1,3 @@
-/bin/
-/results/
-/__pycache__/
-/experiments/
+__pycache__/
+bin/
+results/
