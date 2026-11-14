@@ -131,6 +131,15 @@ tests and reusable methodology only.
 Use `summarize_write.py <run-directory>...` to derive counters from retained raw runs.
 
 `profile_metrics.py --queries --live-queries` keeps vmagent running during read measurement.
+Snapshots include binary `*-goroutine.pb.gz` profiles alongside raw `*-goroutines.txt` stacks.
+With instrumented storage, the binary profiles retain memory-wait labels even when a wait began
+before an execution-trace window. CPU profiles do not sample parked goroutines. For example:
+
+```sh
+go tool pprof -tags ./oteldb ./120-goroutine.pb.gz
+go tool pprof -tagfocus='storage.memory.pool=build' ./oteldb ./120-goroutine.pb.gz
+```
+
 After saving profiles, counters, logs and container states, it removes its own containers,
 database volumes and network by default. Use `--keep-data` only for an explicit follow-up
 that needs that run's database files. Export immutable query fixtures outside Docker volumes

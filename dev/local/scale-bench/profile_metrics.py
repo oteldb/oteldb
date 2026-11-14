@@ -451,6 +451,8 @@ def main():
                                                    directory / f"{threshold}-heap.pb.gz", stop=stop))
                         futures.append(pool.submit(fetch, "http://127.0.0.1:19010/debug/pprof/goroutine?debug=2",
                                                    directory / f"{threshold}-goroutines.txt", stop=stop))
+                        futures.append(pool.submit(fetch, "http://127.0.0.1:19010/debug/pprof/goroutine",
+                                                   directory / f"{threshold}-goroutine.pb.gz", stop=stop))
                         if threshold in [120, 300] and args.trace_seconds > 0:
                             futures.append(pool.submit(fetch,
                                 f"http://127.0.0.1:19010/debug/pprof/trace?seconds={args.trace_seconds}",
