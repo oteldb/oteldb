@@ -79,6 +79,8 @@ type Config struct {
 	MergeMemoryBytes *xbytes.Bytes `json:"merge_memory_bytes" yaml:"merge_memory_bytes"`
 	// MetricDiskSeries keeps historical metric identities and postings in immutable parts. Opt-in.
 	MetricDiskSeries bool `json:"metric_disk_series" yaml:"metric_disk_series"`
+	// MetricAsyncPressureFlush overlaps frozen metric builds with ingestion. Requires standalone disk indexing and WAL.
+	MetricAsyncPressureFlush bool `json:"metric_async_pressure_flush" yaml:"metric_async_pressure_flush"`
 	// MetricSeriesChunks writes independent metric chunks and enables compatible encoded merges. Opt-in.
 	MetricSeriesChunks bool `json:"metric_series_chunks" yaml:"metric_series_chunks"`
 	// MetricResidentHeadBytes targets resident metric head memory in disk-index mode. Unset uses 128 MiB.
@@ -192,6 +194,17 @@ func (cfg *Config) validate() error {
 	}
 	if cfg.MetricDiskSeries && (cfg.Backend == "" || cfg.Backend == "memory") {
 		return errors.New("metric_disk_series requires a file or s3 backend")
+	}
+	if cfg.MetricAsyncPressureFlush {
+		if !cfg.MetricDiskSeries {
+			return errors.New("metric_async_pressure_flush requires metric_disk_series")
+		}
+		if cfg.ReadOnly || cfg.Cluster != nil && len(cfg.Cluster.Etcd) > 0 {
+			return errors.New("metric_async_pressure_flush requires a standalone writable engine")
+		}
+		if cfg.Backend != "file" && cfg.WALDir == "" {
+			return errors.New("metric_async_pressure_flush requires a WAL directory")
+		}
 	}
 	return nil
 }
