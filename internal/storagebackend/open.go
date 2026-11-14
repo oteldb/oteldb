@@ -121,7 +121,8 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 	caches := resolveCacheSettings(cfg)
 	opts = append(opts, cacheOptions(caches)...)
 
-	store, err := storage.Open(ctx, storage.Options{MaxQueryBytes: caches.MaxQuery}, opts...)
+	settings := storeOptions(cfg, caches)
+	store, err := storage.Open(ctx, settings, opts...)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "open storage")
 	}
@@ -137,6 +138,10 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		zap.Int64("decode_memory_bytes", caches.DecodeMemory),
 		zap.Int64("merge_memory_bytes", caches.MergeMemory),
 		zap.Bool("aggregate_stats", caches.AggregateStats),
+		zap.Bool("metric_disk_series", cfg.MetricDiskSeries),
+		zap.Bool("metric_series_chunks", cfg.MetricSeriesChunks),
+		zap.Int64("metric_resident_head_bytes", settings.MetricResidentHeadBytes),
+		zap.Int64("metric_series_cache_bytes", settings.MetricSeriesCacheBytes),
 		zap.Bool("reject_out_of_retention", cfg.RejectOutOfRetention),
 	)
 	b := New(store,
@@ -170,6 +175,20 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		return err
 	}
 	return b, closeStore, nil
+}
+
+func storeOptions(cfg Config, caches cacheSettings) storage.Options {
+	opts := storage.Options{
+		MaxQueryBytes: caches.MaxQuery, MetricDiskSeries: cfg.MetricDiskSeries,
+		MetricSeriesChunks: cfg.MetricSeriesChunks,
+	}
+	if cfg.MetricResidentHeadBytes != nil {
+		opts.MetricResidentHeadBytes = int64(*cfg.MetricResidentHeadBytes)
+	}
+	if cfg.MetricSeriesCacheBytes != nil {
+		opts.MetricSeriesCacheBytes = int64(*cfg.MetricSeriesCacheBytes)
+	}
+	return opts
 }
 
 // warnUnflushedWAL reports the one thing a read-only open gives up: whatever the engine has

@@ -3,6 +3,7 @@ package storagebackend
 import (
 	"context"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -21,6 +22,15 @@ import (
 // Each scanner owns a private query scope; caller contexts cannot share it across backends.
 func (b *Backend) ScarecrowScanner() scarecrow.Scanner {
 	scanner := &scarecrowScanner{b: b, scope: fetch.NewScope()}
+	if source, ok := b.src.(countPushdownLeaser); ok {
+		safe, release := source.countPushdownLease()
+		if release != nil {
+			scanner.release = sync.OnceFunc(release)
+		}
+		if !safe {
+			return sampleOnlyScarecrowScanner{Scanner: scanner, budget: scanner}
+		}
+	}
 	if !b.overTimePushdown {
 		return rawScarecrowScanner{Scanner: scanner, counter: scanner}
 	}
@@ -48,7 +58,8 @@ type scarecrowScanner struct {
 	// decode-budget admission needs that identity to tell "this query again" from "another
 	// query", and without it a query holding several fetches open deadlocks against its own
 	// reservation (oteldb/storage#284).
-	scope *fetch.Scope
+	scope   *fetch.Scope
+	release func()
 }
 
 var _ scarecrow.Scanner = (*scarecrowScanner)(nil)
@@ -60,7 +71,12 @@ var (
 	_ scarecrow.GridAggregateScanner = (*scarecrowScanner)(nil)
 )
 
-func (s *scarecrowScanner) Close() error { return nil }
+func (s *scarecrowScanner) Close() error {
+	if s.release != nil {
+		s.release()
+	}
+	return nil
+}
 
 func (s *scarecrowScanner) WithQueryBudget(ctx context.Context) context.Context {
 	return s.b.src.WithQueryBudget(fetch.WithScope(ctx, s.scope))

@@ -61,11 +61,14 @@ func mapTenantStats(t storage.TenantStats) adminapi.TenantStats {
 		},
 		Signals: make([]adminapi.EngineSignalStats, 0, len(t.Signals)),
 	}
+	complete := true
 	for _, s := range t.Signals {
+		complete = complete && s.SeriesComplete
 		ts.TotalSeries += s.Series
 		ts.TotalParts += int64(s.Parts)
 		ts.Signals = append(ts.Signals, mapSignalStats(s))
 	}
+	ts.TotalSeriesComplete = adminapi.NewOptBool(complete)
 	return ts
 }
 
@@ -85,6 +88,7 @@ func mapSignalStats(s storage.SignalStats) adminapi.EngineSignalStats {
 		WalSegments:     int64(s.WALSegments),
 		WalBytes:        s.WALBytes,
 	}
+	es.SeriesComplete = adminapi.NewOptBool(s.SeriesComplete)
 	es.HasReadGap = adminapi.NewOptBool(s.HasReadGap)
 	es.OutOfSpace = adminapi.NewOptBool(s.OutOfSpace)
 	es.WantedParts = adminapi.NewOptInt64(int64(s.WantedParts))
