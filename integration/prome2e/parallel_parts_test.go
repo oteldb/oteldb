@@ -17,6 +17,7 @@ import (
 	"github.com/oteldb/storage/tenant"
 	prwpb "github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
@@ -76,8 +77,18 @@ func TestNativeParallelPartsHTTPReopen(t *testing.T) {
 	require.NoError(t, reader.Collect(ctx, &collected))
 	var buildCount uint64
 	var workers int64
+	memory := map[string]metricdata.HistogramDataPoint[int64]{}
 	for _, scope := range collected.ScopeMetrics {
 		for _, m := range scope.Metrics {
+			if m.Name == "storage.flush.build.memory.bytes" {
+				h, ok := m.Data.(metricdata.Histogram[int64])
+				require.True(t, ok)
+				for _, point := range h.DataPoints {
+					component, ok := point.Attributes.Value(attribute.Key("component"))
+					require.True(t, ok)
+					memory[component.AsString()] = point
+				}
+			}
 			if m.Name != "storage.flush.build.workers" {
 				continue
 			}
@@ -90,6 +101,14 @@ func TestNativeParallelPartsHTTPReopen(t *testing.T) {
 	}
 	require.EqualValues(t, 1, buildCount)
 	require.EqualValues(t, 2, workers, "the production facade must admit two native builders")
+	require.EqualValues(t, 1, memory["held"].Count)
+	require.Positive(t, memory["held"].Sum)
+	require.LessOrEqual(t, memory["held"].Sum, int64(32<<20), "two builders must fit one flush allowance")
+	require.Less(t, memory["additional"].Sum, memory["held"].Sum, "request only missing credit")
+	require.GreaterOrEqual(t, memory["job"].Count, uint64(2))
+	require.EqualValues(t, 2, memory["checked_private"].Count)
+	require.EqualValues(t, 2, memory["tracked_private"].Count)
+	require.Positive(t, memory["tracked_private"].Sum)
 	check := func(t *testing.T) {
 		t.Helper()
 		_, client := setupDB(t, integration.TraceProvider(t), storagebackend.New(store))
