@@ -1054,6 +1054,8 @@ github.com/oteldb/storage v0.54.1-0.20261114102235-165579c22610 h1:/dAEtTQw3jn42
 github.com/oteldb/storage v0.54.1-0.20261114102235-165579c22610/go.mod h1:zpzSgLin5aKH1nnNfBEjmNeewb8cLHOlQ143/0uowzk=
 github.com/oteldb/storage v0.54.1-0.20261114120457-831bf63a08df h1:S3AV77NvU7ge04et06xJzDmYpLHlZ/eIzOTkAXpWzos=
 github.com/oteldb/storage v0.54.1-0.20261114120457-831bf63a08df/go.mod h1:zpzSgLin5aKH1nnNfBEjmNeewb8cLHOlQ143/0uowzk=
+github.com/oteldb/storage v0.54.1-0.20261114144657-800308e2cb26 h1:eg4/YyHkxXZCAr9zL7BO+4INV2Q9HPjxpCzCq3VjSRU=
+github.com/oteldb/storage v0.54.1-0.20261114144657-800308e2cb26/go.mod h1:zpzSgLin5aKH1nnNfBEjmNeewb8cLHOlQ143/0uowzk=
 github.com/outscale/osc-sdk-go/v2 v2.35.0 h1:bKR94p9KCc8ybu36k4RS5RDkC9p/7W//78CXPtOyXPo=
 github.com/outscale/osc-sdk-go/v2 v2.35.0/go.mod h1:6J8WRznaSIEXXVHhhTXisGJQgvE5fYzbf8hAw7YIGfQ=
 github.com/ovh/go-ovh v1.9.0 h1:6K8VoL3BYjVV3In9tPJUdT7qMx9h0GExN9EXx1r2kKE=
