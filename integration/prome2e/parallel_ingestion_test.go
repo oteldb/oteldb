@@ -75,24 +75,28 @@ func TestNativeConcurrentIngestionPressureReopen(t *testing.T) {
 			})
 		}
 		require.NoError(t, group.Wait())
+		check := func(phase string) {
+			_, client := setupDB(t, integration.TraceProvider(t), be)
+			for _, tc := range []struct {
+				query string
+				want  float64
+			}{
+				{query: "count(parallel_metric)", want: workers * perWorker},
+				{query: "sum(parallel_metric)", want: workers*perWorker*(workers*perWorker-1)/2 + float64(round*1000*workers*perWorker)},
+			} {
+				result, err := client.GetQuery(ctx, promapi.GetQueryParams{
+					Query: tc.query, Time: promapi.NewOptPrometheusTimestamp(promapi.PrometheusTimestamp(strconv.Itoa(base + round*15))),
+				})
+				require.NoError(t, err, phase)
+				require.Len(t, result.Data.Vector.Result, 1)
+				value, ok := result.Data.Vector.Result[0].Value.HistogramOrValue.GetStringFloat64()
+				require.True(t, ok)
+				require.Equal(t, tc.want, value, phase)
+			}
+		}
+		check("live active/frozen generations")
 		require.NoError(t, closeStore(ctx))
 		be, closeStore = open()
-		_, client := setupDB(t, integration.TraceProvider(t), be)
-		for _, tc := range []struct {
-			query string
-			want  float64
-		}{
-			{query: "count(parallel_metric)", want: workers * perWorker},
-			{query: "sum(parallel_metric)", want: workers*perWorker*(workers*perWorker-1)/2 + float64(round*1000*workers*perWorker)},
-		} {
-			result, err := client.GetQuery(ctx, promapi.GetQueryParams{
-				Query: tc.query, Time: promapi.NewOptPrometheusTimestamp(promapi.PrometheusTimestamp(strconv.Itoa(base + round*15))),
-			})
-			require.NoError(t, err)
-			require.Len(t, result.Data.Vector.Result, 1)
-			value, ok := result.Data.Vector.Result[0].Value.HistogramOrValue.GetStringFloat64()
-			require.True(t, ok)
-			require.Equal(t, tc.want, value)
-		}
+		check("reopened")
 	}
 }
