@@ -415,7 +415,7 @@ def main():
         fetch("http://127.0.0.1:19809/api/v1/storage", directory / f"{label}-storage.json", 5)
         paths = ["/proc/1/io", "/proc/1/status", "/sys/fs/cgroup/cpu.stat", "/sys/fs/cgroup/memory.stat",
                  "/sys/fs/cgroup/memory.events", "/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory.peak",
-                 "/sys/fs/cgroup/cpu.pressure", "/sys/fs/cgroup/io.pressure"]
+                 "/sys/fs/cgroup/cpu.pressure", "/sys/fs/cgroup/memory.pressure", "/sys/fs/cgroup/io.pressure"]
         command = 'for p in ' + ' '.join(paths) + '; do echo "PATH=$p"; cat "$p"; done'
         result = subprocess.run(["docker", "exec", container, "sh", "-c", command], text=True, capture_output=True, timeout=12)
         with (directory / "resources.jsonl").open("a") as output:
