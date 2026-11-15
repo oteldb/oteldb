@@ -303,6 +303,12 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   Admin signal counts include `series_complete`; a false value means the preserved count is
   unavailable while historical metadata needs repair. Tenant totals expose `total_series_complete`.
   Missing fields identify older nodes that cannot report completeness.
+- **Overlapping metric pressure flush:** `storage.metric_async_pressure_flush: true` lets writes
+  continue while a frozen generation is encoded. It requires `metric_disk_series`, a writable
+  standalone engine, and a WAL (automatic for the file backend). Rotation starts at half the
+  resident head target; reaching the full aggregate active/frozen target applies backpressure.
+  Prepared batches have a separate bounded scratch allowance. One frozen build and the existing
+  WAL/checkpoint publication order remain in use. The option is disabled by default.
 - **Independent metric chunks:** `storage.metric_series_chunks: true` writes independently framed
   per-series timestamp/value chunks and enables encoded concatenation for eligible merges. It is
   disabled by default; existing parts continue through the compatible decode path.
