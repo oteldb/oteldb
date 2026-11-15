@@ -82,6 +82,7 @@ func TestNativeConcurrentIngestionPressureReopen(t *testing.T) {
 				want  float64
 			}{
 				{query: "count(parallel_metric)", want: workers * perWorker},
+				{query: "sum(count_over_time(parallel_metric[30s]))", want: float64((round + 1) * workers * perWorker)},
 				{query: "sum(parallel_metric)", want: workers*perWorker*(workers*perWorker-1)/2 + float64(round*1000*workers*perWorker)},
 			} {
 				result, err := client.GetQuery(ctx, promapi.GetQueryParams{
