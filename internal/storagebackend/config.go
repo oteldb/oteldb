@@ -77,6 +77,10 @@ type Config struct {
 	// Unlike the caches this is a pass-through: oteldb adds no default of its own, because the
 	// library already derives one from the same memory limit oteldb would read.
 	MergeMemoryBytes *xbytes.Bytes `json:"merge_memory_bytes" yaml:"merge_memory_bytes"`
+	// BuildMemoryBytes overrides total build admission without enlarging merge or flush jobs.
+	BuildMemoryBytes *xbytes.Bytes `json:"build_memory_bytes" yaml:"build_memory_bytes"`
+	// MetricFlushMemoryBytes overrides the metric flush workspace target.
+	MetricFlushMemoryBytes *xbytes.Bytes `json:"metric_flush_memory_bytes" yaml:"metric_flush_memory_bytes"`
 	// MetricDiskSeries keeps historical metric identities and postings in immutable parts. Opt-in.
 	MetricDiskSeries bool `json:"metric_disk_series" yaml:"metric_disk_series"`
 	// MetricAsyncPressureFlush overlaps frozen metric builds with ingestion. Requires standalone disk indexing and WAL.
@@ -181,6 +185,8 @@ func (cfg *Config) validate() error {
 		optionalBytes("decode_memory_bytes", cfg.DecodeMemoryBytes),
 		optionalBytes("max_query_bytes", cfg.MaxQueryBytes),
 		optionalBytes("merge_memory_bytes", cfg.MergeMemoryBytes),
+		optionalBytes("build_memory_bytes", cfg.BuildMemoryBytes),
+		optionalBytes("metric_flush_memory_bytes", cfg.MetricFlushMemoryBytes),
 		optionalBytes("metric_resident_head_bytes", cfg.MetricResidentHeadBytes),
 		optionalBytes("metric_series_cache_bytes", cfg.MetricSeriesCacheBytes),
 	); err != nil {

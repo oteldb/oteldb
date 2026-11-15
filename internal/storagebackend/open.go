@@ -137,6 +137,8 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		zap.Int64("decode_cache_bytes", caches.DecodeCache),
 		zap.Int64("decode_memory_bytes", caches.DecodeMemory),
 		zap.Int64("merge_memory_bytes", caches.MergeMemory),
+		zap.Int64("build_memory_bytes", settings.BuildMemoryBytes),
+		zap.Int64("metric_flush_memory_bytes", settings.MetricFlushMemoryBytes),
 		zap.Bool("aggregate_stats", caches.AggregateStats),
 		zap.Bool("metric_disk_series", cfg.MetricDiskSeries),
 		zap.Bool("metric_async_pressure_flush", cfg.MetricAsyncPressureFlush),
@@ -186,6 +188,12 @@ func storeOptions(cfg Config, caches cacheSettings) storage.Options {
 	}
 	if cfg.MetricResidentHeadBytes != nil {
 		opts.MetricResidentHeadBytes = int64(*cfg.MetricResidentHeadBytes)
+	}
+	if cfg.BuildMemoryBytes != nil {
+		opts.BuildMemoryBytes = int64(*cfg.BuildMemoryBytes)
+	}
+	if cfg.MetricFlushMemoryBytes != nil {
+		opts.MetricFlushMemoryBytes = int64(*cfg.MetricFlushMemoryBytes)
 	}
 	if cfg.MetricSeriesCacheBytes != nil {
 		opts.MetricSeriesCacheBytes = int64(*cfg.MetricSeriesCacheBytes)

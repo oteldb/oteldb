@@ -318,6 +318,10 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   a merge buffers its output part encoded in RAM, so free space alone cannot bound it. Unlike the
   caches oteldb adds no default — unset passes 0 through and the library derives a share of
   `GOMEMLIMIT`; negative is unbounded.
+- **Build overlap:** `storage.build_memory_bytes` independently overrides shared flush/merge
+  admission capacity. `storage.metric_flush_memory_bytes` overrides the metric flush workspace
+  target. Unset values retain the library defaults derived from `merge_memory_bytes`; raising
+  build capacity alone permits more overlap without increasing individual job targets.
 - **Query read budget:** `storage.max_query_bytes` (→ `storage.Options.MaxQueryBytes`) caps what a
   single query may hold before it is refused with `readbudget.ErrExceeded`. It closes the gap
   `decode_memory_bytes` leaves: that budget queues concurrent metric queries behind a shared ceiling

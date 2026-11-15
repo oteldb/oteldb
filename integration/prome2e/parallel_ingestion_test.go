@@ -31,6 +31,9 @@ func TestNativeConcurrentIngestionPressureReopen(t *testing.T) {
 		Backend: "file", Dir: t.TempDir(), FlushInterval: time.Hour,
 		MetricDiskSeries: true, MetricSeriesChunks: true, MetricAsyncPressureFlush: true,
 		MetricResidentHeadBytes: new(xbytes.Bytes(64 << 10)),
+		BuildMemoryBytes:        new(xbytes.Bytes(256 << 20)),
+		MergeMemoryBytes:        new(xbytes.Bytes(128 << 20)),
+		MetricFlushMemoryBytes:  new(xbytes.Bytes(32 << 20)),
 		ReadCacheBytes:          new(xbytes.Bytes(0)), NativeQueryCacheBytes: new(xbytes.Bytes(0)),
 	}
 	open := func() (*storagebackend.Backend, func(context.Context) error) {
