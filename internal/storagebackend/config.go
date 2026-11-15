@@ -85,6 +85,8 @@ type Config struct {
 	MetricDiskSeries bool `json:"metric_disk_series" yaml:"metric_disk_series"`
 	// MetricAsyncPressureFlush overlaps frozen metric builds with ingestion. Requires standalone disk indexing and WAL.
 	MetricAsyncPressureFlush bool `json:"metric_async_pressure_flush" yaml:"metric_async_pressure_flush"`
+	// MetricPressureGenerations permits two frozen generations within the resident target; zero keeps one.
+	MetricPressureGenerations int `json:"metric_pressure_generations" yaml:"metric_pressure_generations"`
 	// MetricSeriesChunks writes independent metric chunks and enables compatible encoded merges. Opt-in.
 	MetricSeriesChunks bool `json:"metric_series_chunks" yaml:"metric_series_chunks"`
 	// MetricResidentHeadBytes targets resident metric head memory in disk-index mode. Unset uses 128 MiB.
@@ -178,6 +180,12 @@ type S3Config struct {
 // names, decode_memory_bytes most sharply: losing it removes the ceiling that keeps query
 // concurrency from driving the heap past GOMEMLIMIT.
 func (cfg *Config) validate() error {
+	if cfg.MetricPressureGenerations < 0 || cfg.MetricPressureGenerations > 2 {
+		return errors.New("metric_pressure_generations must be zero, one or two")
+	}
+	if cfg.MetricPressureGenerations == 2 && !cfg.MetricAsyncPressureFlush {
+		return errors.New("metric_pressure_generations: 2 requires metric_async_pressure_flush")
+	}
 	if err := checkBytes(
 		optionalBytes("read_cache_bytes", cfg.ReadCacheBytes),
 		optionalBytes("decode_cache_bytes", cfg.DecodeCacheBytes),

@@ -309,6 +309,11 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   resident head target; reaching the full aggregate active/frozen target applies backpressure.
   Prepared batches have a separate bounded scratch allowance. One frozen build and the existing
   WAL/checkpoint publication order remain in use. The option is disabled by default.
+- **Bounded generation overlap:** `storage.metric_pressure_generations: 2` permits two frozen
+  generations to build independently, with ordered catalog publication and WAL checkpoints.
+  It requires asynchronous pressure flushing; zero or one keeps the original single generation.
+  The resident target applies to all generations together. Merges that could change duplicate
+  precedence are deferred; disjoint time/series ranges retain overlap. This is opt-in.
 - **Independent metric chunks:** `storage.metric_series_chunks: true` writes independently framed
   per-series timestamp/value chunks and enables encoded concatenation for eligible merges. It is
   disabled by default; existing parts continue through the compatible decode path.

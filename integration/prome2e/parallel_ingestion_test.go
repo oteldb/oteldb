@@ -26,15 +26,26 @@ import (
 
 func TestNativeConcurrentIngestionPressureReopen(t *testing.T) {
 	t.Parallel()
+	for _, generations := range []int{1, 2} {
+		t.Run(strconv.Itoa(generations), func(t *testing.T) {
+			t.Parallel()
+			testNativeConcurrentIngestionPressureReopen(t, generations)
+		})
+	}
+}
+
+func testNativeConcurrentIngestionPressureReopen(t *testing.T, generations int) {
+	t.Helper()
 	ctx := t.Context()
 	cfg := storagebackend.Config{
 		Backend: "file", Dir: t.TempDir(), FlushInterval: time.Hour,
 		MetricDiskSeries: true, MetricSeriesChunks: true, MetricAsyncPressureFlush: true,
-		MetricResidentHeadBytes: new(xbytes.Bytes(64 << 10)),
-		BuildMemoryBytes:        new(xbytes.Bytes(256 << 20)),
-		MergeMemoryBytes:        new(xbytes.Bytes(128 << 20)),
-		MetricFlushMemoryBytes:  new(xbytes.Bytes(32 << 20)),
-		ReadCacheBytes:          new(xbytes.Bytes(0)), NativeQueryCacheBytes: new(xbytes.Bytes(0)),
+		MetricPressureGenerations: generations,
+		MetricResidentHeadBytes:   new(xbytes.Bytes(64 << 10)),
+		BuildMemoryBytes:          new(xbytes.Bytes(256 << 20)),
+		MergeMemoryBytes:          new(xbytes.Bytes(128 << 20)),
+		MetricFlushMemoryBytes:    new(xbytes.Bytes(32 << 20)),
+		ReadCacheBytes:            new(xbytes.Bytes(0)), NativeQueryCacheBytes: new(xbytes.Bytes(0)),
 	}
 	open := func() (*storagebackend.Backend, func(context.Context) error) {
 		be, closeStore, err := storagebackend.Open(ctx, cfg, zap.NewNop(), &app.Telemetry{})
