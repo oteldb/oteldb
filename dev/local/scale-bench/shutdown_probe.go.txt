@@ -1,0 +1,28 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"os/signal"
+	"runtime"
+	"syscall"
+	"time"
+)
+
+// This file is compiled only by the benchmark overlay, never by normal application builds.
+func init() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT)
+	go captureShutdownStacks(ch)
+}
+
+func captureShutdownStacks(ch <-chan os.Signal) {
+	<-ch
+	started := time.Now()
+	buffer := make([]byte, 8<<20)
+	for _, after := range []time.Duration{time.Second, 3 * time.Second, 7 * time.Second, 11 * time.Second} {
+		time.Sleep(after - time.Since(started))
+		n := runtime.Stack(buffer, true)
+		_, _ = fmt.Fprintf(os.Stderr, "\nOTELDB_SHUTDOWN_PROBE elapsed=%s\n%s\n", time.Since(started), buffer[:n])
+	}
+}
