@@ -144,6 +144,7 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		zap.Bool("metric_async_pressure_flush", cfg.MetricAsyncPressureFlush),
 		zap.Int("metric_pressure_generations", settings.MetricPressureGenerations),
 		zap.Bool("metric_series_chunks", cfg.MetricSeriesChunks),
+		zap.Bool("metric_separate_series", cfg.MetricSeparateSeries),
 		zap.Int64("metric_resident_head_bytes", settings.MetricResidentHeadBytes),
 		zap.Int64("metric_series_cache_bytes", settings.MetricSeriesCacheBytes),
 		zap.Bool("reject_out_of_retention", cfg.RejectOutOfRetention),
@@ -185,6 +186,7 @@ func storeOptions(cfg Config, caches cacheSettings) storage.Options {
 	opts := storage.Options{
 		MaxQueryBytes: caches.MaxQuery, MetricDiskSeries: cfg.MetricDiskSeries,
 		MetricSeriesChunks:        cfg.MetricSeriesChunks,
+		MetricSeparateSeries:      cfg.MetricSeparateSeries,
 		MetricAsyncPressureFlush:  cfg.MetricAsyncPressureFlush,
 		MetricPressureGenerations: cfg.MetricPressureGenerations,
 	}

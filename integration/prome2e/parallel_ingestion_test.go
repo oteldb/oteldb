@@ -29,18 +29,23 @@ func TestNativeConcurrentIngestionPressureReopen(t *testing.T) {
 	for _, generations := range []int{1, 2} {
 		t.Run(strconv.Itoa(generations), func(t *testing.T) {
 			t.Parallel()
-			testNativeConcurrentIngestionPressureReopen(t, generations)
+			testNativeConcurrentIngestionPressureReopen(t, generations, false)
 		})
 	}
+	t.Run("shared-series-two", func(t *testing.T) {
+		t.Parallel()
+		testNativeConcurrentIngestionPressureReopen(t, 2, true)
+	})
 }
 
-func testNativeConcurrentIngestionPressureReopen(t *testing.T, generations int) {
+func testNativeConcurrentIngestionPressureReopen(t *testing.T, generations int, separate bool) {
 	t.Helper()
 	ctx := t.Context()
 	cfg := storagebackend.Config{
 		Backend: "file", Dir: t.TempDir(), FlushInterval: time.Hour,
 		MetricDiskSeries: true, MetricSeriesChunks: true, MetricAsyncPressureFlush: true,
 		MetricPressureGenerations: generations,
+		MetricSeparateSeries:      separate,
 		MetricResidentHeadBytes:   new(xbytes.Bytes(64 << 10)),
 		BuildMemoryBytes:          new(xbytes.Bytes(256 << 20)),
 		MergeMemoryBytes:          new(xbytes.Bytes(128 << 20)),

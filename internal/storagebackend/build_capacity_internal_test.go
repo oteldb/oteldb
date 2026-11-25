@@ -57,3 +57,29 @@ func TestPressureGenerationOptions(t *testing.T) {
 	require.NoError(t, cfg.validate())
 	require.Equal(t, 2, cfg.MetricPressureGenerations)
 }
+
+func TestSeparateSeriesOptions(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name         string
+		disk, chunks bool
+	}{
+		{name: "supported", disk: true, chunks: true},
+		{name: "requires disk index", chunks: true},
+		{name: "requires chunks", disk: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Config{
+				Backend: "file", MetricSeparateSeries: true,
+				MetricDiskSeries: tc.disk, MetricSeriesChunks: tc.chunks,
+			}
+			if !tc.disk || !tc.chunks {
+				require.ErrorContains(t, cfg.validate(), "metric_separate_series requires")
+				return
+			}
+			require.NoError(t, cfg.validate())
+			require.True(t, storeOptions(cfg, cacheSettings{}).MetricSeparateSeries)
+		})
+	}
+}

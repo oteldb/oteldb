@@ -89,6 +89,8 @@ type Config struct {
 	MetricPressureGenerations int `json:"metric_pressure_generations" yaml:"metric_pressure_generations"`
 	// MetricSeriesChunks writes independent metric chunks and enables compatible encoded merges. Opt-in.
 	MetricSeriesChunks bool `json:"metric_series_chunks" yaml:"metric_series_chunks"`
+	// MetricSeparateSeries keeps descriptors and postings in shared immutable runs on a fresh standalone store.
+	MetricSeparateSeries bool `json:"metric_separate_series" yaml:"metric_separate_series"`
 	// MetricResidentHeadBytes targets resident metric head memory in disk-index mode. Unset uses 128 MiB.
 	// One atomic batch may exceed this target; the next write applies pressure maintenance.
 	MetricResidentHeadBytes *xbytes.Bytes `json:"metric_resident_head_bytes" yaml:"metric_resident_head_bytes"`
@@ -180,6 +182,10 @@ type S3Config struct {
 // names, decode_memory_bytes most sharply: losing it removes the ceiling that keeps query
 // concurrency from driving the heap past GOMEMLIMIT.
 func (cfg *Config) validate() error {
+	if cfg.MetricSeparateSeries && (!cfg.MetricDiskSeries || !cfg.MetricSeriesChunks ||
+		cfg.Cluster != nil && len(cfg.Cluster.Etcd) > 0) {
+		return errors.New("metric_separate_series requires standalone metric_disk_series and metric_series_chunks")
+	}
 	if cfg.MetricPressureGenerations < 0 || cfg.MetricPressureGenerations > 2 {
 		return errors.New("metric_pressure_generations must be zero, one or two")
 	}

@@ -309,6 +309,10 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   resident head target; reaching the full aggregate active/frozen target applies backpressure.
   Prepared batches have a separate bounded scratch allowance. One frozen build and the existing
   WAL/checkpoint publication order remain in use. The option is disabled by default.
+- **Shared metric series:** `storage.metric_separate_series: true` stores descriptors and label
+  postings once in shared metadata runs. It requires a fresh standalone catalog with
+  `metric_disk_series` and `metric_series_chunks` enabled. The async pressure pipeline
+  supports parallel sample parts and up to two frozen generations with this layout.
 - **Bounded generation overlap:** `storage.metric_pressure_generations: 2` permits two frozen
   generations to build independently, with ordered catalog publication and WAL checkpoints.
   It requires asynchronous pressure flushing; zero or one keeps the original single generation.
