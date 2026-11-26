@@ -52,6 +52,9 @@ func testNativeConcurrentIngestionPressureReopen(t *testing.T, generations int, 
 		MetricFlushMemoryBytes:    new(xbytes.Bytes(32 << 20)),
 		ReadCacheBytes:            new(xbytes.Bytes(0)), NativeQueryCacheBytes: new(xbytes.Bytes(0)),
 	}
+	if separate {
+		cfg.MetricHeadRotationBytes = new(xbytes.Bytes(16 << 10))
+	}
 	open := func() (*storagebackend.Backend, func(context.Context) error) {
 		be, closeStore, err := storagebackend.Open(ctx, cfg, zap.NewNop(), &app.Telemetry{})
 		require.NoError(t, err)

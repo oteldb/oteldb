@@ -146,6 +146,7 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		zap.Bool("metric_series_chunks", cfg.MetricSeriesChunks),
 		zap.Bool("metric_separate_series", cfg.MetricSeparateSeries),
 		zap.Int64("metric_resident_head_bytes", settings.MetricResidentHeadBytes),
+		zap.Int64("metric_head_rotation_bytes", settings.MetricHeadRotationBytes),
 		zap.Int64("metric_series_cache_bytes", settings.MetricSeriesCacheBytes),
 		zap.Bool("reject_out_of_retention", cfg.RejectOutOfRetention),
 	)
@@ -192,6 +193,9 @@ func storeOptions(cfg Config, caches cacheSettings) storage.Options {
 	}
 	if cfg.MetricResidentHeadBytes != nil {
 		opts.MetricResidentHeadBytes = int64(*cfg.MetricResidentHeadBytes)
+	}
+	if cfg.MetricHeadRotationBytes != nil {
+		opts.MetricHeadRotationBytes = int64(*cfg.MetricHeadRotationBytes)
 	}
 	if cfg.BuildMemoryBytes != nil {
 		opts.BuildMemoryBytes = int64(*cfg.BuildMemoryBytes)

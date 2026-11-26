@@ -94,6 +94,8 @@ type Config struct {
 	// MetricResidentHeadBytes targets resident metric head memory in disk-index mode. Unset uses 128 MiB.
 	// One atomic batch may exceed this target; the next write applies pressure maintenance.
 	MetricResidentHeadBytes *xbytes.Bytes `json:"metric_resident_head_bytes" yaml:"metric_resident_head_bytes"`
+	// MetricHeadRotationBytes sets the active generation target independently of the resident limit.
+	MetricHeadRotationBytes *xbytes.Bytes `json:"metric_head_rotation_bytes" yaml:"metric_head_rotation_bytes"`
 	// MetricSeriesCacheBytes bounds historical ID/watermark cache memory per metric engine.
 	// Unset uses 512 MiB, allocated on demand; this is separate from the resident head target.
 	MetricSeriesCacheBytes *xbytes.Bytes `json:"metric_series_cache_bytes" yaml:"metric_series_cache_bytes"`
@@ -202,6 +204,7 @@ func (cfg *Config) validate() error {
 		optionalBytes("build_memory_bytes", cfg.BuildMemoryBytes),
 		optionalBytes("metric_flush_memory_bytes", cfg.MetricFlushMemoryBytes),
 		optionalBytes("metric_resident_head_bytes", cfg.MetricResidentHeadBytes),
+		optionalBytes("metric_head_rotation_bytes", cfg.MetricHeadRotationBytes),
 		optionalBytes("metric_series_cache_bytes", cfg.MetricSeriesCacheBytes),
 	); err != nil {
 		return err
@@ -209,6 +212,16 @@ func (cfg *Config) validate() error {
 	if cfg.MetricResidentHeadBytes != nil && *cfg.MetricResidentHeadBytes == 0 {
 		return errors.New("metric_resident_head_bytes: must be positive")
 	}
+	if cfg.MetricHeadRotationBytes != nil {
+		resident := xbytes.Bytes(128 << 20)
+		if cfg.MetricResidentHeadBytes != nil {
+			resident = *cfg.MetricResidentHeadBytes
+		}
+		if cfg.MetricPressureGenerations != 2 || *cfg.MetricHeadRotationBytes == 0 || *cfg.MetricHeadRotationBytes > resident/2 {
+			return errors.New("metric_head_rotation_bytes requires two generations and a positive size at most half the resident limit")
+		}
+	}
+
 	if cfg.MetricSeriesCacheBytes != nil && *cfg.MetricSeriesCacheBytes == 0 {
 		return errors.New("metric_series_cache_bytes: must be positive")
 	}

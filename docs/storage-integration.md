@@ -296,6 +296,9 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   `storage.metric_series_cache_bytes` accepts a positive byte size for each metric engine's
   historical ID/watermark cache; unset uses the library's 512 MiB limit, allocated on demand.
   This cache survives ordinary flushes and is separate from the resident head pressure target.
+  With two standalone pressure generations, `storage.metric_head_rotation_bytes`
+  can set the active generation target independently of the resident limit.
+  Set it to a positive size at most half of `storage.metric_resident_head_bytes`.
   `storage.metric_resident_head_bytes` accepts a positive byte size; unset uses the library's
   128 MiB target. One atomic batch may exceed the target, and the next write applies pressure
   maintenance. Large old WALs can require a larger target to replay without changing the journal.
