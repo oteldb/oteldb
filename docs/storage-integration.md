@@ -326,12 +326,9 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   It requires asynchronous pressure flushing; zero or one keeps the original single generation.
   The resident target applies to all generations together. Merges that could change duplicate
   precedence are deferred; disjoint time/series ranges retain overlap. This is opt-in.
-- **Independent metric chunks:** `storage.metric_series_chunks: true` writes independently framed
-  per-series timestamp/value chunks and enables encoded concatenation for eligible merges. It is
-  disabled by default; existing parts continue through the compatible decode path.
-- **Sparse metric chunks** group up to 32 adjacent one-point series in a numeric chunk with
-  `storage.metric_sparse_chunks: true`. Enable `metric_series_chunks` as well. The series index
-  retains exact ranges, and point reads can decode neighboring rows.
+- **Metric chunks** use `storage.metric_series_chunks: true` to pack up to 32 adjacent
+  one-point series in a flush chunk and give longer series dedicated chunks. Point reads use exact
+  index ranges and can decode neighboring rows. Upgrade readers before enabling shared chunks.
 - **Packed metric WAL** writes bounded blocks for returning singleton metrics with
   `storage.metric_packed_wal: true`. It requires a standalone shared-series engine, fixed head
   rotation, and an enabled WAL. The writer publishes a catalog capability before emitting a

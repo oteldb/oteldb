@@ -91,10 +91,8 @@ type Config struct {
 	MetricAsyncPressureFlush bool `json:"metric_async_pressure_flush" yaml:"metric_async_pressure_flush"`
 	// MetricPressureGenerations permits two frozen generations within the resident target; zero keeps one.
 	MetricPressureGenerations int `json:"metric_pressure_generations" yaml:"metric_pressure_generations"`
-	// MetricSeriesChunks writes independent metric chunks and enables compatible encoded merges. Opt-in.
+	// MetricSeriesChunks writes bounded metric chunks with sparse-series packing on flush. Opt-in.
 	MetricSeriesChunks bool `json:"metric_series_chunks" yaml:"metric_series_chunks"`
-	// MetricSparseChunks packs up to 32 one-point series in each shared metric chunk. Opt-in.
-	MetricSparseChunks bool `json:"metric_sparse_chunks" yaml:"metric_sparse_chunks"`
 	// MetricPackedWAL groups returning singleton metrics in bounded local WAL records. Opt-in.
 	MetricPackedWAL bool `json:"metric_packed_wal" yaml:"metric_packed_wal"`
 	// MetricSeparateSeries keeps descriptors and postings in shared immutable runs on a fresh standalone store.
