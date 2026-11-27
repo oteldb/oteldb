@@ -7,11 +7,11 @@ import type { ComponentHealth } from "../api/model";
 /** Component rows with their status; shared with the Overview page. */
 export function ComponentList({ components }: { components: ComponentHealth[] }) {
   return (
-    <Flex direction="column" gap={3}>
+    <Flex direction="column" gap="spacing-3">
       {components.map((c) => (
-        <Flex key={c.name} direction="column" gap={1}>
-          <Flex alignItems="center" justifyContent="space-between" gap={3}>
-            <Flex alignItems="baseline" gap={2} minWidth={0} wrap>
+        <Flex key={c.name} direction="column" gap="spacing-1">
+          <Flex alignItems="center" justifyContent="space-between" gap="spacing-3">
+            <Flex alignItems="baseline" gap="spacing-2" minWidth="0" wrap>
               <Text variant="body-2">{c.name}</Text>
               {c.addr ? (
                 <Text variant="code-inline-1" color="secondary">

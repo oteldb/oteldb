@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Alert, Button, Flex, Icon, Select, Table, Text, TextInput } from "@gravity-ui/uikit";
-import type { TableColumnConfig } from "@gravity-ui/uikit";
+import { Alert, Button, Flex, Icon, Select, Text, TextInput } from "@gravity-ui/uikit";
+import { Table } from "@gravity-ui/uikit/legacy";
+import type { TableColumnConfig } from "@gravity-ui/uikit/legacy";
 import { Magnifier } from "@gravity-ui/icons";
 import { useGetStreamCosts } from "../api/admin";
 import { Chip, ErrorAlert, head, Mono, Panel, Rule } from "../components/ui";
@@ -41,7 +42,7 @@ const COLUMN_COLUMNS: TableColumnConfig<ColumnCost>[] = [
     name: head("normalized"),
     align: "end",
     template: (c) => (
-      <Flex alignItems="center" gap={2} justifyContent="flex-end">
+      <Flex alignItems="center" gap="spacing-2" justifyContent="flex-end">
         {c.distinct_normalized > 0 ? fmtNum(c.distinct_normalized) : "—"}
         {misparsed(c) ? <Chip theme="warning">unparsed</Chip> : null}
       </Flex>
@@ -94,15 +95,15 @@ function StreamCostsPage() {
   const data = costs.data;
 
   return (
-    <Flex direction="column" gap={5}>
-      <Flex direction="column" gap={3}>
+    <Flex direction="column" gap="spacing-5">
+      <Flex direction="column" gap="spacing-3">
         <Rule>Stream costs</Rule>
         <Panel
           title="Attribute stored bytes"
           sub="Reads and decodes every accounted byte column of every live part — run it on demand, not on a schedule"
         >
-          <Flex gap={4} alignItems="flex-end" wrap>
-            <Flex direction="column" gap={2}>
+          <Flex gap="spacing-4" alignItems="flex-end" wrap>
+            <Flex direction="column" gap="spacing-2">
               <Text variant="caption-2" color="secondary">
                 signal
               </Text>
@@ -113,7 +114,7 @@ function StreamCostsPage() {
                 onUpdate={([v]) => setSignal(v as RecordSignal)}
               />
             </Flex>
-            <Flex direction="column" gap={2}>
+            <Flex direction="column" gap="spacing-2">
               <Text variant="caption-2" color="secondary">
                 group by label
               </Text>

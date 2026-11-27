@@ -1,5 +1,7 @@
-import { Alert, Col, Flex, Icon, Row, Table, Text } from "@gravity-ui/uikit";
-import type { ColProps, TableColumnConfig } from "@gravity-ui/uikit";
+import { Alert, Col, Flex, Icon, Row, Text } from "@gravity-ui/uikit";
+import { Table } from "@gravity-ui/uikit/legacy";
+import type { ColProps } from "@gravity-ui/uikit";
+import type { TableColumnConfig } from "@gravity-ui/uikit/legacy";
 import { CircleCheck } from "@gravity-ui/icons";
 import { useGetHealth, useGetInfo } from "../api/admin";
 import { useSelectedNode } from "../lib/node";
@@ -20,7 +22,7 @@ function Exceptions({ health }: { health: HealthReport }) {
 
   if (!failing.length) {
     return (
-      <Flex alignItems="center" gap={2}>
+      <Flex alignItems="center" gap="spacing-2">
         <Icon data={CircleCheck} size={14} color="positive" />
         <Text variant="body-1" color="secondary">
           All {health.components.length} components healthy
@@ -30,7 +32,7 @@ function Exceptions({ health }: { health: HealthReport }) {
   }
 
   return (
-    <Flex direction="column" gap={2}>
+    <Flex direction="column" gap="spacing-2">
       {failing.map((c) => (
         <Alert
           key={c.name}
@@ -70,14 +72,14 @@ export function Overview() {
   const health = useGetHealth(params, { query: { refetchInterval: 10_000 } });
 
   return (
-    <Flex direction="column" gap={5}>
+    <Flex direction="column" gap="spacing-5">
       <QueryState query={health} what="component health">
         {(data) => <Exceptions health={data} />}
       </QueryState>
 
-      <Row space="4" spaceRow="5">
+      <Row columnGap="spacing-4" rowGap="spacing-5">
         <Col size={SIGNALS_COL}>
-          <Flex direction="column" gap={3} height="100%">
+          <Flex direction="column" gap="spacing-3" height="100%">
             <Rule>Signals</Rule>
             <Panel scroll>
               <QueryState query={info} what="instance info">
@@ -95,7 +97,7 @@ export function Overview() {
         </Col>
 
         <Col size={BUILD_COL}>
-          <Flex direction="column" gap={3} height="100%">
+          <Flex direction="column" gap="spacing-3" height="100%">
             <Rule>Build</Rule>
             <Panel>
               <QueryState query={info} what="instance info">

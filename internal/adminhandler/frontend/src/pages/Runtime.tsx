@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Col, Flex, Row, sp, useThemeType } from "@gravity-ui/uikit";
+import { Col, Flex, Row, useThemeType } from "@gravity-ui/uikit";
 import type { ColProps } from "@gravity-ui/uikit";
 import { Chart, FORMAT_UNITS_BYTES } from "@gravity-ui/charts";
 import type { ChartData } from "@gravity-ui/charts";
@@ -93,10 +93,10 @@ export function Runtime() {
         </div>
       </Panel>
 
-      <Row space="4" spaceRow="4" className={sp({ mt: 4 })}>
+      <Row gap="spacing-4" marginBlockStart="spacing-4">
         <Col size={COL}>
           <Panel title="Memory">
-            <Flex direction="column" gap={4}>
+            <Flex direction="column" gap="spacing-4">
               {data.mem_limit_bytes ? (
                 <UsageBar
                   label="heap vs GOMEMLIMIT"
