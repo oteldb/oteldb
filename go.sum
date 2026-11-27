@@ -1346,8 +1346,6 @@ go.lsp.dev/uri v0.3.0 h1:KcZJmh6nFIBeJzTugn5JTU6OOyG0lDOo3R9KwTxTYbo=
 go.lsp.dev/uri v0.3.0/go.mod h1:P5sbO1IQR+qySTWOCnhnK7phBx+W3zbLqSMDJNTw88I=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
 go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=
-go.opentelemetry.io/collector v0.159.0 h1:gOWL2DGKrPSEdDJ++4NfNhx77A409SNrrZW18hE8dKY=
-go.opentelemetry.io/collector v0.159.0/go.mod h1:yEUB5frsgatUzPmfvEkuJp+iA6zHJ0wKwQZFceAD7VI=
 go.opentelemetry.io/collector/client v1.72.0 h1:ianVYtVysrVmZw+BNl0w1H5RUCzAzifH7VyknImXDkM=
 go.opentelemetry.io/collector/client v1.72.0/go.mod h1:FjB0zJMTdzAExlyPQSrV4Us5jnSsizZi9tbl0fV/PrY=
 go.opentelemetry.io/collector/cmd/builder v0.154.0 h1:yi2USW2v9WKCasD19fooIOZiDQgGx/QG5oSKZS4khCw=
@@ -1460,6 +1458,8 @@ go.opentelemetry.io/collector/internal/memorylimiter v0.166.0 h1:Ya2iEQ5x1EQxzRN
 go.opentelemetry.io/collector/internal/memorylimiter v0.166.0/go.mod h1:rYWquE329GumYSuCCKPI5Whm/DJHJqPOTOlXEM8+bIc=
 go.opentelemetry.io/collector/internal/sharedcomponent v0.165.0 h1:03gIaAkL+vhQxgXelPupTR4EP/pMqxSQQCaDoH/oBLg=
 go.opentelemetry.io/collector/internal/sharedcomponent v0.165.0/go.mod h1:SpoiHmUHQNMA8zpa8ftmigvQ/LT7hYk5HUwNXPmRHzs=
+go.opentelemetry.io/collector/internal/statusutil v0.166.0 h1:NIhKDtFhCnQg821YzFT0PZuHuLRk31nCKBtQRD1fLug=
+go.opentelemetry.io/collector/internal/statusutil v0.166.0/go.mod h1:XYE1fCaJAMWb3/bp5/JFYHGyPQwmzCE4YPKMOb2zheA=
 go.opentelemetry.io/collector/internal/telemetry v0.166.0 h1:BauJ44qGeYkR7khxjrFduPJ5TyJFDCQ9LRxwtteiAf0=
 go.opentelemetry.io/collector/internal/telemetry v0.166.0/go.mod h1:I+Fsyi78SC4Hp1ngQ8icG7rUIuwcvWHkKDjKNmYMB9E=
 go.opentelemetry.io/collector/internal/testutil v0.166.0 h1:mLGz8ZitS2fx52+Sk60+Jmb9F8DsMDg4I1UIdfEwtS0=

@@ -573,7 +573,6 @@ require (
 	go.lsp.dev/protocol v0.12.0 // indirect
 	go.lsp.dev/uri v0.3.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/collector v0.159.0 // indirect
 	go.opentelemetry.io/collector/client v1.72.0 // indirect
 	go.opentelemetry.io/collector/cmd/builder v0.154.0 // indirect
 	go.opentelemetry.io/collector/config/configauth v1.72.0 // indirect
@@ -602,6 +601,7 @@ require (
 	go.opentelemetry.io/collector/internal/fanoutconsumer v0.165.0 // indirect
 	go.opentelemetry.io/collector/internal/memorylimiter v0.166.0 // indirect
 	go.opentelemetry.io/collector/internal/sharedcomponent v0.165.0 // indirect
+	go.opentelemetry.io/collector/internal/statusutil v0.166.0 // indirect
 	go.opentelemetry.io/collector/internal/telemetry v0.166.0 // indirect
 	go.opentelemetry.io/collector/pdata/pprofile v0.166.0
 	go.opentelemetry.io/collector/pdata/testdata v0.166.0 // indirect

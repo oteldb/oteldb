@@ -29,12 +29,15 @@ allow-dependencies-licenses:
   # both already permitted; GitHub reports an unrecognized composite license.
   # https://github.com/open-telemetry/opentelemetry-go-contrib/blob/detectors/azure/azureappservice/v0.19.0/LICENSE.
   # https://github.com/open-telemetry/opentelemetry-go-contrib/blob/zpages/v0.72.0/LICENSE.
+  - "pkg:golang/go.opentelemetry.io/contrib/detectors/aws/ec2/v2@2.6.0"
   - "pkg:golang/go.opentelemetry.io/contrib/detectors/aws/elasticbeanstalk@0.19.0"
+  - "pkg:golang/go.opentelemetry.io/contrib/detectors/aws/eks@1.47.0"
   - "pkg:golang/go.opentelemetry.io/contrib/detectors/azure/azureappservice@0.19.0"
   - "pkg:golang/go.opentelemetry.io/contrib/detectors/azure/azurecontainerapps@0.19.0"
   - "pkg:golang/go.opentelemetry.io/contrib/detectors/azure/azurefunctions@0.19.0"
   - "pkg:golang/go.opentelemetry.io/contrib/detectors/hetzner@0.19.0"
   - "pkg:golang/go.opentelemetry.io/contrib/detectors/ibmcloud/vpc@0.19.0"
+  - "pkg:golang/go.opentelemetry.io/contrib/detectors/openshift@0.19.0"
   - "pkg:golang/go.opentelemetry.io/contrib/detectors/kubeadm@0.19.0"
   - "pkg:golang/go.opentelemetry.io/contrib/detectors/vultr@0.19.0"
   - "pkg:golang/go.opentelemetry.io/contrib/zpages@0.72.0"
