@@ -88,7 +88,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.165.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.165.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/webhookeventreceiver v0.165.1
-	github.com/oteldb/storage v0.55.0
+	github.com/oteldb/storage v0.55.1-0.20261127134150-c130e4b61f73
 	github.com/pierrec/lz4/v4 v4.1.34
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/common v0.74.0
