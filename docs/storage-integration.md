@@ -306,9 +306,14 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   Admin signal counts include `series_complete`; a false value means the preserved count is
   unavailable while historical metadata needs repair. Tenant totals expose `total_series_complete`.
   Missing fields identify older nodes that cannot report completeness.
+- **WAL policy:** `storage.wal_sync` accepts `none` (default), `always`, `interval`, or `off`.
+  `none` writes WAL records without per-append fsync. `always` syncs after each append and
+  `interval` syncs every 200 ms by default. `off` disables logging and replay for a standalone
+  store. A crash loses writes that have yet to reach immutable parts. Recover and flush any existing
+  WAL segments before switching to `off`. Flushed parts remain readable after reopening.
 - **Overlapping metric pressure flush:** `storage.metric_async_pressure_flush: true` lets writes
   continue while a frozen generation is encoded. It requires `metric_disk_series`, a writable
-  standalone engine, and a WAL (automatic for the file backend). Rotation starts at half the
+  standalone engine, and a WAL directory or explicit `wal_sync: off`. Rotation starts at half the
   resident head target; reaching the full aggregate active/frozen target applies backpressure.
   Prepared batches have a separate bounded scratch allowance. One frozen build and the existing
   WAL/checkpoint publication order remain in use. The option is disabled by default.
@@ -324,15 +329,13 @@ residual for identity enumeration; they cannot be applied as stream attributes.
 - **Independent metric chunks:** `storage.metric_series_chunks: true` writes independently framed
   per-series timestamp/value chunks and enables encoded concatenation for eligible merges. It is
   disabled by default; existing parts continue through the compatible decode path.
-- **Sparse metric chunks** group up to 32 adjacent
-  one-point series in a numeric chunk with `storage.metric_sparse_chunks: true`. The series index
-  retains exact row ranges. Point reads can
-  decode neighboring rows, so measure query latency alongside part size.
-- **Packed metric WAL** writes bounded blocks for returning
-  singleton metrics with `storage.metric_packed_wal: true` in the standalone shared-series engine.
-  It requires fixed head rotation and
-  a WAL. The writer publishes a catalog capability before emitting a packed record.
-
+- **Sparse metric chunks** group up to 32 adjacent one-point series in a numeric chunk with
+  `storage.metric_sparse_chunks: true`. Enable `metric_series_chunks` as well. The series index
+  retains exact ranges, and point reads can decode neighboring rows.
+- **Packed metric WAL** writes bounded blocks for returning singleton metrics with
+  `storage.metric_packed_wal: true`. It requires a standalone shared-series engine, fixed head
+  rotation, and an enabled WAL. The writer publishes a catalog capability before emitting a
+  packed record.
 - **Merge memory:** `storage.merge_memory_bytes` (→ `storage.WithMergeMemory`) caps what all
   concurrent merges together hold, and with it the size a merged part reaches before it is sealed.
   It is the write-side counterpart of `decode_memory_bytes`: on a backend that takes objects whole

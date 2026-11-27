@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"github.com/oteldb/storage"
 
 	"github.com/oteldb/oteldb/internal/xbytes"
 )
@@ -26,6 +27,9 @@ type Config struct {
 	// WAL holds what the parts do not yet, so the two are only consistent when kept, snapshotted and
 	// restored together.
 	WALDir string `json:"wal_dir" yaml:"wal_dir"`
+	// WALSync selects "none" (default), "always", "interval", or "off".
+	// "off" disables the WAL. Accepted writes can be lost until their parts are durable.
+	WALSync string `json:"wal_sync" yaml:"wal_sync"`
 	// S3 configures the "s3" object-store backend. Required (with a non-empty Bucket) when Backend is
 	// "s3"; ignored otherwise.
 	S3 *S3Config `json:"s3" yaml:"s3"`
@@ -183,11 +187,29 @@ type S3Config struct {
 	Retry string `json:"retry" yaml:"retry"`
 }
 
+func walSyncMode(value string) (storage.WALSyncMode, bool) {
+	switch value {
+	case "", "none":
+		return storage.WALSyncNone, true
+	case "always":
+		return storage.WALSyncAlways, true
+	case "interval":
+		return storage.WALSyncInterval, true
+	case "off":
+		return storage.WALNone, true
+	default:
+		return storage.WALSyncNone, false
+	}
+}
+
 // validate reports a byte setting that arrived negative. Every one of these reads a negative as
 // "off" — no cache, no admission control, no bound — so one would silently remove the bound it
 // names, decode_memory_bytes most sharply: losing it removes the ceiling that keeps query
 // concurrency from driving the heap past GOMEMLIMIT.
 func (cfg *Config) validate() error {
+	if _, ok := walSyncMode(cfg.WALSync); !ok {
+		return errors.Errorf("wal_sync: expected none, always, interval, or off, got %q", cfg.WALSync)
+	}
 	if cfg.MetricSeparateSeries && (!cfg.MetricDiskSeries || !cfg.MetricSeriesChunks ||
 		cfg.Cluster != nil && len(cfg.Cluster.Etcd) > 0) {
 		return errors.New("metric_separate_series requires standalone metric_disk_series and metric_series_chunks")
@@ -239,8 +261,8 @@ func (cfg *Config) validate() error {
 		if cfg.ReadOnly || cfg.Cluster != nil && len(cfg.Cluster.Etcd) > 0 {
 			return errors.New("metric_async_pressure_flush requires a standalone writable engine")
 		}
-		if cfg.Backend != "file" && cfg.WALDir == "" {
-			return errors.New("metric_async_pressure_flush requires a WAL directory")
+		if cfg.Backend != "file" && cfg.WALDir == "" && cfg.WALSync != "off" {
+			return errors.New("metric_async_pressure_flush requires a WAL directory or wal_sync: off")
 		}
 	}
 	return nil

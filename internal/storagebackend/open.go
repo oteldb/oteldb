@@ -131,6 +131,7 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		zap.String("backend", cmp.Or(cfg.Backend, "memory")),
 		zap.String("parts_dir", layout.Parts),
 		zap.String("wal_dir", layout.WAL),
+		zap.String("wal_sync", cmp.Or(cfg.WALSync, "none")),
 		zap.Bool("read_only", cfg.ReadOnly),
 		zap.Int("log_query_parallelism", cfg.LogQueryParallelism),
 		zap.Int64("read_cache_bytes", caches.ReadCache),
@@ -186,7 +187,9 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 }
 
 func storeOptions(cfg Config, caches cacheSettings) storage.Options {
+	walSync, _ := walSyncMode(cfg.WALSync) // Open validates the configured mode before mapping options.
 	opts := storage.Options{
+		WALSync:       walSync,
 		MaxQueryBytes: caches.MaxQuery, MetricDiskSeries: cfg.MetricDiskSeries,
 		MetricSeriesChunks:        cfg.MetricSeriesChunks,
 		MetricSparseChunks:        cfg.MetricSparseChunks,

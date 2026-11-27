@@ -44,6 +44,14 @@ func TestNativeConcurrentIngestionPressureReopen(t *testing.T) {
 			cfg.AggregateStats = new(false)
 		})
 	})
+	t.Run("sparse-chunks-wal-off", func(t *testing.T) {
+		t.Parallel()
+		testNativeConcurrentIngestionPressureReopen(t, 2, true, func(cfg *storagebackend.Config) {
+			cfg.MetricSparseChunks = true
+			cfg.WALSync = "off"
+			cfg.AggregateStats = new(false)
+		})
+	})
 }
 
 func testNativeConcurrentIngestionPressureReopen(
