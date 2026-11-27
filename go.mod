@@ -27,7 +27,7 @@ require (
 	github.com/fatih/color v1.19.0
 	github.com/go-faster/errors v0.8.0
 	github.com/go-faster/jx v1.2.0
-	github.com/go-faster/sdk v0.39.1
+	github.com/go-faster/sdk v0.40.0
 	github.com/go-faster/tetragon v1.3.2
 	github.com/go-faster/yaml v0.4.6
 	github.com/go-logfmt/logfmt v0.6.1
@@ -88,8 +88,8 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.165.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.165.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/webhookeventreceiver v0.165.1
-	github.com/oteldb/storage v0.54.1-0.20261115051417-9993a093ae75
-	github.com/pierrec/lz4/v4 v4.1.33
+	github.com/oteldb/storage v0.55.0
+	github.com/pierrec/lz4/v4 v4.1.34
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/common v0.74.0
 	github.com/prometheus/prometheus v0.315.1
@@ -101,7 +101,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.45.0
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/zeebo/xxh3 v1.1.0
-	go.etcd.io/etcd/server/v3 v3.7.3
+	go.etcd.io/etcd/server/v3 v3.7.4
 	go.opentelemetry.io/collector/component v1.72.0
 	go.opentelemetry.io/collector/component/componentstatus v0.166.0
 	go.opentelemetry.io/collector/component/componenttest v0.166.0
@@ -188,7 +188,7 @@ require (
 	github.com/valyala/gozstd v1.26.0 // indirect
 	github.com/xiang90/probing v0.0.0-20221125231312-a49e3df8f510 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
-	go.etcd.io/etcd/pkg/v3 v3.7.3 // indirect
+	go.etcd.io/etcd/pkg/v3 v3.7.4 // indirect
 	go.etcd.io/raft/v3 v3.7.0 // indirect
 	go.opentelemetry.io/collector/config/configstorage v0.166.0 // indirect
 	go.opentelemetry.io/collector/receiver/receiverhelper/xreceiverhelper v0.165.0 // indirect
@@ -565,9 +565,9 @@ require (
 	github.com/yuin/goldmark v1.8.6 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.etcd.io/bbolt v1.5.0 // indirect
-	go.etcd.io/etcd/api/v3 v3.7.3 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.7.3 // indirect
-	go.etcd.io/etcd/client/v3 v3.7.3
+	go.etcd.io/etcd/api/v3 v3.7.4 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.7.4 // indirect
+	go.etcd.io/etcd/client/v3 v3.7.4
 	go.lsp.dev/jsonrpc2 v0.10.0 // indirect
 	go.lsp.dev/pkg v0.0.0-20210717090340-384b27a52fb2 // indirect
 	go.lsp.dev/protocol v0.12.0 // indirect
