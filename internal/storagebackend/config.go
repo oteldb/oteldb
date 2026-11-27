@@ -77,15 +77,25 @@ type Config struct {
 	// Unlike the caches this is a pass-through: oteldb adds no default of its own, because the
 	// library already derives one from the same memory limit oteldb would read.
 	MergeMemoryBytes *xbytes.Bytes `json:"merge_memory_bytes" yaml:"merge_memory_bytes"`
+	// BuildMemoryBytes overrides total build admission without enlarging merge or flush jobs.
+	BuildMemoryBytes *xbytes.Bytes `json:"build_memory_bytes" yaml:"build_memory_bytes"`
+	// MetricFlushMemoryBytes overrides the metric flush workspace target.
+	MetricFlushMemoryBytes *xbytes.Bytes `json:"metric_flush_memory_bytes" yaml:"metric_flush_memory_bytes"`
 	// MetricDiskSeries keeps historical metric identities and postings in immutable parts. Opt-in.
 	MetricDiskSeries bool `json:"metric_disk_series" yaml:"metric_disk_series"`
 	// MetricAsyncPressureFlush overlaps frozen metric builds with ingestion. Requires standalone disk indexing and WAL.
 	MetricAsyncPressureFlush bool `json:"metric_async_pressure_flush" yaml:"metric_async_pressure_flush"`
+	// MetricPressureGenerations permits two frozen generations within the resident target; zero keeps one.
+	MetricPressureGenerations int `json:"metric_pressure_generations" yaml:"metric_pressure_generations"`
 	// MetricSeriesChunks writes independent metric chunks and enables compatible encoded merges. Opt-in.
 	MetricSeriesChunks bool `json:"metric_series_chunks" yaml:"metric_series_chunks"`
+	// MetricSeparateSeries keeps descriptors and postings in shared immutable runs on a fresh standalone store.
+	MetricSeparateSeries bool `json:"metric_separate_series" yaml:"metric_separate_series"`
 	// MetricResidentHeadBytes targets resident metric head memory in disk-index mode. Unset uses 128 MiB.
 	// One atomic batch may exceed this target; the next write applies pressure maintenance.
 	MetricResidentHeadBytes *xbytes.Bytes `json:"metric_resident_head_bytes" yaml:"metric_resident_head_bytes"`
+	// MetricHeadRotationBytes sets the active generation target independently of the resident limit.
+	MetricHeadRotationBytes *xbytes.Bytes `json:"metric_head_rotation_bytes" yaml:"metric_head_rotation_bytes"`
 	// MetricSeriesCacheBytes bounds historical ID/watermark cache memory per metric engine.
 	// Unset uses 512 MiB, allocated on demand; this is separate from the resident head target.
 	MetricSeriesCacheBytes *xbytes.Bytes `json:"metric_series_cache_bytes" yaml:"metric_series_cache_bytes"`
@@ -174,6 +184,16 @@ type S3Config struct {
 // names, decode_memory_bytes most sharply: losing it removes the ceiling that keeps query
 // concurrency from driving the heap past GOMEMLIMIT.
 func (cfg *Config) validate() error {
+	if cfg.MetricSeparateSeries && (!cfg.MetricDiskSeries || !cfg.MetricSeriesChunks ||
+		cfg.Cluster != nil && len(cfg.Cluster.Etcd) > 0) {
+		return errors.New("metric_separate_series requires standalone metric_disk_series and metric_series_chunks")
+	}
+	if cfg.MetricPressureGenerations < 0 || cfg.MetricPressureGenerations > 2 {
+		return errors.New("metric_pressure_generations must be zero, one or two")
+	}
+	if cfg.MetricPressureGenerations == 2 && !cfg.MetricAsyncPressureFlush {
+		return errors.New("metric_pressure_generations: 2 requires metric_async_pressure_flush")
+	}
 	if err := checkBytes(
 		optionalBytes("read_cache_bytes", cfg.ReadCacheBytes),
 		optionalBytes("decode_cache_bytes", cfg.DecodeCacheBytes),
@@ -181,7 +201,10 @@ func (cfg *Config) validate() error {
 		optionalBytes("decode_memory_bytes", cfg.DecodeMemoryBytes),
 		optionalBytes("max_query_bytes", cfg.MaxQueryBytes),
 		optionalBytes("merge_memory_bytes", cfg.MergeMemoryBytes),
+		optionalBytes("build_memory_bytes", cfg.BuildMemoryBytes),
+		optionalBytes("metric_flush_memory_bytes", cfg.MetricFlushMemoryBytes),
 		optionalBytes("metric_resident_head_bytes", cfg.MetricResidentHeadBytes),
+		optionalBytes("metric_head_rotation_bytes", cfg.MetricHeadRotationBytes),
 		optionalBytes("metric_series_cache_bytes", cfg.MetricSeriesCacheBytes),
 	); err != nil {
 		return err
@@ -189,6 +212,16 @@ func (cfg *Config) validate() error {
 	if cfg.MetricResidentHeadBytes != nil && *cfg.MetricResidentHeadBytes == 0 {
 		return errors.New("metric_resident_head_bytes: must be positive")
 	}
+	if cfg.MetricHeadRotationBytes != nil {
+		resident := xbytes.Bytes(128 << 20)
+		if cfg.MetricResidentHeadBytes != nil {
+			resident = *cfg.MetricResidentHeadBytes
+		}
+		if cfg.MetricPressureGenerations != 2 || *cfg.MetricHeadRotationBytes == 0 || *cfg.MetricHeadRotationBytes > resident/2 {
+			return errors.New("metric_head_rotation_bytes requires two generations and a positive size at most half the resident limit")
+		}
+	}
+
 	if cfg.MetricSeriesCacheBytes != nil && *cfg.MetricSeriesCacheBytes == 0 {
 		return errors.New("metric_series_cache_bytes: must be positive")
 	}

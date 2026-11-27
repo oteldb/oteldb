@@ -137,11 +137,16 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		zap.Int64("decode_cache_bytes", caches.DecodeCache),
 		zap.Int64("decode_memory_bytes", caches.DecodeMemory),
 		zap.Int64("merge_memory_bytes", caches.MergeMemory),
+		zap.Int64("build_memory_bytes", settings.BuildMemoryBytes),
+		zap.Int64("metric_flush_memory_bytes", settings.MetricFlushMemoryBytes),
 		zap.Bool("aggregate_stats", caches.AggregateStats),
 		zap.Bool("metric_disk_series", cfg.MetricDiskSeries),
 		zap.Bool("metric_async_pressure_flush", cfg.MetricAsyncPressureFlush),
+		zap.Int("metric_pressure_generations", settings.MetricPressureGenerations),
 		zap.Bool("metric_series_chunks", cfg.MetricSeriesChunks),
+		zap.Bool("metric_separate_series", cfg.MetricSeparateSeries),
 		zap.Int64("metric_resident_head_bytes", settings.MetricResidentHeadBytes),
+		zap.Int64("metric_head_rotation_bytes", settings.MetricHeadRotationBytes),
 		zap.Int64("metric_series_cache_bytes", settings.MetricSeriesCacheBytes),
 		zap.Bool("reject_out_of_retention", cfg.RejectOutOfRetention),
 	)
@@ -181,11 +186,22 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 func storeOptions(cfg Config, caches cacheSettings) storage.Options {
 	opts := storage.Options{
 		MaxQueryBytes: caches.MaxQuery, MetricDiskSeries: cfg.MetricDiskSeries,
-		MetricSeriesChunks:       cfg.MetricSeriesChunks,
-		MetricAsyncPressureFlush: cfg.MetricAsyncPressureFlush,
+		MetricSeriesChunks:        cfg.MetricSeriesChunks,
+		MetricSeparateSeries:      cfg.MetricSeparateSeries,
+		MetricAsyncPressureFlush:  cfg.MetricAsyncPressureFlush,
+		MetricPressureGenerations: cfg.MetricPressureGenerations,
 	}
 	if cfg.MetricResidentHeadBytes != nil {
 		opts.MetricResidentHeadBytes = int64(*cfg.MetricResidentHeadBytes)
+	}
+	if cfg.MetricHeadRotationBytes != nil {
+		opts.MetricHeadRotationBytes = int64(*cfg.MetricHeadRotationBytes)
+	}
+	if cfg.BuildMemoryBytes != nil {
+		opts.BuildMemoryBytes = int64(*cfg.BuildMemoryBytes)
+	}
+	if cfg.MetricFlushMemoryBytes != nil {
+		opts.MetricFlushMemoryBytes = int64(*cfg.MetricFlushMemoryBytes)
 	}
 	if cfg.MetricSeriesCacheBytes != nil {
 		opts.MetricSeriesCacheBytes = int64(*cfg.MetricSeriesCacheBytes)

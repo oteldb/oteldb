@@ -296,6 +296,9 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   `storage.metric_series_cache_bytes` accepts a positive byte size for each metric engine's
   historical ID/watermark cache; unset uses the library's 512 MiB limit, allocated on demand.
   This cache survives ordinary flushes and is separate from the resident head pressure target.
+  With two standalone pressure generations, `storage.metric_head_rotation_bytes`
+  can set the active generation target independently of the resident limit.
+  Set it to a positive size at most half of `storage.metric_resident_head_bytes`.
   `storage.metric_resident_head_bytes` accepts a positive byte size; unset uses the library's
   128 MiB target. One atomic batch may exceed the target, and the next write applies pressure
   maintenance. Large old WALs can require a larger target to replay without changing the journal.
@@ -309,6 +312,15 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   resident head target; reaching the full aggregate active/frozen target applies backpressure.
   Prepared batches have a separate bounded scratch allowance. One frozen build and the existing
   WAL/checkpoint publication order remain in use. The option is disabled by default.
+- **Shared metric series:** `storage.metric_separate_series: true` stores descriptors and label
+  postings once in shared metadata runs. It requires a fresh standalone catalog with
+  `metric_disk_series` and `metric_series_chunks` enabled. The async pressure pipeline
+  supports parallel sample parts and up to two frozen generations with this layout.
+- **Bounded generation overlap:** `storage.metric_pressure_generations: 2` permits two frozen
+  generations to build independently, with ordered catalog publication and WAL checkpoints.
+  It requires asynchronous pressure flushing; zero or one keeps the original single generation.
+  The resident target applies to all generations together. Merges that could change duplicate
+  precedence are deferred; disjoint time/series ranges retain overlap. This is opt-in.
 - **Independent metric chunks:** `storage.metric_series_chunks: true` writes independently framed
   per-series timestamp/value chunks and enables encoded concatenation for eligible merges. It is
   disabled by default; existing parts continue through the compatible decode path.
@@ -318,6 +330,10 @@ residual for identity enumeration; they cannot be applied as stream attributes.
   a merge buffers its output part encoded in RAM, so free space alone cannot bound it. Unlike the
   caches oteldb adds no default — unset passes 0 through and the library derives a share of
   `GOMEMLIMIT`; negative is unbounded.
+- **Build overlap:** `storage.build_memory_bytes` independently overrides shared flush/merge
+  admission capacity. `storage.metric_flush_memory_bytes` overrides the metric flush workspace
+  target. Unset values retain the library defaults derived from `merge_memory_bytes`; raising
+  build capacity alone permits more overlap without increasing individual job targets.
 - **Query read budget:** `storage.max_query_bytes` (→ `storage.Options.MaxQueryBytes`) caps what a
   single query may hold before it is refused with `readbudget.ErrExceeded`. It closes the gap
   `decode_memory_bytes` leaves: that budget queues concurrent metric queries behind a shared ceiling
