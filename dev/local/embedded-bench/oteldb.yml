@@ -10,6 +10,7 @@
 # schema expects the receiver/exporter wiring to parse.
 storage:
   backend: file
+  aggregate_stats: false
   # Parts in /data/parts, the write-ahead log in /data/wal: one volume, so they stay consistent.
   # wal_dir would override the WAL location.
   dir: /data
