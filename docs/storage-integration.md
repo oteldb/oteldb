@@ -324,6 +324,15 @@ residual for identity enumeration; they cannot be applied as stream attributes.
 - **Independent metric chunks:** `storage.metric_series_chunks: true` writes independently framed
   per-series timestamp/value chunks and enables encoded concatenation for eligible merges. It is
   disabled by default; existing parts continue through the compatible decode path.
+- **Sparse metric chunks** group up to 32 adjacent
+  one-point series in a numeric chunk with `storage.metric_sparse_chunks: true`. The series index
+  retains exact row ranges. Point reads can
+  decode neighboring rows, so measure query latency alongside part size.
+- **Packed metric WAL** writes bounded blocks for returning
+  singleton metrics with `storage.metric_packed_wal: true` in the standalone shared-series engine.
+  It requires fixed head rotation and
+  a WAL. The writer publishes a catalog capability before emitting a packed record.
+
 - **Merge memory:** `storage.merge_memory_bytes` (→ `storage.WithMergeMemory`) caps what all
   concurrent merges together hold, and with it the size a merged part reaches before it is sealed.
   It is the write-side counterpart of `decode_memory_bytes`: on a backend that takes objects whole

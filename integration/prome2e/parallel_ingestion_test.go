@@ -36,9 +36,19 @@ func TestNativeConcurrentIngestionPressureReopen(t *testing.T) {
 		t.Parallel()
 		testNativeConcurrentIngestionPressureReopen(t, 2, true)
 	})
+	t.Run("sparse-chunks-packed-wal", func(t *testing.T) {
+		t.Parallel()
+		testNativeConcurrentIngestionPressureReopen(t, 2, true, func(cfg *storagebackend.Config) {
+			cfg.MetricSparseChunks = true
+			cfg.MetricPackedWAL = true
+			cfg.AggregateStats = new(false)
+		})
+	})
 }
 
-func testNativeConcurrentIngestionPressureReopen(t *testing.T, generations int, separate bool) {
+func testNativeConcurrentIngestionPressureReopen(
+	t *testing.T, generations int, separate bool, configure ...func(*storagebackend.Config),
+) {
 	t.Helper()
 	ctx := t.Context()
 	cfg := storagebackend.Config{
@@ -54,6 +64,9 @@ func testNativeConcurrentIngestionPressureReopen(t *testing.T, generations int, 
 	}
 	if separate {
 		cfg.MetricHeadRotationBytes = new(xbytes.Bytes(16 << 10))
+	}
+	for _, apply := range configure {
+		apply(&cfg)
 	}
 	open := func() (*storagebackend.Backend, func(context.Context) error) {
 		be, closeStore, err := storagebackend.Open(ctx, cfg, zap.NewNop(), &app.Telemetry{})
