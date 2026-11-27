@@ -131,6 +131,7 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		zap.String("backend", cmp.Or(cfg.Backend, "memory")),
 		zap.String("parts_dir", layout.Parts),
 		zap.String("wal_dir", layout.WAL),
+		zap.String("wal_sync", cmp.Or(cfg.WALSync, "none")),
 		zap.Bool("read_only", cfg.ReadOnly),
 		zap.Int("log_query_parallelism", cfg.LogQueryParallelism),
 		zap.Int64("read_cache_bytes", caches.ReadCache),
@@ -144,6 +145,7 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 		zap.Bool("metric_async_pressure_flush", cfg.MetricAsyncPressureFlush),
 		zap.Int("metric_pressure_generations", settings.MetricPressureGenerations),
 		zap.Bool("metric_series_chunks", cfg.MetricSeriesChunks),
+		zap.Bool("metric_packed_wal", cfg.MetricPackedWAL),
 		zap.Bool("metric_separate_series", cfg.MetricSeparateSeries),
 		zap.Int64("metric_resident_head_bytes", settings.MetricResidentHeadBytes),
 		zap.Int64("metric_head_rotation_bytes", settings.MetricHeadRotationBytes),
@@ -184,9 +186,12 @@ func Open(ctx context.Context, cfg Config, lg *zap.Logger, m *app.Telemetry) (*B
 }
 
 func storeOptions(cfg Config, caches cacheSettings) storage.Options {
+	walSync, _ := walSyncMode(cfg.WALSync) // Open validates the configured mode before mapping options.
 	opts := storage.Options{
+		WALSync:       walSync,
 		MaxQueryBytes: caches.MaxQuery, MetricDiskSeries: cfg.MetricDiskSeries,
 		MetricSeriesChunks:        cfg.MetricSeriesChunks,
+		MetricPackedWAL:           cfg.MetricPackedWAL,
 		MetricSeparateSeries:      cfg.MetricSeparateSeries,
 		MetricAsyncPressureFlush:  cfg.MetricAsyncPressureFlush,
 		MetricPressureGenerations: cfg.MetricPressureGenerations,

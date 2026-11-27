@@ -19,7 +19,8 @@ const (
 type Layout struct {
 	// Parts is the file backend root. Empty when the backend keeps no parts locally.
 	Parts string
-	// WAL is the write-ahead log directory. Empty when the engine runs without one.
+	// WAL is the configured or default write-ahead log directory. A disabled WAL still uses
+	// the path to check for pending segments from earlier runs.
 	WAL string
 }
 

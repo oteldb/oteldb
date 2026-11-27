@@ -10,6 +10,7 @@
 # parses.
 storage:
   backend: s3
+  aggregate_stats: false
   # Local write-ahead log — the only on-disk state for the stateless s3 backend (so the unflushed
   # head survives a restart rather than only the flushed objects).
   wal_dir: /data/wal
