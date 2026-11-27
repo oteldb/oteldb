@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { ThemeProvider, type Theme } from "@gravity-ui/uikit";
+import { Provider, type Theme } from "@gravity-ui/uikit";
 
 const STORAGE_KEY = "oteldb.admin.theme";
 const THEMES: Theme[] = ["system", "light", "dark"];
@@ -25,7 +25,7 @@ export function useAppTheme(): AppThemeContext {
   return useContext(Ctx);
 }
 
-/** Wraps the app in the Gravity UI ThemeProvider and persists the chosen theme. */
+/** Wraps the app in the Gravity UI Provider and persists the chosen theme. */
 export function AppThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(readStoredTheme);
 
@@ -42,7 +42,7 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider value={value}>
-      <ThemeProvider theme={theme}>{children}</ThemeProvider>
+      <Provider theme={theme}>{children}</Provider>
     </Ctx.Provider>
   );
 }

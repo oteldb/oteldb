@@ -95,11 +95,11 @@ function MaintenancePage() {
 
   return (
     <Panel title="Actions" sub={`Each runs immediately on ${node ?? "this instance"}`}>
-      <Flex gap={6} wrap>
+      <Flex gap="spacing-6" wrap>
         {ACTIONS.map((a) => {
           const unavailable = a.needsStorage && !storageEnabled;
           return (
-            <Flex key={a.action} direction="column" gap={2} maxWidth={280}>
+            <Flex key={a.action} direction="column" gap="spacing-2" maxWidth="280px">
               <Button
                 view="outlined"
                 size="l"

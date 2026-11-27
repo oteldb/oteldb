@@ -50,10 +50,10 @@ export function Panel({
 }) {
   return (
     <Card view="outlined" className="panel">
-      <Flex direction="column" gap={4} height="100%">
+      <Flex direction="column" gap="spacing-4" height="100%">
         {(title != null || actions != null) && (
-          <Flex alignItems="baseline" justifyContent="space-between" gap={3} wrap>
-            <Flex alignItems="baseline" gap={2} minWidth={0} wrap>
+          <Flex alignItems="baseline" justifyContent="space-between" gap="spacing-3" wrap>
+            <Flex alignItems="baseline" gap="spacing-2" minWidth="0" wrap>
               {title != null && <Text variant="subheader-2">{title}</Text>}
               {sub != null && (
                 <Text variant="body-1" color="secondary">
@@ -88,8 +88,8 @@ export function UsageBar({
 }) {
   const p = pct(ratio);
   return (
-    <Flex direction="column" gap={1}>
-      <Flex alignItems="baseline" justifyContent="space-between" gap={2}>
+    <Flex direction="column" gap="spacing-1">
+      <Flex alignItems="baseline" justifyContent="space-between" gap="spacing-2">
         <Text variant="body-1" color="secondary">
           {label}
         </Text>
@@ -159,7 +159,7 @@ export function ErrCount({ children, bad }: { children: ReactNode; bad: boolean 
 
 export function Loading() {
   return (
-    <Flex justifyContent="center" spacing={{ p: 5 }}>
+    <Flex justifyContent="center" padding="spacing-5">
       <Spin size="m" />
     </Flex>
   );

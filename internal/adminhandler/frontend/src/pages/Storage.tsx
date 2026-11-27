@@ -1,5 +1,7 @@
-import { Alert, Col, Flex, Row, Table, Text } from "@gravity-ui/uikit";
-import type { ColProps, TableColumnConfig } from "@gravity-ui/uikit";
+import { Alert, Col, Flex, Row, Text } from "@gravity-ui/uikit";
+import { Table } from "@gravity-ui/uikit/legacy";
+import type { ColProps } from "@gravity-ui/uikit";
+import type { TableColumnConfig } from "@gravity-ui/uikit/legacy";
 import { useGetEfficiency, useGetStorage } from "../api/admin";
 import { useSelectedNode } from "../lib/node";
 import { StorageCluster } from "../components/StorageCluster";
@@ -36,7 +38,7 @@ function Caches({ caches }: { caches: CacheStats }) {
   const rate = total ? dc.hits / total : 0;
   return (
     <Panel title="Caches" sub="decode">
-      <Flex direction="column" gap={4}>
+      <Flex direction="column" gap="spacing-4">
         <UsageBar label="decode hit rate" value={`${(rate * 100).toFixed(1)}%`} ratio={rate} />
         <KV
           rows={[
@@ -88,7 +90,7 @@ function PartSync({ ps }: { ps: PartSyncStats }) {
 function ErasureCoding({ ec }: { ec: ECStats }) {
   const errs = ec.convert_errors + ec.repair_errors + ec.reconstruct_errors;
   const count = (ok: number, bad: number) => (
-    <Flex alignItems="baseline" gap={1}>
+    <Flex alignItems="baseline" gap="spacing-1">
       <Mono>{fmtNum(ok)}</Mono>
       {bad ? <ErrCount bad>{`· ${fmtNum(bad)} err`}</ErrCount> : null}
     </Flex>
@@ -127,7 +129,7 @@ const SIGNAL_COLUMNS: TableColumnConfig<EngineSignalStats>[] = [
     name: head("parts"),
     align: "end",
     template: (s) => (
-      <Flex alignItems="center" gap={2} justifyContent="flex-end">
+      <Flex alignItems="center" gap="spacing-2" justifyContent="flex-end">
         {fmtNum(s.parts)}
         {s.merge_running ? <Chip on>merging</Chip> : null}
       </Flex>
@@ -147,7 +149,7 @@ const SIGNAL_COLUMNS: TableColumnConfig<EngineSignalStats>[] = [
     // any run qualifies to select, so every cycle is a no-op and the part count never falls.
     // storage-compact on the Maintenance page is what breaks it.
     template: (s) => (
-      <Flex alignItems="center" gap={2} justifyContent="flex-end">
+      <Flex alignItems="center" gap="spacing-2" justifyContent="flex-end">
         <Mono>
           {fmtNum(s.merge_backlog)} / {fmtNum(s.merge_candidates)}
         </Mono>
@@ -238,7 +240,7 @@ const RETENTION_COLUMNS: TableColumnConfig<EngineSignalStats>[] = [
 function RetentionAdmission({ enabled }: { enabled?: boolean }) {
   return (
     <Panel title="Retention admission" sub="expired writes">
-      <Flex direction="column" gap={3}>
+      <Flex direction="column" gap="spacing-3">
         <Text variant="subheader-1">
           {enabled == null
             ? "Mixed or unavailable"
@@ -269,7 +271,7 @@ function Tenant({ t }: { t: TenantStats }) {
       title={t.tenant}
       sub={`${fmtNum(t.total_series)} series · ${fmtNum(t.total_parts)} parts`}
       actions={
-        <Flex alignItems="center" gap={2} wrap>
+        <Flex alignItems="center" gap="spacing-2" wrap>
           <Text variant="body-1" color="secondary">
             accepted <Mono>{fmtNum(a.accepted)}</Mono>
           </Text>
@@ -283,7 +285,7 @@ function Tenant({ t }: { t: TenantStats }) {
       }
       scroll
     >
-      <Flex direction="column" gap={4}>
+      <Flex direction="column" gap="spacing-4">
         <Table data={t.signals} columns={SIGNAL_COLUMNS} getRowId="signal" />
         <Text variant="subheader-2">Retention</Text>
         <Table data={t.signals} columns={RETENTION_COLUMNS} getRowId="signal" />
@@ -393,8 +395,8 @@ export function Storage() {
   const ch = data.clickhouse;
 
   return (
-    <Flex direction="column" gap={5}>
-      <Flex direction="column" gap={3}>
+    <Flex direction="column" gap="spacing-5">
+      <Flex direction="column" gap="spacing-3">
         <Rule>Embedded storage engine</Rule>
         {!eng ? (
           <Alert
@@ -412,7 +414,7 @@ export function Storage() {
             }
           />
         ) : (
-          <Row space="4" spaceRow="4">
+          <Row gap="spacing-4">
             <Col size={COL}>
               <Caches caches={eng.caches} />
             </Col>
@@ -439,7 +441,7 @@ export function Storage() {
       <StorageCluster data={data} />
 
       {eng?.tenants.length ? (
-        <Flex direction="column" gap={3}>
+        <Flex direction="column" gap="spacing-3">
           <Rule>Tenants &amp; signals</Rule>
           {eng.tenants.map((t) => (
             <Tenant key={t.tenant} t={t} />
@@ -450,7 +452,7 @@ export function Storage() {
       {eng ? <Efficiency /> : null}
 
       {ch ? (
-        <Flex direction="column" gap={3}>
+        <Flex direction="column" gap="spacing-3">
           <Rule>ClickHouse (deprecated)</Rule>
           <Panel title="Tables" scroll>
             <Table

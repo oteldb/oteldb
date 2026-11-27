@@ -1,5 +1,6 @@
-import { Button, Flex, Table, Text } from "@gravity-ui/uikit";
-import type { TableColumnConfig, TableDataItem } from "@gravity-ui/uikit";
+import { Button, Flex, Text } from "@gravity-ui/uikit";
+import { Table } from "@gravity-ui/uikit/legacy";
+import type { TableColumnConfig, TableDataItem } from "@gravity-ui/uikit/legacy";
 import { useState } from "react";
 import type {
   ClusterStats,
@@ -51,7 +52,7 @@ function LimitedTable<T extends TableDataItem>({
 }) {
   const [limit, setLimit] = useState(100);
   return (
-    <Flex direction="column" gap={3}>
+    <Flex direction="column" gap="spacing-3">
       <Table data={data.slice(0, limit)} columns={columns} getRowId={rowId} />
       {data.length > limit ? (
         <Button view="outlined" onClick={() => setLimit((n) => n + 100)}>
@@ -79,7 +80,7 @@ const ISSUE_COLUMNS: TableColumnConfig<ShardIssue>[] = [
     id: "state",
     name: head("local state"),
     template: ({ signal: s }) => (
-      <Flex gap={1} wrap>
+      <Flex gap="spacing-1" wrap>
         {s.index_fenced ? <Chip theme="danger">index fenced</Chip> : null}
         {s.tenure_unestablished ? <Chip theme="warning">claim not established</Chip> : null}
         {s.out_of_space ? <Chip theme="danger">out of space</Chip> : null}
@@ -140,7 +141,7 @@ const MOVE_COLUMNS: TableColumnConfig<MoveRow>[] = [
 function NodeDetails({ cluster }: { cluster: ClusterStats }) {
   return (
     <Panel title="Reported ring view" sub={cluster.self || "legacy aggregate"} scroll>
-      <Flex direction="column" gap={4}>
+      <Flex direction="column" gap="spacing-4">
         <Text color="secondary">
           Compaction claims: {cluster.owned.join(", ") || "none"}. These claims are separate from
           replica routing owner sets.
@@ -238,7 +239,7 @@ export function StorageCluster({ data }: { data: StorageStats }) {
     { id: "error", name: head("request error"), template: (r) => r.error || "—" },
   ];
   return (
-    <Flex direction="column" gap={4}>
+    <Flex direction="column" gap="spacing-4">
       <Rule>Cluster state</Rule>
       <Text color="secondary">
         Each row is a node observation, not a globally consistent snapshot. Unreachable nodes and
@@ -259,7 +260,7 @@ export function StorageCluster({ data }: { data: StorageStats }) {
         sub={`${issues.length} reported shard states`}
         scroll
       >
-        <Flex direction="column" gap={3}>
+        <Flex direction="column" gap="spacing-3">
           {issues.length ? (
             <LimitedTable data={issues} columns={ISSUE_COLUMNS} rowId={(r) => r.id} />
           ) : (
@@ -273,7 +274,7 @@ export function StorageCluster({ data }: { data: StorageStats }) {
         </Flex>
       </Panel>
       <Panel title="Shard placement" sub="node-reported owner sets" scroll>
-        <Flex direction="column" gap={3}>
+        <Flex direction="column" gap="spacing-3">
           {placements.length ? (
             <LimitedTable
               data={placements}

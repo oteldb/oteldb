@@ -71,9 +71,9 @@ function TopBar({ section }: { section: string }) {
   const fetching = useIsFetching();
 
   return (
-    <Flex className="topbar" alignItems="center" gap={3}>
+    <Flex className="topbar" alignItems="center" gap="spacing-3">
       <span className="label-micro">{section}</span>
-      <Flex grow />
+      <Flex flexGrow={1} />
       <NodePicker />
       <ThemeButton />
       <Button
@@ -139,7 +139,12 @@ export default function App() {
   const renderFooter = useCallback(() => {
     if (compact || !info.data) return null;
     return (
-      <Flex direction="column" spacing={{ px: 4, pb: 3 }} className="aside-footer">
+      <Flex
+        direction="column"
+        paddingInline="spacing-4"
+        paddingBlockEnd="spacing-3"
+        className="aside-footer"
+      >
         <Text variant="caption-2" color="hint" ellipsis>
           {info.data.version || "dev"}
         </Text>
