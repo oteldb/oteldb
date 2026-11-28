@@ -161,8 +161,10 @@ The snapshot is independent of Docker after the COW copy. The fixture tool is su
 Without `--live-queries`, its query results describe stopped ingestion. The query-phase
 timestamps and final counters distinguish these modes; neither short profile proves steady state.
 Add `--dashboard-loads` to measure wall time for all 242 targets with the configured bounded
-client count. Individual query timings, complete/incomplete loads, warmups and empty/error
-counts are retained separately. `--subnet` supplies an unused explicit Docker subnet when
+client count. By default a worker starts the next target as soon as it is free. Use
+`--dashboard-dispatch waves` to repeat the previous group-by-group scheduling for comparisons.
+Individual query timings, complete/incomplete loads, warmups and empty/error counts are retained
+separately. `--subnet` supplies an unused explicit Docker subnet when
 retained fixtures have exhausted the automatic pools.
 
 For sustained read/write qualification, add `--soak-seconds 1800 --refresh-interval 15` to

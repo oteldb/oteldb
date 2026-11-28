@@ -152,6 +152,27 @@ def dashboard_expression(item, host):
     return interpolate(expr, host)
 
 
+def rolling_dashboard_rows(execute, count, pool, jobs, deadline):
+    rows = []
+    pending = set()
+    index = 0
+    while index < count or pending:
+        while index < count and len(pending) < jobs and time.monotonic() < deadline:
+            pending.add(pool.submit(execute, index))
+            index += 1
+        if not pending:
+            break
+        done, pending = concurrent.futures.wait(pending, return_when=concurrent.futures.FIRST_COMPLETED)
+        for future in done:
+            row = future.result()
+            if row is None:
+                # A profiling client stopped. Drain requests already in flight.
+                index = count
+            else:
+                rows.append(row)
+    return sorted(rows, key=lambda row: row["query_index"])
+
+
 def load_dashboard(server, host, end, mode, trial, warmup, queries, pool, args, deadline):
     rows = []
 
@@ -164,12 +185,16 @@ def load_dashboard(server, host, end, mode, trial, warmup, queries, pool, args, 
         return row
 
     started = time.perf_counter()
-    for offset in range(0, len(queries), args.jobs):
-        if time.monotonic() >= deadline:
-            break
-        rows.extend(pool.map(execute, range(offset, min(offset + args.jobs, len(queries)))))
+    dispatch = getattr(args, "dashboard_dispatch", "rolling")
+    if dispatch == "rolling":
+        rows = rolling_dashboard_rows(execute, len(queries), pool, args.jobs, deadline)
+    else:
+        for offset in range(0, len(queries), args.jobs):
+            if time.monotonic() >= deadline:
+                break
+            rows.extend(pool.map(execute, range(offset, min(offset + args.jobs, len(queries)))))
     load = {"kind": "load", "server": server, "mode": mode, "host": host,
-            "trial": trial, "warmup": warmup,
+            "trial": trial, "warmup": warmup, "dispatch": dispatch,
             "wall_ms": (time.perf_counter() - started) * 1000,
             "queries": len(rows), "expected_queries": len(queries),
             "complete": len(rows) == len(queries),
@@ -451,6 +476,8 @@ def main():
     parser.add_argument("--nodes", type=int, nargs="+", default=[1000, 10000, 25000])
     parser.add_argument("--runs", type=int, default=10)
     parser.add_argument("--jobs", type=int, default=4)
+    parser.add_argument("--dashboard-dispatch", choices=("rolling", "waves"), default="rolling",
+                        help="refill free dashboard workers or wait for each group of requests")
     parser.add_argument("--prewarm", type=int, default=180)
     parser.add_argument("--ingest-budget", type=int, default=360)
     parser.add_argument("--query-budget", type=int, default=240)

@@ -104,19 +104,21 @@ class StoppablePool:
     def __init__(self, pool, stop):
         self.pool, self.stop = pool, stop
 
+    def checked(self, execute, item):
+        if self.stop.is_set():
+            return None
+        try:
+            return execute(item)
+        except BenchmarkStopped:
+            return None
+
+    def submit(self, execute, item):
+        return self.pool.submit(self.checked, execute, item)
+
     def map(self, execute, items):
         if self.stop.is_set():
             return ()
-
-        def checked(item):
-            if self.stop.is_set():
-                return None
-            try:
-                return execute(item)
-            except BenchmarkStopped:
-                return None
-
-        return (row for row in self.pool.map(checked, items) if row is not None)
+        return (row for row in self.pool.map(lambda item: self.checked(execute, item), items) if row is not None)
 
 
 class StoppableSubprocess:
@@ -340,6 +342,8 @@ def main():
     parser.add_argument("--query-profile-seconds", type=int, default=0, help="capture CPU/allocation profiles during live dashboard measurement")
     parser.add_argument("--runs", type=int, default=10)
     parser.add_argument("--jobs", type=int, default=4)
+    parser.add_argument("--dashboard-dispatch", choices=("rolling", "waves"), default="rolling",
+                        help="refill free dashboard workers or wait for each group of requests")
     parser.add_argument("--seed", type=int, default=20261027)
     parser.add_argument("--query-budget", type=int, default=120)
     parser.add_argument("--otelbench", action="store_true", help="also run the complete dashboard for ready servers")
